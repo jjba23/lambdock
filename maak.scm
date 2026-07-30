@@ -11,7 +11,7 @@
 (define (add-libs)
   (delete-file-recursively ".ccls")
   (time-machine-manifest-shell (list
-                                "pkg-config --cflags-only-I gtk4 guile-3.0 gtk4-layer-shell-0 | tr ' ' '
+                                "pkg-config --cflags gtk4 guile-3.0 gtk4-layer-shell-0 | tr ' ' '
 ' >> .ccls")
                                #:verbose? #t)
   ($ '("cat .ccls")))
