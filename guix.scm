@@ -38,7 +38,7 @@
                  #:select? (git-predicate %source-dir)))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
-    (inputs (list gtk gtk4-layer-shell guile-next))
+    (inputs (list gtk gtk4-layer-shell guile-3.0))
     (home-page "https://github.com/yourusername/lambdock")
     (synopsis "Wayland-native GTK4 dock extensible in Guile Scheme")
     (description

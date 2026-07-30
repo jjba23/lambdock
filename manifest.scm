@@ -23,7 +23,7 @@
              ((guix licenses)
               #:prefix license:))
 
-(packages->manifest (list guile-next
+(packages->manifest (list guile-3.0
                           gcc-toolchain
                           pkg-config
                           meson
