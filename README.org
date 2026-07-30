@@ -30,22 +30,38 @@ The name /lambdock/ is a play on words combining:
 
 Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors.
 
-Place your config file at ~$XDG_CONFIG_DIR/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~)
+Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~)
 
 #+begin_src scheme
 (use-modules (lambdock core))
 
-(configure-dock!
- #:position 'bottom
- #:icon-size 48
- #:items (list (terminal-item #:exec "alacritty")
-               (browser-item  #:exec "firefox")
-               (files-item    #:exec "nautilus -w")
-               (editor-item   #:exec "emacsclient -c")
-               (separator-item)
-               (audio-item)
-               (settings-item)
-               (sysmon-item)))
+(configure-dock! #:position 'bottom
+                 #:icon-size 48
+                 #:items (list (app-item #:name "Terminal (Alacritty)"
+                                         #:exec "alacritty"
+                                         #:icon "utilities-terminal")
+                               (app-item #:name "Google Chrome"
+                                         #:exec "google-chrome"
+                                         #:icon "com.google.Chrome")
+                               (app-item #:name "Spotify"
+                                         #:exec
+                                         "flatpak run com.spotify.Client"
+                                         #:icon "com.spotify.Client")
+                               (app-item #:name "Files"
+                                         #:exec "nautilus -w"
+                                         #:icon "org.gnome.Nautilus")
+                               (separator-item)
+                               (app-item #:name "Emacs"
+                                         #:exec "emacsclient -c"
+                                         #:icon "emacs")
+                               (separator-item)
+                               (app-item #:name "System Monitor"
+                                         #:exec "alacritty -e btop"
+                                         #:icon "utilities-system-monitor")
+                               (app-item #:name "Audio Manager"
+                                         #:exec "pavucontrol"
+                                         #:icon "multimedia-volume-control")))
+
 #+end_src
 
 

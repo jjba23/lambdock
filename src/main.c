@@ -237,8 +237,11 @@ static void populate_dock_items(GtkWidget *box) {
   SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
   SCM get_icon_sz_fn = scm_c_public_ref("lambdock core", "get-icon-size");
 
-  int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
+  // MUST call init-dock! FIRST so settings.scm runs configure-dock!
   SCM items_list = scm_call_0(init_fn);
+
+  // Read icon size AFTER configure-dock! has executed
+  int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
 
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list);
@@ -315,6 +318,9 @@ static void inner_main(void *data, int argc, char **argv) {
 }
 
 int main(int argc, char **argv) {
+#ifdef DEFAULT_GSK_RENDERER
+  g_setenv("GSK_RENDERER", DEFAULT_GSK_RENDERER, FALSE);
+#endif
   scm_boot_guile(argc, argv, inner_main, NULL);
   return 0;
 }

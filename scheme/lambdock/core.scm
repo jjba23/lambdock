@@ -91,54 +91,6 @@
             #:icon icon
             #:exec exec))
 
-(define* (browser-item #:key (name "Web Browser")
-                       (icon "web-browser")
-                       (exec "google-chrome"))
-  "Constructs a web browser launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-(define* (files-item #:key (name "Files")
-                     (icon "system-file-manager")
-                     (exec "nautilus -w"))
-  "Constructs a file manager launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-(define* (editor-item #:key (name "Text Editor")
-                      (icon "accessories-text-editor")
-                      (exec "emacsclient -c"))
-  "Constructs a text editor launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-(define* (settings-item #:key (name "Settings")
-                        (icon "preferences-system")
-                        (exec "gnome-control-center"))
-  "Constructs a system settings launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-(define* (audio-item #:key (name "Volume Control")
-                     (icon "multimedia-volume-control")
-                     (exec "pavucontrol"))
-  "Constructs an audio volume mixer launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-(define* (sysmon-item #:key (name "System Monitor")
-                      (icon "utilities-system-monitor")
-                      (exec "gnome-system-monitor"))
-  "Constructs a system monitor launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
 ;; =============================================================================
 ;; Application State
 ;; =============================================================================
@@ -173,6 +125,21 @@
   *icon-size*)
 
 ;; =============================================================================
+;; Config File Resolution
+;; =============================================================================
+
+(define (get-config-path)
+  "Resolves the user configuration path based on XDG guidelines."
+  (let ((xdg-config (getenv "XDG_CONFIG_HOME"))
+        (home (getenv "HOME")))
+    (cond
+     ((and xdg-config (not (string-null? xdg-config)))
+      (string-append xdg-config "/lambdock/settings.scm"))
+     (home
+      (string-append home "/.config/lambdock/settings.scm"))
+     (else #f))))
+
+;; =============================================================================
 ;; Core Hooks (Called by main.c)
 ;; =============================================================================
 
@@ -180,17 +147,22 @@
   "Entry point invoked after C runtime initialization."
   (format #t "[Scheme] Core dock module initialized.~%")
 
-  ;; Load rich default dock items if none are configured
+  ;; 1. Attempt to load the user's configuration file
+  (let ((config-file (get-config-path)))
+    (if (and config-file (file-exists? config-file))
+        (begin
+          (format #t "[Scheme] Loading user settings from: ~a~%" config-file)
+          (catch #t
+            (lambda ()
+              (load config-file))
+            (lambda (key . args)
+              (format #t "[Scheme] ERROR loading ~a: ~a ~a~%" config-file key args))))
+        (format #t "[Scheme] No settings file found at: ~a~%" config-file)))
+
+  ;; 2. Load fallback default dock items if no items were registered
   (when (null? *dock-items*)
-    (format #t "[Scheme] No config found, loading default items...~%")
+    (format #t "[Scheme] No configured items found, loading default configuration...~%")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
-                     #:items (list (terminal-item)
-                                   (browser-item)
-                                   (files-item)
-                                   (editor-item)
-                                   (separator-item)
-                                   (audio-item)
-                                   (settings-item)
-                                   (sysmon-item))))
+                     #:items (list (terminal-item))))
   *dock-items*)

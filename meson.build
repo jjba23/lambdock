@@ -30,6 +30,9 @@ scheme_install_path = get_option('prefix') / datadir / 'guile/site/3.0'
 # Pass the installed path macro to C compiler
 add_project_arguments('-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"', language: 'c')
 
+# Pass the option to use OpenGL renderer for lambdock
+add_project_arguments('-DDEFAULT_GSK_RENDERER="gl"', language: 'c')
+
 # 3. Tell Meson to copy the scheme files into the store upon installation
 install_subdir('scheme/lambdock',
   install_dir: datadir / 'guile/site/3.0')
