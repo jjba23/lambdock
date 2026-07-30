@@ -3,21 +3,22 @@
 #include <libguile.h>
 
 void load_guile_core(void) {
-  // 1. Resolve and use the module
-  SCM core_module = scm_c_resolve_module("lambdock core");
-  scm_set_current_module(core_module);
+  // 1. Tell Guile where to search for Scheme modules
+  scm_c_eval_string("(add-to-load-path \"scheme\")");
 
-  // 2. Look up the `init-dock!` procedure
+  // 2. Load and import (lambdock core)
+  scm_c_use_module("lambdock core");
+
+  // 3. Look up the exported `init-dock!` procedure
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
 
-  // 3. Call `(init-dock!)`
+  // 4. Call `(init-dock!)`
   SCM items_list = scm_call_0(init_fn);
 
-  // 4. Iterate over the resulting list of <dock-item> records
+  // 5. Iterate over resulting items
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list);
 
-    // Extract fields using Guile procedure calls
     SCM get_name = scm_c_public_ref("lambdock core", "dock-item-name");
     SCM name_scm = scm_call_1(get_name, item);
 
@@ -32,7 +33,7 @@ void load_guile_core(void) {
 static void activate(GtkApplication *app, gpointer user_data) {
   GtkWidget *window = gtk_application_window_new(app);
 
-  // 1. Wayland Layer-Shell Setup (Anchors window to bottom layer)
+  // 1. Wayland Layer-Shell Setup
   gtk_layer_init_for_window(GTK_WINDOW(window));
   gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_TOP);
   gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
@@ -47,10 +48,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   gtk_window_set_child(GTK_WINDOW(window), box);
 
-  // 3. Load Guile Scheme Entry Point
-  // Here we can pass the GTK widget pointers into Guile or invoke Scheme init
-  // functions
-  scm_c_primitive_load("scheme/lambdock/core.scm");
+  // 3. Initialize Guile Module
+  load_guile_core();
 
   gtk_window_present(GTK_WINDOW(window));
 }
@@ -58,14 +57,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
 static void inner_main(void *data, int argc, char **argv) {
   GtkApplication *app =
       gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
-  load_guile_core();
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
   g_application_run(G_APPLICATION(app), argc, argv);
   g_object_unref(app);
 }
 
 int main(int argc, char **argv) {
-  // Guile takes over main memory stack management here
   scm_boot_guile(argc, argv, inner_main, NULL);
   return 0;
 }
