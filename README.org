@@ -3,7 +3,7 @@
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
 [[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
-The dock for Wayland (GNU/Linux) that you didn't know you needed.
+[🚧 WIP] The dock for Wayland (GNU/Linux) that you didn't know you needed.
 
 *lambdock* is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
