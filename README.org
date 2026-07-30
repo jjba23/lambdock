@@ -7,11 +7,14 @@
 
 *lambdock* is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
-[[https://jointhefreeworld.org/static-assets/lambdock/lambdock-small.png]]
-
-
 -------
 
+- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth positioning and desktop integration.
+- *Lisp Configurable Extensible*: Configured entirely via Scheme scripts.
+- *Async Launching*: Spawns commands asynchronously without freezing the dock UI.
+- *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
+
+-------
 
 ** Etymology
 The name /lambdock/ is a play on words combining:
@@ -20,14 +23,7 @@ The name /lambdock/ is a play on words combining:
 - *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
 - *Ship Docks* ⚓ where containers and applications dock safely.
 
--------
-
-* Features
-
-- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth positioning and desktop integration.
-- *Lisp Configurable Extensible*: Configured entirely via Scheme scripts.
-- *Async Launching*: Spawns commands asynchronously without freezing the dock UI.
-- *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
+  [[https://jointhefreeworld.org/static-assets/lambdock/lambdock-small.png]]
 
 -------
 
