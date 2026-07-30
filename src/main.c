@@ -2,31 +2,77 @@
 #include <gtk4-layer-shell.h>
 #include <libguile.h>
 
-/**
- * Configure Guile's %load-path so it can locate module files on disk.
- */
-static void setup_guile_load_path(void) {
-  // 1. Add relative path for local development (cwd)
-  scm_c_eval_string("(add-to-load-path \"scheme\")");
+static void debug_guile_load_path(void) {
+  char cwd[1024];
+  if (getcwd(cwd, sizeof(cwd))) {
+    g_print("[DEBUG] Current CWD: %s\n", cwd);
+  }
+
+  g_print("[DEBUG] Guile %%load-path:\n");
+  scm_c_eval_string(
+      "(for-each (lambda (p) (format #t \"  - ~a~%\" p)) %load-path)");
+
+  g_print("[DEBUG] File lookup for 'lambdock/core.scm':\n");
+  scm_c_eval_string("(let ((path (%search-load-path \"lambdock/core.scm\")))\n"
+                    "  (if path\n"
+                    "      (format #t \"  [FOUND] -> ~a~%\" path)\n"
+                    "      (format #t \"  [NOT FOUND] 'lambdock/core.scm' not "
+                    "in %%load-path!~%\")))");
+}
+
+static void try_load_module_safely(const char *module_name) {
+  // Safely evaluate module loading inside Scheme with exception catching
+  char eval_buf[512];
+  snprintf(eval_buf, sizeof(eval_buf),
+           "(catch #t\n"
+           "  (lambda () (use-modules (%s)) (display \"[DEBUG] Module loaded "
+           "successfully!\\n\"))\n"
+           "  (lambda (key . args)\n"
+           "    (format #t \"[DEBUG] Exception loading module: key=~a "
+           "args=~a~%\" key args)))",
+           module_name);
+
+  scm_c_eval_string(eval_buf);
+}
+
+static void check_file_access(void) {
+  const char *dev_path = "scheme/lambdock/core.scm";
+  if (access(dev_path, F_OK) == 0) {
+    g_print("[DEBUG] File '%s' exists on disk.\n", dev_path);
+  } else {
+    g_print("[DEBUG] File '%s' DOES NOT exist (relative to CWD)!\n", dev_path);
+  }
 
 #ifdef LAMBDOCK_SCHEME_DIR
-  // 2. Add system installed path for Guix store execution
-  scm_c_eval_string("(add-to-load-path \"" LAMBDOCK_SCHEME_DIR "\")");
+  char installed_path[1024];
+  snprintf(installed_path, sizeof(installed_path), "%s/lambdock/core.scm",
+           LAMBDOCK_SCHEME_DIR);
+  if (access(installed_path, F_OK) == 0) {
+    g_print("[DEBUG] Installed file '%s' exists.\n", installed_path);
+  } else {
+    g_print("[DEBUG] Installed file '%s' DOES NOT exist!\n", installed_path);
+  }
 #endif
 }
 
 /**
- * Initialize Guile runtime context, load (lambdock core), and evaluate dock
- * items.
+ * Configure Guile's %load-path so it can locate module files on disk.
  */
 static void load_guile_core(void) {
-  // Ensure %load-path contains ./scheme before resolving modules
-  setup_guile_load_path();
+  // 1. Setup paths
+  scm_c_eval_string("(set! %load-path (cons \"scheme\" %load-path))");
+#ifdef LAMBDOCK_SCHEME_DIR
+  scm_c_eval_string("(set! %load-path (cons \"" LAMBDOCK_SCHEME_DIR
+                    "\" %load-path))");
+#endif
 
-  // Load the (lambdock core) module
-  scm_c_use_module("lambdock core");
+  // 2. Run Diagnostics
+  check_file_access();
+  debug_guile_load_path();
 
-  // Fetch required procedures from (lambdock core)
+  // 3. Attempt Module Load with Exception Catching
+  try_load_module_safely("lambdock core");
+
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
 

@@ -1,4 +1,4 @@
-(define-module (lambddock core)
+(define-module (lambdock core)
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 format)
   #:export (<dock-item> dock-item?
@@ -23,15 +23,24 @@
 ;; Data Structures
 ;; =============================================================================
 
-;; Defines a record type for dock elements
+;; Internal record type definition with private accessor names
 (define-record-type <dock-item>
   (make-dock-item type name icon exec)
   dock-item?
-  (type dock-item-type) ;Symbol: 'app or 'separator
-  (name dock-item-name) ;String: Display name (e.g., "Terminal")
-  (icon dock-item-icon) ;String: Icon theme name (e.g., "utilities-terminal")
-  (exec dock-item-exec))
-; String: Shell command to spawn (e.g., "foot")
+  (type %dock-item-type)
+  (name %dock-item-name)
+  (icon %dock-item-icon)
+  (exec %dock-item-exec))
+
+;; Public procedure wrappers (guarantees C-API compatibility via scm_call_1)
+(define (dock-item-type item)
+  (%dock-item-type item))
+(define (dock-item-name item)
+  (%dock-item-name item))
+(define (dock-item-icon item)
+  (%dock-item-icon item))
+(define (dock-item-exec item)
+  (%dock-item-exec item))
 
 ;; Helper constructor for app launchers
 (define* (app-item #:key (name "Unknown")
@@ -55,7 +64,7 @@
   48)
 
 ;; =============================================================================
-;; Configuration Interface (Called by user's config.scm)
+;; Configuration Interface
 ;; =============================================================================
 
 (define* (configure-dock! #:key (position 'bottom)
@@ -65,9 +74,9 @@
   (set! *dock-position* position)
   (set! *icon-size* icon-size)
   (set! *dock-items* items)
-  (format #t "[Scheme] Configuration loaded: ~a items registered at size ~apx.
-"
-          (length *dock-items*) *icon-size*))
+  (format #t
+   "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
+   (length *dock-items*) *icon-size*))
 
 (define (get-dock-items)
   *dock-items*)
@@ -82,12 +91,11 @@
 
 (define (init-dock!)
   "Entry point invoked after C runtime initialization."
-  (format #t "[Scheme] Core dock module initialized.\n")
+  (format #t "[Scheme] Core dock module initialized.~%")
 
   ;; Load default fallback items if none are configured
   (when (null? *dock-items*)
-    (format #t "[Scheme] No config found, loading default items...
-")
+    (format #t "[Scheme] No config found, loading default items...~%")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
                      #:items (list (app-item #:name "Terminal"
