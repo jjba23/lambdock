@@ -15,13 +15,20 @@
              (gnu packages compression)
              (gnu packages texinfo)
              (gnu packages autotools)
+             (gnu packages build-tools)
              (gnu packages cpp)
+             (gnu packages gtk)
+             (gnu packages commencement)
              (gnu packages rust-apps)
              ((guix licenses)
               #:prefix license:))
 
 (packages->manifest (list guile-next
+                          gcc-toolchain
+                          pkg-config
+                          meson
                           ccls
+                          gtk gtk4-layer-shell
                           texinfo
                           watchexec
                           guile-documenta

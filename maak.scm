@@ -5,4 +5,12 @@
   #:declarative? #t)
 
 (define (run)
-  (time-machine-program-shell (list "lambdock")))
+  (time-machine-program-shell (list "lambdock")
+                              #:verbose? #t))
+
+(define (add-libs)
+  (delete-file-recursively ".ccls")
+  (time-machine-manifest-shell (list
+                                "pkg-config --cflags-only-I gtk4 guile-3.0 gtk4-layer-shell-0 | tr ' ' '
+' >> .ccls"))
+  ($ '("cat .ccls")))

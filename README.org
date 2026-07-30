@@ -1,0 +1,3 @@
+#+title: Lambdock
+
+To hack on the project, it's useful to use CCLS. You can configure the correct library paths with ~maak add-libs~ which will create a proper ~.ccls~ file.
