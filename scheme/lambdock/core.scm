@@ -16,6 +16,7 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock core)
+  #:declarative? #f
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 format)
   #:export (<dock-item> dock-item?
