@@ -16,11 +16,14 @@
 
 -------
 
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-07-30-15-36-56.png]]
+
 The name /lambdock/ is a play on words combining:
+
+-  *Ship Docks* ⚓ where containers and applications dock safely.
 - ~lambda λ~ expressions from functional programming & Lisp.
 - *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
 - *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
-- *Ship Docks* ⚓ where containers and applications dock safely.
 
 [[https://jointhefreeworld.org/static-assets/lambdock/lambdock-small.png]]
 
