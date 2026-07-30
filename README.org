@@ -1,3 +1,113 @@
-#+title: Lambdock
+#+title: lambdock
 
-To hack on the project, it's useful to use CCLS. You can configure the correct library paths with ~maak add-libs~ which will create a proper ~.ccls~ file.
+[[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
+[[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+
+The dock for Wayland (GNU/Linux) that you didn't know you needed.
+
+*lambdock* is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
+
+[[https://jointhefreeworld.org/static-assets/lambdock/lambdock-small.png]]
+
+
+-------
+
+
+** Etymology
+The name /lambdock/ is a play on words combining:
+- *$\lambda$ (lambda)*  / ~lambda~ expressions from functional programming & Lisp.
+- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
+- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
+- *Ship Docks* ⚓ where containers and applications dock safely.
+
+-------
+
+* Features
+
+- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth positioning and desktop integration.
+- *Lisp Configurable Extensible*: Configured entirely via Scheme scripts.
+- *Async Launching*: Spawns commands asynchronously without freezing the dock UI.
+- *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
+
+-------
+
+* Scheme Configuration
+
+Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors.
+
+Place your config file at ~$XDG_CONFIG_DIR/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~)
+
+#+begin_src scheme
+(use-modules (lambdock core))
+
+(configure-dock!
+ #:position 'bottom
+ #:icon-size 48
+ #:items (list (terminal-item #:exec "alacritty")
+               (browser-item  #:exec "firefox")
+               (files-item    #:exec "nautilus -w")
+               (editor-item   #:exec "emacsclient -c")
+               (separator-item)
+               (audio-item)
+               (settings-item)
+               (sysmon-item)))
+#+end_src
+
+
+-----------
+
+* Development & Building
+
+** Prerequisites
+
+The project requires the following C and Scheme dependencies:
+- *GTK 4* (~gtk4~)
+- *GTK4 Layer Shell* (~gtk4-layer-shell~)
+- *GNU Guile 3.0* (~guile-3.0~)
+- *Meson* & *Ninja*
+- *pkg-config*
+
+** Environment Setup with GNU Guix
+
+Enter a pure development container with all required dependencies:
+
+#+begin_src sh
+guix time-machine --channels=channels.scm -- shell --pure --container -m manifest.scm
+#+end_src
+
+** Building with Meson
+
+#+begin_src sh
+# Setup build directory
+meson setup build
+
+# Compile project
+meson compile -C build
+
+# Run locally
+./build/lambdock
+#+end_src
+
+** Hacking with ~maak~ & CCLS
+
+If you use  ~ccls~ or another LSP client, generate your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the solution.
+
+#+begin_src sh
+# Generate .ccls with correct Guix package flags
+maak add-libs
+
+# Run lambdock inside time-machine environment
+maak run
+#+end_src
+
+--------
+
+* License
+
+This project is licensed under the terms of the *GNU General Public License v3.0 or later* (GPLv3+), and documentation is licensed under the *GNU Free Documentation License v1.3 or later* (FDLv1.3+).
+
+
+
+------------------------
+
+To hack on the project, it's useful to use CCLS language-server.  You can configure the correct library paths with ~pkgconfig~  (and for your convenience ~maak add-libs~  )which will create a proper ~.ccls~ file.

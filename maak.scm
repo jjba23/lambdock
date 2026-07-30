@@ -8,10 +8,14 @@
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
+(define c-packages
+  (make-parameter (string-join (map symbol->string
+                                    '(gtk4 guile-3.0 gtk4-layer-shell-0)) " ")))
+
 (define (add-libs)
   (delete-file-recursively ".ccls")
-  (time-machine-manifest-shell (list
-                                "pkg-config --cflags gtk4 guile-3.0 gtk4-layer-shell-0 | tr ' ' '
-' >> .ccls")
+  (time-machine-manifest-shell (list (~ "pkg-config --cflags ~a"
+                                        (c-packages))
+                                     " | tr ' ' '\n' >> .ccls")
                                #:verbose? #t)
   ($ '("cat .ccls")))

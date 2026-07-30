@@ -32,4 +32,5 @@
                           texinfo
                           watchexec
                           guile-documenta
+                          ninja
                           guile-ares-rs))
