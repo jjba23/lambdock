@@ -1,25 +1,23 @@
 (define-module (lambddock core)
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 format)
-  #:export (
-             <dock-item>
-            dock-item?
-            dock-item-type
-            dock-item-name
-            dock-item-icon
-            dock-item-exec
+  #:export (<dock-item> dock-item?
+                        dock-item-type
+                        dock-item-name
+                        dock-item-icon
+                        dock-item-exec
 
-            app-item
-            separator-item
+                        app-item
+                        separator-item
 
-            ;; State & Configuration
-            configure-dock!
-            get-dock-items
-            get-dock-position
-            get-icon-size
+                        ;; State & Configuration
+                        configure-dock!
+                        get-dock-items
+                        get-dock-position
+                        get-icon-size
 
-            ;; Core Initialization
-            init-dock!))
+                        ;; Core Initialization
+                        init-dock!))
 
 ;; =============================================================================
 ;; Data Structures
@@ -33,7 +31,7 @@
   (name dock-item-name) ;String: Display name (e.g., "Terminal")
   (icon dock-item-icon) ;String: Icon theme name (e.g., "utilities-terminal")
   (exec dock-item-exec))
- ; String: Shell command to spawn (e.g., "foot")
+; String: Shell command to spawn (e.g., "foot")
 
 ;; Helper constructor for app launchers
 (define* (app-item #:key (name "Unknown")

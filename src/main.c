@@ -2,38 +2,53 @@
 #include <gtk4-layer-shell.h>
 #include <libguile.h>
 
-void load_guile_core(void) {
-  // 1. Add local relative path for development
+/**
+ * Configure Guile's %load-path so it can locate module files on disk.
+ */
+static void setup_guile_load_path(void) {
+  // 1. Add relative path for local development (cwd)
   scm_c_eval_string("(add-to-load-path \"scheme\")");
 
-  // 2. Add system installed path for Guix package execution
 #ifdef LAMBDOCK_SCHEME_DIR
+  // 2. Add system installed path for Guix store execution
   scm_c_eval_string("(add-to-load-path \"" LAMBDOCK_SCHEME_DIR "\")");
 #endif
+}
 
-  // 3. Resolve and load the module
+/**
+ * Initialize Guile runtime context, load (lambdock core), and evaluate dock
+ * items.
+ */
+static void load_guile_core(void) {
+  // Ensure %load-path contains ./scheme before resolving modules
+  setup_guile_load_path();
+
+  // Load the (lambdock core) module
   scm_c_use_module("lambdock core");
 
-  // 4. Look up procedure
+  // Fetch required procedures from (lambdock core)
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
 
-  // 5. Call (init-dock!)
+  // Execute (init-dock!) to receive the list of configured dock items
   SCM items_list = scm_call_0(init_fn);
 
+  // Iterate through returned Scheme list
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list);
-
-    SCM get_name = scm_c_public_ref("lambdock core", "dock-item-name");
-    SCM name_scm = scm_call_1(get_name, item);
+    SCM name_scm = scm_call_1(get_name_fn, item);
 
     char *name = scm_to_utf8_string(name_scm);
-    g_print("Loaded item from Scheme: %s\n", name);
-    free(name);
+    g_print("[Lambdock] Loaded item: %s\n", name);
+    free(name); // Always free UTF-8 strings returned by scm_to_utf8_string
 
     items_list = scm_cdr(items_list);
   }
 }
 
+/**
+ * GTK Activation Callback
+ */
 static void activate(GtkApplication *app, gpointer user_data) {
   GtkWidget *window = gtk_application_window_new(app);
 
@@ -52,12 +67,15 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   gtk_window_set_child(GTK_WINDOW(window), box);
 
-  // 3. Initialize Guile Module
+  // 3. Initialize Scheme Core Logic
   load_guile_core();
 
   gtk_window_present(GTK_WINDOW(window));
 }
 
+/**
+ * Guile Inner Main Callback
+ */
 static void inner_main(void *data, int argc, char **argv) {
   GtkApplication *app =
       gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
