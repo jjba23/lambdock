@@ -42,7 +42,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
                                          #:icon "utilities-terminal")
                                (app-item #:name "Google Chrome"
                                          #:exec "google-chrome"
-                                         #:icon "com.google.Chrome")
+                                         #:icon "google-chrome")
                                (app-item #:name "Spotify"
                                          #:exec
                                          "flatpak run com.spotify.Client"
@@ -66,6 +66,37 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 
 
 -----------
+
+* Finding icon names
+
+lambdock supports loading and specifying icons in different ways. It loads the active GTK 4 Icon theme and proceeds to load the icon.
+
+When you pass an icon string to ~app-item~, the C runtime's ~create_image_for_icon~ function checks for the icon in this order:
+
+1. Direct File Path: Checks if the string is a valid file path on disk.
+2. Theme Icon: Queries GtkIconTheme for the icon name in your active GTK icon theme (e.g., Papirus, Adwaita, Yaru).
+3. System Pixmaps: Checks ~/usr/share/pixmaps/~.
+4. Symbolic Fallback: Appends -symbolic to try a monochrome fallback.
+5. Generic Fallback: Displays the standard application-x-executable icon if no match is found.
+
+You can also find available icons already in many ways, see some examples below:
+
+#+begin_src shell
+grep -R -i "^Icon=" /usr/share/applications/
+# or using ripgrep which is nicer
+rg -i "^Icon=" /usr/share/applications/
+
+# or flatpaks
+rg -i "^Icon=" /var/lib/flatpak/exports/share/applications/*.desktop
+
+# or (user) flatpaks
+rg -i "^Icon=" ~/.local/share/flatpak/exports/share/applications/*.desktop
+
+# or icons from scalable SVG
+find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg$//' | sort -u
+#+end_src
+
+---------
 
 * Development & Building
 
