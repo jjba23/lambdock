@@ -5,11 +5,11 @@
 
 void load_guile_core(void) {
     // 1. Resolve and use the module
-    SCM core_module = scm_c_resolve_module("dock core");
+    SCM core_module = scm_c_resolve_module("lambdock core");
     scm_set_current_module(core_module);
 
     // 2. Look up the `init-dock!` procedure
-    SCM init_fn = scm_c_public_ref("dock core", "init-dock!");
+    SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
 
     // 3. Call `(init-dock!)`
     SCM items_list = scm_call_0(init_fn);
@@ -19,7 +19,7 @@ void load_guile_core(void) {
         SCM item = scm_car(items_list);
 
         // Extract fields using Guile procedure calls
-        SCM get_name = scm_c_public_ref("dock core", "dock-item-name");
+        SCM get_name = scm_c_public_ref("lambdock core", "dock-item-name");
         SCM name_scm = scm_call_1(get_name, item);
 
         char *name = scm_to_utf8_string(name_scm);
@@ -57,6 +57,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
 static void inner_main(void *data, int argc, char **argv) {
     GtkApplication *app = gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
+    load_guile_core();
     g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
     g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);
