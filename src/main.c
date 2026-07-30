@@ -3,19 +3,23 @@
 #include <libguile.h>
 
 void load_guile_core(void) {
-  // 1. Tell Guile where to search for Scheme modules
+  // 1. Add local relative path for development
   scm_c_eval_string("(add-to-load-path \"scheme\")");
 
-  // 2. Load and import (lambdock core)
+  // 2. Add system installed path for Guix package execution
+#ifdef LAMBDOCK_SCHEME_DIR
+  scm_c_eval_string("(add-to-load-path \"" LAMBDOCK_SCHEME_DIR "\")");
+#endif
+
+  // 3. Resolve and load the module
   scm_c_use_module("lambdock core");
 
-  // 3. Look up the exported `init-dock!` procedure
+  // 4. Look up procedure
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
 
-  // 4. Call `(init-dock!)`
+  // 5. Call (init-dock!)
   SCM items_list = scm_call_0(init_fn);
 
-  // 5. Iterate over resulting items
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list);
 
