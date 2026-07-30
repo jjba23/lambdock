@@ -1,6 +1,6 @@
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
-#include <libgen.h>
+#include <libguile.h>
 
 void load_guile_core(void) {
   // 1. Resolve and use the module
