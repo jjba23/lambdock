@@ -7,8 +7,18 @@
                         dock-item-icon
                         dock-item-exec
 
+                        ;; Generic Constructors
                         app-item
                         separator-item
+
+                        ;; Specialized App Helper Constructors
+                        terminal-item
+                        browser-item
+                        files-item
+                        editor-item
+                        settings-item
+                        audio-item
+                        sysmon-item
 
                         ;; State & Configuration
                         configure-dock!
@@ -42,15 +52,75 @@
 (define (dock-item-exec item)
   (%dock-item-exec item))
 
-;; Helper constructor for app launchers
+;; Generic constructor for custom app launchers
 (define* (app-item #:key (name "Unknown")
                    (icon "application-x-executable")
                    (exec ""))
   (make-dock-item 'app name icon exec))
 
-;; Helper constructor for separators
+;; Generic constructor for separators
 (define (separator-item)
   (make-dock-item 'separator "" "" ""))
+
+;; =============================================================================
+;; Specialized Helper Constructors (Freedesktop Standard Icons)
+;; =============================================================================
+
+(define* (terminal-item #:key (name "Terminal")
+                        (icon "utilities-terminal")
+                        (exec "alacritty"))
+  "Constructs a terminal launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (browser-item #:key (name "Web Browser")
+                       (icon "web-browser")
+                       (exec "google-chrome"))
+  "Constructs a web browser launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (files-item #:key (name "Files")
+                     (icon "system-file-manager")
+                     (exec "nautilus -w"))
+  "Constructs a file manager launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (editor-item #:key (name "Text Editor")
+                      (icon "accessories-text-editor")
+                      (exec "emacsclient -c"))
+  "Constructs a text editor launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (settings-item #:key (name "Settings")
+                        (icon "preferences-system")
+                        (exec "gnome-control-center"))
+  "Constructs a system settings launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (audio-item #:key (name "Volume Control")
+                     (icon "multimedia-volume-control")
+                     (exec "pavucontrol"))
+  "Constructs an audio volume mixer launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
+
+(define* (sysmon-item #:key (name "System Monitor")
+                      (icon "utilities-system-monitor")
+                      (exec "gnome-system-monitor"))
+  "Constructs a system monitor launcher."
+  (app-item #:name name
+            #:icon icon
+            #:exec exec))
 
 ;; =============================================================================
 ;; Application State
@@ -93,16 +163,17 @@
   "Entry point invoked after C runtime initialization."
   (format #t "[Scheme] Core dock module initialized.~%")
 
-  ;; Load default fallback items if none are configured
+  ;; Load rich default dock items if none are configured
   (when (null? *dock-items*)
     (format #t "[Scheme] No config found, loading default items...~%")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
-                     #:items (list (app-item #:name "Terminal"
-                                             #:icon "utilities-terminal"
-                                             #:exec "foot")
+                     #:items (list (terminal-item)
+                                   (browser-item)
+                                   (files-item)
+                                   (editor-item)
                                    (separator-item)
-                                   (app-item #:name "Files"
-                                             #:icon "system-file-manager"
-                                             #:exec "thunar"))))
+                                   (audio-item)
+                                   (settings-item)
+                                   (sysmon-item))))
   *dock-items*)

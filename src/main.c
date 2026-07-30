@@ -2,109 +2,146 @@
 #include <gtk4-layer-shell.h>
 #include <libguile.h>
 
-static void debug_guile_load_path(void) {
-  char cwd[1024];
-  if (getcwd(cwd, sizeof(cwd))) {
-    g_print("[DEBUG] Current CWD: %s\n", cwd);
+/* =============================================================================
+ * App Launcher Callback
+ * =============================================================================
+ */
+
+static void on_app_button_clicked(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  const char *exec_cmd = (const char *)user_data;
+
+  if (exec_cmd && *exec_cmd != '\0') {
+    GError *error = NULL;
+    if (!g_spawn_command_line_async(exec_cmd, &error)) {
+      g_warning("[Lambdock] Failed to launch '%s': %s", exec_cmd,
+                error->message);
+      g_clear_error(&error);
+    } else {
+      g_print("[Lambdock] Launched: %s\n", exec_cmd);
+    }
   }
-
-  g_print("[DEBUG] Guile %%load-path:\n");
-  scm_c_eval_string(
-      "(for-each (lambda (p) (format #t \"  - ~a~%\" p)) %load-path)");
-
-  g_print("[DEBUG] File lookup for 'lambdock/core.scm':\n");
-  scm_c_eval_string("(let ((path (%search-load-path \"lambdock/core.scm\")))\n"
-                    "  (if path\n"
-                    "      (format #t \"  [FOUND] -> ~a~%\" path)\n"
-                    "      (format #t \"  [NOT FOUND] 'lambdock/core.scm' not "
-                    "in %%load-path!~%\")))");
 }
 
-static void try_load_module_safely(const char *module_name) {
-  // Safely evaluate module loading inside Scheme with exception catching
-  char eval_buf[512];
-  snprintf(eval_buf, sizeof(eval_buf),
-           "(catch #t\n"
-           "  (lambda () (use-modules (%s)) (display \"[DEBUG] Module loaded "
-           "successfully!\\n\"))\n"
-           "  (lambda (key . args)\n"
-           "    (format #t \"[DEBUG] Exception loading module: key=~a "
-           "args=~a~%\" key args)))",
-           module_name);
+/* =============================================================================
+ * GTK Widget Factory Helpers
+ * =============================================================================
+ */
 
-  scm_c_eval_string(eval_buf);
-}
+/**
+ * Creates an app launcher button with an icon, flat styling, and hover tooltip.
+ */
+static GtkWidget *create_app_button(const char *name, const char *icon,
+                                    const char *exec, int icon_size) {
+  GtkWidget *button = gtk_button_new();
+  GtkWidget *image = gtk_image_new_from_icon_name(icon);
 
-static void check_file_access(void) {
-  const char *dev_path = "scheme/lambdock/core.scm";
-  if (access(dev_path, F_OK) == 0) {
-    g_print("[DEBUG] File '%s' exists on disk.\n", dev_path);
-  } else {
-    g_print("[DEBUG] File '%s' DOES NOT exist (relative to CWD)!\n", dev_path);
+  gtk_image_set_pixel_size(GTK_IMAGE(image), icon_size);
+  gtk_button_set_child(GTK_BUTTON(button), image);
+  gtk_widget_add_css_class(button, "flat");
+
+  // Enable hover tooltip showing the app name (fallback to exec)
+  if (name && *name != '\0') {
+    gtk_widget_set_tooltip_text(button, name);
+  } else if (exec && *exec != '\0') {
+    gtk_widget_set_tooltip_text(button, exec);
   }
 
-#ifdef LAMBDOCK_SCHEME_DIR
-  char installed_path[1024];
-  snprintf(installed_path, sizeof(installed_path), "%s/lambdock/core.scm",
-           LAMBDOCK_SCHEME_DIR);
-  if (access(installed_path, F_OK) == 0) {
-    g_print("[DEBUG] Installed file '%s' exists.\n", installed_path);
-  } else {
-    g_print("[DEBUG] Installed file '%s' DOES NOT exist!\n", installed_path);
-  }
-#endif
+  // Bind click handler. Ownership of duplicated exec string is transferred to
+  // g_signal_connect_data and cleaned up with g_free when button is destroyed.
+  g_signal_connect_data(button, "clicked", G_CALLBACK(on_app_button_clicked),
+                        g_strdup(exec), (GClosureNotify)g_free, 0);
+
+  return button;
 }
 
 /**
- * Configure Guile's %load-path so it can locate module files on disk.
+ * Creates a vertical separator for the dock layout.
  */
-static void load_guile_core(void) {
-  // 1. Setup paths
+static GtkWidget *create_separator(void) {
+  GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
+  gtk_widget_set_margin_start(separator, 4);
+  gtk_widget_set_margin_end(separator, 4);
+  return separator;
+}
+
+/* =============================================================================
+ * Guile Integration Logic
+ * =============================================================================
+ */
+
+static void setup_guile_load_path(void) {
   scm_c_eval_string("(set! %load-path (cons \"scheme\" %load-path))");
 #ifdef LAMBDOCK_SCHEME_DIR
   scm_c_eval_string("(set! %load-path (cons \"" LAMBDOCK_SCHEME_DIR
                     "\" %load-path))");
 #endif
+}
 
-  // 2. Run Diagnostics
-  check_file_access();
-  debug_guile_load_path();
+static void populate_dock_items(GtkWidget *box) {
+  setup_guile_load_path();
+  scm_c_use_module("lambdock core");
 
-  // 3. Attempt Module Load with Exception Catching
-  try_load_module_safely("lambdock core");
-
+  // Resolve procedure references
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
+  SCM get_icon_fn = scm_c_public_ref("lambdock core", "dock-item-icon");
+  SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
+  SCM get_icon_sz_fn = scm_c_public_ref("lambdock core", "get-icon-size");
 
-  // Execute (init-dock!) to receive the list of configured dock items
+  int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
   SCM items_list = scm_call_0(init_fn);
 
-  // Iterate through returned Scheme list
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list);
-    SCM name_scm = scm_call_1(get_name_fn, item);
 
-    char *name = scm_to_utf8_string(name_scm);
-    g_print("[Lambdock] Loaded item: %s\n", name);
-    free(name); // Always free UTF-8 strings returned by scm_to_utf8_string
+    SCM type_scm = scm_call_1(get_type_fn, item);
+    SCM type_str_scm = scm_symbol_to_string(type_scm);
+    char *type_str = scm_to_utf8_string(type_str_scm);
 
+    if (g_strcmp0(type_str, "app") == 0) {
+      char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
+      char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
+
+      GtkWidget *btn = create_app_button(name, icon, exec, icon_size);
+      gtk_box_append(GTK_BOX(box), btn);
+
+      g_print("[Lambdock] Created app button: %s (%s)\n", name, exec);
+
+      free(name);
+      free(icon);
+      free(exec);
+    } else if (g_strcmp0(type_str, "separator") == 0) {
+      GtkWidget *sep = create_separator();
+      gtk_box_append(GTK_BOX(box), sep);
+      g_print("[Lambdock] Created separator\n");
+    }
+
+    free(type_str);
     items_list = scm_cdr(items_list);
   }
 }
 
-/**
- * GTK Activation Callback
+/* =============================================================================
+ * Window & GTK Initialization
+ * =============================================================================
  */
+
+static void setup_layer_shell_window(GtkWindow *window) {
+  gtk_layer_init_for_window(window);
+  gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+  gtk_layer_auto_exclusive_zone_enable(window);
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
+  (void)user_data;
   GtkWidget *window = gtk_application_window_new(app);
 
-  // 1. Wayland Layer-Shell Setup
-  gtk_layer_init_for_window(GTK_WINDOW(window));
-  gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_TOP);
-  gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-  gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(window));
+  setup_layer_shell_window(GTK_WINDOW(window));
 
-  // 2. Main Dock Layout Container
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_widget_set_margin_start(box, 10);
   gtk_widget_set_margin_end(box, 10);
@@ -113,16 +150,13 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   gtk_window_set_child(GTK_WINDOW(window), box);
 
-  // 3. Initialize Scheme Core Logic
-  load_guile_core();
+  populate_dock_items(box);
 
   gtk_window_present(GTK_WINDOW(window));
 }
 
-/**
- * Guile Inner Main Callback
- */
 static void inner_main(void *data, int argc, char **argv) {
+  (void)data;
   GtkApplication *app =
       gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
