@@ -15,7 +15,7 @@
 
 ** Etymology
 The name /lambdock/ is a play on words combining:
-- *$\lambda$ (lambda)*  / ~lambda~ expressions from functional programming & Lisp.
+- ~lambda λ~ expressions from functional programming & Lisp.
 - *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
 - *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
 - *Ship Docks* ⚓ where containers and applications dock safely.
