@@ -16,7 +16,7 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock core)
-  #:declarative? #t
+  #:declarative? #f
   #:use-module (ice-9 format)
   #:use-module (lambdock items)
   #:use-module (lambdock state)
