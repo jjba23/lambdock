@@ -38,6 +38,7 @@ typedef struct {
   int current_margin;
   int start_margin;
   int target_margin;
+  int active_popovers;
 } LambdockState;
 
 #endif // LAMBDOCK_H

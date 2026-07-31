@@ -91,8 +91,12 @@ void on_popover_closed(GtkPopover *popover, gpointer user_data) {
   (void)popover;
   LambdockState *state = (LambdockState *)user_data;
 
+  if (state->active_popovers > 0) {
+    state->active_popovers--;
+  }
+
   // Schedule auto-hide timer now that the menu has been closed
-  if (state->auto_hide) {
+  if (state->auto_hide && state->active_popovers == 0) {
     if (state->hide_timer_id != 0) {
       g_source_remove(state->hide_timer_id);
     }
@@ -105,9 +109,9 @@ void hide_dock(LambdockState *state) {
     return;
 
   // -----------------------------------------------------------------
-  // Do NOT hide the dock if the menu popover is currently open
+  // Do NOT hide the dock if ANY popover menu is currently open
   // -----------------------------------------------------------------
-  if (state->popover && gtk_widget_get_visible(state->popover)) {
+  if (state->active_popovers > 0) {
     return;
   }
 
@@ -182,5 +186,10 @@ void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
 
   GdkRectangle rect = {(int)x, (int)y, 1, 1};
   gtk_popover_set_pointing_to(GTK_POPOVER(state->popover), &rect);
+
+  if (!gtk_widget_get_visible(state->popover)) {
+    state->active_popovers++;
+  }
+
   gtk_popover_popup(GTK_POPOVER(state->popover));
 }

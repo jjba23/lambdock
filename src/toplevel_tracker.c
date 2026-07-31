@@ -20,6 +20,7 @@
 
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
+#include "dock_window.h"
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
@@ -27,6 +28,7 @@ typedef struct {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
   LambdockState *state;
   GtkWidget *button;
+  GtkWidget *popover; // <-- Track popover reference on WindowItem
   char *app_id;
 } WindowItem;
 
@@ -72,6 +74,26 @@ static void on_close_app_clicked(GtkButton *btn, gpointer user_data) {
   } else {
     g_warning("[Lambdock Tracker] Cannot close window: missing handle.\n");
   }
+}
+
+// Right Click Gesture Callback on Running App Icon
+static void on_running_app_right_click(GtkGestureClick *gesture, gint n_press,
+                                       gdouble x, gdouble y,
+                                       gpointer user_data) {
+  (void)gesture;
+  (void)n_press;
+  (void)x;
+  (void)y;
+  WindowItem *item = (WindowItem *)user_data;
+
+  if (!item || !item->popover || !item->state)
+    return;
+
+  if (!gtk_widget_get_visible(item->popover)) {
+    item->state->active_popovers++;
+  }
+
+  gtk_popover_popup(GTK_POPOVER(item->popover));
 }
 
 // -----------------------------------------------------------------
@@ -158,26 +180,30 @@ toplevel_handle_app_id(void *data,
     // -------------------------------------------------------------
     // Right-Click Menu Popover Setup
     // -------------------------------------------------------------
-    GtkWidget *popover = gtk_popover_new();
-    gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
-    gtk_widget_set_parent(popover, item->button);
+    item->popover = gtk_popover_new();
+    gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
+    gtk_widget_set_parent(item->popover, item->button);
+
+    // Connect "closed" signal so auto-hide resumes when menu is closed
+    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
+                     item->state);
 
     GtkWidget *close_button = gtk_button_new_with_label("Close Window");
     gtk_widget_add_css_class(close_button, "flat");
-    gtk_popover_set_child(GTK_POPOVER(popover), close_button);
+    gtk_popover_set_child(GTK_POPOVER(item->popover), close_button);
 
     // Close button action
     g_signal_connect(close_button, "clicked", G_CALLBACK(on_close_app_clicked),
                      item);
     g_signal_connect_swapped(close_button, "clicked",
-                             G_CALLBACK(gtk_popover_popdown), popover);
+                             G_CALLBACK(gtk_popover_popdown), item->popover);
 
-    // Attach right-click gesture controller to app button
+    // Attach right-click gesture controller
     GtkGesture *right_click = gtk_gesture_click_new();
     gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
                                   GDK_BUTTON_SECONDARY);
-    g_signal_connect_swapped(right_click, "pressed",
-                             G_CALLBACK(gtk_popover_popup), popover);
+    g_signal_connect(right_click, "pressed",
+                     G_CALLBACK(on_running_app_right_click), item);
     gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
     // -------------------------------------------------------------
@@ -215,9 +241,6 @@ toplevel_handle_closed(void *data,
 
       running_app_count--;
 
-      // -------------------------------------------------------------
-      // Remove separator when NO running applications remain
-      // -------------------------------------------------------------
       if (running_app_count <= 0 && running_apps_separator != NULL) {
         gtk_box_remove(GTK_BOX(box), running_apps_separator);
         running_apps_separator = NULL;
