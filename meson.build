@@ -15,9 +15,28 @@
 # You should have received a copy of the GNU General Public License
 # along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
 
+# lambdock
+
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# lambdock is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# lambdock is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
+
 project('lambdock', 'c',
   version: '0.1.0',
   default_options: ['warning_level=2', 'c_std=c11'])
+
+cc = meson.get_compiler('c')
 
 gtk_dep = dependency('gtk4')
 guile_dep = dependency('guile-3.0')
@@ -33,11 +52,19 @@ add_project_arguments('-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"', lan
 # Pass the option to use OpenGL renderer for lambdock
 add_project_arguments('-DDEFAULT_GSK_RENDERER="gl"', language: 'c')
 
-# 3. Tell Meson to copy the scheme files into the store upon installation
+# Tell Meson to copy the scheme files into the store upon installation
 install_subdir('scheme/lambdock',
   install_dir: datadir / 'guile/site/3.0')
 
-executable('lambdock',
+# Source files for the modular build
+sources = files(
   'src/main.c',
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep],
+  'src/ui_helpers.c',
+  'src/guile_bridge.c',
+  'src/dock_window.c',
+)
+
+executable('lambdock',
+  sources,
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep, m_dep],
   install: true)
