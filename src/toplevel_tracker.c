@@ -238,9 +238,6 @@ toplevel_handle_closed(void *data,
     GtkWidget *box = gtk_window_get_child(GTK_WINDOW(item->state->window));
     if (box && GTK_IS_BOX(box)) {
 
-      // -------------------------------------------------------------
-      // Unparent popover FIRST before destroying parent button widget
-      // -------------------------------------------------------------
       if (item->popover != NULL) {
         gtk_widget_unparent(item->popover);
         item->popover = NULL;
