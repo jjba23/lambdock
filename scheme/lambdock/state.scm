@@ -16,16 +16,16 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock state)
+  #:declarative? #f
   #:use-module (ice-9 format)
-  #:export (configure-dock!
-            get-dock-items
-            get-dock-position
-            get-icon-size
-            get-dock-auto-hide?
-            *dock-items*
-            *dock-position*
-            *dock-icon-size*
-            *dock-auto-hide?*))
+  #:export (configure-dock! get-dock-items
+                            get-dock-position
+                            get-icon-size
+                            get-dock-auto-hide?
+                            *dock-items*
+                            *dock-position*
+                            *dock-icon-size*
+                            *dock-auto-hide?*))
 
 ;; =============================================================================
 ;; Application State
@@ -55,8 +55,9 @@
   (set! *dock-auto-hide?* auto-hide?)
 
   (format #t
-          "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
-          (length *dock-items*) *dock-icon-size*))
+   "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
+   (length (*dock-items*))
+   (*dock-icon-size*)))
 
 (define (get-dock-items)
   *dock-items*)

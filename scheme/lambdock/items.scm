@@ -16,20 +16,20 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock items)
+  #:declarative? #t
   #:use-module (srfi srfi-9)
-  #:export (<dock-item>
-            dock-item?
-            dock-item-type
-            dock-item-name
-            dock-item-icon
-            dock-item-exec
+  #:export (<dock-item> dock-item?
+                        dock-item-type
+                        dock-item-name
+                        dock-item-icon
+                        dock-item-exec
 
-            ;; Generic Constructors
-            app-item
-            separator-item
+                        ;; Generic Constructors
+                        app-item
+                        separator-item
 
-            ;; Helper Constructors
-            terminal-item))
+                        ;; Helper Constructors
+                        terminal-item))
 
 ;; =============================================================================
 ;; Data Structures

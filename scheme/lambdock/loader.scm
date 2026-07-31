@@ -16,8 +16,8 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock loader)
-  #:export (get-config-path
-            resolve-dock-configuration))
+  #:declarative? #t
+  #:export (get-config-path resolve-dock-configuration))
 
 ;; =============================================================================
 ;; Config File Resolution & Dynamic Module Inspection
@@ -28,13 +28,15 @@
          (public-mod (module-public-interface mod))
          ;; Check if a public interface exists AND contains at least one export.
          (has-exports? (and public-mod
-                            (not (null? (module-map (lambda (name var) name) public-mod)))))
+                            (not (null? (module-map (lambda (name var)
+                                                      name) public-mod)))))
          ;; If it has exports, search only those. Otherwise, fall back to the whole module.
          (target-mod (if has-exports? public-mod mod))
          (settings (filter (lambda (x)
                              (not (equal? #f x)))
                            (module-map (lambda (name var)
-                                         (cons name (module-ref mod name)))
+                                         (cons name
+                                               (module-ref mod name)))
                                        target-mod))))
     settings))
 
@@ -43,8 +45,8 @@
   (let ((xdg-config (getenv "XDG_CONFIG_HOME"))
         (home (getenv "HOME")))
     (cond
-     ((and xdg-config
-           (not (string-null? xdg-config)))
-      (string-append xdg-config "/lambdock/settings.scm"))
-     (home (string-append home "/.config/lambdock/settings.scm"))
-     (else #f))))
+      ((and xdg-config
+            (not (string-null? xdg-config)))
+       (string-append xdg-config "/lambdock/settings.scm"))
+      (home (string-append home "/.config/lambdock/settings.scm"))
+      (else #f))))

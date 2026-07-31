@@ -10,9 +10,11 @@
 -------
 
 - *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth positioning and desktop integration.
-- *Lisp Configurable Extensible*: Configured entirely via Scheme scripts.
+- *Declarative Lisp configuration* : The power of Lisp in your configuratio with clean powerful declarative config and all possibilities at your disposal
 - *Async Launching*: Spawns commands asynchronously without freezing the dock UI.
 - *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
+- *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
+- *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
 
 -------
 
@@ -28,6 +30,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 
 #+begin_src scheme
 (define-module (lambdock settings)
+  #:declarative? #t
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide?))
 
