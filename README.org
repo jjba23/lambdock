@@ -46,7 +46,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
                   #:exec "alacritty"
-                  #:icon "utilities-terminal")
+                  #:icon "org.gnome.Terminal")
         (app-item #:name "Google Chrome"
                   #:exec "google-chrome"
                   #:icon "google-chrome")
