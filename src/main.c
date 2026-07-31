@@ -18,12 +18,22 @@
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
 #include <libguile.h>
+#include <math.h>
+
+#define ANIMATION_DURATION_US 250000 // 250ms in microseconds
 
 typedef struct {
   GtkWidget *window;
   gboolean auto_hide;
   guint hide_timer_id;
   gboolean is_hidden;
+
+  /* Animation State */
+  guint tick_cb_id;
+  gint64 anim_start_time;
+  int current_margin;
+  int start_margin;
+  int target_margin;
 } LambdockState;
 
 /* =============================================================================
@@ -112,30 +122,87 @@ static void setup_icon_theme(void) {
   }
 }
 
+/* =============================================================================
+ * Smooth Animation Logic
+ * =============================================================================
+ */
+
+// Ease-out cubic: smooth deceleration into position
+static double ease_out_cubic(double t) {
+  double p = 1.0 - t;
+  return 1.0 - (p * p * p);
+}
+
+static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
+                                  gpointer user_data) {
+  (void)widget;
+  LambdockState *state = (LambdockState *)user_data;
+  gint64 now = gdk_frame_clock_get_frame_time(frame_clock);
+
+  if (state->anim_start_time == 0) {
+    state->anim_start_time = now;
+  }
+
+  double progress =
+      (double)(now - state->anim_start_time) / (double)ANIMATION_DURATION_US;
+
+  if (progress >= 1.0) {
+    state->current_margin = state->target_margin;
+    gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+                         state->current_margin);
+    state->tick_cb_id = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  double eased = ease_out_cubic(progress);
+  state->current_margin =
+      state->start_margin +
+      (int)((state->target_margin - state->start_margin) * eased);
+
+  gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+                       state->current_margin);
+
+  return G_SOURCE_CONTINUE;
+}
+
+static void start_margin_animation(LambdockState *state, int target_margin) {
+  if (state->current_margin == target_margin)
+    return;
+
+  state->start_margin = state->current_margin;
+  state->target_margin = target_margin;
+  state->anim_start_time = 0;
+
+  if (state->tick_cb_id == 0) {
+    state->tick_cb_id = gtk_widget_add_tick_callback(
+        state->window, animate_margin_cb, state, NULL);
+  }
+}
+
 static void reveal_dock(LambdockState *state) {
   if (state->hide_timer_id > 0) {
     g_source_remove(state->hide_timer_id);
     state->hide_timer_id = 0;
   }
-  if (state->is_hidden) {
-    // Reset bottom margin to reveal window
-    gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
-                         0);
+
+  if (state->is_hidden || state->target_margin != 0) {
+    start_margin_animation(state, 0); // Slide up to margin 0
     state->is_hidden = FALSE;
   }
 }
 
 static void hide_dock(LambdockState *state) {
-  if (!state->auto_hide || state->is_hidden)
+  if (!state->auto_hide)
     return;
 
   int window_height = gtk_widget_get_height(state->window);
   // Slide dock down, leaving 2px trigger area visible at bottom
   int hide_margin = -(window_height - 2);
 
-  gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
-                       hide_margin);
-  state->is_hidden = TRUE;
+  if (!state->is_hidden || state->target_margin != hide_margin) {
+    start_margin_animation(state, hide_margin);
+    state->is_hidden = TRUE;
+  }
 }
 
 static gboolean on_hide_timeout(gpointer user_data) {
