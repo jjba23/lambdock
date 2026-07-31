@@ -66,5 +66,5 @@ sources = files(
 
 executable('lambdock',
   sources,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep, m_dep],
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep],
   install: true)
