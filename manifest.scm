@@ -35,6 +35,7 @@
              (gnu packages build-tools)
              (gnu packages cpp)
              (gnu packages gtk)
+             (gnu packages freedesktop)
              (gnu packages build-tools)
              (gnu packages commencement)
              (gnu packages rust-apps)
@@ -50,5 +51,6 @@
                           texinfo
                           watchexec
                           guile-documenta
+                          wlr-protocols
                           ninja
                           guile-ares-rs))

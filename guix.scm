@@ -23,6 +23,7 @@
               #:prefix license:)
              (gnu packages gtk)
              (gnu packages guile)
+             (gnu packages freedesktop)
              (gnu packages pkg-config))
 
 (define %source-dir
@@ -38,7 +39,7 @@
                  #:select? (git-predicate %source-dir)))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
-    (inputs (list gtk gtk4-layer-shell guile-3.0))
+    (inputs (list gtk gtk4-layer-shell guile-3.0 wlr-protocols))
     (home-page "https://github.com/yourusername/lambdock")
     (synopsis "Wayland-native GTK4 dock extensible in Guile Scheme")
     (description

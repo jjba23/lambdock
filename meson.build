@@ -25,6 +25,31 @@ gtk_dep = dependency('gtk4')
 guile_dep = dependency('guile-3.0')
 layer_shell_dep = dependency('gtk4-layer-shell-0')
 
+wayland_client_dep = dependency('wayland-client')
+
+# Locate wlr-protocols XML directory via pkg-config
+wlr_protocols_dep = dependency('wlr-protocols')
+wlr_pkgdatadir = wlr_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
+toplevel_xml = wlr_pkgdatadir / 'unstable/wlr-foreign-toplevel-management-unstable-v1.xml'
+
+# Locate wayland-scanner executable
+wayland_scanner = find_program('wayland-scanner')
+
+# Generate C protocol source and header files
+wl_proto_src = custom_target(
+  'wlr-foreign-toplevel-protocol-c',
+  input: toplevel_xml,
+  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+wl_proto_h = custom_target(
+  'wlr-foreign-toplevel-protocol-h',
+  input: toplevel_xml,
+  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+)
+
 # Define paths
 datadir = get_option('datadir')
 pkgdatadir = get_option('prefix') / datadir / 'lambdock'
@@ -48,5 +73,7 @@ sources = files(
 
 executable('lambdock',
   sources,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep],
+  wl_proto_src,
+  wl_proto_h,
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep],
   install: true)

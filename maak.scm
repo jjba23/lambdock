@@ -32,7 +32,7 @@
 
 (define c-packages
   (make-parameter (string-join (map symbol->string
-                                    '(gtk4 guile-3.0 gtk4-layer-shell-0)) " ")))
+                                    '(gtk4 guile-3.0 gtk4-layer-shell-0 wlr-protocols)) " ")))
 
 (define (add-libs)
   (delete-file-recursively ".ccls")
