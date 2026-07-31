@@ -16,161 +16,26 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock core)
-  #:declarative? #f
-  #:use-module (srfi srfi-9)
+  #:declarative? #t
   #:use-module (ice-9 format)
-  #:export (<dock-item> dock-item?
-                        dock-item-type
-                        dock-item-name
-                        dock-item-icon
-                        dock-item-exec
-
-                        ;; Generic Constructors
-                        app-item
-                        separator-item
-
-                        ;; Specialized App Helper Constructors
-                        terminal-item
-                        browser-item
-                        files-item
-                        editor-item
-                        settings-item
-                        audio-item
-                        sysmon-item
-
-                        ;; State & Configuration
-                        configure-dock!
-                        get-dock-items
-                        get-dock-position
-                        get-icon-size
-                        get-dock-auto-hide?
-
-                        ;; Core Initialization
-                        init-dock!
-                        resolve-dock-configuration))
-
-(define* (resolve-dock-configuration #:key (module-name '(lambdock settings)))
-  (let* ((mod (resolve-module module-name))
-         (public-mod (module-public-interface mod))
-         ;; Check if a public interface exists AND contains at least one export.
-         (has-exports? (and public-mod
-                            (not (null? (module-map (lambda (name var)
-                                                      name) public-mod)))))
-         ;; If it has exports, search only those. Otherwise, fall back to the whole module.
-         (target-mod (if has-exports? public-mod mod))
-         (settings (filter (lambda (x)
-                             (not (equal? #f x)))
-                           (module-map (lambda (name var)
-                                         (cons name
-                                               (module-ref mod name)))
-                                       target-mod))))
-    settings))
-
-;; =============================================================================
-;; Data Structures
-;; =============================================================================
-
-;; Internal record type definition with private accessor names
-(define-record-type <dock-item>
-  (make-dock-item type name icon exec)
-  dock-item?
-  (type %dock-item-type)
-  (name %dock-item-name)
-  (icon %dock-item-icon)
-  (exec %dock-item-exec))
-
-;; Public procedure wrappers
-(define (dock-item-type item)
-  (%dock-item-type item))
-
-(define (dock-item-name item)
-  (%dock-item-name item))
-
-(define (dock-item-icon item)
-  (%dock-item-icon item))
-
-(define (dock-item-exec item)
-  (%dock-item-exec item))
-
-;; Generic constructor for custom app launchers
-(define* (app-item #:key (name "Unknown")
-                   (icon "application-x-executable")
-                   (exec ""))
-  (make-dock-item 'app name icon exec))
-
-;; Generic constructor for separators
-(define (separator-item)
-  (make-dock-item 'separator "" "" ""))
-
-;; =============================================================================
-;; Specialized Helper Constructors
-;; =============================================================================
-
-(define* (terminal-item #:key (name "Terminal")
-                        (icon "utilities-terminal")
-                        (exec "alacritty"))
-  "Constructs a terminal launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
-
-;; =============================================================================
-;; Application State
-;; =============================================================================
-
-(define *dock-items*
-  '())
-
-(define *dock-position*
-  'bottom)
-
-(define *dock-icon-size*
-  48)
-
-(define *dock-auto-hide?*
-  #f)
-
-;; =============================================================================
-;; Configuration Interface
-;; =============================================================================
-
-(define* (configure-dock! #:key position icon-size items auto-hide?)
-  "Sets the primary configuration parameters for the dock."
-  (set! *dock-position* position)
-  (set! *dock-icon-size* icon-size)
-  (set! *dock-items* items)
-  (set! *dock-auto-hide?* auto-hide?)
-
-  (format #t
-   "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
-   (length *dock-items*) *dock-icon-size*))
-
-(define (get-dock-items)
-  *dock-items*)
-
-(define (get-dock-position)
-  *dock-position*)
-
-(define (get-icon-size)
-  *dock-icon-size*)
-
-(define (get-dock-auto-hide?)
-  *dock-auto-hide?*)
-
-;; =============================================================================
-;; Config File Resolution
-;; =============================================================================
-
-(define (get-config-path)
-  "Resolves the user configuration path based on XDG guidelines."
-  (let ((xdg-config (getenv "XDG_CONFIG_HOME"))
-        (home (getenv "HOME")))
-    (cond
-      ((and xdg-config
-            (not (string-null? xdg-config)))
-       (string-append xdg-config "/lambdock/settings.scm"))
-      (home (string-append home "/.config/lambdock/settings.scm"))
-      (else #f))))
+  #:use-module (lambdock items)
+  #:use-module (lambdock state)
+  #:use-module (lambdock loader)
+  #:re-export (<dock-item> dock-item?
+                           dock-item-type
+                           dock-item-name
+                           dock-item-icon
+                           dock-item-exec
+                           app-item
+                           separator-item
+                           terminal-item
+                           configure-dock!
+                           get-dock-items
+                           get-dock-position
+                           get-icon-size
+                           get-dock-auto-hide?
+                           resolve-dock-configuration)
+  #:export (init-dock!))
 
 ;; =============================================================================
 ;; Core Hooks (Called by main.c)
@@ -197,7 +62,8 @@
                                                             'dock-icon-size)
                                       #:items (assq-ref settings
                                                         'dock-items)
-                                      #:auto-hide? (assq-ref settings 'dock-auto-hide?))))
+                                      #:auto-hide? (assq-ref settings
+                                                             'dock-auto-hide?))))
                  (lambda (key . args)
                    (format #t "[Scheme] ERROR loading ~a: ~a ~a~%" config-file
                            key args))))
