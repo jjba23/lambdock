@@ -169,3 +169,25 @@ GtkWidget *create_separator(void) {
   gtk_widget_set_margin_end(separator, 4);
   return separator;
 }
+
+void load_custom_css(void) {
+  GtkCssProvider *provider = gtk_css_provider_new();
+
+#ifdef DOCK_CSS_PATH
+  if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_EXISTS)) {
+    g_print("Loading CSS from DOCK_CSS_PATH: %s", DOCK_CSS_PATH);
+    gtk_css_provider_load_from_path(provider, DOCK_CSS_PATH);
+  } else if (g_file_test("resources/css/dock.css", G_FILE_TEST_EXISTS)) {
+    g_print("Loading CSS from ./resources/css/dock.css");
+    gtk_css_provider_load_from_path(provider, "resources/css/dock.css");
+  } else {
+    g_warning("[Lambdock] Could not find dock.css at %s", DOCK_CSS_PATH);
+  }
+#endif
+
+  gtk_style_context_add_provider_for_display(
+      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+  g_object_unref(provider);
+}

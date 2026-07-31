@@ -25,4 +25,6 @@ GtkWidget *create_app_button(const char *name, const char *icon,
                              const char *exec, int icon_size);
 GtkWidget *create_separator(void);
 
+void load_custom_css(void);
+
 #endif // UI_HELPERS_H
