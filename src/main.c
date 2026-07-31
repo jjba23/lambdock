@@ -368,18 +368,22 @@ static void activate(GtkApplication *app, gpointer user_data) {
   setup_icon_theme();
 
   LambdockState *state = g_new0(LambdockState, 1);
-  state->auto_hide = get_autohide_config();
-  g_print("state->auto_hide: %d", state->auto_hide);
 
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
-  setup_layer_shell_window(GTK_WINDOW(window), state->auto_hide);
-
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-
   gtk_window_set_child(GTK_WINDOW(window), box);
+
+  // 1. Run init-dock! first via populate_dock_items to load user settings
   populate_dock_items(box);
+
+  // 2. Query auto_hide AFTER settings have been initialized in Guile
+  state->auto_hide = get_autohide_config();
+  g_print("[Lambdock] state->auto_hide: %d\n", state->auto_hide);
+
+  // 3. Configure layer-shell with the actual loaded config
+  setup_layer_shell_window(GTK_WINDOW(window), state->auto_hide);
 
   // Attach motion controller for hover detection
   GtkEventController *motion = gtk_event_controller_motion_new();
