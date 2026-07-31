@@ -20,6 +20,20 @@
 #include "lambdock.h"
 #include "ui_helpers.h"
 
+void load_custom_css(void) {
+  GtkCssProvider *provider = gtk_css_provider_new();
+
+#ifdef DOCK_CSS_PATH
+  gtk_css_provider_load_from_path(provider, DOCK_CSS_PATH);
+#endif
+
+  gtk_style_context_add_provider_for_display(
+      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+  g_object_unref(provider);
+}
+
 static void activate(GtkApplication *app, gpointer user_data) {
   (void)user_data;
 
