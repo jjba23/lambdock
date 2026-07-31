@@ -9,11 +9,11 @@
 
 // lambdock is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
-// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+// along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 #include <gdk/wayland/gdkwayland.h>
 #include <wayland-client.h>
@@ -31,12 +31,36 @@ typedef struct {
 } WindowItem;
 
 static struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager = NULL;
+static struct wl_seat *default_seat = NULL;
+
+// -----------------------------------------------------------------
+// Dynamic Separator State
+// -----------------------------------------------------------------
+static GtkWidget *running_apps_separator = NULL;
+static int running_app_count = 0;
+
+// -----------------------------------------------------------------
+// Button Click Handler to Focus Window
+// -----------------------------------------------------------------
+static void on_running_app_clicked(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  WindowItem *item = (WindowItem *)user_data;
+
+  if (item && item->handle && default_seat) {
+    g_print("[Lambdock Tracker] Focusing window for app_id: '%s'\n",
+            item->app_id ? item->app_id : "unknown");
+
+    zwlr_foreign_toplevel_handle_v1_activate(item->handle, default_seat);
+  } else {
+    g_warning(
+        "[Lambdock Tracker] Cannot focus window: missing handle or seat.\n");
+  }
+}
 
 // -----------------------------------------------------------------
 // Window Event Callbacks
 // -----------------------------------------------------------------
 
-// Stub callbacks to prevent Wayland NULL-pointer crash (SIGABRT)
 static void
 toplevel_handle_title(void *data,
                       struct zwlr_foreign_toplevel_handle_v1 *handle,
@@ -90,7 +114,6 @@ toplevel_handle_app_id(void *data,
   if (!item || !app_id || *app_id == '\0')
     return;
 
-  // Prevent duplicate button creation if app_id is sent multiple times
   if (item->button != NULL) {
     g_free(item->app_id);
     item->app_id = g_strdup(app_id);
@@ -110,6 +133,21 @@ toplevel_handle_app_id(void *data,
   item->button = create_app_button(app_id, app_id, "", 32);
   if (item->button) {
     gtk_widget_add_css_class(item->button, "running-app");
+
+    g_signal_connect(item->button, "clicked",
+                     G_CALLBACK(on_running_app_clicked), item);
+
+    // -------------------------------------------------------------
+    // Add separator BEFORE appending the first running application
+    // -------------------------------------------------------------
+    if (running_apps_separator == NULL) {
+      running_apps_separator = create_separator();
+      gtk_box_append(GTK_BOX(box), running_apps_separator);
+      g_print("[Lambdock Tracker] Inserted running apps separator.\n");
+    }
+
+    running_app_count++;
+
     gtk_box_append(GTK_BOX(box), item->button);
     g_print("[Lambdock Tracker] Added running app button to dock for: '%s'\n",
             app_id);
@@ -131,6 +169,18 @@ toplevel_handle_closed(void *data,
     GtkWidget *box = gtk_window_get_child(GTK_WINDOW(item->state->window));
     if (box && GTK_IS_BOX(box)) {
       gtk_box_remove(GTK_BOX(box), item->button);
+
+      running_app_count--;
+
+      // -------------------------------------------------------------
+      // Remove separator when NO running applications remain
+      // -------------------------------------------------------------
+      if (running_app_count <= 0 && running_apps_separator != NULL) {
+        gtk_box_remove(GTK_BOX(box), running_apps_separator);
+        running_apps_separator = NULL;
+        running_app_count = 0;
+        g_print("[Lambdock Tracker] Removed running apps separator.\n");
+      }
     }
   }
 
@@ -142,7 +192,6 @@ toplevel_handle_closed(void *data,
   g_free(item);
 }
 
-// Ensure all handlers are non-NULL
 static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
     {
         .title = toplevel_handle_title,
@@ -203,6 +252,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
                                                     &manager_listener, state);
       g_print(
           "[Lambdock Tracker] Bound foreign toplevel manager successfully.\n");
+    }
+  } else if (g_strcmp0(interface, wl_seat_interface.name) == 0) {
+    if (!default_seat) {
+      default_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
+      g_print("[Lambdock Tracker] Bound default Wayland seat successfully.\n");
     }
   }
 }
