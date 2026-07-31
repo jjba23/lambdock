@@ -19,10 +19,28 @@
 #include <gtk4-layer-shell.h>
 #include <libguile.h>
 
+typedef struct {
+  GtkWidget *window;
+  gboolean auto_hide;
+  guint hide_timer_id;
+  gboolean is_hidden;
+} LambdockState;
+
 /* =============================================================================
  * Utilities & Theme Setup
  * =============================================================================
  */
+
+static gboolean get_autohide_config(void) {
+  // Lookup setting 'dock-auto-hide?' from (lambdock core)
+  SCM get_autohide_fn =
+      scm_c_public_ref("lambdock core", "get-dock-auto-hide?");
+  if (scm_is_true(get_autohide_fn)) {
+    SCM res = scm_call_0(get_autohide_fn);
+    return scm_to_bool(res);
+  }
+  return FALSE;
+}
 
 static void free_exec_data(gpointer data, GClosure *closure) {
   (void)closure;
@@ -91,6 +109,61 @@ static void setup_icon_theme(void) {
       g_print("[Lambdock] Note: GSettings schema org.gnome.desktop.interface "
               "not found.\n");
     }
+  }
+}
+
+static void reveal_dock(LambdockState *state) {
+  if (state->hide_timer_id > 0) {
+    g_source_remove(state->hide_timer_id);
+    state->hide_timer_id = 0;
+  }
+  if (state->is_hidden) {
+    // Reset bottom margin to reveal window
+    gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+                         0);
+    state->is_hidden = FALSE;
+  }
+}
+
+static void hide_dock(LambdockState *state) {
+  if (!state->auto_hide || state->is_hidden)
+    return;
+
+  int window_height = gtk_widget_get_height(state->window);
+  // Slide dock down, leaving 2px trigger area visible at bottom
+  int hide_margin = -(window_height - 2);
+
+  gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+                       hide_margin);
+  state->is_hidden = TRUE;
+}
+
+static gboolean on_hide_timeout(gpointer user_data) {
+  LambdockState *state = (LambdockState *)user_data;
+  hide_dock(state);
+  state->hide_timer_id = 0;
+  return G_SOURCE_REMOVE;
+}
+
+static void on_motion_enter(GtkEventControllerMotion *controller, double x,
+                            double y, gpointer user_data) {
+  (void)controller;
+  (void)x;
+  (void)y;
+  LambdockState *state = (LambdockState *)user_data;
+  reveal_dock(state);
+}
+
+static void on_motion_leave(GtkEventControllerMotion *controller,
+                            gpointer user_data) {
+  (void)controller;
+  LambdockState *state = (LambdockState *)user_data;
+  if (state->auto_hide) {
+    if (state->hide_timer_id != 0) {
+      g_source_remove(state->hide_timer_id);
+    }
+    // Delay hiding by 400ms to prevent jittering
+    state->hide_timer_id = g_timeout_add(400, on_hide_timeout, state);
   }
 }
 
@@ -227,9 +300,6 @@ static void setup_guile_load_path(void) {
 }
 
 static void populate_dock_items(GtkWidget *box) {
-  setup_guile_load_path();
-  scm_c_use_module("lambdock core");
-
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
   SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
@@ -279,33 +349,53 @@ static void populate_dock_items(GtkWidget *box) {
  * =============================================================================
  */
 
-static void setup_layer_shell_window(GtkWindow *window) {
+static void setup_layer_shell_window(GtkWindow *window, gboolean auto_hide) {
   gtk_layer_init_for_window(window);
   gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
   gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-  gtk_layer_auto_exclusive_zone_enable(window);
+  if (auto_hide) {
+    gtk_layer_set_exclusive_zone(window, 0);
+  } else {
+    gtk_layer_auto_exclusive_zone_enable(window);
+  }
 }
 
 static void activate(GtkApplication *app, gpointer user_data) {
   (void)user_data;
+  setup_guile_load_path();
+  scm_c_use_module("lambdock core");
 
-  // Setup icon theme search paths prior to widget generation
   setup_icon_theme();
 
+  LambdockState *state = g_new0(LambdockState, 1);
+  state->auto_hide = get_autohide_config();
+  g_print("state->auto_hide: %d", state->auto_hide);
+
   GtkWidget *window = gtk_application_window_new(app);
-  setup_layer_shell_window(GTK_WINDOW(window));
+  state->window = window;
+
+  setup_layer_shell_window(GTK_WINDOW(window), state->auto_hide);
 
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-  gtk_widget_set_margin_start(box, 10);
-  gtk_widget_set_margin_end(box, 10);
-  gtk_widget_set_margin_top(box, 6);
-  gtk_widget_set_margin_bottom(box, 6);
 
   gtk_window_set_child(GTK_WINDOW(window), box);
-
   populate_dock_items(box);
 
+  // Attach motion controller for hover detection
+  GtkEventController *motion = gtk_event_controller_motion_new();
+  g_signal_connect(motion, "enter", G_CALLBACK(on_motion_enter), state);
+  g_signal_connect(motion, "leave", G_CALLBACK(on_motion_leave), state);
+  gtk_widget_add_controller(window, motion);
+
+  // Clean up state on window destroy
+  g_signal_connect_swapped(window, "destroy", G_CALLBACK(g_free), state);
+
   gtk_window_present(GTK_WINDOW(window));
+
+  // Initial state setup for auto-hide
+  if (state->auto_hide) {
+    state->hide_timer_id = g_timeout_add(1000, on_hide_timeout, state);
+  }
 }
 
 static void inner_main(void *data, int argc, char **argv) {

@@ -29,7 +29,10 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 #+begin_src scheme
 (define-module (lambdock settings)
   #:use-module (lambdock core)
-  #:export (dock-position dock-icon-size dock-items))
+  #:export (dock-position dock-icon-size dock-items dock-auto-hide?))
+
+(define dock-auto-hide?
+  #t)
 
 (define dock-position
   'bottom)

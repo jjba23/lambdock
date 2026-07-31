@@ -43,6 +43,7 @@
                         get-dock-items
                         get-dock-position
                         get-icon-size
+                        get-dock-auto-hide?
 
                         ;; Core Initialization
                         init-dock!
@@ -126,15 +127,20 @@
 (define *dock-icon-size*
   48)
 
+(define *dock-auto-hide?*
+  #f)
+
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
 
-(define* (configure-dock! #:key position icon-size items)
+(define* (configure-dock! #:key position icon-size items auto-hide?)
   "Sets the primary configuration parameters for the dock."
   (set! *dock-position* position)
   (set! *dock-icon-size* icon-size)
   (set! *dock-items* items)
+  (set! *dock-auto-hide?* auto-hide?)
+
   (format #t
    "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
    (length *dock-items*) *dock-icon-size*))
@@ -147,6 +153,9 @@
 
 (define (get-icon-size)
   *dock-icon-size*)
+
+(define (get-dock-auto-hide?)
+  *dock-auto-hide?*)
 
 ;; =============================================================================
 ;; Config File Resolution
@@ -187,7 +196,8 @@
                                       #:icon-size (assq-ref settings
                                                             'dock-icon-size)
                                       #:items (assq-ref settings
-                                                        'dock-items))))
+                                                        'dock-items)
+                                      #:auto-hide? (assq-ref settings 'dock-auto-hide?))))
                  (lambda (key . args)
                    (format #t "[Scheme] ERROR loading ~a: ~a ~a~%" config-file
                            key args))))
@@ -199,5 +209,6 @@
      "[Scheme] No configured items found, loading default configuration...~%")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
-                     #:items (list (terminal-item))))
+                     #:items (list (terminal-item))
+                     #:auto-hide? #f))
   *dock-items*)
