@@ -69,6 +69,7 @@ sources = files(
   'src/ui_helpers.c',
   'src/guile_bridge.c',
   'src/dock_window.c',
+  'src/toplevel_tracker.c',
 )
 
 executable('lambdock',
