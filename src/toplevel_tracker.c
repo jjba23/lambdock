@@ -9,16 +9,19 @@
 
 // lambdock is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
-// along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+
+#include <gdk/wayland/gdkwayland.h>
+#include <wayland-client.h>
+
+#include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
-#include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
-#include <gdk/wayland/gdkwayland.h>
 
 typedef struct {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
@@ -32,27 +35,85 @@ static struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager = NULL;
 // -----------------------------------------------------------------
 // Window Event Callbacks
 // -----------------------------------------------------------------
+
+// Stub callbacks to prevent Wayland NULL-pointer crash (SIGABRT)
+static void
+toplevel_handle_title(void *data,
+                      struct zwlr_foreign_toplevel_handle_v1 *handle,
+                      const char *title) {
+  (void)data;
+  (void)handle;
+  (void)title;
+}
+
+static void
+toplevel_handle_output_enter(void *data,
+                             struct zwlr_foreign_toplevel_handle_v1 *handle,
+                             struct wl_output *output) {
+  (void)data;
+  (void)handle;
+  (void)output;
+}
+
+static void
+toplevel_handle_output_leave(void *data,
+                             struct zwlr_foreign_toplevel_handle_v1 *handle,
+                             struct wl_output *output) {
+  (void)data;
+  (void)handle;
+  (void)output;
+}
+
+static void
+toplevel_handle_state(void *data,
+                      struct zwlr_foreign_toplevel_handle_v1 *handle,
+                      struct wl_array *state) {
+  (void)data;
+  (void)handle;
+  (void)state;
+}
+
+static void
+toplevel_handle_done(void *data,
+                     struct zwlr_foreign_toplevel_handle_v1 *handle) {
+  (void)data;
+  (void)handle;
+}
+
 static void
 toplevel_handle_app_id(void *data,
                        struct zwlr_foreign_toplevel_handle_v1 *handle,
                        const char *app_id) {
   (void)handle;
   WindowItem *item = (WindowItem *)data;
-  if (!app_id || *app_id == '\0')
+
+  if (!item || !app_id || *app_id == '\0')
     return;
 
+  // Prevent duplicate button creation if app_id is sent multiple times
+  if (item->button != NULL) {
+    g_free(item->app_id);
+    item->app_id = g_strdup(app_id);
+    return;
+  }
+
   item->app_id = g_strdup(app_id);
-  g_print("[Lambdock] Window created: %s\n", app_id);
+  g_print("[Lambdock Tracker] App ID resolved: '%s'\n", app_id);
 
-  // Get the main GTK horizontal box container
+  if (!item->state || !item->state->window)
+    return;
+
   GtkWidget *box = gtk_window_get_child(GTK_WINDOW(item->state->window));
+  if (!box || !GTK_IS_BOX(box))
+    return;
 
-  // Create dock item using your existing helper
   item->button = create_app_button(app_id, app_id, "", 32);
-  gtk_widget_add_css_class(item->button, "running-app");
-
-  // Add button to dock container
-  gtk_box_append(GTK_BOX(box), item->button);
+  if (item->button) {
+    gtk_widget_add_css_class(item->button, "running-app");
+    gtk_box_append(GTK_BOX(box), item->button);
+    g_print("[Lambdock Tracker] Added running app button to dock for: '%s'\n",
+            app_id);
+  }
 }
 
 static void
@@ -60,27 +121,36 @@ toplevel_handle_closed(void *data,
                        struct zwlr_foreign_toplevel_handle_v1 *handle) {
   (void)handle;
   WindowItem *item = (WindowItem *)data;
-  g_print("[Lambdock] Window closed: %s\n",
+  if (!item)
+    return;
+
+  g_print("[Lambdock Tracker] Window closed: '%s'\n",
           item->app_id ? item->app_id : "unknown");
 
-  if (item->button) {
+  if (item->button && item->state && item->state->window) {
     GtkWidget *box = gtk_window_get_child(GTK_WINDOW(item->state->window));
-    gtk_box_remove(GTK_BOX(box), item->button);
+    if (box && GTK_IS_BOX(box)) {
+      gtk_box_remove(GTK_BOX(box), item->button);
+    }
   }
 
-  zwlr_foreign_toplevel_handle_v1_destroy(item->handle);
+  if (item->handle) {
+    zwlr_foreign_toplevel_handle_v1_destroy(item->handle);
+  }
+
   g_free(item->app_id);
   g_free(item);
 }
 
+// Ensure all handlers are non-NULL
 static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
     {
-        .title = NULL,
+        .title = toplevel_handle_title,
         .app_id = toplevel_handle_app_id,
-        .output_enter = NULL,
-        .output_leave = NULL,
-        .state = NULL,
-        .done = NULL,
+        .output_enter = toplevel_handle_output_enter,
+        .output_leave = toplevel_handle_output_leave,
+        .state = toplevel_handle_state,
+        .done = toplevel_handle_done,
         .closed = toplevel_handle_closed,
 };
 
@@ -93,6 +163,8 @@ manager_handle_toplevel(void *data,
                         struct zwlr_foreign_toplevel_handle_v1 *toplevel) {
   (void)manager;
   LambdockState *state = (LambdockState *)data;
+  if (!state)
+    return;
 
   WindowItem *item = g_new0(WindowItem, 1);
   item->handle = toplevel;
@@ -102,10 +174,17 @@ manager_handle_toplevel(void *data,
                                                item);
 }
 
+static void
+manager_handle_finished(void *data,
+                        struct zwlr_foreign_toplevel_manager_v1 *manager) {
+  (void)data;
+  (void)manager;
+}
+
 static const struct zwlr_foreign_toplevel_manager_v1_listener manager_listener =
     {
         .toplevel = manager_handle_toplevel,
-        .finished = NULL,
+        .finished = manager_handle_finished,
 };
 
 static void registry_handle_global(void *data, struct wl_registry *registry,
@@ -118,8 +197,13 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
       0) {
     toplevel_manager = wl_registry_bind(
         registry, name, &zwlr_foreign_toplevel_manager_v1_interface, 1);
-    zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager,
-                                                  &manager_listener, state);
+
+    if (toplevel_manager) {
+      zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager,
+                                                    &manager_listener, state);
+      g_print(
+          "[Lambdock Tracker] Bound foreign toplevel manager successfully.\n");
+    }
   }
 }
 
@@ -127,9 +211,11 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
 // Initialize Tracker
 // -----------------------------------------------------------------
 void init_toplevel_tracker(LambdockState *state) {
-  GdkDisplay *display = gdk_display_get_default();
+  if (!state)
+    return;
 
-  if (GDK_IS_WAYLAND_DISPLAY(display)) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (display && GDK_IS_WAYLAND_DISPLAY(display)) {
     struct wl_display *wl_display = gdk_wayland_display_get_wl_display(display);
     struct wl_registry *registry = wl_display_get_registry(wl_display);
 
@@ -139,8 +225,6 @@ void init_toplevel_tracker(LambdockState *state) {
     };
 
     wl_registry_add_listener(registry, &registry_listener, state);
-  } else {
-    g_warning("[Lambdock] Not running on Wayland display. Foreign toplevel "
-              "tracking disabled.");
+    g_print("[Lambdock Tracker] Initialized toplevel tracker listener.\n");
   }
 }

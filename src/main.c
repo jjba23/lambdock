@@ -18,6 +18,7 @@
 #include "dock_window.h"
 #include "guile_bridge.h"
 #include "lambdock.h"
+#include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
 static void activate(GtkApplication *app, gpointer user_data) {
@@ -92,6 +93,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(g_free), state);
 
   gtk_window_present(GTK_WINDOW(window));
+
+  init_toplevel_tracker(state);
 
   schedule_initial_autohide(state);
 }
