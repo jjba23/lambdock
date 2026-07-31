@@ -35,6 +35,7 @@
              (gnu packages build-tools)
              (gnu packages cpp)
              (gnu packages gtk)
+             (gnu packages build-tools)
              (gnu packages commencement)
              (gnu packages rust-apps)
              ((guix licenses)

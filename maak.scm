@@ -25,6 +25,11 @@
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
+(define (repl)
+  "Development REPL."
+  (time-machine-manifest-shell '("guile -L ./src"
+                    "-c '((@ (ares server) run-nrepl-server))'")))
+
 (define c-packages
   (make-parameter (string-join (map symbol->string
                                     '(gtk4 guile-3.0 gtk4-layer-shell-0)) " ")))
