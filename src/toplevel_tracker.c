@@ -237,10 +237,21 @@ toplevel_handle_closed(void *data,
   if (item->button && item->state && item->state->window) {
     GtkWidget *box = gtk_window_get_child(GTK_WINDOW(item->state->window));
     if (box && GTK_IS_BOX(box)) {
+
+      // -------------------------------------------------------------
+      // Unparent popover FIRST before destroying parent button widget
+      // -------------------------------------------------------------
+      if (item->popover != NULL) {
+        gtk_widget_unparent(item->popover);
+        item->popover = NULL;
+      }
+
       gtk_box_remove(GTK_BOX(box), item->button);
+      item->button = NULL;
 
       running_app_count--;
 
+      // Remove separator when NO running applications remain
       if (running_app_count <= 0 && running_apps_separator != NULL) {
         gtk_box_remove(GTK_BOX(box), running_apps_separator);
         running_apps_separator = NULL;
