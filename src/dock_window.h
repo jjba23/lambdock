@@ -29,5 +29,6 @@ void on_quit_action(GSimpleAction *action, GVariant *parameter,
                     gpointer user_data);
 void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
                     gdouble y, gpointer user_data);
+void on_popover_closed(GtkPopover *popover, gpointer user_data);
 
 #endif // DOCK_WINDOW_H

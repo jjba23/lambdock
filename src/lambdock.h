@@ -27,6 +27,7 @@
 
 typedef struct {
   GtkWidget *window;
+  GtkWidget *popover;
   gboolean auto_hide;
   guint hide_timer_id;
   gboolean is_hidden;

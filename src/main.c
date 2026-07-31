@@ -54,11 +54,16 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model); // Free model memory reference
+  g_object_unref(menu_model);
 
   gtk_widget_set_parent(popover, window);
-  gtk_popover_set_has_arrow(GTK_POPOVER(popover),
-                            FALSE); // Clean look without popover arrow
+  gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+
+  // Store reference in state
+  state->popover = popover;
+
+  // Connect "closed" signal so auto-hide resumes when menu is closed
+  g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
   // -------------------------------------------------------------
   // Attach Secondary (Right) Click Gesture to the window
@@ -66,8 +71,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
+  // Pass 'state' as user_data instead of 'popover'
   g_signal_connect(right_click_gesture, "pressed", G_CALLBACK(on_right_click),
-                   popover);
+                   state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
   // -------------------------------------------------------------
 

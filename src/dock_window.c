@@ -80,9 +80,36 @@ void reveal_dock(LambdockState *state) {
   }
 }
 
+static gboolean on_hide_timeout(gpointer user_data) {
+  LambdockState *state = (LambdockState *)user_data;
+  hide_dock(state);
+  state->hide_timer_id = 0;
+  return G_SOURCE_REMOVE;
+}
+
+void on_popover_closed(GtkPopover *popover, gpointer user_data) {
+  (void)popover;
+  LambdockState *state = (LambdockState *)user_data;
+
+  // Schedule auto-hide timer now that the menu has been closed
+  if (state->auto_hide) {
+    if (state->hide_timer_id != 0) {
+      g_source_remove(state->hide_timer_id);
+    }
+    state->hide_timer_id = g_timeout_add(400, on_hide_timeout, state);
+  }
+}
+
 void hide_dock(LambdockState *state) {
   if (!state->auto_hide)
     return;
+
+  // -----------------------------------------------------------------
+  // Do NOT hide the dock if the menu popover is currently open
+  // -----------------------------------------------------------------
+  if (state->popover && gtk_widget_get_visible(state->popover)) {
+    return;
+  }
 
   int window_height = gtk_widget_get_height(state->window);
   int hide_margin = -(window_height - 2);
@@ -91,13 +118,6 @@ void hide_dock(LambdockState *state) {
     start_margin_animation(state, hide_margin);
     state->is_hidden = TRUE;
   }
-}
-
-static gboolean on_hide_timeout(gpointer user_data) {
-  LambdockState *state = (LambdockState *)user_data;
-  hide_dock(state);
-  state->hide_timer_id = 0;
-  return G_SOURCE_REMOVE;
 }
 
 static void on_motion_enter(GtkEventControllerMotion *controller, double x,
@@ -153,11 +173,14 @@ void on_quit_action(GSimpleAction *action, GVariant *parameter,
 
 void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
                     gdouble y, gpointer user_data) {
-  GtkPopover *popover = GTK_POPOVER(user_data);
+  (void)gesture;
+  (void)n_press;
+  LambdockState *state = (LambdockState *)user_data;
 
-  // Set popup position right where the mouse was clicked
+  if (!state->popover)
+    return;
+
   GdkRectangle rect = {(int)x, (int)y, 1, 1};
-  gtk_popover_set_pointing_to(popover, &rect);
-
-  gtk_popover_popup(popover);
+  gtk_popover_set_pointing_to(GTK_POPOVER(state->popover), &rect);
+  gtk_popover_popup(GTK_POPOVER(state->popover));
 }
