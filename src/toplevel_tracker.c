@@ -40,8 +40,10 @@ static GtkWidget *running_apps_separator = NULL;
 static int running_app_count = 0;
 
 // -----------------------------------------------------------------
-// Button Click Handler to Focus Window
+// Button Click Handlers
 // -----------------------------------------------------------------
+
+// Left Click: Focus Window
 static void on_running_app_clicked(GtkButton *btn, gpointer user_data) {
   (void)btn;
   WindowItem *item = (WindowItem *)user_data;
@@ -54,6 +56,21 @@ static void on_running_app_clicked(GtkButton *btn, gpointer user_data) {
   } else {
     g_warning(
         "[Lambdock Tracker] Cannot focus window: missing handle or seat.\n");
+  }
+}
+
+// Right Click Action: Close Window
+static void on_close_app_clicked(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  WindowItem *item = (WindowItem *)user_data;
+
+  if (item && item->handle) {
+    g_print("[Lambdock Tracker] Requesting window close for app_id: '%s'\n",
+            item->app_id ? item->app_id : "unknown");
+
+    zwlr_foreign_toplevel_handle_v1_close(item->handle);
+  } else {
+    g_warning("[Lambdock Tracker] Cannot close window: missing handle.\n");
   }
 }
 
@@ -134,8 +151,34 @@ toplevel_handle_app_id(void *data,
   if (item->button) {
     gtk_widget_add_css_class(item->button, "running-app");
 
+    // Left-click signal -> focus window
     g_signal_connect(item->button, "clicked",
                      G_CALLBACK(on_running_app_clicked), item);
+
+    // -------------------------------------------------------------
+    // Right-Click Menu Popover Setup
+    // -------------------------------------------------------------
+    GtkWidget *popover = gtk_popover_new();
+    gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+    gtk_widget_set_parent(popover, item->button);
+
+    GtkWidget *close_button = gtk_button_new_with_label("Close Window");
+    gtk_widget_add_css_class(close_button, "flat");
+    gtk_popover_set_child(GTK_POPOVER(popover), close_button);
+
+    // Close button action
+    g_signal_connect(close_button, "clicked", G_CALLBACK(on_close_app_clicked),
+                     item);
+    g_signal_connect_swapped(close_button, "clicked",
+                             G_CALLBACK(gtk_popover_popdown), popover);
+
+    // Attach right-click gesture controller to app button
+    GtkGesture *right_click = gtk_gesture_click_new();
+    gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
+                                  GDK_BUTTON_SECONDARY);
+    g_signal_connect_swapped(right_click, "pressed",
+                             G_CALLBACK(gtk_popover_popup), popover);
+    gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
     // -------------------------------------------------------------
     // Add separator BEFORE appending the first running application
