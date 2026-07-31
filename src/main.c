@@ -36,14 +36,46 @@ static void activate(GtkApplication *app, gpointer user_data) {
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
   gtk_window_set_child(GTK_WINDOW(window), box);
 
-  // 1. Populate dock items & initialize Guile configuration
+  // Populate dock items & initialize Guile configuration
   populate_dock_items(box);
 
-  // 2. Fetch loaded configuration
+  // -------------------------------------------------------------
+  // Register "app.quit" action
+  // -------------------------------------------------------------
+  GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
+  g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
+  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
+
+  // -------------------------------------------------------------
+  // Build the GMenu model & GtkPopoverMenu
+  // -------------------------------------------------------------
+  GMenu *menu_model = g_menu_new();
+  g_menu_append(menu_model, "Quit", "app.quit");
+
+  GtkWidget *popover =
+      gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
+  g_object_unref(menu_model); // Free model memory reference
+
+  gtk_widget_set_parent(popover, window);
+  gtk_popover_set_has_arrow(GTK_POPOVER(popover),
+                            FALSE); // Clean look without popover arrow
+
+  // -------------------------------------------------------------
+  // Attach Secondary (Right) Click Gesture to the window
+  // -------------------------------------------------------------
+  GtkGesture *right_click_gesture = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(right_click_gesture, "pressed", G_CALLBACK(on_right_click),
+                   popover);
+  gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
+  // -------------------------------------------------------------
+
+  // Fetch loaded configuration
   state->auto_hide = get_autohide_config();
   g_print("[Lambdock] state->auto_hide: %d\n", state->auto_hide);
 
-  // 3. Configure layer-shell window & event handlers
+  // Configure layer-shell window & event handlers
   setup_layer_shell_window(GTK_WINDOW(window), state->auto_hide);
   setup_dock_motion_controller(state);
 

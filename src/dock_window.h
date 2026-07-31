@@ -25,5 +25,9 @@ void setup_dock_motion_controller(LambdockState *state);
 void reveal_dock(LambdockState *state);
 void hide_dock(LambdockState *state);
 void schedule_initial_autohide(LambdockState *state);
+void on_quit_action(GSimpleAction *action, GVariant *parameter,
+                    gpointer user_data);
+void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
+                    gdouble y, gpointer user_data);
 
 #endif // DOCK_WINDOW_H

@@ -144,3 +144,20 @@ void schedule_initial_autohide(LambdockState *state) {
     state->hide_timer_id = g_timeout_add(1000, on_hide_timeout, state);
   }
 }
+
+void on_quit_action(GSimpleAction *action, GVariant *parameter,
+                    gpointer user_data) {
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  g_application_quit(G_APPLICATION(app));
+}
+
+void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
+                    gdouble y, gpointer user_data) {
+  GtkPopover *popover = GTK_POPOVER(user_data);
+
+  // Set popup position right where the mouse was clicked
+  GdkRectangle rect = {(int)x, (int)y, 1, 1};
+  gtk_popover_set_pointing_to(popover, &rect);
+
+  gtk_popover_popup(popover);
+}
