@@ -37,7 +37,7 @@
 static void activate(GtkApplication *app, gpointer user_data) {
   (void)user_data;
 
-  // --- 1. Guile Engine & Theme Initialization ---
+  // --- Guile Engine & Theme Initialization ---
   setup_guile_load_path();
   scm_c_use_module("lambdock core");
 
@@ -49,7 +49,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
   // g_new0 allocates zero-initialized heap memory for custom structures
   LambdockState *state = g_new0(LambdockState, 1);
 
-  load_custom_css();
+  state->theme = get_theme_config();
+
+  load_custom_css(state);
 
   // Parse Scheme edge setting ("top", "bottom", "left", "right")
   state->edge = get_position_config();
@@ -60,7 +62,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  // --- 2. Construct Main GTK Window & Outer Container ---
+  // --- Construct Main GTK Window & Outer Container ---
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
@@ -72,12 +74,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
   // Read favorite launchers from Guile and populate layout box
   populate_dock_items(state);
 
-  // --- 3. Register GTK Application Actions ---
+  // --- Register GTK Application Actions ---
   GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
 
-  // --- 4. Background Context Popover Menu ---
+  // --- Background Context Popover Menu ---
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "Quit", "app.quit");
 
@@ -99,7 +101,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  // --- 5. Configuration & Wayland Protocol Attachment ---
+  // --- Configuration & Wayland Protocol Attachment ---
   state->auto_hide = get_autohide_config();
   g_print("[Lambdock] state->auto_hide: %d, state->edge: %d\n",
           state->auto_hide, state->edge);
@@ -145,8 +147,7 @@ int main(int argc, char **argv) {
   g_setenv("GSK_RENDERER", DEFAULT_GSK_RENDERER, FALSE);
 #endif
 
-  // Hand over execution control to Guile runtime, which calls 'inner_main' when
-  // ready
+  // Hand over execution control to Guile runtime, which calls 'inner_main'
   scm_boot_guile(argc, argv, inner_main, NULL);
   return 0;
 }

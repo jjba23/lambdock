@@ -30,11 +30,12 @@ void setup_icon_theme(void);
 
 /**
  * load_custom_css:
+ * @state: Pointer to LambdockState structure.
  *
  * Instantiates a GtkCssProvider, loads dock stylesheet rules from file paths,
  * and registers the CSS provider globally across the active GdkDisplay.
  */
-void load_custom_css(void);
+void load_custom_css(LambdockState *state);
 
 /**
  * create_dock_item:

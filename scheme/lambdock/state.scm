@@ -22,6 +22,8 @@
                             get-dock-position
                             get-icon-size
                             get-dock-auto-hide?
+                            get-dock-theme
+                            *dock-theme*
                             *dock-items*
                             *dock-position*
                             *dock-icon-size*
@@ -37,6 +39,9 @@
 (define *dock-position*
   'bottom)
 
+(define *dock-theme*
+  'vanilla)
+
 (define *dock-icon-size*
   48)
 
@@ -47,9 +52,10 @@
 ;; Configuration Interface
 ;; =============================================================================
 
-(define* (configure-dock! #:key position icon-size items auto-hide?)
+(define* (configure-dock! #:key position icon-size items auto-hide? theme)
   "Sets the primary configuration parameters for the dock."
   (set! *dock-position* position)
+  (set! *dock-theme* theme)
   (set! *dock-icon-size* icon-size)
   (set! *dock-items* items)
   (set! *dock-auto-hide?* auto-hide?)
@@ -64,6 +70,9 @@
 
 (define (get-dock-position)
   *dock-position*)
+
+(define (get-dock-theme)
+  *dock-theme*)
 
 (define (get-icon-size)
   *dock-icon-size*)

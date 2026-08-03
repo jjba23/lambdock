@@ -114,6 +114,7 @@ struct LambdockState {
   gboolean auto_hide;
   guint hide_timer_id;
   gboolean is_hidden;
+  char *theme;
 
   /* Position & Orientation */
   GtkLayerShellEdge edge;

@@ -73,6 +73,25 @@ GtkLayerShellEdge get_position_config(void) {
   return GTK_LAYER_SHELL_EDGE_BOTTOM;
 }
 
+char *get_theme_config(void) {
+  SCM get_theme_fn = scm_c_public_ref("lambdock core", "get-dock-theme");
+
+  if (scm_is_true(get_theme_fn)) {
+    SCM res = scm_call_0(get_theme_fn);
+
+    // Scheme symbols must be converted to Scheme strings before dynamic
+    // conversion to C
+    SCM str_scm = scm_is_symbol(res) ? scm_symbol_to_string(res) : res;
+    char *theme_str = scm_to_utf8_string(str_scm);
+
+    if (g_strcmp0(theme_str, "snow-leopard") == 0) {
+      return theme_str;
+    }
+  }
+
+  return "vanilla";
+}
+
 void populate_dock_items(LambdockState *state) {
   if (!state || !state->box)
     return;

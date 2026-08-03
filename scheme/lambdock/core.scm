@@ -32,6 +32,7 @@
                            configure-dock!
                            get-dock-items
                            get-dock-position
+                           get-dock-theme
                            get-icon-size
                            get-dock-auto-hide?
                            resolve-dock-configuration)

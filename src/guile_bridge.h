@@ -50,6 +50,15 @@ gboolean get_autohide_config(void);
 GtkLayerShellEdge get_position_config(void);
 
 /**
+ * get_theme_config:
+ *
+ * Calls Guile Scheme function 'get-dock-theme' to retrieve dock theme.
+ *
+ * Returns: char* containing the theme name.
+ */
+char *get_theme_config(void);
+
+/**
  * populate_dock_items:
  * @state: Pointer to main LambdockState structure.
  *

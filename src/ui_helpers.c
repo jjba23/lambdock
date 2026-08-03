@@ -548,17 +548,13 @@ GtkWidget *create_separator(GtkOrientation orientation) {
   return separator;
 }
 
-void load_custom_css(void) {
+void load_custom_css(LambdockState *state) {
   GtkCssProvider *provider = gtk_css_provider_new();
   char *css_path = NULL;
 
 #ifdef DOCK_CSS_PATH
   if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_IS_DIR)) {
-    // css_path = g_build_filename(DOCK_CSS_PATH, "snow-leopard-dock.css",
-    // NULL);
-    css_path = g_build_filename(DOCK_CSS_PATH, "dock.css", NULL);
-  } else if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_EXISTS)) {
-    css_path = g_strdup(DOCK_CSS_PATH);
+    css_path = g_build_filename(DOCK_CSS_PATH, state->theme, ".css", NULL);
   }
 #endif
 

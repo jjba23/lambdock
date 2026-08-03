@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/org/scheme/lambdock">
-    <file>css/dock.css</file>
+    <file>css/vanilla.css</file>
   </gresource>
   <gresource prefix="/org/scheme/lambdock">
-    <file>css/snow-leopard-dock.css</file>
+    <file>css/snow-leopard.css</file>
   </gresource>
 </gresources>
