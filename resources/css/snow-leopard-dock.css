@@ -1,0 +1,127 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - MACOS SNOW LEOPARD (10.6) EDITION
+ * ========================================================================= */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* Recreating the iconic 3D Frosted Glass Shelf */
+.rounded-dock {
+  border-radius: 6px 6px 14px 14px;
+  padding: 4px 14px 8px 14px;
+  margin-bottom: 2px;
+
+  /* Multi-stop linear gradient simulating angled reflective glass */
+  background-image: linear-gradient(
+    180deg,
+    rgba(240, 245, 250, 0.75) 0%,
+    rgba(210, 218, 228, 0.50) 10%,
+    rgba(155, 165, 178, 0.45) 50%,
+    rgba(110, 120, 135, 0.65) 85%,
+    rgba(80, 90, 102, 0.85) 100%
+  );
+
+  /* Snow Leopard's signature bright frosted top edge */
+  border-top: 2px solid rgba(255, 255, 255, 0.90);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom: 1px solid rgba(30, 35, 45, 0.70);
+
+  /* Soft outer shelf shadow and subtle inner highlight */
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* -------------------------------------------------------------------------
+ * BASE BUTTON STYLING & HOVER MAGNIFICATION
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  margin: 2px 4px;
+  border-radius: 8px;
+
+  /* Smooth ease-out curve for icon lift and zoom */
+  transition: all 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Snow Leopard didn't use dark background rectangles on hover—
+ * icons slightly lift and scale above the shelf floor. */
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-4px) scale(1.12);
+}
+
+button.flat:active {
+  transform: translateY(0px) scale(0.98);
+  background-color: rgba(255, 255, 255, 0.28);
+}
+
+/* -------------------------------------------------------------------------
+ * RUNNING APP INDICATOR (Snow Leopard Blue Light Dot)
+ * ------------------------------------------------------------------------- */
+
+/* Recreates the bright ice-blue glowing dot resting on the glass shelf */
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    rgba(165, 215, 255, 0.95) 30%,
+    rgba(65, 145, 245, 0.70) 65%,
+    transparent 80%
+  );
+  background-size: 22px 6px;
+  background-position: center bottom 1px;
+  background-repeat: no-repeat;
+}
+
+/* Slightly expands and intensifies glow when hovering over active apps */
+button.running-app:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    rgba(190, 230, 255, 1.0) 35%,
+    rgba(90, 170, 255, 0.85) 70%,
+    transparent 85%
+  );
+  background-size: 26px 7px;
+  background-position: center bottom 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * DOCK SEPARATOR (Etched Glass Divider)
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 4px 6px;
+  background-color: rgba(255, 255, 255, 0.45);
+  border-right: 1px solid rgba(0, 0, 0, 0.25);
+  width: 1px;
+}

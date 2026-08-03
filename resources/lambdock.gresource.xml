@@ -3,4 +3,7 @@
   <gresource prefix="/org/scheme/lambdock">
     <file>css/dock.css</file>
   </gresource>
+  <gresource prefix="/org/scheme/lambdock">
+    <file>css/snow-leopard-dock.css</file>
+  </gresource>
 </gresources>

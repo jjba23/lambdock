@@ -57,12 +57,12 @@ scheme_install_path = get_option('prefix') / datadir / 'guile/site/3.0'
 
 # Pass defines to C
 add_project_arguments('-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"', language: 'c')
-add_project_arguments('-DDOCK_CSS_PATH="' + pkgdatadir / 'css/dock.css' + '"', language: 'c')
+add_project_arguments('-DDOCK_CSS_PATH="' + pkgdatadir / 'css' + '"', language: 'c')
 add_project_arguments('-DDEFAULT_GSK_RENDERER="gl"', language: 'c')
 
 # Install scheme files and CSS file
 install_subdir('scheme/lambdock', install_dir: datadir / 'guile/site/3.0')
-install_data('resources/css/dock.css', install_dir: pkgdatadir / 'css')
+install_subdir('resources/css', install_dir: pkgdatadir / '')
 
 sources = files(
   'src/main.c',
