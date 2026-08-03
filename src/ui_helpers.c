@@ -562,16 +562,39 @@ void load_custom_css(LambdockState *state) {
 #endif
 
   if (css_path) {
-    g_print("[Lambdock] Loading CSS from: %s\n", css_path);
+    g_print("[Lambdock] Loading base CSS from: %s\n", css_path);
     gtk_css_provider_load_from_path(provider, css_path);
     g_free(css_path);
   } else {
     g_warning("[Lambdock] Could not locate dock.css");
   }
 
+  // Register base application styles
   gtk_style_context_add_provider_for_display(
       gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
   g_object_unref(provider);
+
+  // --- USER OVERRIDE CSS (~/.config/lambdoc/styles.css) ---
+  const char *config_dir = g_get_user_config_dir();
+  char *user_css_path =
+      g_build_filename(config_dir, "lambdoc", "styles.css", NULL);
+
+  if (g_file_test(user_css_path, G_FILE_TEST_EXISTS)) {
+    GtkCssProvider *user_provider = gtk_css_provider_new();
+    g_print("[Lambdock] Loading user CSS override from: %s\n", user_css_path);
+
+    gtk_css_provider_load_from_path(user_provider, user_css_path);
+
+    // GTK_STYLE_PROVIDER_PRIORITY_USER ensures user styles override
+    // GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
+    gtk_style_context_add_provider_for_display(
+        gdk_display_get_default(), GTK_STYLE_PROVIDER(user_provider),
+        GTK_STYLE_PROVIDER_PRIORITY_USER);
+
+    g_object_unref(user_provider);
+  }
+
+  g_free(user_css_path);
 }

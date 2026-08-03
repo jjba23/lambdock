@@ -1,9 +1,16 @@
 #+title: lambdock
+#+options: toc:nil
 
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
 [[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
+#+begin_quote
 The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Scheme + GTK4)
+#+end_quote
+
+lambdock is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) and it combines C11 performance for V-sync frame-rate animations with full Lisp-driven runtime inspectability and GTK-CSS-driven aesthetic flair.
+
+Whether you are runningNiri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, lambdock brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
 
 *lambdock* is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
@@ -15,8 +22,7 @@ The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Sc
 - *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
 - *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
 - *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
-
-TODO: Add a list of dock exclusion icons
+- *Theme support*: lambdock has built-in themes you can choose from that are very unique, and also lets you extend and override those themes dynamically.
 
 -------
 
@@ -24,7 +30,7 @@ TODO: Add a list of dock exclusion icons
 
 -------
 
-** Scheme Configuration
+* Scheme Configuration
 
 Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors.
 
@@ -36,17 +42,16 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme))
 
-(define dock-auto-hide?
-  #t)
+;; Enable/disable smooth edge sliding auto-hide
+(define dock-auto-hide? #t)
 
-;; top | bottom | left | right
-(define dock-position
-  'bottom)
+;; Dock edge attachment: 'bottom | 'top | 'left | 'right
+(define dock-position 'bottom)
 
-(define dock-icon-size
-  48)
+;; Default icon pixel resolution
+(define dock-icon-size 48)
 
-;; vanilla | snow-leopard
+;; Theme selector: 'vanilla | 'snow-leopard
 (define dock-theme 'vanilla)
 
 (define dock-items
@@ -75,10 +80,57 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
                   #:icon "multimedia-volume-control")))
 #+end_src
 
+*** Available Item Constructors
+
+| Scheme Function | Description | Key Arguments |
+|-----------------+-------------+---------------|
+| ~(app-item ...)~ | Generic application launcher | ~#:name~, ~#:icon~, ~#:exec~ |
+| ~(terminal-item ...)~ | Helper constructor for terminal emulators | ~#:name~, ~#:icon~, ~#:exec~ (default: ~"alacritty"~) |
+| ~(separator-item)~ | Vertical/Horizontal layout divider bar | None |
+
 
 -----------
 
-** Finding icon names
+* Styling & Theming 🎨
+
+~lambdock~ ships with pre-baked themes embedded via build defines:
+
+- Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
+
+- Snow Leopard 3D Glass 🍎  (~'snow-leopard~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
+
+You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
+
+#+begin_src sh
+~/.config/lambdoc/styles.css
+#+end_src
+
+User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking precedence over default app themes.
+
+*** CSS Customization Example
+
+#+begin_src css
+/* Custom user tweaks in ~/.config/lambdoc/styles.css */
+
+/* Custom translucent container */
+.lambdock-window {
+background-image: linear-gradient(180deg, rgba(15, 15, 20, 0.85) 0%, rgba(5, 5, 8, 0.95) 100%);
+border: 1px solid rgba(0, 255, 200, 0.3);
+box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+
+/* Accent color for running apps */
+button.running-app {
+background-image: radial-gradient(circle at center, #00ffff 0%, rgba(0, 255, 200, 0.6) 50%, transparent 80%);
+background-size: 16px 4px;
+background-position: center bottom;
+background-repeat: no-repeat;
+}
+#+end_src
+
+-------
+
+* Finding icon names
 
 lambdock supports loading and specifying icons in different ways. It loads the active GTK 4 Icon theme and proceeds to load the icon.
 
@@ -109,7 +161,7 @@ find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg
 
 ---------
 
-** Etimology
+* Etimology
 
 The name /lambdock/ is a play on words combining:
 
@@ -122,7 +174,19 @@ The name /lambdock/ is a play on words combining:
 
 ---------
 
-** Development & Building
+* Wayland Toplevel Tracking & Popovers
+
+~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
+
+- Single Window: Left-clicking a running app launcher focuses and raises its existing window surface.
+
+- Multiple Windows: Left-clicking or right-clicking an app launcher with multiple open instances opens a floating GTK Popover HUD.
+
+Popover Capabilities: Select individual windows by title, close specific window instances, or execute a "Close All Windows" command.
+
+------------------
+
+* Development & Building
 
 The project requires the following C and Scheme dependencies:
 - *GTK 4* (~gtk4~)
@@ -131,7 +195,7 @@ The project requires the following C and Scheme dependencies:
 - *Meson* & *Ninja*
 - *pkg-config*
 
-** Environment Setup with GNU Guix
+* Environment Setup with GNU Guix
 
 Enter a pure development container with all required dependencies:
 
@@ -139,7 +203,7 @@ Enter a pure development container with all required dependencies:
 guix time-machine --channels=channels.scm -- shell --pure --container -m manifest.scm
 #+end_src
 
-** Building with Meson
+* Building with Meson
 
 #+begin_src sh
 # Setup build directory
@@ -152,7 +216,7 @@ meson compile -C build
 ./build/lambdock
 #+end_src
 
-** Hacking with ~maak~ & CCLS
+* Hacking with ~maak~ & CCLS
 
 If you use  ~ccls~ or another LSP client, generate your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the solution.
 
@@ -166,7 +230,7 @@ maak run
 
 -------
 
-** Licensing
+* Licensing
 Lambdock and all of its source code are free software, licensed under the GNU General Public License v3 (or newer at your convenience).
 
 https://www.gnu.org/licenses/gpl-3.0.html
@@ -177,7 +241,7 @@ https://www.gnu.org/licenses/fdl-1.3.html
 
 ---------
 
-** AI Policy
+* AI Policy
 
 This project adheres to the [[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI (Artificial Intelligence) policy]].
 
@@ -190,7 +254,7 @@ We require a human in the loop for all contributions. The use of autonomous AI a
 
 ---------------------
 
-** Code of conduct
+* Code of conduct
 This project adheres to the jointhefreeworld code of conduct. Find it here:
 
 https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
@@ -199,7 +263,7 @@ In summary, we foster an inclusive, respectful, and cooperative environment for 
 
 --------
 
-** On Reproducibility, and Why GNU Guix? 🐂️
+* On Reproducibility, and Why GNU Guix? 🐂️
 
 A build should never fail because "it works on my machine." Software must aim to be transparent, fluid, powerful, and extensible, and for this, reproducibility is essential.
 
@@ -219,3 +283,8 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
   #+END_SRC
 - 🔄 *Transactional Upgrades & Rollbacks:* Experiment freely. If an update breaks, rollbacks are atomic and instantaneous.
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
+* Backlog and Ideas
+*** TODO: Add a list of dock exclusion icons
+*** TODO: Add library of well-known icons, convenient for users of lambdock (for people's config,exported via (lambdock core)
+*** TODO: Add more themes (Ubuntu Unity, CairoDock inspiration, Plank, other macOS inspired etc.)
+*** TODO: Investigate how to run in multiple screens and also in multiple instances
