@@ -76,7 +76,7 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
     state->current_margin = state->target_margin;
     // GTK_WINDOW macro safe-casts GtkWidget pointer to GtkWindow pointer
     // expected by layer shell
-    gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge,
                          state->current_margin);
     state->tick_cb_id = 0;  // Reset tick callback identifier
     return G_SOURCE_REMOVE; // Tell GTK to remove this frame callback
@@ -89,7 +89,7 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
       (int)((state->target_margin - state->start_margin) * eased);
 
   // Apply updated position margin to Wayland Layer Shell configuration
-  gtk_layer_set_margin(GTK_WINDOW(state->window), GTK_LAYER_SHELL_EDGE_BOTTOM,
+  gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge,
                        state->current_margin);
 
   return G_SOURCE_CONTINUE; // Request next frame update from GTK
@@ -165,19 +165,16 @@ static gboolean on_hide_timeout(gpointer user_data) {
  * provided auto-hide is enabled and context menus are closed.
  */
 void hide_dock(LambdockState *state) {
-  if (!state->auto_hide)
+  if (!state->auto_hide || state->active_popovers > 0)
     return;
 
-  // IMPORTANT: Prevent dock from collapsing while user interacts with context
-  // popups!
-  if (state->active_popovers > 0) {
-    return;
-  }
+  // Calculate off-screen negative margin based on primary dock dimension
+  int window_dim = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                    state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
+                       ? gtk_widget_get_height(state->window)
+                       : gtk_widget_get_width(state->window);
 
-  // Get dynamic window height to hide almost completely (leaving 2px visual
-  // trigger line)
-  int window_height = gtk_widget_get_height(state->window);
-  int hide_margin = -(window_height - 2);
+  int hide_margin = -(window_dim - 2);
 
   if (!state->is_hidden || state->target_margin != hide_margin) {
     start_margin_animation(state, hide_margin);
@@ -277,25 +274,30 @@ void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
 
 /**
  * setup_layer_shell_window:
- * @window: GTK window to transform into a desktop layer shell component.
- * @auto_hide: Boolean indicating if auto-hide capability is active.
+ * @state: Pointer to LambdockState context struct containing GTK window & edge
+ * settings.
  *
- * Configures GTK Layer Shell protocol settings for Wayland compositors.
+ * Configures GTK Layer Shell protocol parameters. Sets window layer level,
+ * anchors window surface dynamically to state->edge, and configures space
+ * reservation rules.
  */
-void setup_layer_shell_window(GtkWindow *window, gboolean auto_hide) {
-  // Initialize Wayland Layer Shell protocol support on this window
+void setup_layer_shell_window(LambdockState *state) {
+  GtkWindow *window = GTK_WINDOW(state->window);
+
+  // Initialize Wayland Layer Shell surface protocols
   gtk_layer_init_for_window(window);
 
-  // Set window layer depth (TOP means rendered above normal app windows)
+  // Set window rendering layer above standard application windows
   gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
 
-  // Pin window edge anchor to screen bottom edge
-  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+  // Pin window anchor dynamically to configured screen edge
+  gtk_layer_set_anchor(window, state->edge, TRUE);
 
-  // Setup screen space reservation (Exclusive Zone):
-  // 0 = allow windows to overlap panel space (useful when dock autohides).
-  // Auto-exclusive = reserve screen pixels so normal apps don't cover dock.
-  if (auto_hide) {
+  // Exclusive zone configuration:
+  // 0 = allow desktop windows to overlap space when auto-hiding.
+  // Auto-exclusive = reserve screen pixels so normal windows dock around
+  // Lambdock.
+  if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
     gtk_layer_auto_exclusive_zone_enable(window);

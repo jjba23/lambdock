@@ -32,6 +32,10 @@ typedef struct {
   guint hide_timer_id;
   gboolean is_hidden;
 
+  /* Position & Orientation */
+  GtkLayerShellEdge edge;
+  GtkOrientation orientation;
+
   /* Animation State */
   guint tick_cb_id;
   gint64 anim_start_time;

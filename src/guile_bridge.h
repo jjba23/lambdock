@@ -48,14 +48,24 @@ void setup_guile_load_path(void);
 gboolean get_autohide_config(void);
 
 /**
+ * get_position_config:
+ *
+ * Calls Guile Scheme procedure to get the user-configured dock position edge.
+ *
+ * Returns: GtkLayerShellEdge enum representing TOP, BOTTOM, LEFT, or RIGHT.
+ */
+GtkLayerShellEdge get_position_config(void);
+
+/**
  * populate_dock_items:
  * @box: Pointer to the GTK 4 Box container widget (GtkWidget *) where items
  * live.
+ * @dock_orientation: Orientation of the container box (HORIZONTAL or VERTICAL).
  *
  * Calls Guile Scheme initialization procedures to parse configured dock
  * launchers, builds the corresponding GTK 4 widgets (buttons, separators), and
  * appends them sequentially into the provided box layout container.
  */
-void populate_dock_items(GtkWidget *box);
+void populate_dock_items(GtkWidget *box, GtkOrientation dock_orientation);
 
 #endif // GUILE_BRIDGE_H

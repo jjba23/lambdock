@@ -71,6 +71,6 @@ GtkWidget *create_app_button(const char *name, const char *icon,
  *
  * Returns: A pointer to the newly allocated GtkWidget separator.
  */
-GtkWidget *create_separator(void);
+GtkWidget *create_separator(GtkOrientation orientation);
 
 #endif // UI_HELPERS_H

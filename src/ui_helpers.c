@@ -248,10 +248,17 @@ GtkWidget *create_app_button(const char *name, const char *icon,
  *
  * Returns: A newly created GtkSeparator widget pointer.
  */
-GtkWidget *create_separator(void) {
-  GtkWidget *separator = gtk_separator_new(GTK_ORIENTATION_VERTICAL);
-  gtk_widget_set_margin_start(separator, 4);
-  gtk_widget_set_margin_end(separator, 4);
+GtkWidget *create_separator(GtkOrientation orientation) {
+  GtkWidget *separator = gtk_separator_new(orientation);
+
+  if (orientation == GTK_ORIENTATION_VERTICAL) {
+    gtk_widget_set_margin_start(separator, 4);
+    gtk_widget_set_margin_end(separator, 4);
+  } else {
+    gtk_widget_set_margin_top(separator, 4);
+    gtk_widget_set_margin_bottom(separator, 4);
+  }
+
   return separator;
 }
 

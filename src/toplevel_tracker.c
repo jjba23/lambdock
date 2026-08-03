@@ -249,7 +249,12 @@ toplevel_handle_app_id(void *data,
     // --- Dynamic UI Separator Handling ---
     // If this is the first running app detected, insert visual separator first
     if (running_apps_separator == NULL) {
-      running_apps_separator = create_separator();
+      GtkOrientation sep_orient =
+          (item->state->orientation == GTK_ORIENTATION_HORIZONTAL)
+              ? GTK_ORIENTATION_VERTICAL
+              : GTK_ORIENTATION_HORIZONTAL;
+
+      running_apps_separator = create_separator(sep_orient);
       gtk_box_append(GTK_BOX(box), running_apps_separator);
       g_print("[Lambdock Tracker] Inserted running apps separator.\n");
     }

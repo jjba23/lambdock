@@ -69,6 +69,44 @@ gboolean get_autohide_config(void) {
   return FALSE; // Fallback default if module or function is missing
 }
 
+/**
+ * get_position_config:
+ *
+ * Invokes Scheme procedure 'get-dock-position' defined in module '(lambdock
+ * core)' to retrieve dock placement ("top", "bottom", "left", "right"). Maps
+ * the string/symbol return value to a corresponding Wayland Layer Shell edge
+ * identifier.
+ *
+ * Returns: GtkLayerShellEdge enum indicating screen attachment edge.
+ */
+GtkLayerShellEdge get_position_config(void) {
+  // Look up public procedure reference in module '(lambdock core)'
+  SCM get_pos_fn = scm_c_public_ref("lambdock core", "get-dock-position");
+
+  if (scm_is_true(get_pos_fn)) {
+    SCM res = scm_call_0(get_pos_fn);
+    // Convert Scheme Symbol to Scheme String if necessary
+    SCM str_scm = scm_is_symbol(res) ? scm_symbol_to_string(res) : res;
+    char *pos_str = scm_to_utf8_string(str_scm);
+
+    GtkLayerShellEdge edge = GTK_LAYER_SHELL_EDGE_BOTTOM; // Default fallback
+
+    if (g_strcmp0(pos_str, "top") == 0) {
+      edge = GTK_LAYER_SHELL_EDGE_TOP;
+    } else if (g_strcmp0(pos_str, "left") == 0) {
+      edge = GTK_LAYER_SHELL_EDGE_LEFT;
+    } else if (g_strcmp0(pos_str, "right") == 0) {
+      edge = GTK_LAYER_SHELL_EDGE_RIGHT;
+    }
+
+    // MEMORY MANAGEMENT: Free heap string allocated by scm_to_utf8_string
+    free(pos_str);
+    return edge;
+  }
+
+  return GTK_LAYER_SHELL_EDGE_BOTTOM;
+}
+
 /* =========================================================================
  * GUILE TO GTK DOCK BUILDER
  * ========================================================================= */
@@ -76,12 +114,13 @@ gboolean get_autohide_config(void) {
 /**
  * populate_dock_items:
  * @box: Pointer to target GTK 4 Box layout widget.
+ * @dock_orientation: Orientation of the container box (HORIZONTAL or VERTICAL).
  *
  * Evaluates Scheme module functions to get dock item definitions, iterates
  * through returned LISP list, instantiates GTK widgets (buttons, separators),
  * and appends them to the dock GTK Box layout container.
  */
-void populate_dock_items(GtkWidget *box) {
+void populate_dock_items(GtkWidget *box, GtkOrientation dock_orientation) {
   // --- Look up required Guile Scheme functions from module '(lambdock core)'
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
   SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
@@ -95,6 +134,11 @@ void populate_dock_items(GtkWidget *box) {
 
   // Read preferred icon size from Scheme configuration and convert to C int
   int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
+
+  // Determine perpendicular orientation for separators
+  GtkOrientation sep_orient = (dock_orientation == GTK_ORIENTATION_HORIZONTAL)
+                                  ? GTK_ORIENTATION_VERTICAL
+                                  : GTK_ORIENTATION_HORIZONTAL;
 
   // --- Iterate over Scheme LISP list of launchers ---
   // scm_is_pair checks if 'items_list' is a non-empty Scheme pair/list node
@@ -133,7 +177,7 @@ void populate_dock_items(GtkWidget *box) {
 
       // --- Handle Visual Separators ---
     } else if (g_strcmp0(type_str, "separator") == 0) {
-      GtkWidget *sep = create_separator();
+      GtkWidget *sep = create_separator(sep_orient);
       gtk_box_append(GTK_BOX(box), sep);
       g_print("[Lambdock] Created separator\n");
     }

@@ -30,14 +30,12 @@
 
 /**
  * setup_layer_shell_window:
- * @window: GTK Window object to configure.
- * @auto_hide: 'TRUE' if auto-hide is enabled, 'FALSE' otherwise.
+ * @state: Pointer to main Lambdock application state struct.
  *
- * Configures a GTK 4 window with Wayland Layer Shell protocols, setting its
- * z-layer (top level), screen anchor (bottom edge), and screen space
- * reservation.
+ * Configures Wayland Layer Shell surface properties based on user configuration
+ * stored in state (anchoring edge, exclusive zone depth, layer level).
  */
-void setup_layer_shell_window(GtkWindow *window, gboolean auto_hide);
+void setup_layer_shell_window(LambdockState *state);
 
 /**
  * setup_dock_motion_controller:
