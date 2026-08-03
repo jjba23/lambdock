@@ -27,8 +27,13 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
                            const char *app_id, gboolean is_favorite);
 void free_dock_item(DockItem *item);
-void update_dock_item_status(DockItem *item,
+
+AppWindow *dock_item_add_window(DockItem *item,
+                                struct zwlr_foreign_toplevel_handle_v1 *handle);
+void dock_item_remove_window(DockItem *item,
                              struct zwlr_foreign_toplevel_handle_v1 *handle);
+void update_dock_item_status(DockItem *item);
+
 DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
 
 GtkWidget *create_app_button(const char *name, const char *icon,

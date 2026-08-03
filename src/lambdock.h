@@ -30,9 +30,18 @@ struct zwlr_foreign_toplevel_handle_v1;
 typedef struct LambdockState LambdockState;
 
 /**
+ * AppWindow:
+ * Represents a single open window instance of an application.
+ */
+typedef struct AppWindow {
+  struct zwlr_foreign_toplevel_handle_v1 *handle;
+  char *title;
+} AppWindow;
+
+/**
  * DockItem:
  * Unified structure representing a dock launcher and running application
- * instance.
+ * instances.
  */
 typedef struct DockItem {
   char *name;
@@ -42,7 +51,7 @@ typedef struct DockItem {
   gboolean is_favorite;
   GtkWidget *button;
   GtkWidget *popover;
-  struct zwlr_foreign_toplevel_handle_v1 *handle;
+  GList *windows; /* List of AppWindow pointers */
   LambdockState *state;
 } DockItem;
 

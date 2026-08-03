@@ -28,6 +28,7 @@ typedef struct {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
   LambdockState *state;
   DockItem *dock_item;
+  AppWindow *app_win;
 } WindowTracker;
 
 static struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager = NULL;
@@ -49,9 +50,12 @@ static void
 toplevel_handle_title(void *data,
                       struct zwlr_foreign_toplevel_handle_v1 *handle,
                       const char *title) {
-  (void)data;
   (void)handle;
-  (void)title;
+  WindowTracker *tracker = (WindowTracker *)data;
+  if (tracker && tracker->app_win && title && *title != '\0') {
+    g_free(tracker->app_win->title);
+    tracker->app_win->title = g_strdup(title);
+  }
 }
 
 static void
@@ -107,40 +111,36 @@ toplevel_handle_app_id(void *data,
 
   g_print("[Lambdock Tracker] App ID resolved: '%s'\n", app_id);
 
-  // Attempt unification with an existing favorite item
   DockItem *item = find_dock_item_by_app_id(state, app_id);
 
   if (item != NULL) {
-    g_print("[Lambdock Tracker] Unified with favorite dock item for '%s'\n",
-            app_id);
-    update_dock_item_status(item, handle);
-    tracker->dock_item = item;
+    g_print("[Lambdock Tracker] Unified with dock item for '%s'\n", app_id);
   } else {
     g_print(
         "[Lambdock Tracker] Creating dynamic dock item for running app '%s'\n",
         app_id);
     item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE);
-    update_dock_item_status(item, handle);
-    tracker->dock_item = item;
   }
+
+  tracker->dock_item = item;
+  tracker->app_win = dock_item_add_window(item, handle);
 }
 
 static void
 toplevel_handle_closed(void *data,
                        struct zwlr_foreign_toplevel_handle_v1 *handle) {
-  (void)handle;
   WindowTracker *tracker = (WindowTracker *)data;
   if (!tracker)
     return;
 
   DockItem *item = tracker->dock_item;
   if (item) {
-    g_print("[Lambdock Tracker] Window closed: '%s'\n",
+    g_print("[Lambdock Tracker] Window closed for app_id: '%s'\n",
             item->app_id ? item->app_id : "unknown");
 
-    if (item->is_favorite) {
-      update_dock_item_status(item, NULL);
-    } else {
+    dock_item_remove_window(item, handle);
+
+    if (item->windows == NULL && !item->is_favorite) {
       if (item->state && item->state->box) {
         gtk_box_remove(GTK_BOX(item->state->box), item->button);
       }
