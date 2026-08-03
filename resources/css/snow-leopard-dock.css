@@ -17,7 +17,7 @@
 */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - MACOS SNOW LEOPARD (10.6) EDITION
+ * LAMBDOCK STYLESHEET - SNOW LEOPARD EDITION
  * ========================================================================= */
 
 /* -------------------------------------------------------------------------
@@ -72,8 +72,7 @@ button.flat {
   transition: all 180ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-/* Snow Leopard didn't use dark background rectangles on hover—
- * icons slightly lift and scale above the shelf floor. */
+/* Snow Leopard icons slightly lift and scale above the shelf floor */
 button.flat:hover {
   background-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-4px) scale(1.12);
@@ -98,7 +97,7 @@ button.running-app {
     transparent 80%
   );
   background-size: 22px 6px;
-  background-position: center bottom 1px;
+  background-position: center bottom;
   background-repeat: no-repeat;
 }
 
@@ -112,7 +111,7 @@ button.running-app:hover {
     transparent 85%
   );
   background-size: 26px 7px;
-  background-position: center bottom 1px;
+  background-position: center bottom;
 }
 
 /* -------------------------------------------------------------------------
@@ -123,5 +122,5 @@ separator {
   margin: 4px 6px;
   background-color: rgba(255, 255, 255, 0.45);
   border-right: 1px solid rgba(0, 0, 0, 0.25);
-  width: 1px;
+  min-width: 1px;
 }

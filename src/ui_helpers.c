@@ -554,20 +554,13 @@ void load_custom_css(void) {
 
 #ifdef DOCK_CSS_PATH
   if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_IS_DIR)) {
-    css_path = g_build_filename(DOCK_CSS_PATH, "snow-leopard-dock.css", NULL);
+    // css_path = g_build_filename(DOCK_CSS_PATH, "snow-leopard-dock.css",
+    // NULL);
+    css_path = g_build_filename(DOCK_CSS_PATH, "dock.css", NULL);
   } else if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_EXISTS)) {
     css_path = g_strdup(DOCK_CSS_PATH);
   }
 #endif
-
-  /* if (!css_path || !g_file_test(css_path, G_FILE_TEST_EXISTS)) { */
-  /*   g_free(css_path); */
-  /*   if (g_file_test("resources/css/dock.css", G_FILE_TEST_EXISTS)) { */
-  /*     css_path = g_strdup("resources/css/dock.css"); */
-  /*   } else { */
-  /*     css_path = NULL; */
-  /*   } */
-  /* } */
 
   if (css_path) {
     g_print("[Lambdock] Loading CSS from: %s\n", css_path);
