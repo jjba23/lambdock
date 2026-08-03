@@ -8,3 +8,53 @@ window {
   border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 6px 12px;
 }
+
+
+
+/* Base dock button styling */
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 6px;
+  margin: 2px;
+  border-radius: 12px;
+  transition: all 150ms ease-in-out;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+/* =========================================================================
+ * RUNNING APP INDICATOR (macOS-style dot light)
+ * ========================================================================= */
+
+/* Option 1: Clean dot using CSS radial-gradient (most reliable in GTK 4) */
+button.running-app {
+  /* Creates a 4px circular white dot anchored at the bottom center */
+  background-image: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.9) 0px,
+    rgba(255, 255, 255, 0.9) 2px,
+    transparent 2.5px
+  );
+  background-size: 100% 6px;
+  background-position: bottom 1px center;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  /* Brighten the dot slightly on hover */
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0px,
+    #ffffff 2.5px,
+    transparent 3px
+  );
+}
+
+/* Optional: Subtitle/active glow accent when focused */
+button.running-app:active {
+  background-color: rgba(255, 255, 255, 0.25);
+}

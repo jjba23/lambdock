@@ -25,8 +25,30 @@
 
 #define ANIMATION_DURATION_US 250000 // 250ms
 
-typedef struct {
+struct zwlr_foreign_toplevel_handle_v1;
+
+typedef struct LambdockState LambdockState;
+
+/**
+ * DockItem:
+ * Unified structure representing a dock launcher and running application
+ * instance.
+ */
+typedef struct DockItem {
+  char *name;
+  char *icon;
+  char *exec;
+  char *app_id;
+  gboolean is_favorite;
+  GtkWidget *button;
+  GtkWidget *popover;
+  struct zwlr_foreign_toplevel_handle_v1 *handle;
+  LambdockState *state;
+} DockItem;
+
+struct LambdockState {
   GtkWidget *window;
+  GtkWidget *box; /* Main GTK box layout container */
   GtkWidget *popover;
   gboolean auto_hide;
   guint hide_timer_id;
@@ -43,6 +65,9 @@ typedef struct {
   int start_margin;
   int target_margin;
   int active_popovers;
-} LambdockState;
+
+  /* Unified Dock Items */
+  GList *dock_items; /* List of DockItem pointers */
+};
 
 #endif // LAMBDOCK_H
