@@ -52,7 +52,11 @@
 ;; Configuration Interface
 ;; =============================================================================
 
-(define* (configure-dock! #:key position icon-size items auto-hide? theme)
+(define* (configure-dock! #:key position
+                          icon-size
+                          items
+                          auto-hide?
+                          theme)
   "Sets the primary configuration parameters for the dock."
   (set! *dock-position* position)
   (set! *dock-theme* theme)
@@ -61,9 +65,14 @@
   (set! *dock-auto-hide?* auto-hide?)
 
   (format #t
-   "[Scheme] Configuration loaded: ~a items registered at size ~apx.~%"
-   (length (*dock-items*))
-   (*dock-icon-size*)))
+   "
+[Scheme] Configuration loaded: ~a items registered at size ~apx, theme: ~a, auto-hide?: ~a, position: ~a.
+"
+   (length items)
+   icon-size
+   theme
+   auto-hide?
+   position))
 
 (define (get-dock-items)
   *dock-items*)
