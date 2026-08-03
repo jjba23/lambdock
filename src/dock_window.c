@@ -205,12 +205,12 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
 
-  // Give user a 400ms grace period before initiating hide animation
+  // Give user a 720ms grace period before initiating hide animation
   if (state->auto_hide) {
     if (state->hide_timer_id != 0) {
       g_source_remove(state->hide_timer_id);
     }
-    state->hide_timer_id = g_timeout_add(400, on_hide_timeout, state);
+    state->hide_timer_id = g_timeout_add(720, on_hide_timeout, state);
   }
 }
 

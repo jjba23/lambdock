@@ -9,15 +9,15 @@
 
  lambdock is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  GNU General Public License for more details.
 
  You should have received a copy of the GNU General Public License
- along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - SNOW LEOPARD EDITION
+ * LAMBDOCK STYLESHEET - SNOW LEOPARD 3D GLASS EDITION
  * ========================================================================= */
 
 /* -------------------------------------------------------------------------
@@ -28,36 +28,39 @@ window {
   background-color: transparent;
 }
 
-/* Recreating the iconic 3D Frosted Glass Shelf */
+/* Iconic 3D Frosted Glass Shelf Floor */
+.rounded-dock,
 .lambdock-window {
-  border-radius: 6px 6px 14px 14px;
+  border-radius: 6px 6px 16px 16px;
   padding: 4px 14px 8px 14px;
-  margin-bottom: 2px;
+  margin: 0px 4px 2px 4px;
 
-  /* Multi-stop linear gradient simulating angled reflective glass */
+  /* Multi-stage reflection gradient imitating angled 3D bevel glass */
   background-image: linear-gradient(
     180deg,
-    rgba(240, 245, 250, 0.75) 0%,
-    rgba(210, 218, 228, 0.50) 10%,
-    rgba(155, 165, 178, 0.45) 50%,
-    rgba(110, 120, 135, 0.65) 85%,
-    rgba(80, 90, 102, 0.85) 100%
+    rgba(245, 248, 252, 0.82) 0%,
+    rgba(215, 224, 235, 0.58) 12%,
+    rgba(160, 172, 188, 0.45) 50%,
+    rgba(115, 128, 142, 0.70) 85%,
+    rgba(75, 85, 98, 0.90) 100%
   );
 
-  /* Snow Leopard's signature bright frosted top edge */
-  border-top: 2px solid rgba(255, 255, 255, 0.90);
-  border-left: 1px solid rgba(255, 255, 255, 0.35);
-  border-right: 1px solid rgba(255, 255, 255, 0.35);
-  border-bottom: 1px solid rgba(30, 35, 45, 0.70);
+  /* Snow Leopard signature glossy frosted edges */
+  border-top: 2px solid rgba(255, 255, 255, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.40);
+  border-right: 1px solid rgba(255, 255, 255, 0.40);
+  border-bottom: 2px solid rgba(25, 30, 40, 0.85);
 
-  /* Soft outer shelf shadow and subtle inner highlight */
+  /* Depth drop shadow and upper reflective sheen */
   box-shadow:
-    0 10px 25px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    0 12px 28px rgba(0, 0, 0, 0.50),
+    0 2px 4px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.80),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.30);
 }
 
 /* -------------------------------------------------------------------------
- * BASE BUTTON STYLING & HOVER MAGNIFICATION
+ * BUTTONS & SPRING MAGNIFICATION
  * ------------------------------------------------------------------------- */
 
 button.flat {
@@ -68,59 +71,92 @@ button.flat {
   margin: 2px 4px;
   border-radius: 8px;
 
-  /* Smooth ease-out curve for icon lift and zoom */
-  transition: all 180ms cubic-bezier(0.25, 1, 0.5, 1);
+  /* Bouncy spring curve for icon magnification above shelf floor */
+  transition: transform 200ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              background-color 150ms ease-out;
 }
 
-/* Snow Leopard icons slightly lift and scale above the shelf floor */
+/* Icon lifts up in 3D space on hover */
 button.flat:hover {
-  background-color: rgba(255, 255, 255, 0.18);
-  transform: translateY(-4px) scale(1.12);
+  background-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-6px) scale(1.16);
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.25);
 }
 
 button.flat:active {
-  transform: translateY(0px) scale(0.98);
-  background-color: rgba(255, 255, 255, 0.28);
+  transform: translateY(1px) scale(0.96);
+  background-color: rgba(255, 255, 255, 0.35);
 }
 
 /* -------------------------------------------------------------------------
- * RUNNING APP INDICATOR (Snow Leopard Blue Light Dot)
+ * RUNNING APP INDICATOR (Ice-Blue Glowing Light Dot)
  * ------------------------------------------------------------------------- */
-
-/* Recreates the bright ice-blue glowing dot resting on the glass shelf */
 button.running-app {
   background-image: radial-gradient(
     circle at center,
     #ffffff 0%,
-    rgba(165, 215, 255, 0.95) 30%,
-    rgba(65, 145, 245, 0.70) 65%,
+    rgba(170, 225, 255, 1.0) 25%,
+    rgba(45, 140, 255, 0.85) 60%,
     transparent 80%
   );
-  background-size: 22px 6px;
+  background-size: 20px 6px;
   background-position: center bottom;
   background-repeat: no-repeat;
 }
 
-/* Slightly expands and intensifies glow when hovering over active apps */
 button.running-app:hover {
   background-image: radial-gradient(
     circle at center,
     #ffffff 0%,
-    rgba(190, 230, 255, 1.0) 35%,
-    rgba(90, 170, 255, 0.85) 70%,
+    rgba(200, 240, 255, 1.0) 30%,
+    rgba(70, 175, 255, 0.95) 65%,
     transparent 85%
   );
-  background-size: 26px 7px;
+  background-size: 26px 8px;
   background-position: center bottom;
 }
 
 /* -------------------------------------------------------------------------
- * DOCK SEPARATOR (Etched Glass Divider)
+ * GLASS SEPARATOR GROOVE
  * ------------------------------------------------------------------------- */
 
 separator {
-  margin: 4px 6px;
-  background-color: rgba(255, 255, 255, 0.45);
-  border-right: 1px solid rgba(0, 0, 0, 0.25);
+  margin: 6px 8px;
+  background-color: rgba(255, 255, 255, 0.50);
+  border-right: 1px solid rgba(20, 25, 35, 0.40);
   min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * HUD POPOVER MENUS
+ * ------------------------------------------------------------------------- */
+
+popover,
+popover > contents {
+  background-color: rgba(30, 36, 46, 0.92);
+  color: #f0f4f8;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.60);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #b8d4f0;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #ffffff;
+  border-radius: 5px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(180deg, #5297f6 0%, #1a66d2 100%);
+  color: #ffffff;
 }
