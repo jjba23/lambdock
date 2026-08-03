@@ -43,7 +43,8 @@
 
 (define (init-dock!)
   "Entry point invoked after C runtime initialization."
-  (format #t "\n[Scheme] Core dock module initialized.~%")
+  (format #t "
+[Scheme] Core dock module initialized.~%")
 
   ;; Attempt to load the user's configuration file
   (let ((config-file (get-config-path)))
