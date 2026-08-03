@@ -67,7 +67,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
   state->window = window;
 
   GtkWidget *box = gtk_box_new(state->orientation, 8);
-  gtk_widget_add_css_class(box, "rounded-dock");
+  gtk_widget_add_css_class(box, "lambdock-window");
   gtk_window_set_child(GTK_WINDOW(window), box);
   state->box = box;
 
