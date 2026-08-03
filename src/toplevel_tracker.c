@@ -24,6 +24,11 @@
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
+/**
+ * WindowTracker:
+ * Internal callback tracking context mapping a Wayland protocol handle to its
+ * DockItem.
+ */
 typedef struct {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
   LambdockState *state;
@@ -31,20 +36,27 @@ typedef struct {
   AppWindow *app_win;
 } WindowTracker;
 
+/* Global Wayland interface handles */
 static struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager = NULL;
 static struct wl_seat *default_seat = NULL;
 
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle && default_seat) {
+    // Send Wayland protocol request to activate window surface
     zwlr_foreign_toplevel_handle_v1_activate(handle, default_seat);
   }
 }
 
 void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle) {
+    // Send Wayland protocol request to close window surface
     zwlr_foreign_toplevel_handle_v1_close(handle);
   }
 }
+
+/* =========================================================================
+ * WAYLAND TOPLEVEL WINDOW EVENT LISTENERS
+ * ========================================================================= */
 
 static void
 toplevel_handle_title(void *data,
@@ -52,6 +64,9 @@ toplevel_handle_title(void *data,
                       const char *title) {
   (void)handle;
   WindowTracker *tracker = (WindowTracker *)data;
+
+  // Dynamically update stored window title string when application window title
+  // changes
   if (tracker && tracker->app_win && title && *title != '\0') {
     g_free(tracker->app_win->title);
     tracker->app_win->title = g_strdup(title);
@@ -101,9 +116,8 @@ toplevel_handle_app_id(void *data,
   if (!tracker || !app_id || *app_id == '\0')
     return;
 
-  if (tracker->dock_item != NULL) {
+  if (tracker->dock_item != NULL)
     return;
-  }
 
   LambdockState *state = tracker->state;
   if (!state)
@@ -111,17 +125,20 @@ toplevel_handle_app_id(void *data,
 
   g_print("[Lambdock Tracker] App ID resolved: '%s'\n", app_id);
 
+  // Search if a favorite dock item already exists matching this app_id
   DockItem *item = find_dock_item_by_app_id(state, app_id);
 
   if (item != NULL) {
     g_print("[Lambdock Tracker] Unified with dock item for '%s'\n", app_id);
   } else {
+    // If no favorite item matches, instantiate dynamic running app dock item
     g_print(
         "[Lambdock Tracker] Creating dynamic dock item for running app '%s'\n",
         app_id);
     item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE);
   }
 
+  // Bind window handle to DockItem window list
   tracker->dock_item = item;
   tracker->app_win = dock_item_add_window(item, handle);
 }
@@ -138,8 +155,11 @@ toplevel_handle_closed(void *data,
     g_print("[Lambdock Tracker] Window closed for app_id: '%s'\n",
             item->app_id ? item->app_id : "unknown");
 
+    // Remove window instance handle from item
     dock_item_remove_window(item, handle);
 
+    // If an unpinned running application closes all instances, remove its dock
+    // button
     if (item->windows == NULL && !item->is_favorite) {
       if (item->state && item->state->box) {
         gtk_box_remove(GTK_BOX(item->state->box), item->button);
@@ -151,6 +171,7 @@ toplevel_handle_closed(void *data,
     }
   }
 
+  // Destroy protocol handle context
   if (tracker->handle) {
     zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
   }
@@ -158,6 +179,7 @@ toplevel_handle_closed(void *data,
   g_free(tracker);
 }
 
+/* Wayland Event Listener table */
 static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
     {
         .title = toplevel_handle_title,
@@ -182,6 +204,7 @@ manager_handle_toplevel(void *data,
   tracker->handle = toplevel;
   tracker->state = state;
 
+  // Attach event listener callback table to newly opened window surface
   zwlr_foreign_toplevel_handle_v1_add_listener(toplevel, &toplevel_listener,
                                                tracker);
 }
@@ -205,6 +228,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
   (void)version;
   LambdockState *state = (LambdockState *)data;
 
+  // Check for foreign toplevel manager interface
   if (g_strcmp0(interface, zwlr_foreign_toplevel_manager_v1_interface.name) ==
       0) {
     toplevel_manager = wl_registry_bind(
@@ -230,6 +254,7 @@ void init_toplevel_tracker(LambdockState *state) {
 
   GdkDisplay *display = gdk_display_get_default();
 
+  // Verify active graphics backend is Wayland
   if (display && GDK_IS_WAYLAND_DISPLAY(display)) {
     struct wl_display *wl_display = gdk_wayland_display_get_wl_display(display);
     struct wl_registry *registry = wl_display_get_registry(wl_display);

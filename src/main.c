@@ -25,10 +25,19 @@
  * GTK APPLICATION ACTIVATION (UI CONSTRUCTION & SETUP)
  * ========================================================================= */
 
+/**
+ * activate:
+ * @app: Pointer to active GtkApplication instance.
+ * @user_data: Generic context pointer (unused).
+ *
+ * GTK activation signal handler. Initializes Guile, constructs GTK 4 widget
+ * hierarchy, attaches input event controllers, configures Layer Shell, and
+ * launches Wayland tracking.
+ */
 static void activate(GtkApplication *app, gpointer user_data) {
   (void)user_data;
 
-  // Initialize Guile Scheme Runtime Module
+  // --- 1. Guile Engine & Theme Initialization ---
   setup_guile_load_path();
   scm_c_use_module("lambdock core");
 
@@ -37,17 +46,21 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   setup_icon_theme();
 
+  // g_new0 allocates zero-initialized heap memory for custom structures
   LambdockState *state = g_new0(LambdockState, 1);
 
   load_custom_css();
 
+  // Parse Scheme edge setting ("top", "bottom", "left", "right")
   state->edge = get_position_config();
 
+  // Infer orientation: side attachment requires VERTICAL box layout
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
                         state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
+  // --- 2. Construct Main GTK Window & Outer Container ---
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
@@ -56,21 +69,21 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_window_set_child(GTK_WINDOW(window), box);
   state->box = box;
 
-  // Populate favorite launchers into unified state
+  // Read favorite launchers from Guile and populate layout box
   populate_dock_items(state);
 
-  // Register Application Actions
+  // --- 3. Register GTK Application Actions ---
   GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
 
-  // Construct Background Context Popover Menu
+  // --- 4. Background Context Popover Menu ---
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "Quit", "app.quit");
 
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model);
+  g_object_unref(menu_model); // Decrement reference count to avoid memory leak
 
   gtk_widget_set_parent(popover, window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
@@ -78,6 +91,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
   state->popover = popover;
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
+  // Right-click input controller for background popover menu
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
@@ -85,6 +99,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
+  // --- 5. Configuration & Wayland Protocol Attachment ---
   state->auto_hide = get_autohide_config();
   g_print("[Lambdock] state->auto_hide: %d, state->edge: %d\n",
           state->auto_hide, state->edge);
@@ -92,11 +107,15 @@ static void activate(GtkApplication *app, gpointer user_data) {
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
 
+  // g_signal_connect_swapped flips signal data parameters so
+  // free_lambdock_state receives 'state'
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
+  // Render GTK window surface
   gtk_window_present(GTK_WINDOW(window));
 
+  // Initialize Wayland foreign toplevel window tracker
   init_toplevel_tracker(state);
   schedule_initial_autohide(state);
 }
@@ -105,14 +124,19 @@ static void activate(GtkApplication *app, gpointer user_data) {
  * PROGRAM ENTRY POINT
  * ========================================================================= */
 
+/**
+ * inner_main:
+ * Callback invoked once Guile runtime environment initialization completes.
+ */
 static void inner_main(void *data, int argc, char **argv) {
   (void)data;
 
+  // Construct GtkApplication instance with reverse-DNS application ID
   GtkApplication *app =
       gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
 
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
-  g_application_run(G_APPLICATION(app), argc, argv);
+  g_application_run(G_APPLICATION(app), argc, argv); // Blocks until app exits
   g_object_unref(app);
 }
 
@@ -121,6 +145,8 @@ int main(int argc, char **argv) {
   g_setenv("GSK_RENDERER", DEFAULT_GSK_RENDERER, FALSE);
 #endif
 
+  // Hand over execution control to Guile runtime, which calls 'inner_main' when
+  // ready
   scm_boot_guile(argc, argv, inner_main, NULL);
   return 0;
 }

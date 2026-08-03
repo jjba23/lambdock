@@ -20,9 +20,42 @@
 
 #include "lambdock.h"
 
+/**
+ * setup_guile_load_path:
+ *
+ * Appends directory search paths to Guile's internal '%load-path' Scheme list,
+ * allowing the embedded evaluator to resolve Scheme script modules.
+ */
 void setup_guile_load_path(void);
+
+/**
+ * get_autohide_config:
+ *
+ * Calls Guile Scheme function 'get-dock-auto-hide?' to read user auto-hide
+ * preferences.
+ *
+ * Returns: TRUE if auto-hide is enabled in Scheme configuration; FALSE
+ * otherwise.
+ */
 gboolean get_autohide_config(void);
+
+/**
+ * get_position_config:
+ *
+ * Calls Guile Scheme function 'get-dock-position' to retrieve screen attachment
+ * edge.
+ *
+ * Returns: GtkLayerShellEdge enum representing screen edge placement.
+ */
 GtkLayerShellEdge get_position_config(void);
+
+/**
+ * populate_dock_items:
+ * @state: Pointer to main LambdockState structure.
+ *
+ * Evaluates configured dock launchers from embedded Guile Scheme engine and
+ * populates dock items into the GTK box container and tracking lists.
+ */
 void populate_dock_items(LambdockState *state);
 
 #endif // GUILE_BRIDGE_H

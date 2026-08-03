@@ -16,6 +16,8 @@
 - *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
 - *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
 
+TODO: Add a list of dock exclusion icons
+
 -------
 
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-07-30-15-36-56.png]]

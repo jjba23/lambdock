@@ -23,6 +23,11 @@
  * ICON SEARCH & RESOLUTION ENGINE
  * ========================================================================= */
 
+/**
+ * create_image_for_icon:
+ * Resolves an icon using cascading fallbacks (File Path -> Theme Name ->
+ * Pixmaps -> Fallback Icon).
+ */
 static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
                                         int icon_size) {
   if (!icon || *icon == '\0') {
@@ -31,18 +36,21 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     return img;
   }
 
+  // Fallback 1: Absolute file system path check
   if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
     GtkWidget *img = gtk_image_new_from_file(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
+  // Fallback 2: Theme icon search
   if (gtk_icon_theme_has_icon(theme, icon)) {
     GtkWidget *img = gtk_image_new_from_icon_name(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
+  // Fallback 3: XDG system pixmaps folder search
   const char *const *sys_dirs = g_get_system_data_dirs();
   for (int i = 0; sys_dirs[i] != NULL; i++) {
     char *pixmap_png = g_strdup_printf("%s/pixmaps/%s.png", sys_dirs[i], icon);
@@ -55,6 +63,7 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     g_free(pixmap_png);
   }
 
+  // Fallback 4: Symbolic variant search
   char *symbolic_name = g_strdup_printf("%s-symbolic", icon);
   if (gtk_icon_theme_has_icon(theme, symbolic_name)) {
     GtkWidget *img = gtk_image_new_from_icon_name(symbolic_name);
@@ -64,6 +73,7 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   }
   g_free(symbolic_name);
 
+  // Fallback 5: Generic default executable icon
   GtkWidget *img = gtk_image_new_from_icon_name("application-x-executable");
   gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
   return img;
@@ -128,11 +138,21 @@ void setup_icon_theme(void) {
  * UNIFIED DOCK ITEM ACTION HANDLERS & POPOVER BUILDER
  * ========================================================================= */
 
+/**
+ * WindowActionData:
+ * Dynamic context payload structure passed to window list menu button click
+ * callbacks.
+ */
 typedef struct {
   DockItem *item;
   struct zwlr_foreign_toplevel_handle_v1 *handle;
 } WindowActionData;
 
+/**
+ * free_action_data:
+ * GDestroyNotify callback triggered automatically when signal closures destroy
+ * to free action data.
+ */
 static void free_action_data(gpointer data, GClosure *closure) {
   (void)closure;
   g_free(data);
@@ -164,6 +184,8 @@ static void on_popover_close_all_windows(GtkButton *btn, gpointer user_data) {
   (void)btn;
   DockItem *item = (DockItem *)user_data;
   if (item) {
+    // Collect window handles into a temporary GList to avoid modification
+    // during iteration
     GList *handles = NULL;
     for (GList *l = item->windows; l != NULL; l = l->next) {
       AppWindow *win = (AppWindow *)l->data;
@@ -183,6 +205,7 @@ static void on_popover_close_all_windows(GtkButton *btn, gpointer user_data) {
 static void on_popover_launch_clicked(DockItem *item) {
   if (item && item->exec && *item->exec != '\0') {
     GError *error = NULL;
+    // Asynchronously spawn desktop executable without blocking main thread
     if (!g_spawn_command_line_async(item->exec, &error)) {
       g_warning("[Lambdock] Failed to launch '%s': %s", item->exec,
                 error->message);
@@ -196,10 +219,16 @@ static void on_popover_launch_clicked(DockItem *item) {
   }
 }
 
+/**
+ * populate_popover_menu:
+ * Dynamically constructs popover context menu UI items based on running window
+ * instance count.
+ */
 static void populate_popover_menu(DockItem *item) {
   if (!item || !item->popover)
     return;
 
+  // Clear existing child widgets from popover
   GtkWidget *old_child = gtk_popover_get_child(GTK_POPOVER(item->popover));
   if (old_child) {
     gtk_popover_set_child(GTK_POPOVER(item->popover), NULL);
@@ -221,9 +250,11 @@ static void populate_popover_menu(DockItem *item) {
   GtkWidget *sep1 = gtk_separator_new(GTK_ORIENTATION_HORIZONTAL);
   gtk_box_append(GTK_BOX(vbox), sep1);
 
+  // --- Case 1: Application Has Active Running Windows ---
   if (item->windows != NULL) {
     int win_count = g_list_length(item->windows);
 
+    // Render a row entry for each open window instance
     for (GList *l = item->windows; l != NULL; l = l->next) {
       AppWindow *win = (AppWindow *)l->data;
 
@@ -236,12 +267,14 @@ static void populate_popover_menu(DockItem *item) {
       gtk_widget_set_hexpand(btn_focus, TRUE);
       gtk_widget_set_halign(btn_focus, GTK_ALIGN_FILL);
 
+      // Truncate long window titles with an ellipsis ("...")
       GtkWidget *child_label = gtk_button_get_child(GTK_BUTTON(btn_focus));
       if (GTK_IS_LABEL(child_label)) {
         gtk_label_set_ellipsize(GTK_LABEL(child_label), PANGO_ELLIPSIZE_END);
         gtk_label_set_max_width_chars(GTK_LABEL(child_label), 30);
       }
 
+      // Memory-safe signal hook using WindowActionData
       WindowActionData *action_data = g_new0(WindowActionData, 1);
       action_data->item = item;
       action_data->handle = win->handle;
@@ -266,7 +299,6 @@ static void populate_popover_menu(DockItem *item) {
                             free_action_data, 0);
 
       gtk_box_append(GTK_BOX(row), btn_close);
-
       gtk_box_append(GTK_BOX(vbox), row);
     }
 
@@ -288,6 +320,8 @@ static void populate_popover_menu(DockItem *item) {
                        G_CALLBACK(on_popover_close_all_windows), item);
       gtk_box_append(GTK_BOX(vbox), btn_close_all);
     }
+
+    // --- Case 2: Application Is Not Currently Running ---
   } else {
     if (item->exec && *item->exec != '\0') {
       GtkWidget *btn_launch = gtk_button_new_with_label("Launch Application");
@@ -301,6 +335,11 @@ static void populate_popover_menu(DockItem *item) {
   gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
 }
 
+/**
+ * on_dock_item_left_click:
+ * Left-click handler. Directly focuses standard windows if 1 instance is open,
+ * opens instance menu if multiple are open, or launches app if not running.
+ */
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   (void)btn;
   DockItem *item = (DockItem *)user_data;
@@ -413,11 +452,13 @@ void free_dock_item(DockItem *item) {
   if (!item)
     return;
 
+  // Unparent GTK popover widget to prevent memory leak
   if (item->popover) {
     gtk_widget_unparent(item->popover);
     item->popover = NULL;
   }
 
+  // Iterate AppWindow structs in item->windows GList and free allocations
   for (GList *l = item->windows; l != NULL; l = l->next) {
     AppWindow *win = (AppWindow *)l->data;
     g_free(win->title);
@@ -470,6 +511,7 @@ void update_dock_item_status(DockItem *item) {
   if (!item || !item->button)
     return;
 
+  // Add CSS class "running-app" if windows exist; remove if empty
   if (item->windows != NULL) {
     if (!gtk_widget_has_css_class(item->button, "running-app")) {
       gtk_widget_add_css_class(item->button, "running-app");
@@ -553,6 +595,7 @@ void load_custom_css(void) {
   }
 #endif
 
+  // Apply CSS rules globally across default display with application priority
   gtk_style_context_add_provider_for_display(
       gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
