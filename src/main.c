@@ -45,6 +45,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
   setup_guile_load_path();
   scm_c_use_module("lambdock core");
 
+  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  scm_call_0(init_fn);
+
   // Load custom icon theme assets & desktop CSS stylesheets
   setup_icon_theme();
 

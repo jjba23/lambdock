@@ -122,15 +122,15 @@ GtkLayerShellEdge get_position_config(void) {
  */
 void populate_dock_items(GtkWidget *box, GtkOrientation dock_orientation) {
   // --- Look up required Guile Scheme functions from module '(lambdock core)'
-  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  SCM dock_items_fn = scm_c_public_ref("lambdock core", "get-dock-items");
   SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
   SCM get_icon_fn = scm_c_public_ref("lambdock core", "dock-item-icon");
   SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
   SCM get_icon_sz_fn = scm_c_public_ref("lambdock core", "get-icon-size");
 
-  // Execute 'init-dock!' procedure to get the list of item objects from Scheme
-  SCM items_list = scm_call_0(init_fn);
+  // Execute procedure to get the list of item objects from Scheme
+  SCM items_list = scm_call_0(dock_items_fn);
 
   // Read preferred icon size from Scheme configuration and convert to C int
   int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
