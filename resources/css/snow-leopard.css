@@ -130,7 +130,7 @@ separator {
  * HUD POPOVER MENUS
  * ------------------------------------------------------------------------- */
 
-popover,
+/* popover, */
 popover > contents {
   background-color: rgba(30, 36, 46, 0.92);
   color: #f0f4f8;

@@ -124,7 +124,7 @@ separator {
  * FLOATING POPOVER MENU
  * ------------------------------------------------------------------------- */
 
-popover,
+/* popover, */
 popover > contents {
   background-color: rgba(28, 28, 32, 0.92);
   color: #f5f5f7;
