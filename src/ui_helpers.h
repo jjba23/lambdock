@@ -15,24 +15,16 @@
 // You should have received a copy of the GNU General Public License
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-/* INCLUDE GUARD: Prevents duplicate symbol declarations if included multiple
- * times */
 #ifndef UI_HELPERS_H
 #define UI_HELPERS_H
 
-/* Core header containing GTK 4 definitions and Lambdock structures */
 #include "lambdock.h"
-
-/* =========================================================================
- * ICON THEME & STYLING PROTOTYPES
- * ========================================================================= */
 
 /**
  * setup_icon_theme:
  *
- * Configures system and user XDG icon search paths for GTK, and reads GNOME
- * GSettings desktop preferences to automatically apply the system icon theme
- * name.
+ * Configures search paths for icon themes across user home directories and XDG
+ * locations, automatically loading GNOME system icon preferences.
  */
 void setup_icon_theme(void);
 
@@ -44,32 +36,85 @@ void setup_icon_theme(void);
  */
 void load_custom_css(void);
 
-/* =========================================================================
- * WIDGET FACTORY CONSTRUCTOR PROTOTYPES
- * ========================================================================= */
+/**
+ * create_dock_item:
+ * @state: Pointer to LambdockState structure.
+ * @name: Human-readable display name.
+ * @icon: Icon identifier or path.
+ * @exec: Execution command line string.
+ * @app_id: Application tracking ID.
+ * @is_favorite: TRUE if item is a pinned launcher.
+ *
+ * Constructs a DockItem, instantiates its GTK button and popover widgets, and
+ * appends it to the dock container layout.
+ *
+ * Returns: Pointer to newly allocated DockItem structure.
+ */
+DockItem *create_dock_item(LambdockState *state, const char *name,
+                           const char *icon, const char *exec,
+                           const char *app_id, gboolean is_favorite);
 
 /**
- * create_app_button:
- * @name: Display name used for the button's hover tooltip text.
- * @icon: Icon identifier string, theme icon name, or file path.
- * @exec: Shell command line execution string triggered when clicked.
- * @icon_size: Pixel dimension to render the icon image within the button.
+ * free_dock_item:
+ * @item: Pointer to DockItem to deallocate.
  *
- * Constructs a GTK button configured with resolved icon images, CSS classes,
- * tooltips, and click signal handlers.
- *
- * Returns: A pointer to the newly allocated GtkWidget button context.
+ * Frees dynamic string allocations, child windows, and destroys associated GTK
+ * popover bindings.
  */
-GtkWidget *create_app_button(const char *name, const char *icon,
-                             const char *exec, int icon_size);
+void free_dock_item(DockItem *item);
+
+/**
+ * dock_item_add_window:
+ * @item: Target DockItem structure.
+ * @handle: Low-level Wayland window handle pointer.
+ *
+ * Appends a newly opened window instance to the DockItem's internal window
+ * list.
+ *
+ * Returns: Pointer to newly allocated AppWindow tracking struct.
+ */
+AppWindow *dock_item_add_window(DockItem *item,
+                                struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * dock_item_remove_window:
+ * @item: Target DockItem structure.
+ * @handle: Low-level Wayland window handle pointer.
+ *
+ * Removes a closed window handle instance from the DockItem's internal window
+ * list.
+ */
+void dock_item_remove_window(DockItem *item,
+                             struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * update_dock_item_status:
+ * @item: Target DockItem structure.
+ *
+ * Dynamically toggles the "running-app" CSS styling class depending on whether
+ * active windows exist in the item's list.
+ */
+void update_dock_item_status(DockItem *item);
+
+/**
+ * find_dock_item_by_app_id:
+ * @state: Pointer to LambdockState structure.
+ * @app_id: Application identifier string.
+ *
+ * Searches active DockItem structs in state->dock_items matching app_id, exec,
+ * or icon name.
+ *
+ * Returns: Matching DockItem pointer, or NULL if unmatched.
+ */
+DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
 
 /**
  * create_separator:
+ * @orientation: Container alignment orientation.
  *
- * Constructs a vertical GtkSeparator widget with margin padding to visually
- * segment launcher buttons or running app sections on the dock.
+ * Constructs a GtkSeparator widget configured with standard margins.
  *
- * Returns: A pointer to the newly allocated GtkWidget separator.
+ * Returns: Pointer to constructed GtkWidget separator.
  */
 GtkWidget *create_separator(GtkOrientation orientation);
 

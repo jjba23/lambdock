@@ -18,78 +18,44 @@
 #include "guile_bridge.h"
 #include "ui_helpers.h"
 
-/* =========================================================================
- * GUILE ENVIRONMENT SETUP
- * ========================================================================= */
-
-/**
- * setup_guile_load_path:
- *
- * Configures Guile's internal '%load-path' list so the Scheme evaluator can
- * locate and load external Lambdock Scheme (.scm) modules during runtime.
- */
 void setup_guile_load_path(void) {
-  // Execute Guile Scheme code directly from C string evaluation.
-  // Appends relative "./scheme" directory to Scheme's module search path.
+  // Execute Scheme code string directly in Guile interpreter to update
+  // %load-path
   scm_c_eval_string("(set! %load-path (cons \"scheme\" %load-path))");
-
-// If build macro predefines absolute installed scheme directory path
 #ifdef LAMBDOCK_SCHEME_DIR
   scm_c_eval_string("(set! %load-path (cons \"" LAMBDOCK_SCHEME_DIR
                     "\" %load-path))");
 #endif
 }
 
-/* =========================================================================
- * CONFIGURATION READING
- * ========================================================================= */
-
-/**
- * get_autohide_config:
- *
- * Calls the Scheme procedure 'get-dock-auto-hide?' defined in module '(lambdock
- * core)' to fetch the auto-hide user setting.
- *
- * Returns: gboolean ('TRUE' or 'FALSE') translated from Scheme boolean.
- */
 gboolean get_autohide_config(void) {
-  // Look up public procedure reference in module '(lambdock core)'
+  // Retrieve reference to public Scheme function inside module '(lambdock
+  // core)'
   SCM get_autohide_fn =
       scm_c_public_ref("lambdock core", "get-dock-auto-hide?");
 
-  // Verify function pointer exists and is non-false/defined in Scheme context
   if (scm_is_true(get_autohide_fn)) {
-    // Invoke Scheme function with zero arguments -> returns SCM value
+    // Invoke Scheme function with 0 parameters -> returns Guile SCM object
     SCM res = scm_call_0(get_autohide_fn);
-
-    // Convert Guile Scheme boolean SCM object to standard C/GTK gboolean type
+    // Convert Scheme boolean type to GTK C gboolean type
     return scm_to_bool(res);
   }
 
-  return FALSE; // Fallback default if module or function is missing
+  return FALSE;
 }
 
-/**
- * get_position_config:
- *
- * Invokes Scheme procedure 'get-dock-position' defined in module '(lambdock
- * core)' to retrieve dock placement ("top", "bottom", "left", "right"). Maps
- * the string/symbol return value to a corresponding Wayland Layer Shell edge
- * identifier.
- *
- * Returns: GtkLayerShellEdge enum indicating screen attachment edge.
- */
 GtkLayerShellEdge get_position_config(void) {
-  // Look up public procedure reference in module '(lambdock core)'
   SCM get_pos_fn = scm_c_public_ref("lambdock core", "get-dock-position");
 
   if (scm_is_true(get_pos_fn)) {
     SCM res = scm_call_0(get_pos_fn);
-    // Convert Scheme Symbol to Scheme String if necessary
+
+    // Scheme symbols must be converted to Scheme strings before dynamic
+    // conversion to C
     SCM str_scm = scm_is_symbol(res) ? scm_symbol_to_string(res) : res;
     char *pos_str = scm_to_utf8_string(str_scm);
 
-    GtkLayerShellEdge edge = GTK_LAYER_SHELL_EDGE_BOTTOM; // Default fallback
+    GtkLayerShellEdge edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
 
     if (g_strcmp0(pos_str, "top") == 0) {
       edge = GTK_LAYER_SHELL_EDGE_TOP;
@@ -99,7 +65,7 @@ GtkLayerShellEdge get_position_config(void) {
       edge = GTK_LAYER_SHELL_EDGE_RIGHT;
     }
 
-    // MEMORY MANAGEMENT: Free heap string allocated by scm_to_utf8_string
+    // MEMORY MANAGEMENT: Free heap buffer allocated by scm_to_utf8_string
     free(pos_str);
     return edge;
   }
@@ -107,85 +73,55 @@ GtkLayerShellEdge get_position_config(void) {
   return GTK_LAYER_SHELL_EDGE_BOTTOM;
 }
 
-/* =========================================================================
- * GUILE TO GTK DOCK BUILDER
- * ========================================================================= */
+void populate_dock_items(LambdockState *state) {
+  if (!state || !state->box)
+    return;
 
-/**
- * populate_dock_items:
- * @box: Pointer to target GTK 4 Box layout widget.
- * @dock_orientation: Orientation of the container box (HORIZONTAL or VERTICAL).
- *
- * Evaluates Scheme module functions to get dock item definitions, iterates
- * through returned LISP list, instantiates GTK widgets (buttons, separators),
- * and appends them to the dock GTK Box layout container.
- */
-void populate_dock_items(GtkWidget *box, GtkOrientation dock_orientation) {
-  // --- Look up required Guile Scheme functions from module '(lambdock core)'
+  // Lookup module function handles
   SCM dock_items_fn = scm_c_public_ref("lambdock core", "get-dock-items");
   SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
   SCM get_icon_fn = scm_c_public_ref("lambdock core", "dock-item-icon");
   SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
-  SCM get_icon_sz_fn = scm_c_public_ref("lambdock core", "get-icon-size");
 
-  // Execute procedure to get the list of item objects from Scheme
+  // Call Scheme procedure to retrieve launcher item list
   SCM items_list = scm_call_0(dock_items_fn);
 
-  // Read preferred icon size from Scheme configuration and convert to C int
-  int icon_size = scm_to_int(scm_call_0(get_icon_sz_fn));
-
-  // Determine perpendicular orientation for separators
-  GtkOrientation sep_orient = (dock_orientation == GTK_ORIENTATION_HORIZONTAL)
+  GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                                   ? GTK_ORIENTATION_VERTICAL
                                   : GTK_ORIENTATION_HORIZONTAL;
 
-  // --- Iterate over Scheme LISP list of launchers ---
-  // scm_is_pair checks if 'items_list' is a non-empty Scheme pair/list node
+  // Iterate over Scheme LISP linked list (pair checking)
   while (scm_is_pair(items_list)) {
-    // Extract head element (car) of the current list node
-    SCM item = scm_car(items_list);
+    SCM item = scm_car(items_list); // Get head element (car)
 
-    // Get item type (returns Scheme Symbol, e.g., 'app or 'separator)
     SCM type_scm = scm_call_1(get_type_fn, item);
-
-    // Convert Scheme Symbol -> Scheme String -> Dynamic C Heap String
     SCM type_str_scm = scm_symbol_to_string(type_scm);
     char *type_str = scm_to_utf8_string(type_str_scm);
 
-    // --- Handle Application Launchers ---
     if (g_strcmp0(type_str, "app") == 0) {
-      // Extract properties from Scheme item object and convert to C heap
-      // strings
+      // Extract properties and convert SCM objects to heap C strings
       char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
       char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
       char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
 
-      // Construct GTK launcher button widget using helper function
-      GtkWidget *btn = create_app_button(name, icon, exec, icon_size);
+      // Instantiate unified favorite dock item
+      create_dock_item(state, name, icon, exec, name, TRUE);
 
-      // Append constructed button to GTK 4 Box container
-      // GTK_BOX macro safe-casts GtkWidget pointer to GtkBox pointer
-      gtk_box_append(GTK_BOX(box), btn);
+      g_print("[Lambdock] Created unified favorite item: %s (%s)\n", name,
+              exec);
 
-      g_print("[Lambdock] Created app button: %s (%s)\n", name, exec);
-
-      // MEMORY MANAGEMENT: free() heap buffers created by scm_to_utf8_string
+      // Clean up heap string allocations
       free(name);
       free(icon);
       free(exec);
-
-      // --- Handle Visual Separators ---
     } else if (g_strcmp0(type_str, "separator") == 0) {
       GtkWidget *sep = create_separator(sep_orient);
-      gtk_box_append(GTK_BOX(box), sep);
+      gtk_box_append(GTK_BOX(state->box), sep);
       g_print("[Lambdock] Created separator\n");
     }
 
-    // MEMORY MANAGEMENT: Free the type string buffer for this iteration
     free(type_str);
-
-    // Advance list iterator to next node (cdr = tail of list)
-    items_list = scm_cdr(items_list);
+    items_list = scm_cdr(items_list); // Move to next tail pair node (cdr)
   }
 }

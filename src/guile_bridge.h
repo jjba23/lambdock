@@ -15,57 +15,47 @@
 // You should have received a copy of the GNU General Public License
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-/* * INCLUDE GUARD: Prevents double-inclusion errors during compilation.
- * Ensures the declarations below are processed only once per C compilation
- * unit.
- */
 #ifndef GUILE_BRIDGE_H
 #define GUILE_BRIDGE_H
 
-/* Include core project definitions and global state structures */
 #include "lambdock.h"
-
-/* =========================================================================
- * GUILE SCHEME INTEGRATION PROTOTYPES
- * ========================================================================= */
 
 /**
  * setup_guile_load_path:
  *
- * Configures GNU Guile's internal '%load-path' global variable so the embedded
- * Scheme interpreter can locate Lambdock's .scm script modules on disk.
+ * Appends directory search paths to Guile's internal '%load-path' Scheme list,
+ * allowing the embedded evaluator to resolve Scheme script modules.
  */
 void setup_guile_load_path(void);
 
 /**
  * get_autohide_config:
  *
- * Queries the embedded Guile Scheme engine to fetch the current auto-hide
- * preference setting set in Scheme configuration.
+ * Calls Guile Scheme function 'get-dock-auto-hide?' to read user auto-hide
+ * preferences.
  *
- * Returns: 'TRUE' if auto-hide is enabled in configuration, 'FALSE' otherwise.
+ * Returns: TRUE if auto-hide is enabled in Scheme configuration; FALSE
+ * otherwise.
  */
 gboolean get_autohide_config(void);
 
 /**
  * get_position_config:
  *
- * Calls Guile Scheme procedure to get the user-configured dock position edge.
+ * Calls Guile Scheme function 'get-dock-position' to retrieve screen attachment
+ * edge.
  *
- * Returns: GtkLayerShellEdge enum representing TOP, BOTTOM, LEFT, or RIGHT.
+ * Returns: GtkLayerShellEdge enum representing screen edge placement.
  */
 GtkLayerShellEdge get_position_config(void);
 
 /**
  * populate_dock_items:
- * @box: Pointer to the GTK 4 Box container widget (GtkWidget *) where items
- * live.
- * @dock_orientation: Orientation of the container box (HORIZONTAL or VERTICAL).
+ * @state: Pointer to main LambdockState structure.
  *
- * Calls Guile Scheme initialization procedures to parse configured dock
- * launchers, builds the corresponding GTK 4 widgets (buttons, separators), and
- * appends them sequentially into the provided box layout container.
+ * Evaluates configured dock launchers from embedded Guile Scheme engine and
+ * populates dock items into the GTK box container and tracking lists.
  */
-void populate_dock_items(GtkWidget *box, GtkOrientation dock_orientation);
+void populate_dock_items(LambdockState *state);
 
 #endif // GUILE_BRIDGE_H

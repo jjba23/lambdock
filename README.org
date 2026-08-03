@@ -3,7 +3,7 @@
 [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
 [[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
 
-[🚧 WIP] The dock for Wayland (GNU/Linux) that you didn't know you needed.
+The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Scheme + GTK4)
 
 *lambdock* is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
@@ -15,6 +15,8 @@
 - *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
 - *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
 - *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
+
+TODO: Add a list of dock exclusion icons
 
 -------
 

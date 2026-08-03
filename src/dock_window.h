@@ -15,104 +15,98 @@
 // You should have received a copy of the GNU General Public License
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-/* * INCLUDE GUARD: Prevents double-inclusion errors during compilation.
- * If DOCK_WINDOW_H is not yet defined, define it and parse the file.
- */
 #ifndef DOCK_WINDOW_H
 #define DOCK_WINDOW_H
 
-/* Include core project types and structures (such as LambdockState) */
 #include "lambdock.h"
-
-/* =========================================================================
- * WINDOW & LAYER SHELL SETUP PROTOTYPES
- * ========================================================================= */
 
 /**
  * setup_layer_shell_window:
- * @state: Pointer to main Lambdock application state struct.
+ * @state: Pointer to global application state structure.
  *
- * Configures Wayland Layer Shell surface properties based on user configuration
- * stored in state (anchoring edge, exclusive zone depth, layer level).
+ * Initializes Wayland Layer Shell protocols for the dock window surface,
+ * configuring screen edge anchoring, layering level, and space reservation
+ * rules.
  */
 void setup_layer_shell_window(LambdockState *state);
 
 /**
  * setup_dock_motion_controller:
- * @state: Pointer to the central application state (LambdockState).
+ * @state: Pointer to global application state structure.
  *
- * Instantiates and attaches a GTK 4 EventControllerMotion to track mouse
- * cursor enter and leave events over the dock window.
+ * Attaches a GTK 4 EventControllerMotion to track mouse enter/leave events,
+ * triggering auto-hide timers and reveal animations.
  */
 void setup_dock_motion_controller(LambdockState *state);
 
-/* =========================================================================
- * DOCK VISIBILITY & ANIMATION PROTOTYPES
- * ========================================================================= */
-
 /**
  * reveal_dock:
- * @state: Pointer to the central application state.
+ * @state: Pointer to global application state structure.
  *
- * Cancels any pending auto-hide timer and triggers a smooth slide-in
- * animation to display the dock at full visibility.
+ * Cancels pending auto-hide timers and triggers a smooth slide-in animation to
+ * bring the dock into view.
  */
 void reveal_dock(LambdockState *state);
 
 /**
  * hide_dock:
- * @state: Pointer to the central application state.
+ * @state: Pointer to global application state structure.
  *
- * Triggers a slide-out animation to move the dock off-screen, provided
- * auto-hide is enabled and no active popover context menus are open.
+ * Calculates off-screen negative margins and initiates a slide-out animation to
+ * hide the dock surface.
  */
 void hide_dock(LambdockState *state);
 
 /**
  * schedule_initial_autohide:
- * @state: Pointer to the central application state.
+ * @state: Pointer to global application state structure.
  *
- * Sets up an initial delay timer (1000ms) to slide the dock away after
- * application launch if auto-hide mode is turned on.
+ * Schedules an initial 1000ms delay timer upon application launch to hide the
+ * dock if auto-hide mode is turned on.
  */
 void schedule_initial_autohide(LambdockState *state);
 
-/* =========================================================================
- * SIGNAL CALLBACK PROTOTYPES (GTK / GLib Event Handlers)
- * ========================================================================= */
+/**
+ * free_lambdock_state:
+ * @state: Pointer to global application state structure to deallocate.
+ *
+ * Safely cleans up all allocated memory, iterating through linked lists and
+ * freeing custom structs upon application shutdown.
+ */
+void free_lambdock_state(LambdockState *state);
 
 /**
  * on_quit_action:
- * @action: The GSimpleAction triggered by user interface/menu.
- * @parameter: Action target parameter (unused).
- * @user_data: Pointer to the running GtkApplication context.
+ * @action: Triggered GSimpleAction object.
+ * @parameter: Action target variant parameter (unused).
+ * @user_data: Pointer to running GtkApplication context.
  *
- * Callback triggered to gracefully close and exit the GTK application.
+ * Callback signal handler to exit GLib's main event processing loop.
  */
 void on_quit_action(GSimpleAction *action, GVariant *parameter,
                     gpointer user_data);
 
 /**
  * on_right_click:
- * @gesture: The GtkGestureClick object handling press input.
- * @n_press: Click count (1 for single click, 2 for double, etc.).
- * @x: Relative X mouse coordinate of the click.
- * @y: Relative Y mouse coordinate of the click.
- * @user_data: Pointer to the application state struct (LambdockState).
+ * @gesture: GtkGestureClick object handling click input.
+ * @n_press: Count of mouse presses.
+ * @x: Relative X mouse coordinate of press.
+ * @y: Relative Y mouse coordinate of press.
+ * @user_data: Pointer to LambdockState context.
  *
- * Callback triggered on secondary mouse press (right-click) to position
- * and display a context popover menu.
+ * Gesture handler displaying the background context popover menu on secondary
+ * click.
  */
 void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
                     gdouble y, gpointer user_data);
 
 /**
  * on_popover_closed:
- * @popover: The GtkPopover widget that was closed.
- * @user_data: Pointer to the application state struct (LambdockState).
+ * @popover: Closed GTK Popover widget.
+ * @user_data: Pointer to LambdockState context.
  *
- * Callback executed when a popover menu closes, decrementing active menu
- * counts and resuming auto-hide timers.
+ * Decrements active popover counters when context menus close and resumes
+ * auto-hide timers.
  */
 void on_popover_closed(GtkPopover *popover, gpointer user_data);
 

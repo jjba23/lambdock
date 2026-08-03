@@ -9,29 +9,40 @@
 
 // lambdock is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
-// along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-/* Standard preprocessor directive preventing duplicate header inclusions */
-#pragma once
+#ifndef TOPLEVEL_TRACKER_H
+#define TOPLEVEL_TRACKER_H
 
-/* Include dock window header to access the LambdockState struct declaration */
 #include "dock_window.h"
-
-/* =========================================================================
- * WAYLAND WINDOW TRACKER INTERFACE
- * ========================================================================= */
 
 /**
  * init_toplevel_tracker:
- * @state: Pointer to the core application state (LambdockState).
+ * @state: Pointer to LambdockState context.
  *
- * Connects to the Wayland display server registry and registers listeners for
- * foreign toplevel window protocols. This enables Lambdock to dynamically
- * track open applications, display running app icons, and focus or close
- * windows.
+ * Connects to low-level Wayland display server registry and binds listeners to
+ * track open application window instances dynamically.
  */
 void init_toplevel_tracker(LambdockState *state);
+
+/**
+ * activate_toplevel_window:
+ * @handle: Pointer to target Wayland foreign toplevel handle struct.
+ *
+ * Requests compositor window activation to bring target window to user focus.
+ */
+void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * close_toplevel_window:
+ * @handle: Pointer to target Wayland foreign toplevel handle struct.
+ *
+ * Requests graceful window closure via Wayland foreign toplevel protocols.
+ */
+void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+#endif // TOPLEVEL_TRACKER_H
