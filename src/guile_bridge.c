@@ -79,17 +79,21 @@ char *get_theme_config(void) {
   if (scm_is_true(get_theme_fn)) {
     SCM res = scm_call_0(get_theme_fn);
 
-    // Scheme symbols must be converted to Scheme strings before dynamic
-    // conversion to C
+    // Convert symbol to string if needed
     SCM str_scm = scm_is_symbol(res) ? scm_symbol_to_string(res) : res;
-    char *theme_str = scm_to_utf8_string(str_scm);
 
-    if (g_strcmp0(theme_str, "snow-leopard") == 0) {
-      return theme_str;
+    // Guard against #f or non-string SCM values
+    if (scm_is_string(str_scm)) {
+      char *theme_str = scm_to_utf8_string(str_scm);
+
+      if (g_strcmp0(theme_str, "snow-leopard") == 0) {
+        return theme_str;
+      }
+      free(theme_str);
     }
   }
 
-  return "vanilla";
+  return g_strdup("vanilla");
 }
 
 void populate_dock_items(LambdockState *state) {

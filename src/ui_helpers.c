@@ -554,7 +554,10 @@ void load_custom_css(LambdockState *state) {
 
 #ifdef DOCK_CSS_PATH
   if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_IS_DIR)) {
-    css_path = g_build_filename(DOCK_CSS_PATH, state->theme, ".css", NULL);
+    char *filename = g_strdup_printf(
+        "%s.css", (state && state->theme) ? state->theme : "vanilla");
+    css_path = g_build_filename(DOCK_CSS_PATH, filename, NULL);
+    g_free(filename);
   }
 #endif
 

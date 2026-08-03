@@ -64,12 +64,15 @@
                                                             'dock-icon-size)
                                       #:items (assq-ref settings
                                                         'dock-items)
+                                      #:theme (assq-ref settings
+                                                        'theme)
                                       #:auto-hide? (assq-ref settings
                                                              'dock-auto-hide?))))
                  (lambda (key . args)
-                   (format #t "[Scheme] ERROR loading ~a: ~a ~a~%" config-file
-                           key args))))
-        (format #t "[Scheme] No settings file found at: ~a~%" config-file)))
+                   (format #t "\n[Scheme] ERROR loading ~a: ~a ~a~%"
+                           config-file key args))))
+        (format #t "
+[Scheme] No settings file found at: ~a~%" config-file)))
 
   ;; Load fallback default dock items if no items were registered
   (when (null? *dock-items*)
