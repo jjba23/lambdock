@@ -40,7 +40,7 @@
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
     (inputs (list gtk gtk4-layer-shell guile-3.0 wlr-protocols))
-    (home-page "https://github.com/yourusername/lambdock")
+    (home-page "https://codeberg.org/jjba23/lambdock")
     (synopsis "Wayland-native GTK4 dock extensible in Guile Scheme")
     (description
      "Lambdock is a lightweight, Wayland-native desktop dock built with a C core,
