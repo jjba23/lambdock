@@ -1,0 +1,42 @@
+# Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+pkgname=lambdock
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Wayland-native GTK4 dock extensible in Guile Scheme"
+arch=('x86_64' 'aarch64')
+url="https://github.com/yourusername/lambdock"
+license=('GPL-3.0-or-later')
+
+# Runtime dependencies on Arch Linux
+depends=(
+  'gtk4'
+  'gtk4-layer-shell'
+  'guile'
+  'wayland'
+)
+
+# Build-time dependencies
+makedepends=(
+  'meson'
+  'ninja'
+  'pkgconf'
+  'wayland-protocols'
+)
+
+# Optional dependencies
+optdepends=()
+
+# If building from a local release tarball or git repo:
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP') # Replace with actual SHA256 checksum for release builds
+
+build() {
+  # arch-meson configures Meson with standard Arch build flags
+  arch-meson "$pkgname-$pkgver" build
+  meson compile -C build
+}
+
+package() {
+  # Install build artifacts directly into the Arch package root directory
+  DESTDIR="$pkgdir" meson install -C build
+}

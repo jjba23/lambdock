@@ -67,3 +67,10 @@
      #:verbose? #t)
   ($ '("debuild -b -uc -us")
      #:verbose? #t))
+
+(define (arch-build)
+  "Build Arch Linux package (.pkg.tar.zst)"
+  ($ '("makepkg -si")
+     #:verbose? #t)
+  ($ '("namcap PKGBUILD")
+     #:verbose? #t))
