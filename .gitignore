@@ -2,3 +2,50 @@
 .ccls
 build
 .nrepl-port
+
+# ==============================================================================
+# Meson & C Build Artifacts
+# ==============================================================================
+/build/
+/obj-*/
+/subprojects/packagecache/
+.ninja_*
+compile_commands.json
+
+# ==============================================================================
+# Guile Scheme Bytecode
+# ==============================================================================
+*.go
+.cache/guile/
+
+# ==============================================================================
+# Debian Packaging Artifacts
+# ==============================================================================
+# Package files generated during debuild
+*.deb
+*.dbgsym.deb
+*.buildinfo
+*.changes
+*.dsc
+*.tar.gz
+*.tar.xz
+
+# Temporary Debian staging directories & stamps
+/debian/.debhelper/
+/debian/debhelper-build-stamp
+/debian/files
+/debian/lambdock/
+/debian/lambdock-build-deps/
+/debian/*.log
+/debian/*.substvars
+
+# ==============================================================================
+# Language Server, Tooling & Editors
+# ==============================================================================
+.ccls
+.ccls-cache/
+.vscode/
+.idea/
+*~
+*.swp
+.DS_Store

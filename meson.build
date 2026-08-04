@@ -61,9 +61,14 @@ layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system')
 wayland_client_dep = dependency('wayland-client', include_type: 'system')
 
 # --- Wayland Code Generation ---
-wlr_protocols_dep = dependency('wlr-protocols')
-wlr_pkgdatadir = wlr_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
-toplevel_xml = wlr_pkgdatadir / 'unstable/wlr-foreign-toplevel-management-unstable-v1.xml'
+wlr_protocols_dep = dependency('wlr-protocols', required: false)
+
+if wlr_protocols_dep.found()
+  wlr_pkgdatadir = wlr_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
+  toplevel_xml = wlr_pkgdatadir / 'unstable/wlr-foreign-toplevel-management-unstable-v1.xml'
+else
+  toplevel_xml = files('protocols/wlr-foreign-toplevel-management-unstable-v1.xml')
+endif
 
 wayland_scanner = find_program('wayland-scanner')
 

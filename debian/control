@@ -1,4 +1,3 @@
-Code snippet
 Source: lambdock
 Section: x11
 Priority: optional
@@ -14,7 +13,7 @@ Build-Depends: debhelper-compat (= 13),
                wayland-protocols,
                wayland-scanner++ | libwayland-bin
 Standards-Version: 4.6.2
-Homepage: https://github.com/yourusername/lambdock
+Homepage: https://codeberg.org/jjba23/lambdock
 
 Package: lambdock
 Architecture: any

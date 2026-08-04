@@ -28,11 +28,12 @@
 (define (repl)
   "Development REPL."
   (time-machine-manifest-shell '("guile -L ./src"
-                    "-c '((@ (ares server) run-nrepl-server))'")))
+                                 "-c '((@ (ares server) run-nrepl-server))'")))
 
 (define c-packages
   (make-parameter (string-join (map symbol->string
-                                    '(gtk4 guile-3.0 gtk4-layer-shell-0 wlr-protocols)) " ")))
+                                    '(gtk4 guile-3.0 gtk4-layer-shell-0
+                                           wlr-protocols)) " ")))
 
 (define (add-libs)
   (delete-file-recursively ".ccls")
@@ -41,3 +42,28 @@
                                      " | tr ' ' '\n' >> .ccls")
                                #:verbose? #t)
   ($ '("cat .ccls")))
+
+(define deb-packages
+  (make-parameter (map symbol->string
+                       '(build-essential debhelper
+                                         devscripts
+                                         meson
+                                         ninja-build
+                                         pkg-config
+                                         libgtk-4-dev
+                                         libgtk4-layer-shell-dev
+                                         guile-3.0-dev
+                                         libwayland-dev
+                                         wayland-protocols))))
+
+(define (deb-build)
+  "Build .deb package (unsigned)"
+  ($ '("sudo apt update")
+     #:verbose? #t)
+  ($ (cons "sudo apt install -y"
+           (deb-packages))
+     #:verbose? #t)
+  ($ '("sudo mk-build-deps -i -r debian/control")
+     #:verbose? #t)
+  ($ '("debuild -b -uc -us")
+     #:verbose? #t))
