@@ -52,7 +52,9 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 ;; Default icon pixel resolution
 (define dock-icon-size 48)
 
-;; Theme selector: 'vanilla | 'vanilla-light | 'snow-leopard | 'solarized-light
+;; Themes:
+;; 'vanilla | 'vanilla-light | 'snow-leopard | 'solarized-light
+;; 'nature | 'unity
 (define dock-theme 'vanilla)
 
 ;; 'all         -> Render dock on every connected monitor
@@ -125,6 +127,8 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 - Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted flass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 - Snow Leopard 3D Glass 🍎  (~'snow-leopard~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
 - Solarized Light ☀️ (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
+- Nature 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted specular borders, and a lively Emerald Leaf glowing running app indicator.
+- Unity 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark aubergine glass background, Ubuntu warm orange highlights, and an active indicator glowing in iconic Orange.
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 

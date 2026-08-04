@@ -88,6 +88,8 @@ char *get_theme_config(void) {
       char *theme_str = scm_to_utf8_string(str_scm);
 
       if (g_strcmp0(theme_str, "snow-leopard") == 0 ||
+          g_strcmp0(theme_str, "nature") == 0 ||
+          g_strcmp0(theme_str, "unity") == 0 ||
           g_strcmp0(theme_str, "vanilla-light") == 0 ||
           g_strcmp0(theme_str, "solarized-light") == 0) {
         return theme_str;
