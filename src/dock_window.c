@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
+#include "logger.h"
 #include "ui_helpers.h"
 
 static double ease_out_cubic(double t) {
@@ -244,7 +245,7 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 
   gtk_widget_add_css_class(about, "about-dialog");
 
-  gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "Lambdock");
+  gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "lambdock");
   gtk_about_dialog_set_comments(
       GTK_ABOUT_DIALOG(about),
       "A lightweight, customizable Wayland dock driven by Guile Scheme.");
@@ -254,23 +255,35 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
                                     GTK_LICENSE_GPL_3_0);
 
   gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
-                               "https://codeberg.org/jjba23g/lambdock");
+                               "https://codeberg.org/jjba23/lambdock");
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
                                      "Codeberg Repository");
+#ifdef DOCK_LOGO_PATH
+  if (g_file_test(DOCK_LOGO_PATH, G_FILE_TEST_EXISTS)) {
+    GFile *logo_file = g_file_new_for_path(DOCK_LOGO_PATH);
+    GError *error = NULL;
 
-  const char *logo_path = "assets/lambdock.png";
-  if (g_file_test(logo_path, G_FILE_TEST_EXISTS)) {
-    GFile *logo_file = g_file_new_for_path(logo_path);
-    GdkTexture *texture = gdk_texture_new_from_file(logo_file, NULL);
+    GdkTexture *texture = gdk_texture_new_from_file(logo_file, &error);
+
     if (texture) {
       gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about),
                                 GDK_PAINTABLE(texture));
       g_object_unref(texture);
+    } else {
+      LOG_C_WARN("About", "Failed to load SVG logo from %s: %s", DOCK_LOGO_PATH,
+                 error ? error->message : "Unknown error");
+      if (error)
+        g_clear_error(&error);
+
+      // Fallback to icon name if loading fails
+      gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
     }
+
     g_object_unref(logo_file);
   } else {
     gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
   }
+#endif
 
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);
   gtk_window_present(GTK_WINDOW(about));

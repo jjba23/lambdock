@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
+  <!-- Dock Themes -->
   <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/vanilla.css</file>
   </gresource>
@@ -17,5 +18,12 @@
   </gresource>
   <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/solarized-light.css</file>
+  </gresource>
+  <!-- Images -->
+  <gresource prefix="/org/jointhefreeworld/lambdock">
+    <file>img/agnus-dei.svg</file>
+  </gresource>
+  <gresource prefix="/org/jointhefreeworld/lambdock">
+    <file>img/agnus-dei.png</file>
   </gresource>
 </gresources>

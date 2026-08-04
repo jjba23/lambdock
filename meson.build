@@ -95,6 +95,7 @@ scheme_install_path = datadir / 'guile/site/3.0'
 add_project_arguments(
   '-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"',
   '-DDOCK_CSS_PATH="' + (pkgdatadir / 'css') + '"',
+  '-DDOCK_LOGO_PATH="' + (pkgdatadir / 'webp' / 'agnus-dei.webp') + '"',
   '-DDEFAULT_GSK_RENDERER="gl"',
   '-DPACKAGE_VERSION="' + meson.project_version() + '"',
   language: 'c'
@@ -103,6 +104,8 @@ add_project_arguments(
 # --- Directory Installations ---
 install_subdir('scheme/lambdock', install_dir: scheme_install_path)
 install_subdir('resources/css', install_dir: pkgdatadir)
+install_subdir('resources/svg', install_dir: pkgdatadir)
+install_subdir('resources/webp', install_dir: pkgdatadir)
 
 inc = include_directories('src')
 
