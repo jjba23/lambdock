@@ -64,10 +64,8 @@
   (set! *dock-items* items)
   (set! *dock-auto-hide?* auto-hide?)
 
-  (format #t
-   "
-[Scheme] Configuration loaded: ~a items registered at size ~apx, theme: ~a, auto-hide?: ~a, position: ~a.
-"
+  (log-info "State"
+   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a"
    (length items)
    icon-size
    theme

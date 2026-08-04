@@ -21,6 +21,7 @@
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
 #include "dock_window.h"
+#include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
@@ -129,7 +130,8 @@ toplevel_handle_app_id(void *data,
   DockItem *item = find_dock_item_by_app_id(state, app_id);
 
   if (item != NULL) {
-    g_print("[Lambdock Tracker] Unified with dock item for '%s'\n", app_id);
+    LOG_C_INFO("Tracker", "Unified window with existing dock item for '%s'",
+               app_id);
   } else {
     // If no favorite item matches, instantiate dynamic running app dock item
     g_print(

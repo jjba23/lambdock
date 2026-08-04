@@ -18,6 +18,7 @@
 #include "dock_window.h"
 #include "guile_bridge.h"
 #include "lambdock.h"
+#include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
@@ -37,6 +38,7 @@
 static void activate(GtkApplication *app, gpointer user_data) {
   (void)user_data;
 
+  LOG_C_INFO("Main", "Initializing Guile engine & themes...");
   // --- Guile Engine & Theme Initialization ---
   setup_guile_load_path();
   scm_c_use_module("lambdock core");
@@ -103,8 +105,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   // --- Configuration & Wayland Protocol Attachment ---
   state->auto_hide = get_autohide_config();
-  g_print("[Lambdock] state->auto_hide: %d, state->edge: %d\n",
-          state->auto_hide, state->edge);
+  LOG_C_INFO("Main", "State configured (auto_hide: %d, edge: %d)",
+             state->auto_hide, state->edge);
 
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);

@@ -21,6 +21,7 @@
   #:use-module (lambdock items)
   #:use-module (lambdock state)
   #:use-module (lambdock loader)
+  #:use-module (lambdock logger)
   #:re-export (<dock-item> dock-item?
                            dock-item-type
                            dock-item-name
@@ -52,7 +53,7 @@
     (if (and config-file
              (file-exists? config-file))
         (begin
-          (format #t "[Scheme] Loading user settings from: ~a~%" config-file)
+          (log-info "Core" "Loading user settings from: ~a" config-file)
           (catch #t
                  (lambda ()
                    (load config-file)
@@ -76,8 +77,8 @@
 
   ;; Load fallback default dock items if no items were registered
   (when (null? *dock-items*)
-    (format #t
-     "[Scheme] No configured items found, loading default configuration...~%")
+    (log-warn "Core"
+              "No configured items found, loading default configuration...")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
                      #:items (list (terminal-item))

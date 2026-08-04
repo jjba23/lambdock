@@ -17,52 +17,77 @@
 
 project('lambdock', 'c',
   version: '0.1.0',
-  default_options: ['warning_level=2', 'c_std=c11'])
+  meson_version: '>= 0.62.0',
+  default_options: [
+    'c_std=gnu17',            # Modern standard + POSIX/GNU extensions required by GTK/Wayland
+    'warning_level=3',        # -Wall -Wextra -Wpedantic
+    'werror=true',            # Treat warnings as errors
+    'b_lto=true',             # Link-Time Optimization (LTO)
+    'b_pie=true',             # Position-Independent Executable (security hardening)
+  ]
+)
 
 cc = meson.get_compiler('c')
+wayland = import('wayland')  # Built-in Meson module for Wayland code generation
 
-gtk_dep = dependency('gtk4')
-guile_dep = dependency('guile-3.0')
+# --- Pedantic & Strict Compiler Warnings ---
+desired_warning_flags = [
+  '-Wpedantic',
+  '-Wshadow',
+  '-Wstrict-prototypes',
+  '-Wmissing-prototypes',
+  '-Wredundant-decls',
+  '-Wimplicit-fallthrough',
+  '-Wvla',                    # Disallow Variable-Length Arrays (prevents stack overhead & safety issues)
+  '-Wundef',
+  '-Wformat=2',
+  '-Wformat-security',
+  '-Werror=implicit-function-declaration',
+  '-Werror=incompatible-pointer-types',
+  '-Werror=int-conversion',
+]
+
+add_project_arguments(
+  cc.get_supported_arguments(desired_warning_flags),
+  language: 'c'
+)
+
+# GNU source definitions required when building under high strictness modes with POSIX APIs
+add_project_arguments('-D_GNU_SOURCE', language: 'c')
+
+# --- Dependencies ---
+gtk_dep = dependency('gtk4', version: '>= 4.0')
+guile_dep = dependency('guile-3.0', version: '>= 3.0')
 layer_shell_dep = dependency('gtk4-layer-shell-0')
+wayland_client_dep = dependency('wayland-client', version: '>= 1.20')
 
-wayland_client_dep = dependency('wayland-client')
-
-# Locate wlr-protocols XML directory via pkg-config
+# Protocol location and Wayland code generation
 wlr_protocols_dep = dependency('wlr-protocols')
 wlr_pkgdatadir = wlr_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
 toplevel_xml = wlr_pkgdatadir / 'unstable/wlr-foreign-toplevel-management-unstable-v1.xml'
 
-# Locate wayland-scanner executable
-wayland_scanner = find_program('wayland-scanner')
-
-# Generate C protocol source and header files
-wl_proto_src = custom_target(
-  'wlr-foreign-toplevel-protocol-c',
-  input: toplevel_xml,
-  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.c',
-  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+wl_proto_src = wayland.scan_xml(
+  toplevel_xml,
+  client: true,
+  public: false
 )
 
-wl_proto_h = custom_target(
-  'wlr-foreign-toplevel-protocol-h',
-  input: toplevel_xml,
-  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.h',
-  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+# --- Path Configuration & Preprocessor Defines ---
+datadir = get_option('prefix') / get_option('datadir')
+pkgdatadir = datadir / 'lambdock'
+scheme_install_path = datadir / 'guile/site/3.0'
+
+add_project_arguments(
+  '-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"',
+  '-DDOCK_CSS_PATH="' + (pkgdatadir / 'css') + '"',
+  '-DDEFAULT_GSK_RENDERER="gl"',
+  '-DPACKAGE_VERSION="' + meson.project_version() + '"',
+  language: 'c'
 )
 
-# Define paths
-datadir = get_option('datadir')
-pkgdatadir = get_option('prefix') / datadir / 'lambdock'
-scheme_install_path = get_option('prefix') / datadir / 'guile/site/3.0'
-
-# Pass defines to C
-add_project_arguments('-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"', language: 'c')
-add_project_arguments('-DDOCK_CSS_PATH="' + pkgdatadir / 'css' + '"', language: 'c')
-add_project_arguments('-DDEFAULT_GSK_RENDERER="gl"', language: 'c')
-
-# Install scheme files and CSS file
-install_subdir('scheme/lambdock', install_dir: datadir / 'guile/site/3.0')
-install_subdir('resources/css', install_dir: pkgdatadir / '')
+# --- Directory Installations ---
+install_subdir('scheme/lambdock', install_dir: scheme_install_path)
+install_subdir('resources/css', install_dir: pkgdatadir)
 
 sources = files(
   'src/main.c',
@@ -75,6 +100,12 @@ sources = files(
 executable('lambdock',
   sources,
   wl_proto_src,
-  wl_proto_h,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep],
-  install: true)
+  dependencies: [
+    gtk_dep,
+    guile_dep,
+    layer_shell_dep,
+    wayland_client_dep,
+  ],
+  gnu_symbol_visibility: 'hidden',  # Hides dynamic symbols to reduce executable size and speed up calls
+  install: true
+)
