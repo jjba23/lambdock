@@ -45,12 +45,11 @@ window {
   /* Leaf-green specular highlight border */
   border: 1px solid rgba(149, 213, 153, 0.28);
 
-  /* Soft organic drop shadow with subtle earthy glow */
+  /* Clean, subtle organic drop shadow */
   box-shadow:
-    0 16px 38px rgba(0, 0, 0, 0.60),
-    0 4px 12px rgba(45, 106, 79, 0.20),
-    inset 0 1px 1px rgba(183, 228, 199, 0.35),
-    inset 0 -1px 1px rgba(0, 0, 0, 0.45);
+    0 8px 20px rgba(0, 0, 0, 0.25),
+    0 2px 8px rgba(45, 106, 79, 0.12),
+    inset 0 1px 1px rgba(183, 228, 199, 0.20);
 }
 
 /* -------------------------------------------------------------------------
@@ -74,7 +73,7 @@ button.flat {
 button.flat:hover {
   background-color: rgba(183, 228, 199, 0.16);
   transform: scale(1.15) translateY(-4px);
-  box-shadow: 0 6px 16px rgba(12, 28, 18, 0.45);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.20);
 }
 
 button.flat:active {
@@ -130,7 +129,7 @@ popover > contents {
   color: #e8f5e9;
   border-radius: 16px;
   border: 1px solid rgba(116, 198, 157, 0.25);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.30);
   padding: 6px;
 }
 
