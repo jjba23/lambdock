@@ -17,6 +17,7 @@
 
 #include "ui_helpers.h"
 #include "dock_window.h"
+#include "logger.h"
 #include "toplevel_tracker.h"
 
 /* =========================================================================
@@ -124,7 +125,7 @@ void setup_icon_theme(void) {
       if (theme_name && *theme_name != '\0') {
         GtkSettings *gtk_settings = gtk_settings_get_for_display(display);
         g_object_set(gtk_settings, "gtk-icon-theme-name", theme_name, NULL);
-        g_print("[Lambdock] Applied icon theme: %s\n", theme_name);
+        LOG_C_INFO("UI", "Applied icon theme: %s\n", theme_name);
       }
 
       g_free(theme_name);

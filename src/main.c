@@ -105,6 +105,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   // --- Multi-Monitor Resolution Engine ---
   char *monitor_target = get_monitor_config();
+  LOG_C_INFO("Main", "monitor_target: %s", monitor_target);
   GdkDisplay *display = gdk_display_get_default();
   GListModel *monitors = gdk_display_get_monitors(display);
   guint n_monitors = g_list_model_get_n_items(monitors);

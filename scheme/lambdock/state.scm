@@ -51,25 +51,41 @@
 (define *dock-auto-hide?*
   #f)
 
-(define *dock-monitor* 'default)
+(define *dock-monitor*
+  'default)
 
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
 
-(define* (configure-dock! #:key position
-                          icon-size
-                          items
-                          auto-hide?
-                          theme
-                          monitor)
+(define* (configure-dock! #:key (position 'bottom)
+                          (icon-size 48)
+                          (items '())
+                          (auto-hide? #f)
+                          (theme 'vanilla)
+                          (monitor 'default))
   "Sets the primary configuration parameters for the dock."
-  (when position (set! *dock-position* position))
-  (when theme (set! *dock-theme* theme))
-  (when icon-size (set! *dock-icon-size* icon-size))
-  (when items (set! *dock-items* items))
-  (when auto-hide? (set! *dock-auto-hide?* auto-hide?))
-  (when monitor (set! *dock-monitor* monitor))
+  (log-info "State"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a"
+   (length items)
+   icon-size
+   theme
+   auto-hide?
+   position
+   monitor)
+
+  (when position
+    (set! *dock-position* position))
+  (when theme
+    (set! *dock-theme* theme))
+  (when icon-size
+    (set! *dock-icon-size* icon-size))
+  (when items
+    (set! *dock-items* items))
+  (when auto-hide?
+    (set! *dock-auto-hide?* auto-hide?))
+  (when monitor
+    (set! *dock-monitor* monitor))
 
   (log-info "State"
    "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a"
@@ -94,3 +110,6 @@
 
 (define (get-dock-auto-hide?)
   *dock-auto-hide?*)
+
+(define (get-dock-monitor)
+  *dock-monitor*)

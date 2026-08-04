@@ -40,7 +40,8 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 (define-module (lambdock settings)
   #:declarative? #t
   #:use-module (lambdock core)
-  #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme))
+  #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
+                          dock-monitor))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
@@ -348,4 +349,3 @@ You could say using this dock /es casi una experiencia religiosa como la de [[ht
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Add library of well-known icons, convenient for users of lambdock (for people's config,exported via (lambdock core)
 *** TODO: Add more themes (Ubuntu Unity, CairoDock inspiration, Plank, other macOS inspired etc.)
-*** TODO: Investigate how to run in multiple screens and also in multiple instances

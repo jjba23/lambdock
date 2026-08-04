@@ -62,6 +62,8 @@
                                                         'dock-items)
                                       #:theme (assq-ref settings
                                                         'dock-theme)
+                                      #:monitor (assq-ref settings
+                                                          'dock-monitor)
                                       #:auto-hide? (assq-ref settings
                                                              'dock-auto-hide?))))
                  (lambda (key . args)
