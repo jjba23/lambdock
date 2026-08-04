@@ -576,10 +576,10 @@ void load_custom_css(LambdockState *state) {
 
   g_object_unref(provider);
 
-  // --- USER OVERRIDE CSS (~/.config/lambdoc/styles.css) ---
+  // --- USER OVERRIDE CSS (~/.config/lambdock/styles.css) ---
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
-      g_build_filename(config_dir, "lambdoc", "styles.css", NULL);
+      g_build_filename(config_dir, "lambdock", "styles.css", NULL);
 
   if (g_file_test(user_css_path, G_FILE_TEST_EXISTS)) {
     GtkCssProvider *user_provider = gtk_css_provider_new();

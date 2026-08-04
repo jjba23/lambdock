@@ -105,7 +105,18 @@ You can override any GTK style class on the fly without re-compiling C sources. 
 ~/.config/lambdoc/styles.css
 #+end_src
 
-User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking precedence over default app themes.
+User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking precedence over default app themes. Make sure you use GTK CSS, not "web-browser CSS". For understanding better what is available and what you can override, you should look at the theme definitions at ~./resources/css~.
+
+An example override of a theme could look like this:
+#+begin_src css
+/* Custom user tweaks in ~/.config/lambdoc/styles.css */
+
+.lambdock-window {
+    background-image: linear-gradient(180deg, rgba(255, 0, 20, 0.85) 0%, rgba(5, 5, 8, 0.95) 100%);
+    border: 1px solid rgba(255, 0, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+#+end_src
 
 
 -------
