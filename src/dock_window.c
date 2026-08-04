@@ -245,19 +245,41 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 
   gtk_widget_add_css_class(about, "about-dialog");
 
+  // Program Details
   gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "lambdock");
+
+#ifdef PACKAGE_VERSION
+  gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about), PACKAGE_VERSION);
+#endif
+
   gtk_about_dialog_set_comments(
       GTK_ABOUT_DIALOG(about),
-      "A lightweight, customizable Wayland dock driven by Guile Scheme.");
-  gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(about),
-                                 "Copyright \xc2\xa9 Josep Bigorra");
+      "A modern, hyper-hackable, Wayland-native desktop dock.\n\n"
+      "Engineered with the performance of C and GTK4 Layer Shell for smooth "
+      "auto-hide and "
+      "animations, featuring dynamic Wayland foreign-toplevel window tracking, "
+      "live CSS hot-reloading, and dynamic configuration powered by GNU Guile "
+      "Scheme.");
+
+  // Authorship & Copyright
+  const char *authors[] = {"Josep Bigorra (jjbigorra@gmail.com)", NULL};
+  gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(about), authors);
+
+  gtk_about_dialog_set_copyright(
+      GTK_ABOUT_DIALOG(about),
+      "Copyright \xc2\xa9 Josep Bigorra <jjbigorra@gmail.com>");
+
+  // Licensing (GPL-3.0 for code, documentation under GFDL-1.3)
   gtk_about_dialog_set_license_type(GTK_ABOUT_DIALOG(about),
                                     GTK_LICENSE_GPL_3_0);
 
+  // Repository Link
   gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
                                "https://codeberg.org/jjba23/lambdock");
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
-                                     "Codeberg Repository");
+                                     "Find the project's source code here");
+
+  // Logo Loading Logic with Safe Fallback
 #ifdef DOCK_LOGO_PATH
   if (g_file_test(DOCK_LOGO_PATH, G_FILE_TEST_EXISTS)) {
     LOG_C_INFO("About", "Looking for project logo: %s", DOCK_LOGO_PATH);
@@ -276,7 +298,6 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
       if (error)
         g_clear_error(&error);
 
-      // Fallback to icon name if loading fails
       gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
     }
 
@@ -284,6 +305,8 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   } else {
     gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
   }
+#else
+  gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
 #endif
 
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);

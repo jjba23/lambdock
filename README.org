@@ -8,9 +8,9 @@
 The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Scheme + GTK4)
 #+end_quote
 
-lambdock is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) and it combines C11 performance for V-sync frame-rate animations with full Lisp-driven runtime inspectability and GTK-CSS-driven aesthetic flair.
+lambdock is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS. An aesthetic flair.
 
-Whether you are runningNiri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, lambdock brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
+Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, lambdock brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
 
 lambdock is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
