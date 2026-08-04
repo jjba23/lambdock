@@ -150,3 +150,17 @@ void populate_dock_items(LambdockState *state) {
     items_list = scm_cdr(items_list); // Move to next tail pair node (cdr)
   }
 }
+
+char *get_monitor_config(void) {
+  SCM get_mon_fn = scm_c_public_ref("lambdock core", "get-dock-monitor");
+
+  if (scm_is_true(get_mon_fn)) {
+    SCM res = scm_call_0(get_mon_fn);
+    SCM str_scm = scm_is_symbol(res) ? scm_symbol_to_string(res) : res;
+
+    if (scm_is_string(str_scm)) {
+      return scm_to_utf8_string(str_scm);
+    }
+  }
+  return g_strdup("default");
+}

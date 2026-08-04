@@ -54,6 +54,11 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 ;; Theme selector: 'vanilla | 'vanilla-light | 'snow-leopard | 'solarized-light
 (define dock-theme 'vanilla)
 
+;; 'all         -> Render dock on every connected monitor
+;; "DP-1"       -> Target specific monitor output connector
+;; 'default     -> Default compositor monitor assignment
+(define dock-monitor 'all)
+
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
                   #:exec "alacritty"

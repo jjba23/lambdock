@@ -67,4 +67,13 @@ char *get_theme_config(void);
  */
 void populate_dock_items(LambdockState *state);
 
+/**
+ * get_monitor_config:
+ *
+ * Reads 'get-dock-monitor' from Scheme.
+ * Returns: Heap allocated string ("default", "all", or specific monitor like
+ * "DP-1").
+ */
+char *get_monitor_config(void);
+
 #endif // GUILE_BRIDGE_H

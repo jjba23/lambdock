@@ -116,6 +116,8 @@ struct LambdockState {
   gboolean is_hidden;
   char *theme;
 
+  GdkMonitor *monitor; /* NULL for default compositor placement */
+
   /* Position & Orientation */
   GtkLayerShellEdge edge;
   GtkOrientation orientation;

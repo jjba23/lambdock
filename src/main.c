@@ -27,44 +27,23 @@
  * ========================================================================= */
 
 /**
- * activate:
- * @app: Pointer to active GtkApplication instance.
- * @user_data: Generic context pointer (unused).
- *
- * GTK activation signal handler. Initializes Guile, constructs GTK 4 widget
- * hierarchy, attaches input event controllers, configures Layer Shell, and
- * launches Wayland tracking.
+ * create_dock_instance:
+ * Helper to construct a single dock window on a specific monitor context.
  */
-static void activate(GtkApplication *app, gpointer user_data) {
-  (void)user_data;
-
-  LOG_C_INFO("Main", "Initializing Guile engine & themes...");
-  // --- Guile Engine & Theme Initialization ---
-  setup_guile_load_path();
-  scm_c_use_module("lambdock core");
-
-  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
-  scm_call_0(init_fn);
-
-  setup_icon_theme();
-
-  // g_new0 allocates zero-initialized heap memory for custom structures
+static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   LambdockState *state = g_new0(LambdockState, 1);
-
+  state->monitor = monitor;
   state->theme = get_theme_config();
 
   load_custom_css(state);
 
-  // Parse Scheme edge setting ("top", "bottom", "left", "right")
   state->edge = get_position_config();
-
-  // Infer orientation: side attachment requires VERTICAL box layout
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
                         state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  // --- Construct Main GTK Window & Outer Container ---
+  // Construct Window & Layout
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
@@ -73,29 +52,21 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_window_set_child(GTK_WINDOW(window), box);
   state->box = box;
 
-  // Read favorite launchers from Guile and populate layout box
   populate_dock_items(state);
 
-  // --- Register GTK Application Actions ---
-  GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
-  g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
-  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
-
-  // --- Background Context Popover Menu ---
+  // Context Menu & Gestures
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "Quit", "app.quit");
 
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model); // Decrement reference count to avoid memory leak
+  g_object_unref(menu_model);
 
   gtk_widget_set_parent(popover, window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
-
   state->popover = popover;
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
-  // Right-click input controller for background popover menu
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
@@ -103,25 +74,82 @@ static void activate(GtkApplication *app, gpointer user_data) {
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  // --- Configuration & Wayland Protocol Attachment ---
   state->auto_hide = get_autohide_config();
-  LOG_C_INFO("Main", "State configured (auto_hide: %d, edge: %d)",
-             state->auto_hide, state->edge);
-
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
 
-  // g_signal_connect_swapped flips signal data parameters so
-  // free_lambdock_state receives 'state'
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
-  // Render GTK window surface
   gtk_window_present(GTK_WINDOW(window));
-
-  // Initialize Wayland foreign toplevel window tracker
   init_toplevel_tracker(state);
   schedule_initial_autohide(state);
+}
+
+static void activate(GtkApplication *app, gpointer user_data) {
+  (void)user_data;
+
+  LOG_C_INFO("Main", "Initializing Guile engine & multi-monitor manager...");
+  setup_guile_load_path();
+  scm_c_use_module("lambdock core");
+
+  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  scm_call_0(init_fn);
+
+  setup_icon_theme();
+
+  // Application-wide actions
+  GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
+  g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
+  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
+
+  // --- Multi-Monitor Resolution Engine ---
+  char *monitor_target = get_monitor_config();
+  GdkDisplay *display = gdk_display_get_default();
+  GListModel *monitors = gdk_display_get_monitors(display);
+  guint n_monitors = g_list_model_get_n_items(monitors);
+
+  if (g_strcmp0(monitor_target, "all") == 0) {
+    LOG_C_INFO("Main", "Spawning lambdock instances across ALL %u monitors...",
+               n_monitors);
+    for (guint i = 0; i < n_monitors; i++) {
+      GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+      const char *connector = gdk_monitor_get_connector(mon);
+      LOG_C_INFO("Main", "Dock initialized on output: %s",
+                 connector ? connector : "unknown");
+      create_dock_instance(app, mon);
+      g_object_unref(mon);
+    }
+  } else if (g_strcmp0(monitor_target, "default") != 0) {
+    // Specific named connector target (e.g. "DP-1")
+    gboolean found = FALSE;
+    for (guint i = 0; i < n_monitors; i++) {
+      GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+      const char *connector = gdk_monitor_get_connector(mon);
+      if (connector && g_strcmp0(connector, monitor_target) == 0) {
+        LOG_C_INFO("Main", "Spawning dock strictly on target monitor: %s",
+                   connector);
+        create_dock_instance(app, mon);
+        found = TRUE;
+        g_object_unref(mon);
+        break;
+      }
+      g_object_unref(mon);
+    }
+    if (!found) {
+      LOG_C_WARN(
+          "Main",
+          "Target monitor '%s' not found! Falling back to default output.",
+          monitor_target);
+      create_dock_instance(app, NULL);
+    }
+  } else {
+    // Default compositor selection
+    LOG_C_INFO("Main", "Spawning dock on default primary output.");
+    create_dock_instance(app, NULL);
+  }
+
+  g_free(monitor_target);
 }
 
 /* =========================================================================

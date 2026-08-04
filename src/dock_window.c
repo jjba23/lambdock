@@ -241,8 +241,13 @@ void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
 void setup_layer_shell_window(LambdockState *state) {
   GtkWindow *window = GTK_WINDOW(state->window);
 
-  // Initialize GTK Layer Shell protocol support on main window surface
+  // Initialize GTK Layer Shell protocol support
   gtk_layer_init_for_window(window);
+
+  // If a specific GdkMonitor is set in state, attach layer shell to it
+  if (state->monitor != NULL) {
+    gtk_layer_set_monitor(window, state->monitor);
+  }
 
   // Render layer above standard application windows
   gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
@@ -250,10 +255,6 @@ void setup_layer_shell_window(LambdockState *state) {
   // Anchor window to target screen edge
   gtk_layer_set_anchor(window, state->edge, TRUE);
 
-  // Exclusive zone controls desktop window layout behavior around dock:
-  // 0 = Desktop windows overlap dock when auto-hiding.
-  // Auto-exclusive = Reserve screen pixels so other windows align around
-  // Lambdock.
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
