@@ -159,3 +159,15 @@ popover button.flat:hover {
   background-image: linear-gradient(180deg, #5297f6 0%, #1a66d2 100%);
   color: #ffffff;
 }
+
+window.about-dialog {
+  /* Multi-stage reflection gradient imitating angled 3D bevel glass */
+  background-image: linear-gradient(
+    180deg,
+    rgba(245, 248, 252, 0.82) 0%,
+    rgba(215, 224, 235, 0.58) 12%,
+    rgba(160, 172, 188, 0.45) 50%,
+    rgba(115, 128, 142, 0.70) 85%,
+    rgba(75, 85, 98, 0.90) 100%
+  );
+}

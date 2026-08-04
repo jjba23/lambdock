@@ -153,3 +153,12 @@ popover button.flat:hover {
   transform: none;
   box-shadow: none;
 }
+
+window.about-dialog {
+  /* Deep translucent glass background */
+  background-image: linear-gradient(
+    135deg,
+    rgba(40, 40, 45, 0.78) 0%,
+    rgba(20, 20, 24, 0.85) 100%
+  );
+}

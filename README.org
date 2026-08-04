@@ -23,7 +23,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 - *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
 - *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
 - *Theme support*: lambdock has built-in themes you can choose from that are very unique, and also lets you extend and override those themes dynamically.
-- *Config hot-reload*: lambdock automatically will reload and redraw the dock whenever you change your Lisp settings or CSS overrides (in ~~/.config/lambdock~)
+- *Config hot-reload*: lambdock automatically will reload and redraw the dock whenever you change your Lisp settings or CSS overrides (in ~~/.config/lambdock~).
 
 -------
 

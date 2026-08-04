@@ -306,9 +306,13 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
                      gpointer user_data) {
   (void)action;
   (void)parameter;
-  GtkApplication *app = GTK_APPLICATION(user_data);
+  (void)user_data;
 
   GtkWidget *about = gtk_about_dialog_new();
+
+  // Add class to override any inherited transparent window CSS
+  gtk_widget_add_css_class(about, "about-dialog");
+
   gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "Lambdock");
   gtk_about_dialog_set_comments(
       GTK_ABOUT_DIALOG(about),
@@ -324,13 +328,25 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
                                      "Codeberg Repository");
 
-  // Logo (resolves via GTK icon theme or assets)
-  gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
-
-  GtkWindow *active_win = gtk_application_get_active_window(app);
-  if (active_win) {
-    gtk_window_set_transient_for(GTK_WINDOW(about), active_win);
+  // Load the logo directly from file path (e.g., assets/lambdock.png)
+  const char *logo_path =
+      "assets/lambdock.png"; // Replace with your actual path
+  if (g_file_test(logo_path, G_FILE_TEST_EXISTS)) {
+    GFile *logo_file = g_file_new_for_path(logo_path);
+    GdkTexture *texture = gdk_texture_new_from_file(logo_file, NULL);
+    if (texture) {
+      gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about),
+                                GDK_PAINTABLE(texture));
+      g_object_unref(texture);
+    }
+    g_object_unref(logo_file);
+  } else {
+    // Fallback if file isn't at relative path
+    gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
   }
+
+  // DO NOT call gtk_window_set_transient_for on layer shell windows!
+  // Present it directly as a standalone window
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);
   gtk_window_present(GTK_WINDOW(about));
 }
