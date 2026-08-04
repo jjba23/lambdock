@@ -1,0 +1,154 @@
+/* lambdock
+
+   Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+   lambdock is free software : you can redistribute it and / or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   lambdock is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - LIGHT GLASSMORPHISM
+ * ========================================================================= */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* Ultra-sleek floating glass capsule (Light Mode) */
+.lambdock-window {
+  border-radius: 22px;
+  padding: 6px 12px;
+  margin: 4px;
+
+  /* Bright translucent glass background */
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(235, 238, 245, 0.65) 100%
+  );
+
+  /* Specular light highlight border */
+  border: 1px solid rgba(255, 255, 255, 0.70);
+
+  /* Soft ambient drop shadow and light glass edge reflections */
+  box-shadow:
+    0 16px 38px rgba(0, 0, 0, 0.12),
+    0 4px 12px rgba(0, 0, 0, 0.06),
+    inset 0 1px 1px rgba(255, 255, 255, 0.90),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.06);
+}
+
+/* -------------------------------------------------------------------------
+ * BUTTONS & INTERACTION
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 6px;
+  margin: 2px 3px;
+  border-radius: 14px;
+
+  /* Fluid physics curve for hover/active states */
+  transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              background-color 150ms ease,
+              box-shadow 150ms ease;
+}
+
+button.flat:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  transform: scale(1.15) translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+button.flat:active {
+  transform: scale(0.94) translateY(0px);
+  background-color: rgba(0, 0, 0, 0.14);
+  box-shadow: none;
+}
+
+/* -------------------------------------------------------------------------
+ * RUNNING APP INDICATOR (Royal Blue Glow Pill)
+ * ------------------------------------------------------------------------- */
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    #0055ff 0%,
+    rgba(0, 122, 255, 0.85) 35%,
+    rgba(0, 150, 255, 0.45) 65%,
+    transparent 80%
+  );
+  background-size: 14px 5px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #0044ee 0%,
+    rgba(0, 110, 255, 0.95) 40%,
+    rgba(0, 160, 255, 0.65) 70%,
+    transparent 85%
+  );
+  background-size: 18px 6px;
+  background-position: center bottom;
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 6px 8px;
+  background-color: rgba(0, 0, 0, 0.12);
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * FLOATING POPOVER MENU
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(255, 255, 255, 0.88);
+  color: #1c1c1e;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.80);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
+  padding: 6px;
+}
+
+label.title {
+  font-weight: 600;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.50);
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  border-radius: 10px;
+  padding: 6px 12px;
+  margin: 2px 0;
+  transition: background-color 120ms ease;
+}
+
+popover button.flat:hover {
+  background-color: rgba(0, 0, 0, 0.08);
+  transform: none;
+  box-shadow: none;
+}

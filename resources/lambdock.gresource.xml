@@ -4,6 +4,9 @@
     <file>css/vanilla.css</file>
   </gresource>
   <gresource prefix="/org/scheme/lambdock">
+    <file>css/vanilla-light.css</file>
+  </gresource>
+  <gresource prefix="/org/scheme/lambdock">
     <file>css/snow-leopard.css</file>
   </gresource>
 </gresources>

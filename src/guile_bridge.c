@@ -87,7 +87,8 @@ char *get_theme_config(void) {
     if (scm_is_string(str_scm)) {
       char *theme_str = scm_to_utf8_string(str_scm);
 
-      if (g_strcmp0(theme_str, "snow-leopard") == 0) {
+      if (g_strcmp0(theme_str, "snow-leopard") == 0 ||
+          g_strcmp0(theme_str, "vanilla-light") == 0) {
         return theme_str;
       }
       free(theme_str);
