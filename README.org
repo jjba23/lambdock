@@ -180,11 +180,12 @@ find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg
 The name /lambdock/ is a play on words combining:
 
 -  *Ship Docks* ⚓ where containers and applications dock safely.
-- ~lambda λ~ expressions from functional programming & Lisp.
+- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
 - *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
 - *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
 
-[[https://jointhefreeworld.org/static-assets/lambdock/lambdock-small.png]]
+[[https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg]]
+lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/File:Agnus_Dei_red_flag.svg][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
 
 ---------
 
@@ -328,6 +329,12 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
   #+END_SRC
 - 🔄 *Transactional Upgrades & Rollbacks:* Experiment freely. If an update breaks, rollbacks are atomic and instantaneous.
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
+
+-----
+
+You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
+
+------
 * Backlog and Ideas
 *** TODO: Add a list of dock exclusion icons
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
