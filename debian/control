@@ -1,0 +1,24 @@
+Code snippet
+Source: lambdock
+Section: x11
+Priority: optional
+Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+Build-Depends: debhelper-compat (= 13),
+               meson (>= 0.62.0),
+               ninja-build,
+               pkg-config,
+               libgtk-4-dev,
+               libgtk4-layer-shell-dev,
+               guile-3.0-dev,
+               libwayland-dev,
+               wayland-protocols,
+               wayland-scanner++ | libwayland-bin
+Standards-Version: 4.6.2
+Homepage: https://github.com/yourusername/lambdock
+
+Package: lambdock
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, guile-3.0
+Description: Wayland-native GTK4 dock extensible in Guile Scheme
+ Lambdock is a lightweight, Wayland-native desktop dock built with a C core,
+ GTK4 layer-shell, and dynamic configuration powered by GNU Guile Scheme.
