@@ -307,6 +307,7 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
 * Backlog and Ideas
 *** TODO: Add a list of dock exclusion icons
+*** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Add library of well-known icons, convenient for users of lambdock (for people's config,exported via (lambdock core)
 *** TODO: Add more themes (Ubuntu Unity, CairoDock inspiration, Plank, other macOS inspired etc.)
 *** TODO: Investigate how to run in multiple screens and also in multiple instances
