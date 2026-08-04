@@ -224,6 +224,20 @@ sudo apt install build-essential debhelper devscripts meson ninja-build \
 debuild -b -uc -us
 #+end_src
 
+--------------------
+
+* Building for Fedora/openSUSE
+
+Work in progress 🚧 see ~lambdock.spec~
+
+--------------------
+
+* Building for Arch
+
+Work in progress 🚧 see ~PKGBUILD~
+
+----------------------
+
 * Hacking with ~maak~ & CCLS
 
 If you use  ~ccls~ or another LSP client, generate your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the solution.
