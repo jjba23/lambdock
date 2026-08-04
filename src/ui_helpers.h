@@ -109,15 +109,8 @@ void update_dock_item_status(DockItem *item);
  */
 DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
 
-/**
- * create_separator:
- * @orientation: Container alignment orientation.
- *
- * Constructs a GtkSeparator widget configured with standard margins.
- *
- * Returns: Pointer to constructed GtkWidget separator.
- */
-GtkWidget *create_separator(GtkOrientation orientation);
+DockItem *create_separator_dock_item(LambdockState *state,
+                                     GtkOrientation orientation);
 
 /**
  * clear_favorite_dock_items:

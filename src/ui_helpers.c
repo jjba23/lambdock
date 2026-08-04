@@ -564,7 +564,7 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
   return NULL;
 }
 
-GtkWidget *create_separator(GtkOrientation orientation) {
+static GtkWidget *create_separator(GtkOrientation orientation) {
   GtkWidget *separator = gtk_separator_new(orientation);
 
   if (orientation == GTK_ORIENTATION_VERTICAL) {
@@ -647,4 +647,22 @@ void reload_dock_instance(LambdockState *state) {
   // Clear favorite widgets and repopulate from updated Scheme state
   clear_favorite_dock_items(state);
   populate_dock_items(state);
+}
+
+DockItem *create_separator_dock_item(LambdockState *state,
+                                     GtkOrientation orientation) {
+  DockItem *item = g_new0(DockItem, 1);
+  item->state = state;
+  item->is_favorite = TRUE; // Marked so clear_favorite_dock_items cleans it up
+  item->button = create_separator(orientation); // Store separator widget here
+
+  if (state && state->box) {
+    gtk_box_append(GTK_BOX(state->box), item->button);
+  }
+
+  if (state) {
+    state->dock_items = g_list_append(state->dock_items, item);
+  }
+
+  return item;
 }

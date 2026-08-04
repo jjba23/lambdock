@@ -143,8 +143,7 @@ void populate_dock_items(LambdockState *state) {
       free(icon);
       free(exec);
     } else if (g_strcmp0(type_str, "separator") == 0) {
-      GtkWidget *sep = create_separator(sep_orient);
-      gtk_box_append(GTK_BOX(state->box), sep);
+      create_separator_dock_item(state, sep_orient);
       LOG_C_INFO("GuileBridge", "Created layout separator");
     }
 

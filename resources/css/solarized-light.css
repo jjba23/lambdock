@@ -46,10 +46,10 @@ window {
 
   /* Soft ambient drop shadows tinted with base00 (#657b83) */
   box-shadow:
-    0 16px 38px rgba(101, 123, 131, 0.18),
-    0 4px 12px rgba(101, 123, 131, 0.10),
-    inset 0 1px 1px rgba(255, 255, 255, 0.80),
-    inset 0 -1px 1px rgba(101, 123, 131, 0.08);
+    0 16px 38px rgba(101, 123, 131, 0.09),
+    0 4px 12px rgba(101, 123, 131, 0.5),
+    inset 0 1px 1px rgba(255, 255, 255, 0.4),
+    inset 0 -1px 1px rgba(101, 123, 131, 0.04);
 }
 
 /* -------------------------------------------------------------------------
