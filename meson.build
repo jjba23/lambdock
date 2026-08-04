@@ -21,16 +21,15 @@ project('lambdock', 'c',
   default_options: [
     'c_std=gnu17',            # Modern standard + POSIX/GNU extensions required by GTK/Wayland
     'warning_level=3',        # -Wall -Wextra -Wpedantic
-    'werror=true',            # Treat warnings as errors
+    'werror=true',            # Treat warnings as errors for project code
     'b_lto=true',             # Link-Time Optimization (LTO)
-    'b_pie=true',             # Position-Independent Executable (security hardening)
+    'b_pie=true',             # Position-Independent Executable
   ]
 )
 
 cc = meson.get_compiler('c')
-wayland = import('wayland')  # Built-in Meson module for Wayland code generation
 
-# --- Pedantic & Strict Compiler Warnings ---
+# --- Pedantic & Strict Compiler Warnings for Project Code ---
 desired_warning_flags = [
   '-Wpedantic',
   '-Wshadow',
@@ -38,7 +37,7 @@ desired_warning_flags = [
   '-Wmissing-prototypes',
   '-Wredundant-decls',
   '-Wimplicit-fallthrough',
-  '-Wvla',                    # Disallow Variable-Length Arrays (prevents stack overhead & safety issues)
+  '-Wvla',                    # Disallow Variable-Length Arrays
   '-Wundef',
   '-Wformat=2',
   '-Wformat-security',
@@ -52,24 +51,35 @@ add_project_arguments(
   language: 'c'
 )
 
-# GNU source definitions required when building under high strictness modes with POSIX APIs
+# Required POSIX feature macro under strict C modes
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
-# --- Dependencies ---
-gtk_dep = dependency('gtk4', version: '>= 4.0')
-guile_dep = dependency('guile-3.0', version: '>= 3.0')
-layer_shell_dep = dependency('gtk4-layer-shell-0')
-wayland_client_dep = dependency('wayland-client', version: '>= 1.20')
+# --- Dependencies (marked as system headers to suppress external warnings) ---
+gtk_dep = dependency('gtk4', include_type: 'system')
+guile_dep = dependency('guile-3.0', include_type: 'system')
+layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system')
+wayland_client_dep = dependency('wayland-client', include_type: 'system')
 
-# Protocol location and Wayland code generation
+# --- Wayland Code Generation ---
 wlr_protocols_dep = dependency('wlr-protocols')
 wlr_pkgdatadir = wlr_protocols_dep.get_variable(pkgconfig: 'pkgdatadir')
 toplevel_xml = wlr_pkgdatadir / 'unstable/wlr-foreign-toplevel-management-unstable-v1.xml'
 
-wl_proto_src = wayland.scan_xml(
-  toplevel_xml,
-  client: true,
-  public: false
+wayland_scanner = find_program('wayland-scanner')
+
+# Custom targets preserve exact output header naming expected by source code
+wl_proto_src = custom_target(
+  'wlr-foreign-toplevel-protocol-c',
+  input: toplevel_xml,
+  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.c',
+  command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+)
+
+wl_proto_h = custom_target(
+  'wlr-foreign-toplevel-protocol-h',
+  input: toplevel_xml,
+  output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.h',
+  command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
 )
 
 # --- Path Configuration & Preprocessor Defines ---
@@ -89,6 +99,8 @@ add_project_arguments(
 install_subdir('scheme/lambdock', install_dir: scheme_install_path)
 install_subdir('resources/css', install_dir: pkgdatadir)
 
+inc = include_directories('src')
+
 sources = files(
   'src/main.c',
   'src/ui_helpers.c',
@@ -100,12 +112,14 @@ sources = files(
 executable('lambdock',
   sources,
   wl_proto_src,
+  wl_proto_h,
+  include_directories: inc,
   dependencies: [
     gtk_dep,
     guile_dep,
     layer_shell_dep,
     wayland_client_dep,
   ],
-  gnu_symbol_visibility: 'hidden',  # Hides dynamic symbols to reduce executable size and speed up calls
+  gnu_symbol_visibility: 'hidden',
   install: true
 )
