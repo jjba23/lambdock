@@ -260,6 +260,7 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
                                      "Codeberg Repository");
 #ifdef DOCK_LOGO_PATH
   if (g_file_test(DOCK_LOGO_PATH, G_FILE_TEST_EXISTS)) {
+    LOG_C_INFO("About", "Looking for project logo: %s", DOCK_LOGO_PATH);
     GFile *logo_file = g_file_new_for_path(DOCK_LOGO_PATH);
     GError *error = NULL;
 
@@ -270,7 +271,7 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
                                 GDK_PAINTABLE(texture));
       g_object_unref(texture);
     } else {
-      LOG_C_WARN("About", "Failed to load SVG logo from %s: %s", DOCK_LOGO_PATH,
+      LOG_C_WARN("About", "Failed to load logo from %s: %s", DOCK_LOGO_PATH,
                  error ? error->message : "Unknown error");
       if (error)
         g_clear_error(&error);
