@@ -9,4 +9,7 @@
   <gresource prefix="/org/scheme/lambdock">
     <file>css/snow-leopard.css</file>
   </gresource>
+  <gresource prefix="/org/scheme/lambdock">
+    <file>css/solarized-light.css</file>
+  </gresource>
 </gresources>
