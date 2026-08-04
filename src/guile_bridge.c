@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "guile_bridge.h"
+#include "logger.h"
 #include "ui_helpers.h"
 
 void setup_guile_load_path(void) {
@@ -131,8 +132,7 @@ void populate_dock_items(LambdockState *state) {
       // Instantiate unified favorite dock item
       create_dock_item(state, name, icon, exec, name, TRUE);
 
-      g_print("[Lambdock] Created unified favorite item: %s (%s)\n", name,
-              exec);
+      LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
 
       // Clean up heap string allocations
       free(name);
@@ -141,7 +141,7 @@ void populate_dock_items(LambdockState *state) {
     } else if (g_strcmp0(type_str, "separator") == 0) {
       GtkWidget *sep = create_separator(sep_orient);
       gtk_box_append(GTK_BOX(state->box), sep);
-      g_print("[Lambdock] Created separator\n");
+      LOG_C_INFO("GuileBridge", "Created layout separator");
     }
 
     free(type_str);

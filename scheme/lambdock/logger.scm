@@ -49,10 +49,10 @@
   (format-log "DEBUG" %clr-dim subsystem msg args))
 
 (define (log-info subsystem msg . args)
-  (format-log "INFO " %clr-green subsystem msg args))
+  (format-log "INFO" %clr-green subsystem msg args))
 
 (define (log-warn subsystem msg . args)
-  (format-log "WARN " %clr-yellow subsystem msg args))
+  (format-log "WARN" %clr-yellow subsystem msg args))
 
 (define (log-error subsystem msg . args)
   (format-log "ERROR" %clr-red subsystem msg args))

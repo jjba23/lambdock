@@ -239,13 +239,12 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
     if (toplevel_manager) {
       zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager,
                                                     &manager_listener, state);
-      g_print(
-          "[Lambdock Tracker] Bound foreign toplevel manager successfully.\n");
+      LOG_C_INFO("Tracker", "Bound foreign toplevel manager successfully.");
     }
   } else if (g_strcmp0(interface, wl_seat_interface.name) == 0) {
     if (!default_seat) {
       default_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
-      g_print("[Lambdock Tracker] Bound default Wayland seat successfully.\n");
+      LOG_C_INFO("Tracker", "Bound default Wayland seat successfully.");
     }
   }
 }

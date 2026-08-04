@@ -18,6 +18,7 @@
 (define-module (lambdock state)
   #:declarative? #f
   #:use-module (ice-9 format)
+  #:use-module (lambdock logger)
   #:export (configure-dock! get-dock-items
                             get-dock-position
                             get-icon-size

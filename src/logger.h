@@ -35,12 +35,12 @@
 
 #define LOG_C_INFO(subsystem, fmt, ...)                                        \
   g_print(LOG_CLR_MAGENTA "[C:%s]" LOG_CLR_RESET " " LOG_CLR_GREEN             \
-                          "[INFO ]" LOG_CLR_RESET " " fmt "\n",                \
+                          "[INFO]" LOG_CLR_RESET " " fmt "\n",                 \
           subsystem, ##__VA_ARGS__)
 
 #define LOG_C_WARN(subsystem, fmt, ...)                                        \
   g_warning(LOG_CLR_MAGENTA "[C:%s]" LOG_CLR_RESET " " LOG_CLR_YELLOW          \
-                            "[WARN ]" LOG_CLR_RESET " " fmt,                   \
+                            "[WARN]" LOG_CLR_RESET " " fmt                     \
             subsystem, ##__VA_ARGS__)
 
 #define LOG_C_ERROR(subsystem, fmt, ...)                                       \
