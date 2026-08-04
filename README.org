@@ -119,7 +119,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 - Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 - Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted flass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 - Snow Leopard 3D Glass 🍎  (~'snow-leopard~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
-- Solarized Light (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
+- Solarized Light ☀️ (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 
