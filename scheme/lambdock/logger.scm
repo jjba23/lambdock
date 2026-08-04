@@ -9,11 +9,11 @@
 
 ;; lambdock is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+;; along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock logger)
   #:use-module (ice-9 format)
@@ -36,12 +36,12 @@
 (define (format-log level-str color subsystem msg args)
   (let ((formatted-msg (apply format #f msg args)))
     (format #t
-            "~a[Scheme:~a]~a ~a[~a]~a ~a~%"
-            %clr-cyan
-            subsystem
-            %clr-reset
+            "~a[~a]~a[lambdock]~a[Scheme:~a]~a ~a~%"
             color
             level-str
+            %clr-reset
+            %clr-cyan
+            subsystem
             %clr-reset
             formatted-msg)))
 
