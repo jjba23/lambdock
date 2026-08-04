@@ -53,7 +53,6 @@
                  (lambda ()
                    (load config-file)
                    (let* ((settings (resolve-dock-configuration)))
-                     (write settings)
                      (configure-dock! #:position (assq-ref settings
                                                            'dock-position)
                                       #:icon-size (assq-ref settings

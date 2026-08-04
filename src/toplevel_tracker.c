@@ -124,7 +124,7 @@ toplevel_handle_app_id(void *data,
   if (!state)
     return;
 
-  g_print("[Lambdock Tracker] App ID resolved: '%s'\n", app_id);
+  LOG_C_INFO("Tracker", "App ID resolved: '%s'\n", app_id);
 
   // Search if a favorite dock item already exists matching this app_id
   DockItem *item = find_dock_item_by_app_id(state, app_id);
