@@ -57,7 +57,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
                   #:exec "alacritty"
-                  #:icon "org.gnome.Terminal")
+                  #:icon "Alacritty")
         (app-item #:name "Google Chrome"
                   #:exec "google-chrome"
                   #:icon "google-chrome")
@@ -67,17 +67,38 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
         (app-item #:name "Files"
                   #:exec "nautilus -w"
                   #:icon "org.gnome.Nautilus")
+        (app-item #:name "Nyxt"
+                  #:exec "flatpak run engineer.atlas.Nyxt"
+                  #:icon "engineer.atlas.Nyxt")
+        (app-item #:name "Agenda"
+                  #:exec "gnome-calendar"
+                  #:icon "org.gnome.Calendar")
+        (app-item #:name "Calculator"
+                  #:exec "gnome-calculator"
+                  #:icon "org.gnome.Calculator")
+        (app-item #:name "WhatsApp"
+                  #:exec "flatpak run com.rtosta.zapzap"
+                  #:icon "com.rtosta.zapzap")
         (separator-item)
         (app-item #:name "Emacs"
                   #:exec "emacsclient -c"
                   #:icon "emacs")
+        (app-item #:name "IntelliJ"
+                  #:exec "intellij-idea"
+                  #:icon "jetbrains-idea")
+        (app-item #:name "Bruno"
+                  #:exec "flatpak run com.usebruno.Bruno"
+                  #:icon "com.usebruno.Bruno")
         (separator-item)
         (app-item #:name "System Monitor"
                   #:exec "alacritty -e btop"
-                  #:icon "utilities-system-monitor")
+                  #:icon "btop")
         (app-item #:name "Audio Manager"
                   #:exec "pavucontrol"
-                  #:icon "multimedia-volume-control")))
+                  #:icon "pavucontrol")
+        (app-item #:name "1Password"
+                  #:exec "1password"
+                  #:icon "1password")))
 #+end_src
 
 *** Available Item Constructors
