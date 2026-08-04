@@ -106,7 +106,6 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 | Scheme Function | Description | Key Arguments |
 |-----------------+-------------+---------------|
 | ~(app-item ...)~ | Generic application launcher | ~#:name~, ~#:icon~, ~#:exec~ |
-| ~(terminal-item ...)~ | Helper constructor for terminal emulators | ~#:name~, ~#:icon~, ~#:exec~ (default: ~"alacritty"~) |
 | ~(separator-item)~ | Vertical/Horizontal layout divider bar | None |
 
 

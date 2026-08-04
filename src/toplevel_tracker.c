@@ -134,9 +134,8 @@ toplevel_handle_app_id(void *data,
                app_id);
   } else {
     // If no favorite item matches, instantiate dynamic running app dock item
-    g_print(
-        "[Lambdock Tracker] Creating dynamic dock item for running app '%s'\n",
-        app_id);
+    LOG_C_INFO("Tracker", "Creating dynamic dock item for running app '%s'\n",
+               app_id);
     item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE);
   }
 
@@ -154,8 +153,8 @@ toplevel_handle_closed(void *data,
 
   DockItem *item = tracker->dock_item;
   if (item) {
-    g_print("[Lambdock Tracker] Window closed for app_id: '%s'\n",
-            item->app_id ? item->app_id : "unknown");
+    LOG_C_INFO("Tracker", "Window closed for app_id: '%s'\n",
+               item->app_id ? item->app_id : "unknown");
 
     // Remove window instance handle from item
     dock_item_remove_window(item, handle);
@@ -266,6 +265,6 @@ void init_toplevel_tracker(LambdockState *state) {
     };
 
     wl_registry_add_listener(registry, &registry_listener, state);
-    g_print("[Lambdock Tracker] Initialized toplevel tracker listener.\n");
+    LOG_C_INFO("Tracker", "Initialized toplevel tracker listener.\n");
   }
 }

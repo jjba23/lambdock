@@ -29,7 +29,6 @@
                            dock-item-exec
                            app-item
                            separator-item
-                           terminal-item
                            configure-dock!
                            get-dock-items
                            get-dock-position
@@ -45,10 +44,6 @@
 
 (define (init-dock!)
   "Entry point invoked after C runtime initialization."
-  (format #t "
-[Scheme] Core dock module initialized.~%")
-
-  ;; Attempt to load the user's configuration file
   (let ((config-file (get-config-path)))
     (if (and config-file
              (file-exists? config-file))
@@ -70,10 +65,9 @@
                                       #:auto-hide? (assq-ref settings
                                                              'dock-auto-hide?))))
                  (lambda (key . args)
-                   (format #t "\n[Scheme] ERROR loading ~a: ~a ~a~%"
-                           config-file key args))))
-        (format #t "
-[Scheme] No settings file found at: ~a~%" config-file)))
+                   (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
+                              key args))))
+        (log-warn "Core" "No settings file found at: ~a~%" config-file)))
 
   ;; Load fallback default dock items if no items were registered
   (when (null? *dock-items*)
@@ -81,5 +75,7 @@
               "No configured items found, loading default configuration...")
     (configure-dock! #:position 'bottom
                      #:icon-size 48
-                     #:items (list (terminal-item))
+                     #:items (list (app-item #:name "Terminal"
+                                             #:icon "Alacritty"
+                                             #:exec "alacritty"))
                      #:auto-hide? #f)))

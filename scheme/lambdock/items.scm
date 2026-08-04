@@ -26,10 +26,7 @@
 
                         ;; Generic Constructors
                         app-item
-                        separator-item
-
-                        ;; Helper Constructors
-                        terminal-item))
+                        separator-item))
 
 ;; =============================================================================
 ;; Data Structures
@@ -66,12 +63,3 @@
 ;; Generic constructor for separators
 (define (separator-item)
   (make-dock-item 'separator "" "" ""))
-
-;; Specialized Helper Constructors
-(define* (terminal-item #:key (name "Terminal")
-                        (icon "utilities-terminal")
-                        (exec "alacritty"))
-  "Constructs a terminal launcher."
-  (app-item #:name name
-            #:icon icon
-            #:exec exec))
