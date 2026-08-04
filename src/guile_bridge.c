@@ -166,3 +166,23 @@ char *get_monitor_config(void) {
   }
   return g_strdup("default");
 }
+
+char *get_config_path_c(void) {
+  SCM get_path_fn = scm_c_public_ref("lambdock loader", "get-config-path");
+
+  if (scm_is_true(get_path_fn)) {
+    SCM res = scm_call_0(get_path_fn);
+    if (scm_is_string(res)) {
+      return scm_to_utf8_string(res);
+    }
+  }
+  return NULL;
+}
+
+void reload_guile_config(void) {
+  LOG_C_INFO("GuileBridge", "Re-evaluating Scheme configuration file...");
+  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
+  if (scm_is_true(init_fn)) {
+    scm_call_0(init_fn);
+  }
+}

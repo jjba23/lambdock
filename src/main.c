@@ -22,6 +22,92 @@
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
 
+/* Global list of active LambdockState instances and file monitor handle */
+static GList *g_active_states = NULL;
+static guint g_reload_timer_id = 0;
+
+/**
+ * on_config_reload_timeout:
+ * Debounce callback executed 150ms after file writes complete.
+ */
+static gboolean on_config_reload_timeout(gpointer user_data) {
+  (void)user_data;
+
+  // 1. Re-evaluate Scheme environment
+  reload_guile_config();
+
+  // 2. Refresh UI across all running dock instances
+  for (GList *l = g_active_states; l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    reload_dock_instance(state);
+  }
+
+  g_reload_timer_id = 0;
+  return G_SOURCE_REMOVE;
+}
+
+/**
+ * on_file_changed_cb:
+ * Callback triggered by GFileMonitor when settings.scm or styles.css are
+ * edited.
+ */
+static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
+                               GFile *other_file, GFileMonitorEvent event_type,
+                               gpointer user_data) {
+  (void)monitor;
+  (void)file;
+  (void)other_file;
+  (void)user_data;
+
+  if (event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT ||
+      event_type == G_FILE_MONITOR_EVENT_CHANGED ||
+      event_type == G_FILE_MONITOR_EVENT_CREATED) {
+
+    // Debounce rapid editor write events (150ms grace period)
+    if (g_reload_timer_id > 0) {
+      g_source_remove(g_reload_timer_id);
+    }
+    g_reload_timer_id = g_timeout_add(150, on_config_reload_timeout, NULL);
+  }
+}
+
+/**
+ * setup_config_file_monitors:
+ * Binds GFileMonitor listeners to settings.scm and styles.css.
+ */
+static void setup_config_file_monitors(void) {
+  char *config_path = get_config_path_c();
+  if (config_path) {
+    GFile *scheme_file = g_file_new_for_path(config_path);
+    GFileMonitor *scheme_mon =
+        g_file_monitor_file(scheme_file, G_FILE_MONITOR_NONE, NULL, NULL);
+
+    if (scheme_mon) {
+      g_signal_connect(scheme_mon, "changed", G_CALLBACK(on_file_changed_cb),
+                       NULL);
+      LOG_C_INFO("Main", "Watching Scheme config for live hot-reload: %s",
+                 config_path);
+    }
+    g_object_unref(scheme_file);
+    g_free(config_path);
+  }
+
+  const char *config_dir = g_get_user_config_dir();
+  char *user_css_path =
+      g_build_filename(config_dir, "lambdock", "styles.css", NULL);
+  GFile *css_file = g_file_new_for_path(user_css_path);
+  GFileMonitor *css_mon =
+      g_file_monitor_file(css_file, G_FILE_MONITOR_NONE, NULL, NULL);
+
+  if (css_mon) {
+    g_signal_connect(css_mon, "changed", G_CALLBACK(on_file_changed_cb), NULL);
+    LOG_C_INFO("Main", "Watching user CSS for live hot-reload: %s",
+               user_css_path);
+  }
+  g_object_unref(css_file);
+  g_free(user_css_path);
+}
+
 /* =========================================================================
  * GTK APPLICATION ACTIVATION (UI CONSTRUCTION & SETUP)
  * ========================================================================= */
@@ -43,7 +129,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  // Construct Window & Layout
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
@@ -54,7 +139,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
 
   populate_dock_items(state);
 
-  // Context Menu & Gestures
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "Quit", "app.quit");
 
@@ -78,6 +162,9 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
 
+  // Track active state globally for hot-reloading
+  g_active_states = g_list_append(g_active_states, state);
+
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
@@ -98,59 +185,30 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   setup_icon_theme();
 
-  // Application-wide actions
   GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
 
-  // --- Multi-Monitor Resolution Engine ---
+  // Multi-Monitor resolution
   char *monitor_target = get_monitor_config();
-  LOG_C_INFO("Main", "monitor_target: %s", monitor_target);
   GdkDisplay *display = gdk_display_get_default();
   GListModel *monitors = gdk_display_get_monitors(display);
   guint n_monitors = g_list_model_get_n_items(monitors);
 
   if (g_strcmp0(monitor_target, "all") == 0) {
-    LOG_C_INFO("Main", "Spawning lambdock instances across ALL %u monitors...",
-               n_monitors);
     for (guint i = 0; i < n_monitors; i++) {
       GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-      const char *connector = gdk_monitor_get_connector(mon);
-      LOG_C_INFO("Main", "Dock initialized on output: %s",
-                 connector ? connector : "unknown");
       create_dock_instance(app, mon);
       g_object_unref(mon);
     }
-  } else if (g_strcmp0(monitor_target, "default") != 0) {
-    // Specific named connector target (e.g. "DP-1")
-    gboolean found = FALSE;
-    for (guint i = 0; i < n_monitors; i++) {
-      GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-      const char *connector = gdk_monitor_get_connector(mon);
-      if (connector && g_strcmp0(connector, monitor_target) == 0) {
-        LOG_C_INFO("Main", "Spawning dock strictly on target monitor: %s",
-                   connector);
-        create_dock_instance(app, mon);
-        found = TRUE;
-        g_object_unref(mon);
-        break;
-      }
-      g_object_unref(mon);
-    }
-    if (!found) {
-      LOG_C_WARN(
-          "Main",
-          "Target monitor '%s' not found! Falling back to default output.",
-          monitor_target);
-      create_dock_instance(app, NULL);
-    }
   } else {
-    // Default compositor selection
-    LOG_C_INFO("Main", "Spawning dock on default primary output.");
     create_dock_instance(app, NULL);
   }
 
   g_free(monitor_target);
+
+  // Initialize file monitoring for hot-reloading
+  setup_config_file_monitors();
 }
 
 /* =========================================================================

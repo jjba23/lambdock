@@ -17,6 +17,7 @@
 
 #include "ui_helpers.h"
 #include "dock_window.h"
+#include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
 
@@ -424,11 +425,22 @@ void free_dock_item(DockItem *item) {
   if (!item)
     return;
 
+  // 1. Explicitly unparent child popover BEFORE destroying parent button
   if (item->popover) {
     gtk_widget_unparent(item->popover);
     item->popover = NULL;
   }
 
+  // 2. Unparent button from layout container box if still attached
+  if (item->button) {
+    GtkWidget *parent = gtk_widget_get_parent(item->button);
+    if (parent && GTK_IS_BOX(parent)) {
+      gtk_box_remove(GTK_BOX(parent), item->button);
+    }
+    item->button = NULL;
+  }
+
+  // 3. Clean up active window trackers
   for (GList *l = item->windows; l != NULL; l = l->next) {
     AppWindow *win = (AppWindow *)l->data;
     g_free(win->title);
@@ -441,6 +453,23 @@ void free_dock_item(DockItem *item) {
   g_free(item->exec);
   g_free(item->app_id);
   g_free(item);
+}
+
+void clear_favorite_dock_items(LambdockState *state) {
+  if (!state || !state->dock_items)
+    return;
+
+  GList *curr = state->dock_items;
+  while (curr != NULL) {
+    GList *next = curr->next;
+    DockItem *item = (DockItem *)curr->data;
+
+    if (item && item->is_favorite) {
+      state->dock_items = g_list_delete_link(state->dock_items, curr);
+      free_dock_item(item); // Unparents popover and button cleanly in order
+    }
+    curr = next;
+  }
 }
 
 AppWindow *
@@ -549,10 +578,24 @@ GtkWidget *create_separator(GtkOrientation orientation) {
   return separator;
 }
 
-void load_custom_css(LambdockState *state) {
-  GtkCssProvider *provider = gtk_css_provider_new();
-  char *css_path = NULL;
+// Static CSS providers to support hot-reloading without duplicating memory
+static GtkCssProvider *g_base_css_provider = NULL;
+static GtkCssProvider *g_user_css_provider = NULL;
 
+void load_custom_css(LambdockState *state) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return;
+
+  // 1. BASE THEME CSS
+  if (!g_base_css_provider) {
+    g_base_css_provider = gtk_css_provider_new();
+    gtk_style_context_add_provider_for_display(
+        display, GTK_STYLE_PROVIDER(g_base_css_provider),
+        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  }
+
+  char *css_path = NULL;
 #ifdef DOCK_CSS_PATH
   if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_IS_DIR)) {
     char *filename = g_strdup_printf(
@@ -562,40 +605,46 @@ void load_custom_css(LambdockState *state) {
   }
 #endif
 
-  if (css_path) {
-    g_print("[Lambdock] Loading base CSS from: %s\n", css_path);
-    gtk_css_provider_load_from_path(provider, css_path);
+  if (css_path && g_file_test(css_path, G_FILE_TEST_EXISTS)) {
+    LOG_C_INFO("UI", "Loading base CSS theme from: %s", css_path);
+    gtk_css_provider_load_from_path(g_base_css_provider, css_path);
     g_free(css_path);
-  } else {
-    g_warning("[Lambdock] Could not locate dock.css");
   }
 
-  // Register base application styles
-  gtk_style_context_add_provider_for_display(
-      gdk_display_get_default(), GTK_STYLE_PROVIDER(provider),
-      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-
-  g_object_unref(provider);
-
-  // --- USER OVERRIDE CSS (~/.config/lambdock/styles.css) ---
+  // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
       g_build_filename(config_dir, "lambdock", "styles.css", NULL);
 
   if (g_file_test(user_css_path, G_FILE_TEST_EXISTS)) {
-    GtkCssProvider *user_provider = gtk_css_provider_new();
-    g_print("[Lambdock] Loading user CSS override from: %s\n", user_css_path);
-
-    gtk_css_provider_load_from_path(user_provider, user_css_path);
-
-    // GTK_STYLE_PROVIDER_PRIORITY_USER ensures user styles override
-    // GTK_STYLE_PROVIDER_PRIORITY_APPLICATION
-    gtk_style_context_add_provider_for_display(
-        gdk_display_get_default(), GTK_STYLE_PROVIDER(user_provider),
-        GTK_STYLE_PROVIDER_PRIORITY_USER);
-
-    g_object_unref(user_provider);
+    if (!g_user_css_provider) {
+      g_user_css_provider = gtk_css_provider_new();
+      gtk_style_context_add_provider_for_display(
+          display, GTK_STYLE_PROVIDER(g_user_css_provider),
+          GTK_STYLE_PROVIDER_PRIORITY_USER);
+    }
+    LOG_C_INFO("UI", "Loading user CSS override from: %s", user_css_path);
+    gtk_css_provider_load_from_path(g_user_css_provider, user_css_path);
   }
 
   g_free(user_css_path);
+}
+
+void reload_dock_instance(LambdockState *state) {
+  if (!state)
+    return;
+
+  LOG_C_INFO("UI", "Hot-reloading UI layout and theme state...");
+
+  // Update theme and reload CSS
+  g_free(state->theme);
+  state->theme = get_theme_config();
+  load_custom_css(state);
+
+  // Update auto-hide mode
+  state->auto_hide = get_autohide_config();
+
+  // Clear favorite widgets and repopulate from updated Scheme state
+  clear_favorite_dock_items(state);
+  populate_dock_items(state);
 }

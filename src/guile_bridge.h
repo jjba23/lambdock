@@ -76,4 +76,19 @@ void populate_dock_items(LambdockState *state);
  */
 char *get_monitor_config(void);
 
+/**
+ * get_config_path_c:
+ *
+ * Calls Guile Scheme function 'get-config-path' to resolve XDG config path.
+ * Returns: Heap allocated string containing path to settings.scm.
+ */
+char *get_config_path_c(void);
+
+/**
+ * reload_guile_config:
+ *
+ * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse user settings.scm.
+ */
+void reload_guile_config(void);
+
 #endif // GUILE_BRIDGE_H

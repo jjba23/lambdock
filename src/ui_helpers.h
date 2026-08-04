@@ -119,4 +119,22 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
  */
 GtkWidget *create_separator(GtkOrientation orientation);
 
+/**
+ * clear_favorite_dock_items:
+ * @state: Pointer to LambdockState structure.
+ *
+ * Removes and frees pinned favorite launchers from the dock box container
+ * while preserving active running application window trackers.
+ */
+void clear_favorite_dock_items(LambdockState *state);
+
+/**
+ * reload_dock_instance:
+ * @state: Pointer to LambdockState structure.
+ *
+ * Re-applies active theme styles, auto-hide settings, and repopulates pinned
+ * launchers dynamically on an existing dock window instance.
+ */
+void reload_dock_instance(LambdockState *state);
+
 #endif // UI_HELPERS_H
