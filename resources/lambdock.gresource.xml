@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/vanilla.css</file>
   </gresource>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/vanilla-light.css</file>
   </gresource>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/snow-leopard.css</file>
   </gresource>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/solarized-light.css</file>
   </gresource>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/unity.css</file>
   </gresource>
-  <gresource prefix="/org/scheme/lambdock">
+  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/solarized-light.css</file>
   </gresource>
 </gresources>

@@ -110,4 +110,15 @@ void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
  */
 void on_popover_closed(GtkPopover *popover, gpointer user_data);
 
+/**
+ * on_about_action:
+ * @action: Triggered GSimpleAction object.
+ * @parameter: Action target variant parameter (unused).
+ * @user_data: Pointer to running GtkApplication context.
+ *
+ * Callback signal handler displaying the "About Lambdock" dialog window.
+ */
+void on_about_action(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data);
+
 #endif // DOCK_WINDOW_H

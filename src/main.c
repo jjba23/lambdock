@@ -140,6 +140,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   populate_dock_items(state);
 
   GMenu *menu_model = g_menu_new();
+  g_menu_append(menu_model, "About Lambdock", "app.about");
   g_menu_append(menu_model, "Quit", "app.quit");
 
   GtkWidget *popover =
@@ -185,6 +186,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   setup_icon_theme();
 
+  GSimpleAction *about_action = g_simple_action_new("about", NULL);
+  g_signal_connect(about_action, "activate", G_CALLBACK(on_about_action), app);
+  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(about_action));
+
   GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
@@ -223,8 +228,8 @@ static void inner_main(void *data, int argc, char **argv) {
   (void)data;
 
   // Construct GtkApplication instance with reverse-DNS application ID
-  GtkApplication *app =
-      gtk_application_new("org.scheme.lambdock", G_APPLICATION_DEFAULT_FLAGS);
+  GtkApplication *app = gtk_application_new("org.jointhefreeworld.lambdock",
+                                            G_APPLICATION_DEFAULT_FLAGS);
 
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
   g_application_run(G_APPLICATION(app), argc, argv); // Blocks until app exits

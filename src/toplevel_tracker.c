@@ -117,6 +117,12 @@ toplevel_handle_app_id(void *data,
   if (!tracker || !app_id || *app_id == '\0')
     return;
 
+  // Ignore Lambdock's own windows (e.g. About Dialog, main window)
+  if (g_ascii_strcasecmp(app_id, "lambdock") == 0 ||
+      g_ascii_strcasecmp(app_id, "org.jointhefreeworld.lambdock") == 0) {
+    return;
+  }
+
   if (tracker->dock_item != NULL)
     return;
 
@@ -159,15 +165,12 @@ toplevel_handle_closed(void *data,
     // Remove window instance handle from item
     dock_item_remove_window(item, handle);
 
-    // If an unpinned running application closes all instances, remove its dock
-    // button
+    // If an unpinned running application closes all instances, clean it up
     if (item->windows == NULL && !item->is_favorite) {
-      if (item->state && item->state->box) {
-        gtk_box_remove(GTK_BOX(item->state->box), item->button);
-      }
       if (item->state) {
         item->state->dock_items = g_list_remove(item->state->dock_items, item);
       }
+      // free_dock_item safely unparents popover FIRST, then removes the button
       free_dock_item(item);
     }
   }

@@ -301,3 +301,36 @@ void on_quit_action(GSimpleAction *action, GVariant *parameter,
   GtkApplication *app = GTK_APPLICATION(user_data);
   g_application_quit(G_APPLICATION(app)); // Shutdown main GLib event loop
 }
+
+void on_about_action(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data) {
+  (void)action;
+  (void)parameter;
+  GtkApplication *app = GTK_APPLICATION(user_data);
+
+  GtkWidget *about = gtk_about_dialog_new();
+  gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "Lambdock");
+  gtk_about_dialog_set_comments(
+      GTK_ABOUT_DIALOG(about),
+      "A lightweight, customizable Wayland dock driven by Guile Scheme.");
+  gtk_about_dialog_set_copyright(GTK_ABOUT_DIALOG(about),
+                                 "Copyright \xc2\xa9 Josep Bigorra");
+  gtk_about_dialog_set_license_type(GTK_ABOUT_DIALOG(about),
+                                    GTK_LICENSE_GPL_3_0);
+
+  // Codeberg link button
+  gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
+                               "https://codeberg.org/jjbigorra/lambdock");
+  gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
+                                     "Codeberg Repository");
+
+  // Logo (resolves via GTK icon theme or assets)
+  gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
+
+  GtkWindow *active_win = gtk_application_get_active_window(app);
+  if (active_win) {
+    gtk_window_set_transient_for(GTK_WINDOW(about), active_win);
+  }
+  gtk_window_set_modal(GTK_WINDOW(about), TRUE);
+  gtk_window_present(GTK_WINDOW(about));
+}
