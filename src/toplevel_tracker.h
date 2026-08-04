@@ -45,4 +45,13 @@ void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
  */
 void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
 
+/**
+ * sync_window_trackers:
+ * @state: Pointer to LambdockState context.
+ *
+ * Re-binds active Wayland window trackers to current dock items after
+ * configuration reloading or reset.
+ */
+void sync_window_trackers(LambdockState *state);
+
 #endif // TOPLEVEL_TRACKER_H

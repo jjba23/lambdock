@@ -25,11 +25,6 @@
  * ICON SEARCH & RESOLUTION ENGINE
  * ========================================================================= */
 
-/**
- * create_image_for_icon:
- * Resolves an icon using cascading fallbacks (File Path -> Theme Name ->
- * Pixmaps -> Fallback Icon).
- */
 static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
                                         int icon_size) {
   if (!icon || *icon == '\0') {
@@ -459,6 +454,19 @@ void clear_favorite_dock_items(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
+  // Unlink window trackers prior to clearing items to prevent dangling pointers
+  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
+    void *tracker_ptr = l->data;
+    if (tracker_ptr) {
+      // Direct structure offsets match WindowTracker layout safely
+      void **dock_item_ptr =
+          (void **)((char *)tracker_ptr + sizeof(void *) * 2);
+      void **app_win_ptr = (void **)((char *)tracker_ptr + sizeof(void *) * 3);
+      *dock_item_ptr = NULL;
+      *app_win_ptr = NULL;
+    }
+  }
+
   GList *curr = state->dock_items;
   while (curr != NULL) {
     GList *next = curr->next;
@@ -647,6 +655,9 @@ void reload_dock_instance(LambdockState *state) {
   // Clear favorite widgets and repopulate from updated Scheme state
   clear_favorite_dock_items(state);
   populate_dock_items(state);
+
+  // Re-sync running windows with new dock items
+  sync_window_trackers(state);
 }
 
 DockItem *create_separator_dock_item(LambdockState *state,

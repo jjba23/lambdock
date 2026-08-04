@@ -35,6 +35,8 @@ typedef struct {
   LambdockState *state;
   DockItem *dock_item;
   AppWindow *app_win;
+  char *title;
+  char *app_id;
 } WindowTracker;
 
 /* Global Wayland interface handles */
@@ -43,14 +45,12 @@ static struct wl_seat *default_seat = NULL;
 
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle && default_seat) {
-    // Send Wayland protocol request to activate window surface
     zwlr_foreign_toplevel_handle_v1_activate(handle, default_seat);
   }
 }
 
 void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle) {
-    // Send Wayland protocol request to close window surface
     zwlr_foreign_toplevel_handle_v1_close(handle);
   }
 }
@@ -65,12 +65,17 @@ toplevel_handle_title(void *data,
                       const char *title) {
   (void)handle;
   WindowTracker *tracker = (WindowTracker *)data;
+  if (!tracker)
+    return;
 
-  // Dynamically update stored window title string when application window title
-  // changes
-  if (tracker && tracker->app_win && title && *title != '\0') {
-    g_free(tracker->app_win->title);
-    tracker->app_win->title = g_strdup(title);
+  if (title) {
+    g_free(tracker->title);
+    tracker->title = g_strdup(title);
+
+    if (tracker->app_win) {
+      g_free(tracker->app_win->title);
+      tracker->app_win->title = g_strdup(title);
+    }
   }
 }
 
@@ -123,6 +128,9 @@ toplevel_handle_app_id(void *data,
     return;
   }
 
+  g_free(tracker->app_id);
+  tracker->app_id = g_strdup(app_id);
+
   if (tracker->dock_item != NULL)
     return;
 
@@ -130,7 +138,7 @@ toplevel_handle_app_id(void *data,
   if (!state)
     return;
 
-  LOG_C_INFO("Tracker", "App ID resolved: '%s'\n", app_id);
+  LOG_C_INFO("Tracker", "App ID resolved: '%s'", app_id);
 
   // Search if a favorite dock item already exists matching this app_id
   DockItem *item = find_dock_item_by_app_id(state, app_id);
@@ -140,7 +148,7 @@ toplevel_handle_app_id(void *data,
                app_id);
   } else {
     // If no favorite item matches, instantiate dynamic running app dock item
-    LOG_C_INFO("Tracker", "Creating dynamic dock item for running app '%s'\n",
+    LOG_C_INFO("Tracker", "Creating dynamic dock item for running app '%s'",
                app_id);
     item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE);
   }
@@ -148,6 +156,12 @@ toplevel_handle_app_id(void *data,
   // Bind window handle to DockItem window list
   tracker->dock_item = item;
   tracker->app_win = dock_item_add_window(item, handle);
+
+  // Apply title if received prior to app_id event
+  if (tracker->title && tracker->app_win) {
+    g_free(tracker->app_win->title);
+    tracker->app_win->title = g_strdup(tracker->title);
+  }
 }
 
 static void
@@ -159,20 +173,25 @@ toplevel_handle_closed(void *data,
 
   DockItem *item = tracker->dock_item;
   if (item) {
-    LOG_C_INFO("Tracker", "Window closed for app_id: '%s'\n",
+    LOG_C_INFO("Tracker", "Window closed for app_id: '%s'",
                item->app_id ? item->app_id : "unknown");
 
     // Remove window instance handle from item
     dock_item_remove_window(item, handle);
+    tracker->app_win = NULL;
 
     // If an unpinned running application closes all instances, clean it up
     if (item->windows == NULL && !item->is_favorite) {
       if (item->state) {
         item->state->dock_items = g_list_remove(item->state->dock_items, item);
       }
-      // free_dock_item safely unparents popover FIRST, then removes the button
       free_dock_item(item);
     }
+  }
+
+  if (tracker->state) {
+    tracker->state->window_trackers =
+        g_list_remove(tracker->state->window_trackers, tracker);
   }
 
   // Destroy protocol handle context
@@ -180,6 +199,8 @@ toplevel_handle_closed(void *data,
     zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
   }
 
+  g_free(tracker->title);
+  g_free(tracker->app_id);
   g_free(tracker);
 }
 
@@ -207,6 +228,8 @@ manager_handle_toplevel(void *data,
   WindowTracker *tracker = g_new0(WindowTracker, 1);
   tracker->handle = toplevel;
   tracker->state = state;
+
+  state->window_trackers = g_list_append(state->window_trackers, tracker);
 
   // Attach event listener callback table to newly opened window surface
   zwlr_foreign_toplevel_handle_v1_add_listener(toplevel, &toplevel_listener,
@@ -268,6 +291,45 @@ void init_toplevel_tracker(LambdockState *state) {
     };
 
     wl_registry_add_listener(registry, &registry_listener, state);
-    LOG_C_INFO("Tracker", "Initialized toplevel tracker listener.\n");
+    LOG_C_INFO("Tracker", "Initialized toplevel tracker listener.");
+  }
+}
+
+void sync_window_trackers(LambdockState *state) {
+  if (!state)
+    return;
+
+  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
+    WindowTracker *tracker = (WindowTracker *)l->data;
+    if (!tracker || !tracker->app_id)
+      continue;
+
+    // Search if a dock item already exists matching tracker->app_id
+    DockItem *item = find_dock_item_by_app_id(state, tracker->app_id);
+    if (!item) {
+      item = create_dock_item(state, tracker->app_id, tracker->app_id, NULL,
+                              tracker->app_id, FALSE);
+    }
+
+    tracker->dock_item = item;
+
+    // Check if app_win is already in item->windows
+    gboolean already_added = FALSE;
+    for (GList *w = item->windows; w != NULL; w = w->next) {
+      AppWindow *win = (AppWindow *)w->data;
+      if (win->handle == tracker->handle) {
+        tracker->app_win = win;
+        already_added = TRUE;
+        break;
+      }
+    }
+
+    if (!already_added) {
+      tracker->app_win = dock_item_add_window(item, tracker->handle);
+      if (tracker->title && tracker->app_win) {
+        g_free(tracker->app_win->title);
+        tracker->app_win->title = g_strdup(tracker->title);
+      }
+    }
   }
 }

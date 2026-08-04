@@ -41,10 +41,6 @@ typedef struct LambdockState LambdockState;
  * @handle: Low-level Wayland protocol handle managing this specific window
  * instance.
  * @title: Dynamically updated window title string (e.g., "Mozilla Firefox").
- *
- * Represents an individual open window on the desktop tracked via Wayland
- * protocols. Multiple AppWindow structures can belong to a single unified
- * DockItem.
  */
 typedef struct AppWindow {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
@@ -65,9 +61,6 @@ typedef struct AppWindow {
  * @windows: Pointer to GLib Doubly Linked List (GList*) storing active
  * AppWindow structs.
  * @state: Reference pointer back to the main LambdockState structure.
- *
- * Core data structure representing a unified launcher and running window
- * manager item.
  */
 typedef struct DockItem {
   char *name;
@@ -83,28 +76,6 @@ typedef struct DockItem {
 
 /**
  * LambdockState:
- * @window: Main GTK 4 Application Window instance.
- * @box: Central layout container box housing dock buttons and separators.
- * @popover: Root context popover menu for right-clicking open background areas.
- * @auto_hide: Configured preference indicating whether auto-hide behavior is
- * enabled.
- * @hide_timer_id: GLib timeout event source ID managing auto-hide countdown
- * delays.
- * @is_hidden: Boolean tracking whether the dock is currently off-screen.
- * @edge: Wayland Layer Shell screen attachment edge (TOP, BOTTOM, LEFT, RIGHT).
- * @orientation: GTK layout direction (HORIZONTAL for top/bottom, VERTICAL for
- * sides).
- * @tick_cb_id: GTK widget frame clock animation callback identifier.
- * @anim_start_time: Monotonic microsecond timestamp anchoring animation
- * progress.
- * @current_margin: Current animated edge offset margin in pixels.
- * @start_margin: Starting pixel offset when an animation slide begins.
- * @target_margin: Final desired pixel offset when an animation slide completes.
- * @active_popovers: Counter tracking currently open context menus (suspends
- * auto-hide).
- * @dock_items: GLib Doubly Linked List (GList*) containing all active DockItem
- * structures.
- *
  * Global application state structure passed across callbacks and modules.
  */
 struct LambdockState {
@@ -130,8 +101,9 @@ struct LambdockState {
   int target_margin;
   int active_popovers;
 
-  /* Unified Dock Items */
+  /* Unified Dock Items & Window Trackers */
   GList *dock_items;
+  GList *window_trackers;
 };
 
 #endif // LAMBDOCK_H
