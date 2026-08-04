@@ -74,3 +74,24 @@
      #:verbose? #t)
   ($ '("namcap PKGBUILD")
      #:verbose? #t))
+
+(define rpm-packages
+  (make-parameter (map symbol->string
+                       '(rpm-build
+                         rpmdevtools
+                         gcc
+                         meson
+                         ninja-build
+                         pkgconfig
+                         gtk4-devel
+                         gtk4-layer-shell-devel
+                         guile30-devel
+                         libwayland-client-devel))))
+
+(define (rpm-build)
+  "Build RPM package for Fedora/RHEL"
+  ($ '("rpmdev-setuptree") #:verbose? #t)
+  ($ '("tar -czvf ~/rpmbuild/SOURCES/lambdock-0.1.0.tar.gz --transform 's/^\\./lambdock-0.1.0/' --exclude='.git' --exclude='build' .")
+     #:verbose? #t)
+  ($ '("rpmbuild -ba lambdock.spec") #:verbose? #t)
+  ($ '("cp ~/rpmbuild/RPMS/*/*.rpm .") #:verbose? #t))

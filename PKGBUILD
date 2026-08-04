@@ -4,7 +4,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc="Wayland-native GTK4 dock extensible in Guile Scheme"
 arch=('x86_64' 'aarch64')
-url="https://github.com/yourusername/lambdock"
+url="https://codeberg.org/jjba23/lambdock"
 license=('GPL-3.0-or-later')
 
 # Runtime dependencies on Arch Linux
