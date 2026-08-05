@@ -19,25 +19,33 @@
   #:declarative? #f
   #:use-module (ice-9 format)
   #:use-module (lambdock logger)
-  #:export (configure-dock! get-dock-items
-                            get-dock-position
-                            get-icon-size
-                            get-dock-auto-hide?
-                            get-dock-theme
-                            get-dock-monitor
-                            get-dock-exclude-apps
-                            get-dock-enable-repl?
-                            *dock-theme*
-                            *dock-items*
-                            *dock-position*
-                            *dock-icon-size*
-                            *dock-monitor*
-                            *dock-auto-hide?*
-                            *dock-exclude-apps*
-                            *dock-enable-repl?*))
+  #:export ( ;Configuration Entry Point
+             configure-dock!
+
+            ;; Getters
+            get-dock-items
+            get-dock-position
+            get-dock-theme
+            get-dock-icon-size
+            get-dock-auto-hide?
+            get-dock-monitor
+            get-dock-exclude-apps
+            get-dock-enable-repl?
+            get-dock-repl-socket-path
+
+            ;; Setters
+            set-dock-items!
+            set-dock-position!
+            set-dock-theme!
+            set-dock-icon-size!
+            set-dock-auto-hide!
+            set-dock-monitor!
+            set-dock-exclude-apps!
+            set-dock-enable-repl!
+            set-dock-repl-socket-path!))
 
 ;; =============================================================================
-;; Application State
+;; Application State Variables
 ;; =============================================================================
 
 (define *dock-items*
@@ -64,57 +72,12 @@
 (define *dock-enable-repl?*
   #f)
 
+(define *dock-repl-socket-path*
+  "/tmp/lambdock-repl.sock")
+
 ;; =============================================================================
-;; Configuration Interface
+;; Getters
 ;; =============================================================================
-
-(define* (configure-dock! #:key (position 'bottom)
-                          (icon-size 48)
-                          (items '())
-                          (auto-hide? #f)
-                          (theme 'vanilla)
-                          (monitor 'default)
-                          (exclude-apps '())
-                          (enable-repl? #f))
-  "Sets the primary configuration parameters for the dock."
-  (log-info "State"
-   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a"
-   (length items)
-   icon-size
-   theme
-   auto-hide?
-   position
-   monitor
-   (length exclude-apps)
-   enable-repl?)
-
-  (when position
-    (set! *dock-position* position))
-  (when theme
-    (set! *dock-theme* theme))
-  (when icon-size
-    (set! *dock-icon-size* icon-size))
-  (when items
-    (set! *dock-items* items))
-  (when auto-hide?
-    (set! *dock-auto-hide?* auto-hide?))
-  (when monitor
-    (set! *dock-monitor* monitor))
-  (when exclude-apps
-    (set! *dock-exclude-apps* exclude-apps))
-  (when enable-repl?
-    (set! *dock-enable-repl?* enable-repl?))
-
-  (log-info "State"
-   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a"
-   (length items)
-   icon-size
-   theme
-   auto-hide?
-   position
-   monitor
-   (length exclude-apps)
-   enable-repl?))
 
 (define (get-dock-items)
   *dock-items*)
@@ -125,7 +88,7 @@
 (define (get-dock-theme)
   *dock-theme*)
 
-(define (get-icon-size)
+(define (get-dock-icon-size)
   *dock-icon-size*)
 
 (define (get-dock-auto-hide?)
@@ -139,3 +102,88 @@
 
 (define (get-dock-enable-repl?)
   *dock-enable-repl?*)
+
+(define (get-dock-repl-socket-path)
+  *dock-repl-socket-path*)
+
+;; =============================================================================
+;; Setters
+;; =============================================================================
+
+(define (set-dock-items! items)
+  (when (list? items)
+    (set! *dock-items* items)))
+
+(define (set-dock-position! pos)
+  (when pos
+    (set! *dock-position* pos)))
+
+(define (set-dock-theme! theme)
+  (when theme
+    (set! *dock-theme* theme)))
+
+(define (set-dock-icon-size! size)
+  (when (and (number? size)
+             (> size 0))
+    (set! *dock-icon-size* size)))
+
+(define (set-dock-auto-hide! auto-hide?)
+  (when (boolean? auto-hide?)
+    (set! *dock-auto-hide?* auto-hide?)))
+
+(define (set-dock-monitor! monitor)
+  (when monitor
+    (set! *dock-monitor* monitor)))
+
+(define (set-dock-exclude-apps! exclude-apps)
+  (when (list? exclude-apps)
+    (set! *dock-exclude-apps* exclude-apps)))
+
+(define (set-dock-enable-repl! enable?)
+  (when (boolean? enable?)
+    (set! *dock-enable-repl?* enable?)))
+
+(define (set-dock-repl-socket-path! path)
+  (when (and (string? path)
+             (not (string-null? path)))
+    (set! *dock-repl-socket-path* path)))
+
+;; =============================================================================
+;; Configuration Interface
+;; =============================================================================
+
+(define* (configure-dock! #:key (position 'bottom)
+                          (icon-size 48)
+                          (items '())
+                          (auto-hide? #f)
+                          (theme 'vanilla)
+                          (monitor 'default)
+                          (exclude-apps '())
+                          (enable-repl? #f)
+                          (repl-socket-path "/tmp/lambdock-repl.sock"))
+  "Sets the primary configuration parameters for the dock."
+  (log-info "State"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a, repl-socket: ~a"
+   (if (list? items)
+       (length items) 0)
+   icon-size
+   theme
+   auto-hide?
+   position
+   monitor
+   (if (list? exclude-apps)
+       (length exclude-apps) 0)
+   enable-repl?
+   repl-socket-path)
+
+  (set-dock-position! position)
+  (set-dock-theme! theme)
+  (set-dock-icon-size! icon-size)
+  (set-dock-items! items)
+  (set-dock-auto-hide! auto-hide?)
+  (set-dock-monitor! monitor)
+  (set-dock-exclude-apps! exclude-apps)
+  (set-dock-enable-repl! enable-repl?)
+  (set-dock-repl-socket-path! repl-socket-path)
+
+  (log-info "State" "Configuration loaded successfully."))

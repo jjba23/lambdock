@@ -42,7 +42,8 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   #:declarative? #t
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
-                          dock-monitor dock-exclude-apps dock-enable-repl?))
+                          dock-monitor dock-exclude-apps dock-enable-repl?
+                          dock-repl-socket-path))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
@@ -68,6 +69,10 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 
 ;; Whether to enable the lambdock REPL
 (define dock-enable-repl? #f)
+
+;; Location for the REPL unix socket
+(define dock-repl-socket-path
+  "/tmp/lambdock-repl.sock")
 
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
@@ -211,7 +216,44 @@ lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei]
 
 * Interactive lambdock REPL
 
+For purposes of development, experimentation and live hackability, lambdock features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
 
+In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. You can optionally customize the socket path using =#:repl-socket-path= (defaults to =/tmp/lambdock-repl.sock=):
+
+#+begin_src scheme
+(configure-dock!
+ #:position 'bottom
+ #:items (list ...)
+ ;; .... other settings
+ #:enable-repl? #t
+ #:repl-socket-path "/tmp/lambdock-repl.sock")
+#+end_src
+
+*** Option A: Emacs (Geiser) — Recommended
+
+If you use Emacs with Geiser:
+
+1. Run ~M-x geiser-connect-local~.
+2. Select ~guile~ as the Scheme implementation.
+3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
+
+Once connected, you can evaluate Scheme expressions against the running Lambdock instance (e.g., ~(use-modules (lambdock core))~ followed by ~(get-dock-items)~).
+
+*** Option B: Terminal via ~socat~ (With Readline Support)
+
+You can connect directly from your terminal using ~socat~ wrapped with ~rlwrap~ for line editing and history:
+
+#+begin_src sh
+rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+#+begin_src
+
+*** Option C: Terminal via ~nc~ (Netcat)
+
+Alternatively, connect using standard OpenBSD netcat:
+
+#+begin_src sh
+nc -U /tmp/lambdock-repl.sock
+#+begin_src
 
 -----------
 
