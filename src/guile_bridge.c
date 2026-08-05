@@ -89,6 +89,7 @@ char *get_theme_config(void) {
 
       if (g_strcmp0(theme_str, "snow-leopard") == 0 ||
           g_strcmp0(theme_str, "nature") == 0 ||
+          g_strcmp0(theme_str, "none") == 0 ||
           g_strcmp0(theme_str, "unity") == 0 ||
           g_strcmp0(theme_str, "vanilla-light") == 0 ||
           g_strcmp0(theme_str, "solarized-light") == 0) {

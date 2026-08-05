@@ -609,20 +609,40 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
-  const char *theme_name = (state && state->theme) ? state->theme : "vanilla";
+  const char *raw_theme = (state && state->theme) ? state->theme : NULL;
 
-  // If theme is 'none', clear any active styles and skip all CSS loading
+  // Debug log to verify what value is actually reaching this function
+  LOG_C_INFO("UI", "load_custom_css state->theme value: '%s'",
+             raw_theme ? raw_theme : "(null)");
+
+  // Fallback to "vanilla" only if state->theme is NULL or an empty string
+  const char *theme_name =
+      (raw_theme && *raw_theme != '\0') ? raw_theme : "vanilla";
+
+  // ------------------------------------------------------------------
+  // IF THEME IS 'NONE': Unbind and clear all CSS providers
+  // ------------------------------------------------------------------
   if (g_ascii_strcasecmp(theme_name, "none") == 0) {
+    LOG_C_INFO("UI", "Theme set to 'none'. Removing all GTK CSS providers.");
+
     if (g_base_css_provider) {
-      gtk_css_provider_load_from_string(g_base_css_provider, "");
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(g_base_css_provider));
+      g_clear_object(&g_base_css_provider);
     }
+
     if (g_user_css_provider) {
-      gtk_css_provider_load_from_string(g_user_css_provider, "");
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(g_user_css_provider));
+      g_clear_object(&g_user_css_provider);
     }
+
     return;
   }
 
+  // ------------------------------------------------------------------
   // BASE THEME CSS (Loaded directly from compiled GResource)
+  // ------------------------------------------------------------------
   if (!g_base_css_provider) {
     g_base_css_provider = gtk_css_provider_new();
     gtk_style_context_add_provider_for_display(
@@ -646,7 +666,9 @@ void load_custom_css(LambdockState *state) {
   }
   g_free(resource_path);
 
+  // ------------------------------------------------------------------
   // USER OVERRIDE CSS (~/.config/lambdock/styles.css)
+  // ------------------------------------------------------------------
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
       g_build_filename(config_dir, "lambdock", "styles.css", NULL);
