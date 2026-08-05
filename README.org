@@ -201,23 +201,6 @@ find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg
 
 ---------
 
-* Etimology
-
-The name /lambdock/ is a play on words combining:
-
--  *Ship Docks* ⚓ where containers and applications dock safely.
-- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
-- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
-- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
-
-#+BEGIN_EXPORT html
-<img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
-#+END_EXPORT
-
-lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
-
----------
-
 * Interactive lambdock REPL
 
 For purposes of development, experimentation and live hackability, lambdock features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
@@ -265,6 +248,25 @@ rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
 
 -----------
 
+* Etimology
+
+The name /lambdock/ is a play on words combining:
+
+-  *Ship Docks* ⚓ where containers and applications dock safely.
+- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
+- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
+- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
+
+#+BEGIN_EXPORT html
+<img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
+#+END_EXPORT
+
+lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
+
+You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
+
+---------
+
 * Wayland Toplevel Tracking & Popovers
 
 ~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
@@ -276,6 +278,59 @@ rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
 Popover Capabilities: Select individual windows by title, close specific window instances, or execute a "Close All Windows" command.
 
 ------------------
+
+* Bi-Directionality of C and Guile Scheme 🔄
+
+~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
+
+#+begin_src
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │                           C RUNTIME (GTK4)                             │
+  │                                                                        │
+  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()           │
+  │                                           │ (Exports C Subrs)          │
+  │                                           ▼                            │
+  │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
+  │           │                               │                            │
+  │           ▼                               │ Thread-safe                │
+  │   reload_dock_instance() ◄────────────────┘ g_idle_add()                │
+  │           │                                                            │
+  └───────────┼────────────────────────────────────────────────────────────┘
+              │                               ▲
+              │ Calls Scheme Procedures       │ Invokes C Primitives
+              ▼                               │
+  ┌───────────────────────────────────────────┴────────────────────────────┐
+  │                         GUILE SCHEME ENGINE                            │
+  │                                                                        │
+  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                   │
+  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread        │
+  └────────────────────────────────────────────────────────────────────────┘
+#+end_src
+
+*** C → Guile (Embedding & Inspection)
+
+The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings:
+
+- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
+- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
+- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
+
+*** Guile → C (Extending & Primitives)
+
+Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine:
+
+- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
+- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
+
+*** Thread-Safe Async Dispatch (~g_idle_add~)
+
+Because the socket REPL server runs on a background Guile thread while GTK4 requires all UI updates to occur on the main thread, calling GTK primitives directly from Scheme would cause thread panics.
+
+To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
+
+For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
+
+---------
 
 * Development & Building
 
@@ -405,63 +460,6 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
   #+END_SRC
 - 🔄 *Transactional Upgrades & Rollbacks:* Experiment freely. If an update breaks, rollbacks are atomic and instantaneous.
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
-
------
-
-You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
-
-------
-
-* Bi-Directionality of C and Guile Scheme 🔄
-
-~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
-
-#+begin_src
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │                           C RUNTIME (GTK4)                             │
-  │                                                                        │
-  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()           │
-  │                                           │ (Exports C Subrs)          │
-  │                                           ▼                            │
-  │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
-  │           │                               │                            │
-  │           ▼                               │ Thread-safe                │
-  │   reload_dock_instance() ◄────────────────┘ g_idle_add()                │
-  │           │                                                            │
-  └───────────┼────────────────────────────────────────────────────────────┘
-              │                               ▲
-              │ Calls Scheme Procedures       │ Invokes C Primitives
-              ▼                               │
-  ┌───────────────────────────────────────────┴────────────────────────────┐
-  │                         GUILE SCHEME ENGINE                            │
-  │                                                                        │
-  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                   │
-  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread        │
-  └────────────────────────────────────────────────────────────────────────┘
-#+end_src
-
-*** C → Guile (Embedding & Inspection)
-
-The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings:
-
-- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
-- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
-- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
-
-*** Guile → C (Extending & Primitives)
-
-Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine:
-
-- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
-- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
-
-*** Thread-Safe Async Dispatch (~g_idle_add~)
-
-Because the socket REPL server runs on a background Guile thread while GTK4 requires all UI updates to occur on the main thread, calling GTK primitives directly from Scheme would cause thread panics.
-
-To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
-
-For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
 
 ----------
 * Backlog and Ideas
