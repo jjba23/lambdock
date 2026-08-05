@@ -15,14 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-#include "dock_item.h"         // Struct definitions for DockItem, LambdockState, AppWindow
-#include "../guile_bridge.h"   // Scheme/Guile configuration interface
-#include "../logger.h"         // Logging macro utilities (e.g., LOG_C_INFO)
-#include "../toplevel_tracker.h"// Foreign window tracking via Wayland protocols
-#include "icon_resolver.h"     // Helper to load application icons from the system theme
-#include "popover_menu.h"      // Custom right-click and multi-window popover menus
-#include "theme_engine.h"      // CSS and theme engine utilities
-
+#include "dock_item.h" // Struct definitions for DockItem, LambdockState, AppWindow
+#include "../guile_bridge.h"     // Scheme/Guile configuration interface
+#include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
+#include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
+#include "icon_resolver.h" // Helper to load application icons from the system theme
+#include "popover_menu.h" // Custom right-click and multi-window popover menus
+#include "theme_engine.h" // CSS and theme engine utilities
 
 /* ============================================================================
  * EVENT CALLBACK HANDLERS (MOUSE CLICKS & INTERACTIONS)
@@ -39,14 +38,16 @@
  * Behavior matrix:
  * 1. If 1 window is open  -> Focus/activate that window.
  * 2. If >1 window is open -> Open a popover menu listing all open windows.
- * 3. If 0 windows open    -> Execute the application launcher command (`item->exec`).
+ * 3. If 0 windows open    -> Execute the application launcher command
+ * (`item->exec`).
  */
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
-  // `(void)btn;` tells the compiler we intentionally aren't using the `btn` parameter,
-  // preventing "unused variable" warnings during build.
+  // `(void)btn;` tells the compiler we intentionally aren't using the `btn`
+  // parameter, preventing "unused variable" warnings during build.
   (void)btn;
 
-  // Cast the generic `user_data` pointer back to our concrete `DockItem` struct pointer.
+  // Cast the generic `user_data` pointer back to our concrete `DockItem` struct
+  // pointer.
   DockItem *item = (DockItem *)user_data;
   if (!item)
     return; // Defensive guard check: exit early if item is NULL
@@ -64,7 +65,8 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
       // More than 1 window open: populate and display context popover menu
       populate_popover_menu(item);
 
-      // Keep track of active popover count in state so autohide knows not to close the dock
+      // Keep track of active popover count in state so autohide knows not to
+      // close the dock
       if (!gtk_widget_get_visible(item->popover))
         item->state->active_popovers++;
 
@@ -76,7 +78,8 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   else if (item->exec && *item->exec != '\0') {
     GError *error = NULL;
 
-    // Asynchronously spawn a process to launch the app command without blocking the main UI thread
+    // Asynchronously spawn a process to launch the app command without blocking
+    // the main UI thread
     if (!g_spawn_command_line_async(item->exec, &error)) {
       // If spawning fails, log a system warning message
       g_warning("[Lambdock] Failed to launch '%s': %s", item->exec,
@@ -89,7 +92,8 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
 /**
  * on_dock_item_right_click:
  * @gesture: GTK gesture object that detected the click sequence.
- * @n_press: Number of press iterations (e.g., 1 for single click, 2 for double).
+ * @n_press: Number of press iterations (e.g., 1 for single click, 2 for
+ * double).
  * @x: X coordinate of mouse click relative to the widget.
  * @y: Y coordinate of mouse click relative to the widget.
  * @user_data: Generic pointer passed by GTK, pointing to our DockItem struct.
@@ -120,7 +124,6 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
   gtk_popover_popup(GTK_POPOVER(item->popover));
 }
 
-
 /* ============================================================================
  * DOCK ITEM LIFECYCLE (CREATION & DESTRUCTION)
  * ============================================================================
@@ -133,7 +136,8 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
  * @icon: System icon theme name or image path (e.g., "firefox").
  * @exec: Terminal command line to launch the app (e.g., "firefox %u").
  * @app_id: Desktop file / Wayland application ID string.
- * @is_favorite: TRUE if pinned launcher; FALSE if dynamic running app indicator.
+ * @is_favorite: TRUE if pinned launcher; FALSE if dynamic running app
+ * indicator.
  *
  * Allocates, initializes, and displays a new dock launcher item.
  *
@@ -142,7 +146,8 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
 DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
                            const char *app_id, gboolean is_favorite) {
-  // `g_new0` allocates memory for 1 DockItem struct and fills memory with zeros.
+  // `g_new0` allocates memory for 1 DockItem struct and fills memory with
+  // zeros.
   DockItem *item = g_new0(DockItem, 1);
 
   // Store reference to global state and copy string arguments into heap memory
@@ -154,7 +159,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   item->app_id = g_strdup(app_id ? app_id : icon);
   item->is_favorite = is_favorite;
 
-  // Retrieve default icon theme for current display and look up the desktop icon image (32px)
+  // Retrieve default icon theme for current display and look up the desktop
+  // icon image (32px)
   GdkDisplay *display = gdk_display_get_default();
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, 32);
@@ -162,14 +168,16 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // Create standard GTK button and insert the icon image widget inside it
   item->button = gtk_button_new();
   gtk_button_set_child(GTK_BUTTON(item->button), image);
-  gtk_widget_add_css_class(item->button, "flat"); // Remove default button borders via CSS
+  gtk_widget_add_css_class(item->button,
+                           "flat"); // Remove default button borders via CSS
 
   // Attach a mouse hover tooltip text showing the application name
   if (item->name && *item->name != '\0') {
     gtk_widget_set_tooltip_text(item->button, item->name);
   }
 
-  // Connect left-click signal on the button to `on_dock_item_left_click` callback
+  // Connect left-click signal on the button to `on_dock_item_left_click`
+  // callback
   g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
                    item);
 
@@ -182,10 +190,12 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
                    state);
 
-  // Create a mouse click event controller specifically to intercept RIGHT-CLICK (SECONDARY)
+  // Create a mouse click event controller specifically to intercept RIGHT-CLICK
+  // (SECONDARY)
   GtkGesture *right_click = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
-                                GDK_BUTTON_SECONDARY); // GDK_BUTTON_SECONDARY = Mouse Right Click
+  gtk_gesture_single_set_button(
+      GTK_GESTURE_SINGLE(right_click),
+      GDK_BUTTON_SECONDARY); // GDK_BUTTON_SECONDARY = Mouse Right Click
   g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
                    item);
   // Attach gesture controller to the GTK button
@@ -249,20 +259,22 @@ void free_dock_item(DockItem *item) {
  * clear_favorite_dock_items:
  * @state: Pointer to global application state.
  *
- * Clears and removes all user-pinned ("favorite") launchers from the dock layout.
- * Used when reloading configuration or resetting the UI.
+ * Clears and removes all user-pinned ("favorite") launchers from the dock
+ * layout. Used when reloading configuration or resetting the UI.
  */
 void clear_favorite_dock_items(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
-  // Unlink window trackers safely via the tracker API before destroying UI items
+  // Unlink window trackers safely via the tracker API before destroying UI
+  // items
   clear_window_tracker_dock_references(state);
 
   // Iterate over linked list and remove pinned favorite items
   GList *curr = state->dock_items;
   while (curr != NULL) {
-    GList *next = curr->next; // Store next reference before potentially deleting current node
+    GList *next = curr->next; // Store next reference before potentially
+                              // deleting current node
     DockItem *item = (DockItem *)curr->data;
     if (item && item->is_favorite) {
       // Remove element node from GLib linked list
@@ -273,7 +285,6 @@ void clear_favorite_dock_items(LambdockState *state) {
     curr = next;
   }
 }
-
 
 /* ============================================================================
  * WAYLAND WINDOW TRACKING INTEGRATION
@@ -347,7 +358,8 @@ void update_dock_item_status(DockItem *item) {
   if (!item || !item->button)
     return;
 
-  // If at least 1 window is open, add CSS class `.running-app` (renders active dot/glow)
+  // If at least 1 window is open, add CSS class `.running-app` (renders active
+  // dot/glow)
   if (item->windows != NULL) {
     if (!gtk_widget_has_css_class(item->button, "running-app"))
       gtk_widget_add_css_class(item->button, "running-app");
@@ -363,8 +375,9 @@ void update_dock_item_status(DockItem *item) {
  * @state: Global Lambdock state.
  * @app_id: Application identifier or binary string to search for.
  *
- * Flexible lookup algorithm matching foreign Wayland window IDs to existing dock items.
- * Performs fallback substring fuzzy matching across App ID, icon name, title, and binary commands.
+ * Flexible lookup algorithm matching foreign Wayland window IDs to existing
+ * dock items. Performs fallback substring fuzzy matching across App ID, icon
+ * name, title, and binary commands.
  *
  * Returns: Matching `DockItem` pointer if found, or `NULL`.
  */
@@ -387,7 +400,8 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
     if (item->name && g_ascii_strcasecmp(item->name, app_id) == 0)
       return item;
 
-    // Check: Substring match against execution string command (e.g. "firefox --new-window")
+    // Check: Substring match against execution string command (e.g. "firefox
+    // --new-window")
     if (item->exec && *item->exec != '\0') {
       char *lower_exec = g_ascii_strdown(item->exec, -1);
       char *lower_id = g_ascii_strdown(app_id, -1);
@@ -406,7 +420,6 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
   return NULL; // No match found
 }
 
-
 /* ============================================================================
  * LAYOUT SEPARATORS & RELOAD HELPERS
  * ============================================================================
@@ -415,7 +428,8 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
 /**
  * create_separator_dock_item:
  * @state: Pointer to global Lambdock state.
- * @orientation: Orientation flag (GTK_ORIENTATION_VERTICAL or GTK_ORIENTATION_HORIZONTAL).
+ * @orientation: Orientation flag (GTK_ORIENTATION_VERTICAL or
+ * GTK_ORIENTATION_HORIZONTAL).
  *
  * Creates a visual divider line widget inside the dock layout.
  *
@@ -425,7 +439,8 @@ DockItem *create_separator_dock_item(LambdockState *state,
                                      GtkOrientation orientation) {
   DockItem *item = g_new0(DockItem, 1);
   item->state = state;
-  item->is_favorite = TRUE; // Mark as layout element so clear cycles preserve/handle as pinned structure
+  item->is_favorite = TRUE; // Mark as layout element so clear cycles
+                            // preserve/handle as pinned structure
 
   // Instantiates standard GTK separator widget line
   item->button = gtk_separator_new(orientation);
@@ -452,8 +467,9 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * reload_dock_instance:
  * @state: Global Lambdock application state.
  *
- * Hot-reloads dock UI appearance, Scheme/Guile configuration rules, custom CSS themes,
- * autohide behavior, and rebuilds dock launcher layout without restarting application.
+ * Hot-reloads dock UI appearance, Scheme/Guile configuration rules, custom CSS
+ * themes, autohide behavior, and rebuilds dock launcher layout without
+ * restarting application.
  */
 void reload_dock_instance(LambdockState *state) {
   if (!state)

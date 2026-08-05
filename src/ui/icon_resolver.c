@@ -27,10 +27,10 @@
  * create_image_for_icon:
  * @theme: Pointer to the GTK icon theme instance for the active display.
  * @icon: String identifier, file path, or resource URI for the requested icon.
- * @icon_size: Pixel size (width/height) to render the target icon image (e.g., 32).
+ * @icon_size: Pixel size (width/height) to render the target icon image (e.g.,
+ * 32).
  *
- * Attempts to locate and build a GTK image widget for a given icon identifier
- * using a 6-step resolution cascade:
+ * Attempts to locate and build a GTK image widget for a given icon identifier.
  * Step: Null/Empty string guard -> Fallback
  * Step: Check embedded GLib resource bundles (`resource://`)
  * Step: Check absolute file paths on disk
@@ -66,9 +66,11 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
-  // Case B: Internal Lambdock resource path (e.g. `/org/jointhefreeworld/lambdock/...`)
+  // Case B: Internal Lambdock resource path (e.g.
+  // `/org/jointhefreeworld/lambdock/...`)
   else if (g_str_has_prefix(icon, "/org/jointhefreeworld/lambdock/")) {
-    // Verify the resource actually exists inside the registered bundle before loading
+    // Verify the resource actually exists inside the registered bundle before
+    // loading
     if (g_resources_get_info(icon, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL, NULL,
                              NULL)) {
       GtkWidget *img = gtk_image_new_from_resource(icon);
@@ -91,7 +93,8 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // --------------------------------------------------------------------------
   // Step: Standard Icon Theme Lookup
   // --------------------------------------------------------------------------
-  // Query the system GTK icon theme engine (e.g. Papirus, Adwaita) for the icon name.
+  // Query the system GTK icon theme engine (e.g. Papirus, Adwaita) for the icon
+  // name.
   if (gtk_icon_theme_has_icon(theme, icon)) {
     GtkWidget *img = gtk_image_new_from_icon_name(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
@@ -105,7 +108,8 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // `/usr/local/share/pixmaps/`. We query all active system data directories.
   const char *const *sys_dirs = g_get_system_data_dirs();
   for (int i = 0; sys_dirs[i] != NULL; i++) {
-    // Allocate formatted path string: e.g. "/usr/share" + "/pixmaps/" + "app" + ".png"
+    // Allocate formatted path string: e.g. "/usr/share" + "/pixmaps/" + "app" +
+    // ".png"
     char *pixmap_png = g_strdup_printf("%s/pixmaps/%s.png", sys_dirs[i], icon);
 
     if (g_file_test(pixmap_png, G_FILE_TEST_EXISTS)) {
@@ -134,13 +138,12 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // --------------------------------------------------------------------------
   // Step: Fallback (Generic Binary Executable Icon)
   // --------------------------------------------------------------------------
-  // If all search methods failed to locate the specified icon, return a standard
-  // generic application icon so the dock button isn't blank.
+  // If all search methods failed to locate the specified icon, return a
+  // standard generic application icon so the dock button isn't blank.
   GtkWidget *img = gtk_image_new_from_icon_name("application-x-executable");
   gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
   return img;
 }
-
 
 /* ============================================================================
  * ICON THEME SYSTEM INITIALIZATION
