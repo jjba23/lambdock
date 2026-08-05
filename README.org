@@ -101,6 +101,25 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
         (app-item #:name "Bruno"
                   #:exec "flatpak run com.usebruno.Bruno"
                   #:icon "com.usebruno.Bruno")))
+
+;; or go fancier and do
+(define dock-items
+  (append (preset-launchers-for 'alacritty
+                                'google-chrome
+                                'spotify
+                                'nautilus
+                                'nyxt
+                                'gnome-calendar
+                                'gnome-calculator
+                                'zapzap)
+          (list (separator-item))
+          (preset-launchers-for 'emacs
+                                'intellij
+                                'bruno)
+          (list (separator-item))
+          (preset-launchers-for 'btop
+                                'pavucontrol
+                                'onepassword)))
 #+end_src
 
 *** Available Item Constructors
