@@ -16,14 +16,18 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 -------
 
-- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth positioning and desktop integration.
-- *Declarative Lisp configuration* : The power of Lisp in your configuratio with clean powerful declarative config and all possibilities at your disposal
-- *Async Launching*: Spawns commands asynchronously without freezing the dock UI.
-- *Reproducible builds*: Hermetic development environment provided via GNU Guix manifest and build definitions.
-- *Dock auto-hide* : You can let the dock stay out of your way with the smooth auto-hide feature.
-- *Flexible icon system*: lambdock has several mechanism in a best-effort way to render your wanted icons, respecting GTK theme
-- *Theme support*: lambdock has built-in themes you can choose from that are very unique, and also lets you extend and override those themes dynamically.
-- *Config hot-reload*: lambdock automatically will reload and redraw the dock whenever you change your Lisp settings or CSS overrides (in ~~/.config/lambdock~).
+- Wayland Native 🚀: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
+- Dynamic Window Tracking ⚡: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
+- Multi-Monitor Flexibility 🖥️: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
+- Smooth Edge Auto-Hide: Keeps the dock out of your way with configurable reveal thresholds and fluid sliding animations.
+- Declarative Lisp Configuration 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options.
+- Live Interactive Socket REPL 📡: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
+- Thread-Safe Hot-Reloading: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
+- Theme Engine 🎨: Extensible with CSS, and ships with 6 pre-baked themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
+- Flexible Icon Resolution: Best-effort fallback pipeline resolving GTK theme icons, absolute paths, system pixmaps, and symbolic variants.
+- Async Command Launching: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
+- App Noise Filtering: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
+- Reproducible Builds 🛠️: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
 
 -------
 
@@ -407,6 +411,59 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
 You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
 
 ------
+
+* Bi-Directionality of C and Guile Scheme 🔄
+
+~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
+
+#+begin_src
+  ┌────────────────────────────────────────────────────────────────────────┐
+  │                           C RUNTIME (GTK4)                             │
+  │                                                                        │
+  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()           │
+  │                                           │ (Exports C Subrs)          │
+  │                                           ▼                            │
+  │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
+  │           │                               │                            │
+  │           ▼                               │ Thread-safe                │
+  │   reload_dock_instance() ◄────────────────┘ g_idle_add()                │
+  │           │                                                            │
+  └───────────┼────────────────────────────────────────────────────────────┘
+              │                               ▲
+              │ Calls Scheme Procedures       │ Invokes C Primitives
+              ▼                               │
+  ┌───────────────────────────────────────────┴────────────────────────────┐
+  │                         GUILE SCHEME ENGINE                            │
+  │                                                                        │
+  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                   │
+  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread        │
+  └────────────────────────────────────────────────────────────────────────┘
+#+end_src
+
+*** C → Guile (Embedding & Inspection)
+
+The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings:
+
+- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
+- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
+- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
+
+*** Guile → C (Extending & Primitives)
+
+Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine:
+
+- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
+- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
+
+*** Thread-Safe Async Dispatch (~g_idle_add~)
+
+Because the socket REPL server runs on a background Guile thread while GTK4 requires all UI updates to occur on the main thread, calling GTK primitives directly from Scheme would cause thread panics.
+
+To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
+
+For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
+
+----------
 * Backlog and Ideas
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Implement XDG desktop entry cache reader to inspect ~/usr/share/applications/*.desktop~ and ~~/.local/share/applications/*.desktop~ and flatpaks for  Flawless ~app_id~ Matching
@@ -431,3 +488,5 @@ $$S(x) = 1.0 + A \cdot \cos\left(\frac{x - x_{\text{cursor}}}{\sigma}\right)$$
 *** TODO: Finish Fedora package and publish it
 *** TODO: Finish Arch package and publish it
 *** TODO: Nix package?
+
+-------
