@@ -37,7 +37,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 * Scheme Configuration
 
-Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors.
+Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors. Most of the options have sensible defaults, so you only need to configure what you want to modify, in your config file.
 
 Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~)
 
