@@ -130,6 +130,21 @@
   #f)
 
 (define (start-repl!)
+  (define (mkdir-p path)
+  (unless (or (string-null? path)
+              (file-exists? path))
+    (let ((parent (dirname path)))
+      (when (and (not (string=? parent path))
+                 (not (string=? parent ".")))
+        (mkdir-p parent))
+      (catch 'system-error
+             (lambda ()
+               (mkdir path))
+             (lambda (key . args)
+               (unless (and (file-exists? path)
+                            (eq? 'directory
+                                 (stat:type (stat path))))
+                 (apply throw key args)))))))
   (when (and (get-dock-enable-repl?)
              (not *repl-started?*))
     (set! *repl-started?* #t)
