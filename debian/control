@@ -10,6 +10,7 @@ Build-Depends: debhelper-compat (= 13),
                libgtk4-layer-shell-dev,
                guile-3.0-dev,
                libwayland-dev,
+               libglib2.0-dev-bin,
                wayland-protocols,
                wayland-scanner++ | libwayland-bin
 Standards-Version: 4.6.2

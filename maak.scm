@@ -54,6 +54,7 @@
                                          libgtk4-layer-shell-dev
                                          guile-3.0-dev
                                          libwayland-dev
+                                         libglib2.0-dev-bin
                                          wayland-protocols))))
 
 (define (deb-build)
