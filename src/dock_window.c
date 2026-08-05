@@ -17,7 +17,10 @@
 
 #include "dock_window.h"
 #include "logger.h"
-#include "ui_helpers.h"
+#include "ui/dock_item.h"
+#include "ui/icon_resolver.h"
+#include "ui/popover_menu.h"
+#include "ui/theme_engine.h"
 
 static double ease_out_cubic(double t) {
   double p = 1.0 - t;

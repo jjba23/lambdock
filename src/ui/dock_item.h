@@ -1,0 +1,63 @@
+#ifndef DOCK_ITEM_H
+#define DOCK_ITEM_H
+
+#include "lambdock.h"
+
+/**
+ * create_dock_item:
+ * Constructs a DockItem, instantiates its GTK button/popover widgets,
+ * and appends it to the dock container layout.
+ */
+DockItem *create_dock_item(LambdockState *state, const char *name,
+                           const char *icon, const char *exec,
+                           const char *app_id, gboolean is_favorite);
+
+/**
+ * free_dock_item:
+ * Unparents widgets, cleans child window trackers, and deallocates DockItem
+ * memory.
+ */
+void free_dock_item(DockItem *item);
+
+/**
+ * clear_favorite_dock_items:
+ * Frees pinned favorite launchers while preserving active running window
+ * trackers.
+ */
+void clear_favorite_dock_items(LambdockState *state);
+
+/**
+ * dock_item_add_window / dock_item_remove_window:
+ * Manages active Wayland window handle attachments on a DockItem.
+ */
+AppWindow *dock_item_add_window(DockItem *item,
+                                struct zwlr_foreign_toplevel_handle_v1 *handle);
+void dock_item_remove_window(DockItem *item,
+                             struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * update_dock_item_status:
+ * Toggles 'running-app' CSS styling depending on active window counts.
+ */
+void update_dock_item_status(DockItem *item);
+
+/**
+ * find_dock_item_by_app_id:
+ * Searches active DockItem structs matching app_id, exec, or icon name.
+ */
+DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
+
+/**
+ * create_separator_dock_item:
+ * Instantiates layout divider bar items.
+ */
+DockItem *create_separator_dock_item(LambdockState *state,
+                                     GtkOrientation orientation);
+
+/**
+ * reload_dock_instance:
+ * Hot-reloads layout, CSS themes, and pinned items on a running dock instance.
+ */
+void reload_dock_instance(LambdockState *state);
+
+#endif // DOCK_ITEM_H

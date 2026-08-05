@@ -463,7 +463,7 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
 * Backlog and Ideas
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Implement XDG desktop entry cache reader to inspect ~/usr/share/applications/*.desktop~ and ~~/.local/share/applications/*.desktop~ and flatpaks for  Flawless ~app_id~ Matching
-In ~ui_helpers.c~, ~find_dock_item_by_app_id~ relies on string matching heuristics between ~app_id~, ~icon~, ~name~, and ~exec~. This can occasionally fail when Wayland compositors emit generic or reverse-DNS names (e.g., ~org.gnome.Nautilus~ vs ~nautilus~).
+~find_dock_item_by_app_id~ relies on string matching heuristics between ~app_id~, ~icon~, ~name~, and ~exec~. This can occasionally fail when Wayland compositors emit generic or reverse-DNS names (e.g., ~org.gnome.Nautilus~ vs ~nautilus~).
 Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~
 *** TODO: Dynamic widgets as Scheme lambdas?
 #+begin_src scheme

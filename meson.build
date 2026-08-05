@@ -114,10 +114,13 @@ inc = include_directories('src')
 
 sources = files(
   'src/main.c',
-  'src/ui_helpers.c',
-  'src/guile_bridge.c',
   'src/dock_window.c',
+  'src/guile_bridge.c',
   'src/toplevel_tracker.c',
+  'src/ui/theme_engine.c',
+  'src/ui/icon_resolver.c',
+  'src/ui/popover_menu.c',
+  'src/ui/dock_item.c',
 )
 
 executable('lambdock',

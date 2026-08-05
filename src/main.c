@@ -20,7 +20,10 @@
 #include "lambdock.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
-#include "ui_helpers.h"
+#include "ui/dock_item.h"
+#include "ui/icon_resolver.h"
+#include "ui/popover_menu.h"
+#include "ui/theme_engine.h"
 
 /* Global list of active LambdockState instances and file monitor handle */
 static GList *g_active_states = NULL;

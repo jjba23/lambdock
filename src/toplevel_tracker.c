@@ -24,7 +24,10 @@
 #include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
-#include "ui_helpers.h"
+#include "ui/dock_item.h"
+#include "ui/icon_resolver.h"
+#include "ui/popover_menu.h"
+#include "ui/theme_engine.h"
 
 /**
  * WindowTracker:
