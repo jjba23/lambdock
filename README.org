@@ -142,7 +142,7 @@ You can override any GTK style class on the fly without re-compiling C sources. 
 
 User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking precedence over default app themes.
 
-Make sure you use GTK CSS, not "web-browser CSS". For understanding better what is available and what you can override, you should look at the theme definitions at ~./resources/css~.
+Make sure you use [[https://docs.gtk.org/gtk4/css-properties.html][GTK CSS]], not "web-browser CSS". For understanding better what is available and what you can override, you should look at the theme definitions at ~./resources/css~.
 
 An example override of a theme could look like this:
 #+begin_src css
