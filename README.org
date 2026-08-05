@@ -231,7 +231,7 @@ In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. Yo
 
 You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
 
-*** Option A: Emacs (Geiser) — Recommended
+*** Emacs (Geiser) — Recommended
 
 If you use Emacs with Geiser:
 
@@ -249,20 +249,15 @@ scheme@(guile-user)> (reload-dock!)
 
 (e.g., ~(use-modules (lambdock core))~ followed by ~(get-dock-items)~).
 
-*** Option B: Terminal via ~socat~ (With Readline Support)
+*** Other options
 
-You can connect directly from your terminal using ~socat~ wrapped with ~rlwrap~ for line editing and history:
-
-#+begin_src sh
-rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
-#+begin_src
-
-*** Option C: Terminal via ~nc~ (Netcat)
-
-Alternatively, connect using standard OpenBSD netcat:
+You can connect directly from your terminal using different tooling, like ~nc~, ~ncat~,  ~socat~ wrapped with ~rlwrap~ , and others:
 
 #+begin_src sh
+socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+ncat -U /tmp/lambdock-repl.sock
 nc -U /tmp/lambdock-repl.sock
+rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
 #+begin_src
 
 -----------
