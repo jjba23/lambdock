@@ -164,6 +164,10 @@ void hide_dock(LambdockState *state) {
   if (!state->auto_hide || state->active_popovers > 0)
     return;
 
+  // Do not hide if show-when-clear is active and no open windows exist
+  if (state->show_when_clear && state->window_trackers == NULL)
+    return;
+
   // Determine height or width based on screen orientation
   int window_dim = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
                     state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)

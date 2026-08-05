@@ -112,4 +112,6 @@ gboolean is_app_excluded(const char *app_id);
  */
 gboolean get_repl_config(void);
 
+gboolean get_show_when_clear_config(void);
+
 #endif // GUILE_BRIDGE_H

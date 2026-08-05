@@ -482,8 +482,16 @@ void reload_dock_instance(LambdockState *state) {
   state->theme = get_theme_config();
   load_custom_css(state);
 
-  // Fetch autohide preferences from Scheme environment
+  // Fetch preferences from Scheme environment
   state->auto_hide = get_autohide_config();
+  state->show_when_clear = get_show_when_clear_config();
+
+  if (state->show_when_clear && state->window_trackers == NULL) {
+    reveal_dock(state);
+  } else if (state->auto_hide && state->window_trackers != NULL &&
+             !state->is_hidden) {
+    hide_dock(state);
+  }
 
   // Clear pinned items and repopulate dock launcher layout
   clear_favorite_dock_items(state);

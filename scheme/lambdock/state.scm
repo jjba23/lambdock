@@ -32,6 +32,7 @@
             get-dock-exclude-apps
             get-dock-enable-repl?
             get-dock-repl-socket-path
+            get-dock-show-when-clear?
 
             ;; Setters
             set-dock-items!
@@ -42,7 +43,8 @@
             set-dock-monitor!
             set-dock-exclude-apps!
             set-dock-enable-repl!
-            set-dock-repl-socket-path!))
+            set-dock-repl-socket-path!
+            set-dock-show-when-clear!))
 
 (define-syntax define-config-field
   (syntax-rules ()
@@ -78,6 +80,9 @@
 (define-config-field *dock-auto-hide?* get-dock-auto-hide? set-dock-auto-hide!
                      #f boolean?)
 
+(define-config-field *dock-show-when-clear?* get-dock-show-when-clear?
+                     set-dock-show-when-clear! #f boolean?)
+
 (define-config-field *dock-monitor* get-dock-monitor set-dock-monitor!
                      'default identity)
 
@@ -102,19 +107,21 @@
                           (icon-size 48)
                           (items '())
                           (auto-hide? #f)
+                          (show-when-clear? #t)
                           (theme 'vanilla)
                           (monitor 'default)
                           (exclude-apps '())
                           (enable-repl? #f)
                           (repl-socket-path "/tmp/lambdock-repl.sock"))
   "Sets the primary configuration parameters for the dock."
-  (log-info "State"
-   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a, repl-socket: ~a"
+ (log-info "State"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, show-when-clear?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a, repl-socket: ~a"
    (if (list? items)
        (length items) 0)
    icon-size
    theme
    auto-hide?
+   show-when-clear?
    position
    monitor
    (if (list? exclude-apps)
@@ -131,5 +138,6 @@
   (set-dock-exclude-apps! exclude-apps)
   (set-dock-enable-repl! enable-repl?)
   (set-dock-repl-socket-path! repl-socket-path)
+  (set-dock-show-when-clear! show-when-clear?)
 
   (log-info "State" "Configuration loaded successfully."))

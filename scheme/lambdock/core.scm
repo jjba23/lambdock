@@ -44,6 +44,7 @@
                get-dock-theme
                get-dock-icon-size
                get-dock-auto-hide?
+               get-dock-show-when-clear?
                get-dock-monitor
                get-dock-exclude-apps
                get-dock-enable-repl?
@@ -55,6 +56,7 @@
                set-dock-theme!
                set-dock-icon-size!
                set-dock-auto-hide!
+               set-dock-show-when-clear!
                set-dock-monitor!
                set-dock-exclude-apps!
                set-dock-enable-repl!
@@ -100,6 +102,7 @@
                                       #:monitor (cfg 'dock-monitor
                                                      'default)
                                       #:auto-hide? (cfg 'dock-auto-hide? #f)
+                                      #:show-when-clear? (cfg 'dock-show-when-clear? #t)
                                       #:exclude-apps (cfg 'dock-exclude-apps
                                                           '())
                                       #:enable-repl? (cfg 'dock-enable-repl?

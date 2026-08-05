@@ -277,6 +277,12 @@ toplevel_handle_closed(void *data,
   if (tracker->state) {
     tracker->state->window_trackers =
         g_list_remove(tracker->state->window_trackers, tracker);
+
+    // Automatically slide dock back into view when the last window closes
+    if (tracker->state->show_when_clear &&
+        tracker->state->window_trackers == NULL) {
+      reveal_dock(tracker->state);
+    }
   }
 
   // Destroy Wayland protocol handle context
@@ -338,6 +344,12 @@ manager_handle_toplevel(void *data,
   // Attach event listener callback table to newly opened window surface
   zwlr_foreign_toplevel_handle_v1_add_listener(toplevel, &toplevel_listener,
                                                tracker);
+  // If auto-hide & show-when-clear are enabled, trigger dock hide when first
+  // window opens
+  if (state->auto_hide && state->show_when_clear &&
+      state->window_trackers != NULL) {
+    hide_dock(state);
+  }
 }
 
 /**

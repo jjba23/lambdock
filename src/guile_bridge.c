@@ -71,6 +71,11 @@ static gboolean get_guile_bool(const char *func_name) {
 gboolean get_autohide_config(void) {
   return get_guile_bool("get-dock-auto-hide?");
 }
+
+gboolean get_show_when_clear_config(void) {
+  return get_guile_bool("get-dock-show-when-clear?");
+}
+
 gboolean get_repl_config(void) {
   return get_guile_bool("get-dock-enable-repl?");
 }

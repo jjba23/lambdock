@@ -272,8 +272,9 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  // --- Wayland Layer Shell & Autohide Configuration ---
+  // --- Wayland Layer Shell Configuration ---
   state->auto_hide = get_autohide_config();
+  state->show_when_clear = get_show_when_clear_config();
   setup_layer_shell_window(state);     // Pin window to Wayland desktop layer
   setup_dock_motion_controller(state); // Handle mouse hover show/hide
 

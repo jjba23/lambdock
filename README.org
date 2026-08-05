@@ -69,6 +69,9 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
 
+;; Show dock when last window was closed
+(define dock-show-when-clear? #t)
+
 ;; Dock edge attachment: 'bottom | 'top | 'left | 'right
 (define dock-position 'bottom)
 
