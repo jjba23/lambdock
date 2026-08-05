@@ -79,50 +79,28 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   "/tmp/lambdock-repl.sock")
 
 (define dock-items
-  (list (app-item #:name "Terminal (Alacritty)"
-                  #:exec "alacritty"
-                  #:icon "Alacritty")
-        (app-item #:name "Google Chrome"
-                  #:exec "google-chrome"
-                  #:icon "google-chrome")
+  (list (preset-launcher 'alacritty)
+        ;; using preset launchers and icons can be convenient
+        (preset-launcher 'google-chrome)
         (app-item #:name "Spotify"
                   #:exec "flatpak run com.spotify.Client"
                   #:icon "com.spotify.Client")
         (app-item #:name "Files"
                   #:exec "nautilus -w"
-                  #:icon "org.gnome.Nautilus")
+                  #:icon (preset-icon 'nautilus))
         (app-item #:name "Nyxt"
                   #:exec "flatpak run engineer.atlas.Nyxt"
                   #:icon "engineer.atlas.Nyxt")
         (app-item #:name "Agenda"
                   #:exec "gnome-calendar"
                   #:icon "org.gnome.Calendar")
-        (app-item #:name "Calculator"
-                  #:exec "gnome-calculator"
-                  #:icon "org.gnome.Calculator")
-        (app-item #:name "WhatsApp"
-                  #:exec "flatpak run com.rtosta.zapzap"
-                  #:icon "com.rtosta.zapzap")
         (separator-item)
         (app-item #:name "Emacs"
                   #:exec "emacsclient -c"
                   #:icon "emacs")
-        (app-item #:name "IntelliJ"
-                  #:exec "intellij-idea"
-                  #:icon "jetbrains-idea")
         (app-item #:name "Bruno"
                   #:exec "flatpak run com.usebruno.Bruno"
-                  #:icon "com.usebruno.Bruno")
-        (separator-item)
-        (app-item #:name "System Monitor"
-                  #:exec "alacritty -e btop"
-                  #:icon "btop")
-        (app-item #:name "Audio Manager"
-                  #:exec "pavucontrol"
-                  #:icon "pavucontrol")
-        (app-item #:name "1Password"
-                  #:exec "1password"
-                  #:icon "1password")))
+                  #:icon "com.usebruno.Bruno")))
 #+end_src
 
 *** Available Item Constructors
@@ -475,7 +453,6 @@ Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~
           #:exec "alacritty -e btop"
           #:badge-thunk (lambda () (format #f "~aMB" (free-memory))))
 #+end_src
-*** TODO: Add library of well-known icons, convenient for users of lambdock (for people's config,exported via (lambdock core)
 *** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
 *** TODO: True fish-eye effect and configurable animations (user should be able to toggle animations on/off and choose style)
 CSS `:hover` scale (`transform: scale(1.16)`) scales the single hovered button in place, but does not push adjacent dock items aside.

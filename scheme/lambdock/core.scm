@@ -23,6 +23,7 @@
   #:use-module (lambdock state)
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
+  #:use-module (lambdock presets)
   #:use-module (system repl server)
   #:re-export ( ;Item structures
                 <dock-item>
@@ -60,7 +61,15 @@
                set-dock-repl-socket-path!
 
                ;; Config Loader
-               resolve-dock-configuration)
+               resolve-dock-configuration
+               ;; Alists
+               preset-icons
+               preset-launchers
+
+               ;; Lookup & Convenience Functions
+               preset-icon
+               preset-launcher
+               preset-launchers-for)
   #:export (init-dock! start-repl!))
 
 ;; =============================================================================
