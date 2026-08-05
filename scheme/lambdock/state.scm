@@ -9,11 +9,11 @@
 
 ;; lambdock is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+;; along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock state)
   #:declarative? #f
@@ -44,109 +44,55 @@
             set-dock-enable-repl!
             set-dock-repl-socket-path!))
 
-;; =============================================================================
-;; Application State Variables
-;; =============================================================================
-
-(define *dock-items*
-  '())
-
-(define *dock-position*
-  'bottom)
-
-(define *dock-theme*
-  'vanilla)
-
-(define *dock-icon-size*
-  48)
-
-(define *dock-auto-hide?*
-  #f)
-
-(define *dock-monitor*
-  'default)
-
-(define *dock-exclude-apps*
-  '())
-
-(define *dock-enable-repl?*
-  #f)
-
-(define *dock-repl-socket-path*
-  "/tmp/lambdock-repl.sock")
+(define-syntax define-config-field
+  (syntax-rules ()
+                ((_ var-name getter-name setter-name default-val validator)
+                 (begin
+                   (define var-name
+                     default-val)
+                   (define (getter-name)
+                     var-name)
+                   (define (setter-name val)
+                     (when (validator val)
+                       (set! var-name val)))))))
 
 ;; =============================================================================
-;; Getters
+;; Application State Definitions
 ;; =============================================================================
 
-(define (get-dock-items)
-  *dock-items*)
+(define-config-field *dock-items* get-dock-items set-dock-items!
+                     '() list?)
 
-(define (get-dock-position)
-  *dock-position*)
+(define-config-field *dock-position* get-dock-position set-dock-position!
+                     'bottom identity)
 
-(define (get-dock-theme)
-  *dock-theme*)
+(define-config-field *dock-theme* get-dock-theme set-dock-theme!
+                     'vanilla identity)
 
-(define (get-dock-icon-size)
-  *dock-icon-size*)
+(define-config-field *dock-icon-size* get-dock-icon-size set-dock-icon-size!
+                     48
+                     (lambda (s)
+                       (and (number? s)
+                            (> s 0))))
 
-(define (get-dock-auto-hide?)
-  *dock-auto-hide?*)
+(define-config-field *dock-auto-hide?* get-dock-auto-hide? set-dock-auto-hide!
+                     #f boolean?)
 
-(define (get-dock-monitor)
-  *dock-monitor*)
+(define-config-field *dock-monitor* get-dock-monitor set-dock-monitor!
+                     'default identity)
 
-(define (get-dock-exclude-apps)
-  *dock-exclude-apps*)
+(define-config-field *dock-exclude-apps* get-dock-exclude-apps
+                     set-dock-exclude-apps!
+                     '() list?)
 
-(define (get-dock-enable-repl?)
-  *dock-enable-repl?*)
+(define-config-field *dock-enable-repl?* get-dock-enable-repl?
+                     set-dock-enable-repl! #f boolean?)
 
-(define (get-dock-repl-socket-path)
-  *dock-repl-socket-path*)
-
-;; =============================================================================
-;; Setters
-;; =============================================================================
-
-(define (set-dock-items! items)
-  (when (list? items)
-    (set! *dock-items* items)))
-
-(define (set-dock-position! pos)
-  (when pos
-    (set! *dock-position* pos)))
-
-(define (set-dock-theme! theme)
-  (when theme
-    (set! *dock-theme* theme)))
-
-(define (set-dock-icon-size! size)
-  (when (and (number? size)
-             (> size 0))
-    (set! *dock-icon-size* size)))
-
-(define (set-dock-auto-hide! auto-hide?)
-  (when (boolean? auto-hide?)
-    (set! *dock-auto-hide?* auto-hide?)))
-
-(define (set-dock-monitor! monitor)
-  (when monitor
-    (set! *dock-monitor* monitor)))
-
-(define (set-dock-exclude-apps! exclude-apps)
-  (when (list? exclude-apps)
-    (set! *dock-exclude-apps* exclude-apps)))
-
-(define (set-dock-enable-repl! enable?)
-  (when (boolean? enable?)
-    (set! *dock-enable-repl?* enable?)))
-
-(define (set-dock-repl-socket-path! path)
-  (when (and (string? path)
-             (not (string-null? path)))
-    (set! *dock-repl-socket-path* path)))
+(define-config-field *dock-repl-socket-path* get-dock-repl-socket-path
+                     set-dock-repl-socket-path! "/tmp/lambdock-repl.sock"
+                     (lambda (p)
+                       (and (string? p)
+                            (not (string-null? p)))))
 
 ;; =============================================================================
 ;; Configuration Interface
