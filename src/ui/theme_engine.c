@@ -1,3 +1,20 @@
+// lambdock
+
+// Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+// lambdock is free software : you can redistribute it and / or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+
+// lambdock is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+
 #include "theme_engine.h"
 #include "../lambdock.h"
 #include "../logger.h"
@@ -31,7 +48,7 @@ void load_custom_css(LambdockState *state) {
     return;
   }
 
-  // 1. BASE THEME
+  // BASE THEME
   if (!g_base_css_provider) {
     g_base_css_provider = gtk_css_provider_new();
     gtk_style_context_add_provider_for_display(
@@ -54,7 +71,7 @@ void load_custom_css(LambdockState *state) {
   }
   g_free(resource_path);
 
-  // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
+  // USER OVERRIDE CSS (~/.config/lambdock/styles.css)
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
       g_build_filename(config_dir, "lambdock", "styles.css", NULL);
