@@ -21,6 +21,7 @@ makedepends=(
   'ninja'
   'pkgconf'
   'wayland-protocols'
+  'glib2'
 )
 
 # Optional dependencies

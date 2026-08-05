@@ -15,6 +15,7 @@ BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(gtk4-layer-shell-0)
 BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  pkgconfig(wayland-client)
+BuildRequires:  pkgconfig(glib2-devel)
 BuildRequires:  wayland-scanner
 
 Requires:       guile30
