@@ -42,7 +42,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   #:declarative? #t
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
-                          dock-monitor dock-exclude-apps))
+                          dock-monitor dock-exclude-apps dock-enable-repl?))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
@@ -65,6 +65,9 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 
 ;; List of app ids to never show in the dock
 (define dock-exclude-apps '())
+
+;; Whether to enable the lambdock REPL
+(define dock-enable-repl? #f)
 
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
@@ -205,6 +208,12 @@ The name /lambdock/ is a play on words combining:
 lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
 
 ---------
+
+* Interactive lambdock REPL
+
+
+
+-----------
 
 * Wayland Toplevel Tracking & Popovers
 
@@ -354,7 +363,6 @@ You could say using this dock /es casi una experiencia religiosa como la de [[ht
 ------
 * Backlog and Ideas
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
-*** TODO: Add REPL via socket to allow more interactivity and unleashing the power of Lisp (you should be able to manipulate and reload dock and settings), how to connect with Arei, Geiser, Slime?
 *** TODO: Implement XDG desktop entry cache reader to inspect ~/usr/share/applications/*.desktop~ and ~~/.local/share/applications/*.desktop~ and flatpaks for  Flawless ~app_id~ Matching
 In ~ui_helpers.c~, ~find_dock_item_by_app_id~ relies on string matching heuristics between ~app_id~, ~icon~, ~name~, and ~exec~. This can occasionally fail when Wayland compositors emit generic or reverse-DNS names (e.g., ~org.gnome.Nautilus~ vs ~nautilus~).
 Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~

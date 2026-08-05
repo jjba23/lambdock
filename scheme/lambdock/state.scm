@@ -26,13 +26,15 @@
                             get-dock-theme
                             get-dock-monitor
                             get-dock-exclude-apps
+                            get-dock-enable-repl?
                             *dock-theme*
                             *dock-items*
                             *dock-position*
                             *dock-icon-size*
                             *dock-monitor*
                             *dock-auto-hide?*
-                            *dock-exclude-apps*))
+                            *dock-exclude-apps*
+                            *dock-enable-repl?*))
 
 ;; =============================================================================
 ;; Application State
@@ -59,6 +61,9 @@
 (define *dock-exclude-apps*
   '())
 
+(define *dock-enable-repl?*
+  #f)
+
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
@@ -69,17 +74,19 @@
                           (auto-hide? #f)
                           (theme 'vanilla)
                           (monitor 'default)
-                          (exclude-apps '()))
+                          (exclude-apps '())
+                          (enable-repl? #f))
   "Sets the primary configuration parameters for the dock."
   (log-info "State"
-   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a"
    (length items)
    icon-size
    theme
    auto-hide?
    position
    monitor
-   (length exclude-apps))
+   (length exclude-apps)
+   enable-repl?)
 
   (when position
     (set! *dock-position* position))
@@ -95,16 +102,19 @@
     (set! *dock-monitor* monitor))
   (when exclude-apps
     (set! *dock-exclude-apps* exclude-apps))
+  (when enable-repl?
+    (set! *dock-enable-repl?* enable-repl?))
 
   (log-info "State"
-   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a"
+   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a"
    (length items)
    icon-size
    theme
    auto-hide?
    position
    monitor
-   (length exclude-apps)))
+   (length exclude-apps)
+   enable-repl?))
 
 (define (get-dock-items)
   *dock-items*)
@@ -126,3 +136,6 @@
 
 (define (get-dock-exclude-apps)
   *dock-exclude-apps*)
+
+(define (get-dock-enable-repl?)
+  *dock-enable-repl?*)

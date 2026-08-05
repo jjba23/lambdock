@@ -102,4 +102,14 @@ void reload_guile_config(void);
  */
 gboolean is_app_excluded(const char *app_id);
 
+/**
+ * get_repl_config:
+ *
+ * Calls Guile Scheme function 'get-dock-enable-repl?' to read user REPL
+ * preferences.
+ *
+ * Returns: TRUE if REPL is enabled in Scheme configuration; FALSE otherwise.
+ */
+gboolean get_repl_config(void);
+
 #endif // GUILE_BRIDGE_H

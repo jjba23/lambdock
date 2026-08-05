@@ -22,6 +22,7 @@
   #:use-module (lambdock state)
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
+  #:use-module (system repl repl)
   #:re-export (<dock-item> dock-item?
                            dock-item-type
                            dock-item-name
@@ -37,6 +38,7 @@
                            get-icon-size
                            get-dock-auto-hide?
                            get-dock-exclude-apps
+                           get-dock-enable-repl?
                            resolve-dock-configuration)
   #:export (init-dock!))
 
@@ -84,3 +86,18 @@
                                              #:icon "Alacritty"
                                              #:exec "alacritty"))
                      #:auto-hide? #f)))
+
+;; =============================================================================
+;; REPL Management
+;; =============================================================================
+
+(define *repl-started?*
+  #f)
+
+(define (start-repl-if-enabled!)
+  (when (and (get-dock-enable-repl?)
+             (not *repl-started?*))
+    (set! *repl-started?* #t)
+    (log-info "Core" "Starting interactive Guile REPL background thread...")
+    (call-with-new-thread (lambda ()
+                            (start-repl)))))
