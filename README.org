@@ -229,6 +229,8 @@ In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. Yo
  #:repl-socket-path "/tmp/lambdock-repl.sock")
 #+end_src
 
+You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
+
 *** Option A: Emacs (Geiser) — Recommended
 
 If you use Emacs with Geiser:
@@ -237,7 +239,15 @@ If you use Emacs with Geiser:
 2. Select ~guile~ as the Scheme implementation.
 3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
 
-Once connected, you can evaluate Scheme expressions against the running Lambdock instance (e.g., ~(use-modules (lambdock core))~ followed by ~(get-dock-items)~).
+Once connected, you can evaluate Scheme expressions against the running Lambdock instance, e.g.
+
+#+begin_example
+scheme@(guile-user)> (use-modules (lambdock core))
+scheme@(guile-user)> (set-dock-theme! 'nature)
+scheme@(guile-user)> (reload-dock!)
+#+end_example
+
+(e.g., ~(use-modules (lambdock core))~ followed by ~(get-dock-items)~).
 
 *** Option B: Terminal via ~socat~ (With Readline Support)
 
