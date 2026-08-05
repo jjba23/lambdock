@@ -35,6 +35,23 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 -------
 
+* What systems does lambdock support?
+
+~lambdock~ is a GNU/Linux first utility.
+
+The tool uses ~gtk4-layer-shell~ to render to the screen and positioning and for dock behavior.
+
+That means it works well in Wayland compositors that support the  ~wlr-layer-shell-unstable-v1~ protocol, including:
+
+- KDE Plasma (Wayland session)
+- Smithay-based compositors: Niri, COSMIC Desktop
+- wlroots-based compositors: Sway, Hyprland, River, Wayfire
+- Mir-based compositors
+
+Note: GNOME (Mutter) currently not supported due to not implementing the protocol
+
+--------
+
 * Scheme Configuration
 
 Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors. Most of the options have sensible defaults, so you only need to configure what you want to modify, in your config file.
