@@ -15,7 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
-// --- Internal Header Includes ---
 #include "dock_item.h"         // Struct definitions for DockItem, LambdockState, AppWindow
 #include "../guile_bridge.h"   // Scheme/Guile configuration interface
 #include "../logger.h"         // Logging macro utilities (e.g., LOG_C_INFO)
