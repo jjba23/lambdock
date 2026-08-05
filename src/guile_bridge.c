@@ -133,8 +133,13 @@ void populate_dock_items(LambdockState *state) {
       char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
       char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
 
-      // Instantiate unified favorite dock item
-      create_dock_item(state, name, icon, exec, name, TRUE);
+      if (!is_app_excluded(name) && !is_app_excluded(icon) && !is_app_excluded(exec)) {
+        // Instantiate favorite dock item
+        create_dock_item(state, name, icon, exec, name, TRUE);
+        LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
+      } else {
+        LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s", name);
+      }
 
       LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
 
@@ -184,4 +189,35 @@ void reload_guile_config(void) {
   if (scm_is_true(init_fn)) {
     scm_call_0(init_fn);
   }
+}
+
+gboolean is_app_excluded(const char *app_id) {
+  if (!app_id || *app_id == '\0')
+    return FALSE;
+
+  SCM get_exclude_fn = scm_c_public_ref("lambdock core", "get-dock-exclude-apps");
+
+  if (scm_is_true(get_exclude_fn)) {
+    SCM list = scm_call_0(get_exclude_fn);
+
+    while (scm_is_pair(list)) {
+      SCM elem = scm_car(list);
+      // Convert symbol to string if needed
+      SCM str_scm = scm_is_symbol(elem) ? scm_symbol_to_string(elem) : elem;
+
+      if (scm_is_string(str_scm)) {
+        char *str = scm_to_utf8_string(str_scm);
+        gboolean match = (g_ascii_strcasecmp(str, app_id) == 0);
+        free(str);
+
+        if (match) {
+          return TRUE;
+        }
+      }
+
+      list = scm_cdr(list);
+    }
+  }
+
+  return FALSE;
 }

@@ -42,7 +42,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   #:declarative? #t
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
-                          dock-monitor))
+                          dock-monitor dock-exclude-apps))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
@@ -62,6 +62,9 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 ;; "DP-1"       -> Target specific monitor output connector
 ;; 'default     -> Default compositor monitor assignment
 (define dock-monitor 'all)
+
+;; List of app ids to never show in the dock
+(define dock-exclude-apps '())
 
 (define dock-items
   (list (app-item #:name "Terminal (Alacritty)"
@@ -350,7 +353,6 @@ You could say using this dock /es casi una experiencia religiosa como la de [[ht
 
 ------
 * Backlog and Ideas
-*** TODO: Add a list of dock exclusion icons
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Add library of well-known icons, convenient for users of lambdock (for people's config,exported via (lambdock core)
-*** TODO: Add more themes (Ubuntu Unity, CairoDock inspiration, Plank, other macOS inspired etc.)
+*** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)

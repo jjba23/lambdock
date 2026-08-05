@@ -21,6 +21,7 @@
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
 #include "dock_window.h"
+#include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui_helpers.h"
@@ -125,6 +126,12 @@ toplevel_handle_app_id(void *data,
   // Ignore Lambdock's own windows (e.g. About Dialog, main window)
   if (g_ascii_strcasecmp(app_id, "lambdock") == 0 ||
       g_ascii_strcasecmp(app_id, "org.jointhefreeworld.lambdock") == 0) {
+    return;
+  }
+
+  // Ignore user-excluded applications
+  if (is_app_excluded(app_id)) {
+    LOG_C_INFO("Tracker", "Ignoring excluded app_id: '%s'", app_id);
     return;
   }
 
@@ -302,6 +309,9 @@ void sync_window_trackers(LambdockState *state) {
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
     WindowTracker *tracker = (WindowTracker *)l->data;
     if (!tracker || !tracker->app_id)
+      continue;
+
+    if (is_app_excluded(tracker->app_id))
       continue;
 
     // Search if a dock item already exists matching tracker->app_id

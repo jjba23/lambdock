@@ -91,4 +91,15 @@ char *get_config_path_c(void);
  */
 void reload_guile_config(void);
 
+/**
+ * is_app_excluded:
+ * @app_id: Application identifier or string to check against exclusion list.
+ *
+ * Invokes Guile function 'get-dock-exclude-apps' and checks if @app_id matches
+ * any string or symbol present in the configuration list.
+ *
+ * Returns: TRUE if app is in exclusion list; FALSE otherwise.
+ */
+gboolean is_app_excluded(const char *app_id);
+
 #endif // GUILE_BRIDGE_H

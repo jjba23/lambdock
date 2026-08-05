@@ -36,6 +36,7 @@
                            get-dock-monitor
                            get-icon-size
                            get-dock-auto-hide?
+                           get-dock-exclude-apps
                            resolve-dock-configuration)
   #:export (init-dock!))
 
@@ -65,7 +66,9 @@
                                       #:monitor (assq-ref settings
                                                           'dock-monitor)
                                       #:auto-hide? (assq-ref settings
-                                                             'dock-auto-hide?))))
+                                                             'dock-auto-hide?)
+                                      #:exclude-apps (assq-ref settings
+                                                               'dock-exclude-apps))))
                  (lambda (key . args)
                    (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
                               key args))))

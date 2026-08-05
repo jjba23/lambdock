@@ -25,12 +25,14 @@
                             get-dock-auto-hide?
                             get-dock-theme
                             get-dock-monitor
+                            get-dock-exclude-apps
                             *dock-theme*
                             *dock-items*
                             *dock-position*
                             *dock-icon-size*
                             *dock-monitor*
-                            *dock-auto-hide?*))
+                            *dock-auto-hide?*
+                            *dock-exclude-apps*))
 
 ;; =============================================================================
 ;; Application State
@@ -54,6 +56,9 @@
 (define *dock-monitor*
   'default)
 
+(define *dock-exclude-apps*
+  '())
+
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
@@ -63,16 +68,18 @@
                           (items '())
                           (auto-hide? #f)
                           (theme 'vanilla)
-                          (monitor 'default))
+                          (monitor 'default)
+                          (exclude-apps '()))
   "Sets the primary configuration parameters for the dock."
   (log-info "State"
-   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a"
    (length items)
    icon-size
    theme
    auto-hide?
    position
-   monitor)
+   monitor
+   (length exclude-apps))
 
   (when position
     (set! *dock-position* position))
@@ -86,15 +93,18 @@
     (set! *dock-auto-hide?* auto-hide?))
   (when monitor
     (set! *dock-monitor* monitor))
+  (when exclude-apps
+    (set! *dock-exclude-apps* exclude-apps))
 
   (log-info "State"
-   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a"
+   "Configuration loaded: ~a items registered at ~apx, theme: ~a, auto-hide?: ~a, position: ~a, monitor: ~a, excluded items: ~a"
    (length items)
    icon-size
    theme
    auto-hide?
    position
-   monitor))
+   monitor
+   (length exclude-apps)))
 
 (define (get-dock-items)
   *dock-items*)
@@ -113,3 +123,6 @@
 
 (define (get-dock-monitor)
   *dock-monitor*)
+
+(define (get-dock-exclude-apps)
+  *dock-exclude-apps*)
