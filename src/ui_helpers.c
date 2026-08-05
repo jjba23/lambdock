@@ -33,21 +33,35 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     return img;
   }
 
-  // Fallback 1: Absolute file system path check
+  // Fallback 1: GResource URI check (e.g. resource:///org/jointhefreeworld/...)
+  if (g_str_has_prefix(icon, "resource://")) {
+    GtkWidget *img = gtk_image_new_from_resource(icon + 11);
+    gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
+    return img;
+  } else if (g_str_has_prefix(icon, "/org/jointhefreeworld/lambdock/")) {
+    if (g_resources_get_info(icon, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL, NULL,
+                             NULL)) {
+      GtkWidget *img = gtk_image_new_from_resource(icon);
+      gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
+      return img;
+    }
+  }
+
+  // Fallback 2: Absolute file system path check
   if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
     GtkWidget *img = gtk_image_new_from_file(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
-  // Fallback 2: Theme icon search
+  // Fallback 3: Theme icon search
   if (gtk_icon_theme_has_icon(theme, icon)) {
     GtkWidget *img = gtk_image_new_from_icon_name(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
-  // Fallback 3: XDG system pixmaps folder search
+  // Fallback 4: XDG system pixmaps folder search
   const char *const *sys_dirs = g_get_system_data_dirs();
   for (int i = 0; sys_dirs[i] != NULL; i++) {
     char *pixmap_png = g_strdup_printf("%s/pixmaps/%s.png", sys_dirs[i], icon);
@@ -60,7 +74,7 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     g_free(pixmap_png);
   }
 
-  // Fallback 4: Symbolic variant search
+  // Fallback 5: Symbolic variant search
   char *symbolic_name = g_strdup_printf("%s-symbolic", icon);
   if (gtk_icon_theme_has_icon(theme, symbolic_name)) {
     GtkWidget *img = gtk_image_new_from_icon_name(symbolic_name);
@@ -70,7 +84,7 @@ static GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   }
   g_free(symbolic_name);
 
-  // Fallback 5: Generic default executable icon
+  // Fallback 6: Generic default executable icon
   GtkWidget *img = gtk_image_new_from_icon_name("application-x-executable");
   gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
   return img;
@@ -595,7 +609,7 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
-  // 1. BASE THEME CSS
+  // 1. BASE THEME CSS (Loaded directly from compiled GResource)
   if (!g_base_css_provider) {
     g_base_css_provider = gtk_css_provider_new();
     gtk_style_context_add_provider_for_display(
@@ -603,21 +617,22 @@ void load_custom_css(LambdockState *state) {
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
   }
 
-  char *css_path = NULL;
-#ifdef DOCK_CSS_PATH
-  if (g_file_test(DOCK_CSS_PATH, G_FILE_TEST_IS_DIR)) {
-    char *filename = g_strdup_printf(
-        "%s.css", (state && state->theme) ? state->theme : "vanilla");
-    css_path = g_build_filename(DOCK_CSS_PATH, filename, NULL);
-    g_free(filename);
-  }
-#endif
+  const char *theme_name = (state && state->theme) ? state->theme : "vanilla";
+  char *resource_path =
+      g_strdup_printf("/org/jointhefreeworld/lambdock/css/%s.css", theme_name);
 
-  if (css_path && g_file_test(css_path, G_FILE_TEST_EXISTS)) {
-    LOG_C_INFO("UI", "Loading base CSS theme from: %s", css_path);
-    gtk_css_provider_load_from_path(g_base_css_provider, css_path);
-    g_free(css_path);
+  if (g_resources_get_info(resource_path, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL,
+                           NULL, NULL)) {
+    LOG_C_INFO("UI", "Loading base CSS theme from GResource: %s",
+               resource_path);
+    gtk_css_provider_load_from_resource(g_base_css_provider, resource_path);
+  } else {
+    LOG_C_WARN("UI", "Theme resource '%s' not found, falling back to vanilla",
+               resource_path);
+    gtk_css_provider_load_from_resource(
+        g_base_css_provider, "/org/jointhefreeworld/lambdock/css/vanilla.css");
   }
+  g_free(resource_path);
 
   // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
   const char *config_dir = g_get_user_config_dir();

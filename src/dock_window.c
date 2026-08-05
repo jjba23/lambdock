@@ -279,35 +279,19 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
                                      "Find the project's source code here");
 
-  // Logo Loading Logic with Safe Fallback
-#ifdef DOCK_LOGO_PATH
-  if (g_file_test(DOCK_LOGO_PATH, G_FILE_TEST_EXISTS)) {
-    LOG_C_INFO("About", "Looking for project logo: %s", DOCK_LOGO_PATH);
-    GFile *logo_file = g_file_new_for_path(DOCK_LOGO_PATH);
-    GError *error = NULL;
+  // Logo Loading Logic from GResource
+  const char *logo_resource =
+      "/org/jointhefreeworld/lambdock/img/agnus-dei.png";
+  GdkTexture *texture = gdk_texture_new_from_resource(logo_resource);
 
-    GdkTexture *texture = gdk_texture_new_from_file(logo_file, &error);
-
-    if (texture) {
-      gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about),
-                                GDK_PAINTABLE(texture));
-      g_object_unref(texture);
-    } else {
-      LOG_C_WARN("About", "Failed to load logo from %s: %s", DOCK_LOGO_PATH,
-                 error ? error->message : "Unknown error");
-      if (error)
-        g_clear_error(&error);
-
-      gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
-    }
-
-    g_object_unref(logo_file);
+  if (texture) {
+    gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about), GDK_PAINTABLE(texture));
+    g_object_unref(texture);
   } else {
+    LOG_C_WARN("About", "Failed to load logo from GResource: %s",
+               logo_resource);
     gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
   }
-#else
-  gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
-#endif
 
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);
   gtk_window_present(GTK_WINDOW(about));

@@ -22,11 +22,12 @@ project('lambdock', 'c',
     'c_std=gnu17',            # Modern standard + POSIX/GNU extensions required by GTK/Wayland
     'warning_level=3',        # -Wall -Wextra -Wpedantic
     'werror=true',            # Treat warnings as errors for project code
-    'b_lto=true',             # Link-Time Optimization (LTO)
-    'b_pie=true',             # Position-Independent Executable
+    'b_lto=true',              # Link-Time Optimization (LTO)
+    'b_pie=true',              # Position-Independent Executable
   ]
 )
 
+gnome = import('gnome')
 cc = meson.get_compiler('c')
 
 # --- Pedantic & Strict Compiler Warnings for Project Code ---
@@ -44,6 +45,7 @@ desired_warning_flags = [
   '-Werror=implicit-function-declaration',
   '-Werror=incompatible-pointer-types',
   '-Werror=int-conversion',
+  '-Wno-overlength-strings',
 ]
 
 add_project_arguments(
@@ -54,7 +56,7 @@ add_project_arguments(
 # Required POSIX feature macro under strict C modes
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
-# --- Dependencies (marked as system headers to suppress external warnings) ---
+# --- Dependencies ---
 gtk_dep = dependency('gtk4', include_type: 'system')
 guile_dep = dependency('guile-3.0', include_type: 'system')
 layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system')
@@ -72,7 +74,6 @@ endif
 
 wayland_scanner = find_program('wayland-scanner')
 
-# Custom targets preserve exact output header naming expected by source code
 wl_proto_src = custom_target(
   'wlr-foreign-toplevel-protocol-c',
   input: toplevel_xml,
@@ -87,24 +88,27 @@ wl_proto_h = custom_target(
   command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
 )
 
+# --- Compile GLib Resources ---
+lambdock_resources = gnome.compile_resources(
+  'lambdock-resources',
+  'resources/lambdock.gresource.xml',
+  source_dir: 'resources',
+  c_name: 'lambdock',
+)
+
 # --- Path Configuration & Preprocessor Defines ---
 datadir = get_option('prefix') / get_option('datadir')
-pkgdatadir = datadir / 'lambdock'
 scheme_install_path = datadir / 'guile/site/3.0'
 
 add_project_arguments(
   '-DLAMBDOCK_SCHEME_DIR="' + scheme_install_path + '"',
-  '-DDOCK_CSS_PATH="' + (pkgdatadir / 'css') + '"',
-  '-DDOCK_LOGO_PATH="' + (pkgdatadir / 'img' / 'agnus-dei.png') + '"',
   '-DDEFAULT_GSK_RENDERER="gl"',
   '-DPACKAGE_VERSION="' + meson.project_version() + '"',
   language: 'c'
 )
 
-# --- Directory Installations ---
+# --- Scheme Module Installation ---
 install_subdir('scheme/lambdock', install_dir: scheme_install_path)
-install_subdir('resources/css', install_dir: pkgdatadir)
-install_subdir('resources/img', install_dir: pkgdatadir)
 
 inc = include_directories('src')
 
@@ -118,6 +122,7 @@ sources = files(
 
 executable('lambdock',
   sources,
+  lambdock_resources,
   wl_proto_src,
   wl_proto_h,
   include_directories: inc,

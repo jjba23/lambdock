@@ -1,29 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
-  <!-- Dock Themes -->
   <gresource prefix="/org/jointhefreeworld/lambdock">
+    <!-- Dock Themes -->
     <file>css/vanilla.css</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/vanilla-light.css</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/snow-leopard.css</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/solarized-light.css</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>css/unity.css</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
-    <file>css/solarized-light.css</file>
-  </gresource>
-  <!-- Images -->
-  <gresource prefix="/org/jointhefreeworld/lambdock">
+    <!-- Images -->
     <file>img/agnus-dei.svg</file>
-  </gresource>
-  <gresource prefix="/org/jointhefreeworld/lambdock">
     <file>img/agnus-dei.png</file>
   </gresource>
 </gresources>
