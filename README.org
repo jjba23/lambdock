@@ -23,7 +23,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 - *Declarative Lisp Configuration* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options.
 - *Live Interactive Socket REPL* 📡: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
 - *Thread-Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
-- *Theme Engine* 🎨: Extensible with CSS, and ships with 6 pre-baked themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
+- *Theme Engine* 🎨: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
 - *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme icons, absolute paths, system pixmaps, and symbolic variants.
 - *Async Command Launching*: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
 - *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
@@ -60,7 +60,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 
 ;; Themes:
 ;; 'vanilla | 'vanilla-light | 'snow-leopard | 'solarized-light
-;; 'nature | 'unity
+;; 'nature | 'unity | 'none
 (define dock-theme 'vanilla)
 
 ;; 'all         -> Render dock on every connected monitor
@@ -142,6 +142,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 - Solarized Light ☀️ (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
 - Nature 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted specular borders, and a lively Emerald Leaf glowing running app indicator.
 - Unity 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark aubergine glass background, Ubuntu warm orange highlights, and an active indicator glowing in iconic Orange.
+- None (~'none~): no styling applied, using default GTK appearance.
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 

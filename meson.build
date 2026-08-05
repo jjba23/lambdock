@@ -16,7 +16,7 @@
 # along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
 
 project('lambdock', 'c',
-  version: '0.1.0',
+  version: '0.3.0',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Modern standard + POSIX/GNU extensions required by GTK/Wayland

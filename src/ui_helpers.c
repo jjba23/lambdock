@@ -609,7 +609,20 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
-  // 1. BASE THEME CSS (Loaded directly from compiled GResource)
+  const char *theme_name = (state && state->theme) ? state->theme : "vanilla";
+
+  // If theme is 'none', clear any active styles and skip all CSS loading
+  if (g_ascii_strcasecmp(theme_name, "none") == 0) {
+    if (g_base_css_provider) {
+      gtk_css_provider_load_from_string(g_base_css_provider, "");
+    }
+    if (g_user_css_provider) {
+      gtk_css_provider_load_from_string(g_user_css_provider, "");
+    }
+    return;
+  }
+
+  // BASE THEME CSS (Loaded directly from compiled GResource)
   if (!g_base_css_provider) {
     g_base_css_provider = gtk_css_provider_new();
     gtk_style_context_add_provider_for_display(
@@ -617,7 +630,6 @@ void load_custom_css(LambdockState *state) {
         GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
   }
 
-  const char *theme_name = (state && state->theme) ? state->theme : "vanilla";
   char *resource_path =
       g_strdup_printf("/org/jointhefreeworld/lambdock/css/%s.css", theme_name);
 
@@ -634,7 +646,7 @@ void load_custom_css(LambdockState *state) {
   }
   g_free(resource_path);
 
-  // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
+  // USER OVERRIDE CSS (~/.config/lambdock/styles.css)
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
       g_build_filename(config_dir, "lambdock", "styles.css", NULL);
