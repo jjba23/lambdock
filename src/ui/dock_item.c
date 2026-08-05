@@ -16,12 +16,12 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_item.h"
-#include "guile_bridge.h"
+#include "../guile_bridge.h"
+#include "../logger.h"
+#include "../toplevel_tracker.h"
 #include "icon_resolver.h"
-#include "logger.h"
 #include "popover_menu.h"
 #include "theme_engine.h"
-#include "toplevel_tracker.h"
 
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   (void)btn;
@@ -145,17 +145,10 @@ void clear_favorite_dock_items(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    void *tracker_ptr = l->data;
-    if (tracker_ptr) {
-      void **dock_item_ptr =
-          (void **)((char *)tracker_ptr + sizeof(void *) * 2);
-      void **app_win_ptr = (void **)((char *)tracker_ptr + sizeof(void *) * 3);
-      *dock_item_ptr = NULL;
-      *app_win_ptr = NULL;
-    }
-  }
+  // Unlink window trackers safely via the tracker API
+  clear_window_tracker_dock_references(state);
 
+  // Free and remove pinned launchers from the layout
   GList *curr = state->dock_items;
   while (curr != NULL) {
     GList *next = curr->next;

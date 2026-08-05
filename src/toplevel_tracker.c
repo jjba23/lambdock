@@ -25,9 +25,6 @@
 #include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui/dock_item.h"
-#include "ui/icon_resolver.h"
-#include "ui/popover_menu.h"
-#include "ui/theme_engine.h"
 
 /**
  * WindowTracker:
@@ -343,6 +340,18 @@ void sync_window_trackers(LambdockState *state) {
         g_free(tracker->app_win->title);
         tracker->app_win->title = g_strdup(tracker->title);
       }
+    }
+  }
+}
+
+void clear_window_tracker_dock_references(LambdockState *state) {
+  if (!state)
+    return;
+  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
+    WindowTracker *tracker = (WindowTracker *)l->data;
+    if (tracker) {
+      tracker->dock_item = NULL;
+      tracker->app_win = NULL;
     }
   }
 }

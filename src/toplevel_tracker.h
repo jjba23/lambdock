@@ -54,4 +54,6 @@ void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
  */
 void sync_window_trackers(LambdockState *state);
 
+void clear_window_tracker_dock_references(LambdockState *state);
+
 #endif // TOPLEVEL_TRACKER_H
