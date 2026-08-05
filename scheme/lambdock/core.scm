@@ -40,9 +40,8 @@
                            get-dock-auto-hide?
                            get-dock-exclude-apps
                            get-dock-enable-repl?
-                           resolve-dock-configuration
-                           start-repl!)
-  #:export (init-dock!))
+                           resolve-dock-configuration)
+  #:export (init-dock! start-repl!))
 
 ;; =============================================================================
 ;; Core Hooks
