@@ -184,6 +184,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
   scm_call_0(init_fn);
 
+  // Start REPL thread from C
+  SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+  if (scm_is_true(start_repl_fn)) {
+    scm_call_0(start_repl_fn);
+  }
+
   setup_icon_theme();
 
   GSimpleAction *about_action = g_simple_action_new("about", NULL);

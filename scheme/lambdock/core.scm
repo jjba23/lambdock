@@ -18,6 +18,7 @@
 (define-module (lambdock core)
   #:declarative? #f
   #:use-module (ice-9 format)
+  #:use-module (ice-9 threads)
   #:use-module (lambdock items)
   #:use-module (lambdock state)
   #:use-module (lambdock loader)
@@ -39,7 +40,8 @@
                            get-dock-auto-hide?
                            get-dock-exclude-apps
                            get-dock-enable-repl?
-                           resolve-dock-configuration)
+                           resolve-dock-configuration
+                           start-repl!)
   #:export (init-dock!))
 
 ;; =============================================================================
@@ -70,7 +72,9 @@
                                       #:auto-hide? (assq-ref settings
                                                              'dock-auto-hide?)
                                       #:exclude-apps (assq-ref settings
-                                                               'dock-exclude-apps))))
+                                                               'dock-exclude-apps)
+                                      #:enable-repl? (assq-ref settings
+                                                               'dock-enable-repl?))))
                  (lambda (key . args)
                    (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
                               key args))))
@@ -94,7 +98,7 @@
 (define *repl-started?*
   #f)
 
-(define (start-repl-if-enabled!)
+(define (start-repl!)
   (when (and (get-dock-enable-repl?)
              (not *repl-started?*))
     (set! *repl-started?* #t)
