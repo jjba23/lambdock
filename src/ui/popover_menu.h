@@ -1,7 +1,7 @@
 #ifndef POPOVER_MENU_H
 #define POPOVER_MENU_H
 
-#include "lambdock.h"
+#include "../lambdock.h"
 
 /**
  * populate_popover_menu:

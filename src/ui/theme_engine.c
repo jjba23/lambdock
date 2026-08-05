@@ -1,5 +1,7 @@
 #include "theme_engine.h"
-#include "logger.h"
+#include "../lambdock.h"
+#include "../logger.h"
+#include <gtk/gtk.h>
 
 static GtkCssProvider *g_base_css_provider = NULL;
 static GtkCssProvider *g_user_css_provider = NULL;

@@ -1,5 +1,5 @@
 #include "icon_resolver.h"
-#include "logger.h"
+#include "../logger.h"
 
 GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
                                  int icon_size) {

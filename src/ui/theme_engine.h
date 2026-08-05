@@ -1,7 +1,7 @@
 #ifndef THEME_ENGINE_H
 #define THEME_ENGINE_H
 
-#include "lambdock.h"
+#include "../lambdock.h"
 
 /**
  * load_custom_css:

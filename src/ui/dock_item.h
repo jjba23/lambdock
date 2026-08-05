@@ -1,7 +1,7 @@
 #ifndef DOCK_ITEM_H
 #define DOCK_ITEM_H
 
-#include "lambdock.h"
+#include "../lambdock.h"
 
 /**
  * create_dock_item:
