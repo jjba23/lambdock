@@ -244,7 +244,7 @@ socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
 ncat -U /tmp/lambdock-repl.sock
 nc -U /tmp/lambdock-repl.sock
 rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
-#+begin_src
+#+end_src
 
 -----------
 
