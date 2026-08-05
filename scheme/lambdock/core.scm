@@ -18,27 +18,50 @@
 (define-module (lambdock core)
   #:declarative? #f
   #:use-module (ice-9 format)
+  #:use-module (ice-9 threads)
   #:use-module (lambdock items)
   #:use-module (lambdock state)
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
-  #:re-export (<dock-item> dock-item?
-                           dock-item-type
-                           dock-item-name
-                           dock-item-icon
-                           dock-item-exec
-                           app-item
-                           separator-item
-                           configure-dock!
-                           get-dock-items
-                           get-dock-position
-                           get-dock-theme
-                           get-dock-monitor
-                           get-icon-size
-                           get-dock-auto-hide?
-                           get-dock-exclude-apps
-                           resolve-dock-configuration)
-  #:export (init-dock!))
+  #:use-module (system repl server)
+  #:re-export ( ;Item structures
+                <dock-item>
+               dock-item?
+               dock-item-type
+               dock-item-name
+               dock-item-icon
+               dock-item-exec
+               app-item
+               separator-item
+
+               ;; Primary Configurator
+               configure-dock!
+
+               ;; Getters
+               get-dock-items
+               get-dock-position
+               get-dock-theme
+               get-dock-icon-size
+               get-dock-auto-hide?
+               get-dock-monitor
+               get-dock-exclude-apps
+               get-dock-enable-repl?
+               get-dock-repl-socket-path
+
+               ;; Setters
+               set-dock-items!
+               set-dock-position!
+               set-dock-theme!
+               set-dock-icon-size!
+               set-dock-auto-hide!
+               set-dock-monitor!
+               set-dock-exclude-apps!
+               set-dock-enable-repl!
+               set-dock-repl-socket-path!
+
+               ;; Config Loader
+               resolve-dock-configuration)
+  #:export (init-dock! start-repl!))
 
 ;; =============================================================================
 ;; Core Hooks
@@ -54,28 +77,33 @@
           (catch #t
                  (lambda ()
                    (load config-file)
-                   (let* ((settings (resolve-dock-configuration)))
-                     (configure-dock! #:position (assq-ref settings
-                                                           'dock-position)
-                                      #:icon-size (assq-ref settings
-                                                            'dock-icon-size)
-                                      #:items (assq-ref settings
-                                                        'dock-items)
-                                      #:theme (assq-ref settings
-                                                        'dock-theme)
-                                      #:monitor (assq-ref settings
-                                                          'dock-monitor)
-                                      #:auto-hide? (assq-ref settings
-                                                             'dock-auto-hide?)
-                                      #:exclude-apps (assq-ref settings
-                                                               'dock-exclude-apps))))
+                   (let* ((settings (resolve-dock-configuration))
+                          (cfg (lambda (key default)
+                                 (let ((val (assq-ref settings key)))
+                                   (if val val default)))))
+                     (configure-dock! #:position (cfg 'dock-position
+                                                      'bottom)
+                                      #:icon-size (cfg 'dock-icon-size 48)
+                                      #:items (cfg 'dock-items
+                                                   '())
+                                      #:theme (cfg 'dock-theme
+                                                   'vanilla)
+                                      #:monitor (cfg 'dock-monitor
+                                                     'default)
+                                      #:auto-hide? (cfg 'dock-auto-hide? #f)
+                                      #:exclude-apps (cfg 'dock-exclude-apps
+                                                          '())
+                                      #:enable-repl? (cfg 'dock-enable-repl?
+                                                          #f)
+                                      #:repl-socket-path (cfg 'dock-repl-socket-path
+                                                          "/tmp/lambdock-repl.sock"))))
                  (lambda (key . args)
                    (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
                               key args))))
         (log-warn "Core" "No settings file found at: ~a~%" config-file)))
 
   ;; Load fallback default dock items if no items were registered
-  (when (null? *dock-items*)
+  (when (null? (get-dock-items))
     (log-warn "Core"
               "No configured items found, loading default configuration...")
     (configure-dock! #:position 'bottom
@@ -84,3 +112,37 @@
                                              #:icon "Alacritty"
                                              #:exec "alacritty"))
                      #:auto-hide? #f)))
+
+;; =============================================================================
+;; REPL Management
+;; =============================================================================
+
+(define *repl-started?*
+  #f)
+
+(define (start-repl!)
+  (when (and (get-dock-enable-repl?)
+             (not *repl-started?*))
+    (set! *repl-started?* #t)
+    (let ((socket-path (get-dock-repl-socket-path)))
+      (log-info "Core" "Starting interactive Guile REPL Unix socket at ~a..."
+                socket-path)
+      (call-with-new-thread (lambda ()
+                              (catch #t
+                                     (lambda ()
+                                       ;; Ensure target directory exists
+                                       (let ((dir (dirname socket-path)))
+                                         (when (and (not (string-null? dir))
+                                                    (not (file-exists? dir)))
+                                           (mkdir-p dir)))
+                                       ;; Clean up stale socket file if present
+                                       (when (file-exists? socket-path)
+                                         (delete-file socket-path))
+                                       (let ((server-socket (make-unix-domain-server-socket
+                                                             #:path
+                                                             socket-path)))
+                                         (spawn-server server-socket)))
+                                     (lambda (key . args)
+                                       (log-error "Core"
+                                        "Failed to start REPL server on ~a (~a): ~a"
+                                        socket-path key args))))))))

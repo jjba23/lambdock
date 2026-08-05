@@ -133,7 +133,8 @@ void populate_dock_items(LambdockState *state) {
       char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
       char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
 
-      if (!is_app_excluded(name) && !is_app_excluded(icon) && !is_app_excluded(exec)) {
+      if (!is_app_excluded(name) && !is_app_excluded(icon) &&
+          !is_app_excluded(exec)) {
         // Instantiate favorite dock item
         create_dock_item(state, name, icon, exec, name, TRUE);
         LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
@@ -195,7 +196,8 @@ gboolean is_app_excluded(const char *app_id) {
   if (!app_id || *app_id == '\0')
     return FALSE;
 
-  SCM get_exclude_fn = scm_c_public_ref("lambdock core", "get-dock-exclude-apps");
+  SCM get_exclude_fn =
+      scm_c_public_ref("lambdock core", "get-dock-exclude-apps");
 
   if (scm_is_true(get_exclude_fn)) {
     SCM list = scm_call_0(get_exclude_fn);
@@ -217,6 +219,17 @@ gboolean is_app_excluded(const char *app_id) {
 
       list = scm_cdr(list);
     }
+  }
+
+  return FALSE;
+}
+
+gboolean get_repl_config(void) {
+  SCM get_repl_fn = scm_c_public_ref("lambdock core", "get-dock-enable-repl?");
+
+  if (scm_is_true(get_repl_fn)) {
+    SCM res = scm_call_0(get_repl_fn);
+    return scm_to_bool(res);
   }
 
   return FALSE;

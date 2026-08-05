@@ -26,6 +26,34 @@
 static GList *g_active_states = NULL;
 static guint g_reload_timer_id = 0;
 
+static gboolean on_manual_reload_idle(gpointer user_data) {
+  (void)user_data;
+  LOG_C_INFO("Main", "Triggering manual UI reload...");
+  for (GList *l = g_active_states; l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    reload_dock_instance(state);
+  }
+  return G_SOURCE_REMOVE;
+}
+
+static void trigger_dock_reload(void) {
+  g_idle_add(on_manual_reload_idle, NULL);
+}
+
+static SCM scm_reload_dock(void) {
+  trigger_dock_reload();
+  return SCM_UNSPECIFIED;
+}
+
+static void setup_guile_primitives(void) {
+  scm_c_use_module("lambdock core");
+
+  scm_c_define_gsubr("reload-dock!", 0, 0, 0,
+                     (scm_t_subr)(intptr_t)scm_reload_dock);
+
+  scm_c_export("reload-dock!", NULL);
+}
+
 /**
  * on_config_reload_timeout:
  * Debounce callback executed 150ms after file writes complete.
@@ -181,8 +209,17 @@ static void activate(GtkApplication *app, gpointer user_data) {
   setup_guile_load_path();
   scm_c_use_module("lambdock core");
 
+  // Register C primitive procedures to Scheme
+  setup_guile_primitives();
+
   SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
   scm_call_0(init_fn);
+
+  // Start REPL thread from C
+  SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+  if (scm_is_true(start_repl_fn)) {
+    scm_call_0(start_repl_fn);
+  }
 
   setup_icon_theme();
 
