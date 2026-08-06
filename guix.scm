@@ -40,7 +40,11 @@
                  #:select? (git-predicate %source-dir)))
     (build-system meson-build-system)
     (native-inputs (list pkg-config))
-    (inputs (list gtk gtk4-layer-shell guile-3.0 wlr-protocols (list glib "bin")))
+    (inputs (list (list glib "bin")
+                  gtk
+                  gtk4-layer-shell
+                  guile-3.0
+                  wlr-protocols))
     (home-page "https://codeberg.org/jjba23/lambdock")
     (synopsis "Wayland desktop dock customizable with GNU Guile Scheme")
     (description
