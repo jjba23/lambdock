@@ -31,7 +31,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 -------
 
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-04_10-25-44-ezgif.com-resize.gif]]
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-30-06.gif]]
 
 -------
 
@@ -56,7 +56,7 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 
 Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors. Most of the options have sensible defaults, so you only need to configure what you want to modify, in your config file.
 
-Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~)
+Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~) and it will be hot-reloaded.
 
 #+begin_src scheme
 (define-module (lambdock settings)
@@ -150,6 +150,10 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 | ~(separator-item)~ | Vertical/Horizontal layout divider bar | None |
 
 
+-------
+
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
+
 -----------
 
 * Styling & Theming 🎨
@@ -157,12 +161,19 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 ~lambdock~ ships with pre-baked themes embedded via build defines:
 
 - Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
 - Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted flass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png]]
 - Snow Leopard 3D Glass 🍎  (~'snow-leopard~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png]]
 - Solarized Light ☀️ (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png]]
 - Nature 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted specular borders, and a lively Emerald Leaf glowing running app indicator.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-58.png]]
 - Unity 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark aubergine glass background, Ubuntu warm orange highlights, and an active indicator glowing in iconic Orange.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
 - None (~'none~): no styling applied, using default GTK appearance.
+[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 
