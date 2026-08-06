@@ -468,8 +468,8 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * @state: Global Lambdock application state.
  *
  * Hot-reloads dock UI appearance, Scheme/Guile configuration rules, custom CSS
- * themes, autohide behavior, and rebuilds dock launcher layout without
- * restarting application.
+ * themes, autohide behavior, screen edge positioning, and rebuilds dock launcher layout
+ * without restarting application.
  */
 void reload_dock_instance(LambdockState *state) {
   if (!state)
@@ -482,15 +482,49 @@ void reload_dock_instance(LambdockState *state) {
   state->theme = get_theme_config();
   load_custom_css(state);
 
-  // Fetch preferences from Scheme environment
+  // Hot-reload Position & Layer Shell Edge Anchoring
+  GtkLayerShellEdge new_edge = get_position_config();
+  if (new_edge != state->edge) {
+    // Reset margin on old edge and un-anchor it
+    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
+    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
+
+    // Set new edge anchor
+    state->edge = new_edge;
+    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, TRUE);
+
+    // Recalculate orientation & update GTK Box direction
+    state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
+                          state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
+                             ? GTK_ORIENTATION_VERTICAL
+                             : GTK_ORIENTATION_HORIZONTAL;
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(state->box),
+                                   state->orientation);
+
+    // Reset margin and animation offsets
+    state->current_margin = 0;
+    state->target_margin = 0;
+    state->start_margin = 0;
+    state->is_hidden = FALSE;
+  }
+
+  // Hot-reload Auto-Hide & Layer Shell Exclusive Zone
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
 
-  if (state->show_when_clear && state->window_trackers == NULL) {
+  if (state->auto_hide) {
+    // Set exclusive zone to 0 so windows can occupy full screen space
+    gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window), 0);
+
+    if (state->show_when_clear && state->window_trackers == NULL) {
+      reveal_dock(state);
+    } else {
+      hide_dock(state);
+    }
+  } else {
+    // Reserve desktop screen space dynamically when auto-hide is disabled
+    gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(state->window));
     reveal_dock(state);
-  } else if (state->auto_hide && state->window_trackers != NULL &&
-             !state->is_hidden) {
-    hide_dock(state);
   }
 
   // Clear pinned items and repopulate dock launcher layout
