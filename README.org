@@ -230,53 +230,6 @@ find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg
 
 ---------
 
-* Interactive lambdock REPL
-
-For purposes of development, experimentation and live hackability, lambdock features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
-
-In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. You can optionally customize the socket path using =#:repl-socket-path= (defaults to =/tmp/lambdock-repl.sock=):
-
-#+begin_src scheme
-(configure-dock!
- #:position 'bottom
- #:items (list ...)
- ;; .... other settings
- #:enable-repl? #t
- #:repl-socket-path "/tmp/lambdock-repl.sock")
-#+end_src
-
-You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
-
-Once connected, you can evaluate Scheme expressions against the running Lambdock instance, e.g.
-
-#+begin_example
-scheme@(guile-user)> (use-modules (lambdock core))
-scheme@(guile-user)> (get-dock-theme) ;; -> 'vanilla
-scheme@(guile-user)> (set-dock-theme! 'nature)
-scheme@(guile-user)> (reload-dock!)
-#+end_example
-
-*** Emacs (Geiser) — Recommended
-
-If you use Emacs with Geiser:
-
-1. Run ~M-x geiser-connect-local~.
-2. Select ~guile~ as the Scheme implementation.
-3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
-
-*** Other options
-
-You can connect directly from your terminal using different tooling, like ~nc~, ~ncat~,  ~socat~ wrapped with ~rlwrap~ , and others:
-
-#+begin_src sh
-socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
-ncat -U /tmp/lambdock-repl.sock
-nc -U /tmp/lambdock-repl.sock
-rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
-#+end_src
-
------------
-
 * Etimology
 
 The name /lambdock/ is a play on words combining:
@@ -295,6 +248,58 @@ lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei]
 You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
 
 ---------
+
+
+* Interactive lambdock REPL
+
+For purposes of development, experimentation and live hackability, lambdock features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
+
+In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. You can optionally customize the socket path using =#:repl-socket-path= (defaults to =/tmp/lambdock-repl.sock=):
+
+#+begin_src scheme
+(configure-dock!
+ #:position 'bottom
+ #:items (list ...)
+ ;; .... other settings
+ #:enable-repl? #t
+ #:repl-socket-path "/tmp/lambdock-repl.sock")
+#+end_src
+
+You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
+
+Once connected, you can evaluate Scheme expressions against the running Lambdock instance, possibilities are endless, e.g.
+
+#+begin_example
+scheme@(guile-user)> (use-modules (lambdock core))
+scheme@(guile-user)> (get-dock-theme) ;; -> 'vanilla
+scheme@(guile-user)> (set-dock-theme! 'nature)
+scheme@(guile-user)> (reload-dock!)
+#+end_example
+
+*** Emacs (Geiser) — Recommended
+
+If you use Emacs with Geiser:
+
+1. Run ~M-x geiser-connect-local~.
+2. Select ~guile~ as the Scheme implementation.
+3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
+
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_13-13-17.gif]]
+
+
+*** Other options
+
+You can connect directly from your terminal using different tooling, like ~nc~, ~ncat~,  ~socat~ wrapped with ~rlwrap~ , and others:
+
+#+begin_src sh
+socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+ncat -U /tmp/lambdock-repl.sock
+nc -U /tmp/lambdock-repl.sock
+rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+#+end_src
+
+
+-----------
 
 * Wayland Toplevel Tracking & Popovers
 
