@@ -42,10 +42,13 @@
     (native-inputs (list pkg-config))
     (inputs (list gtk gtk4-layer-shell guile-3.0 wlr-protocols (list glib "bin")))
     (home-page "https://codeberg.org/jjba23/lambdock")
-    (synopsis "Wayland-native GTK4 dock extensible in Guile Scheme")
+    (synopsis "Wayland desktop dock customizable with GNU Guile Scheme")
     (description
-     "Lambdock is a lightweight, Wayland-native desktop dock built with a C core,
-GTK4 layer-shell, and dynamic configuration powered by GNU Guile Lisp.")
+     "Lambdock is a Wayland-native desktop dock built with GTK4 and
+@code{gtk4-layer-shell}.  It features dynamic window tracking using the Wayland
+foreign toplevel management protocol, customizable CSS theming, fluid slide-out
+auto-hiding, multi-monitor placement, and an embedded GNU Guile Scheme engine
+for live configuration, extensibility, and REPL interaction.")
     (license license:gpl3+)))
 
 lambdock
