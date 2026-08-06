@@ -518,6 +518,6 @@ $$S(x) = 1.0 + A \cdot \cos\left(\frac{x - x_{\text{cursor}}}{\sigma}\right)$$
 *** TODO: Finish Debian package and publish it
 *** TODO: Finish Fedora package and publish it
 *** TODO: Finish Arch package and publish it
-*** TODO: Nix package?
+*** WIP  Nix package?
 
 -------

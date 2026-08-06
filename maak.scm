@@ -96,3 +96,7 @@
      #:verbose? #t)
   ($ '("rpmbuild -ba lambdock.spec") #:verbose? #t)
   ($ '("cp ~/rpmbuild/RPMS/*/*.rpm .") #:verbose? #t))
+
+(define (nix-build)
+  "Build Nix package"
+  ($ '("nix --extra-experimental-features 'nix-command flakes' build")))
