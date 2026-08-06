@@ -100,3 +100,7 @@
 (define (nix-build)
   "Build Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' build")))
+
+(define (nix-run)
+  "Run Nix package"
+  ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
