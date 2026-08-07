@@ -136,6 +136,7 @@ static void reset_dock_items_scale(LambdockState *state) {
     if (child && GTK_IS_IMAGE(child)) {
       if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != base_sz) {
         gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
+        gtk_widget_set_size_request(child, base_sz, base_sz);
       }
     }
   }
@@ -153,7 +154,8 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       state->is_hidden || state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
-  double base_size = (double)((state->icon_size > 0) ? state->icon_size : 48);
+  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
+  double base_size = (double)base_sz;
   const double max_scale = 1.45; // 45% max size magnification
   const double radius = 140.0;   // Influence radius in pixels
 
@@ -173,8 +175,7 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
 
       double scale = 1.0;
       if (dist < radius) {
-        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at
-        // center)
+        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at center)
         double factor = 0.5 * (1.0 + cos(M_PI * dist / radius));
         scale = 1.0 + (max_scale - 1.0) * factor;
       }
@@ -184,6 +185,15 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       if (child && GTK_IS_IMAGE(child)) {
         if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
           gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
+
+          // Constrain cross-axis size request to base_sz so container height/width stays constant
+          if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+            // Horizontal dock: X grows (target_size), Y stays constant (base_sz)
+            gtk_widget_set_size_request(child, target_size, base_sz);
+          } else {
+            // Vertical dock: Y grows (target_size), X stays constant (base_sz)
+            gtk_widget_set_size_request(child, base_sz, target_size);
+          }
         }
       }
     }

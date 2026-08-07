@@ -245,8 +245,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   gtk_window_set_child(GTK_WINDOW(window), box);
   state->box = box;
 
-  // Enable overflow so magnified icons pop out over container bounds without
-  // clipping
+  // Enable overflow so magnified icons pop out over container bounds without clipping
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
 
@@ -381,7 +380,7 @@ static void inner_main(void *data, int argc, char **argv) {
 
   // Construct GtkApplication instance using unique reverse-DNS identifier
   GtkApplication *app = gtk_application_new("org.jointhefreeworld.lambdock",
-                                            G_APPLICATION_DEFAULT_FLAGS);
+                                             G_APPLICATION_DEFAULT_FLAGS);
 
   // Connect GTK 'activate' signal to our setup function
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);

@@ -166,35 +166,30 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   int icon_sz = (state && state->icon_size > 0) ? state->icon_size : 48;
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
 
+  // Allow image to overflow button boundaries when magnified
+  gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+
+  // Align image toward screen edge so fisheye scaling pops out toward center
+  if (state) {
+    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+      gtk_widget_set_valign(image, GTK_ALIGN_END);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(image, GTK_ALIGN_START);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(image, GTK_ALIGN_START);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+      gtk_widget_set_halign(image, GTK_ALIGN_END);
+    }
+  }
+
   // Create standard GTK button and insert the icon image widget inside it
   item->button = gtk_button_new();
   gtk_button_set_child(GTK_BUTTON(item->button), image);
   gtk_widget_add_css_class(item->button,
                            "flat"); // Remove default button borders via CSS
 
-  // Enable overflow so magnified icons pop out over dock bounds without
-  // clipping
+  // Enable overflow on button so magnified icons pop out without clipping
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
-
-  // Lock cross-axis size request to base_size + padding so window height stays
-  // constant
-  if (state) {
-    int tight_cross_sz = icon_sz + 12;
-
-    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      gtk_widget_set_size_request(item->button, -1, tight_cross_sz);
-      gtk_widget_set_valign(image, GTK_ALIGN_END);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_size_request(item->button, -1, tight_cross_sz);
-      gtk_widget_set_valign(image, GTK_ALIGN_START);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_size_request(item->button, tight_cross_sz, -1);
-      gtk_widget_set_halign(image, GTK_ALIGN_START);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-      gtk_widget_set_size_request(item->button, tight_cross_sz, -1);
-      gtk_widget_set_halign(image, GTK_ALIGN_END);
-    }
-  }
 
   // Attach a mouse hover tooltip text showing the application name
   if (item->name && *item->name != '\0') {
