@@ -239,60 +239,85 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
+  // Read Scheme configuration parameters early
+  state->auto_hide = get_autohide_config();
+  state->show_when_clear = get_show_when_clear_config();
+  state->hover_animate = get_hover_animate_config();
+  state->icon_size = get_icon_size_config();
+
   // Create a GtkOverlay as the main window child
   GtkWidget *overlay = gtk_overlay_new();
   gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
   gtk_window_set_child(GTK_WINDOW(window), overlay);
 
+  int bg_fixed_dim = state->icon_size + 16; // ~64px capsule size
+  int max_cross_dim =
+      (int)(state->icon_size * 1.5) + 28; // ~100px window height
+
+  // Give Overlay enough cross-axis space so magnified icons aren't clipped by
+  // window bounds
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_size_request(overlay, -1, max_cross_dim);
+  } else {
+    gtk_widget_set_size_request(overlay, max_cross_dim, -1);
+  }
+
   // Create the empty background capsule widget
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
 
-  // Fix the background cross-axis size (e.g., 48px icon + 12px padding = 60px)
-  int bg_fixed_dim = state->icon_size + 12;
-
+  // Fix the capsule size and align it toward the screen edge
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
     gtk_widget_set_size_request(bg_capsule, -1, bg_fixed_dim);
-    gtk_widget_set_valign(bg_capsule, GTK_ALIGN_END);
+    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(bg_capsule, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_valign(bg_capsule, GTK_ALIGN_END);
+    }
   } else {
     gtk_widget_set_size_request(bg_capsule, bg_fixed_dim, -1);
-    gtk_widget_set_halign(bg_capsule, GTK_ALIGN_END);
+    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(bg_capsule, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_halign(bg_capsule, GTK_ALIGN_END);
+    }
   }
 
-  // Create the icon container box (floats on top of background)
+  // Create icon container box (floats on top of background)
   GtkWidget *box = gtk_box_new(state->orientation, 8);
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   state->box = box;
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_widget_set_valign(box, GTK_ALIGN_END);
+    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_valign(box, GTK_ALIGN_END);
+    }
   } else {
-    gtk_widget_set_halign(box, GTK_ALIGN_END);
+    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_halign(box, GTK_ALIGN_END);
+    }
   }
 
-  // Create a GtkSizeGroup to lock the main-axis lengths together
+  // 4. Lock main-axis lengths together
   GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
   GtkSizeGroup *size_group = gtk_size_group_new(mode);
   gtk_size_group_add_widget(size_group, bg_capsule);
   gtk_size_group_add_widget(size_group, box);
-  g_object_unref(size_group); // Group ownership handed over to widgets
+  g_object_unref(size_group);
 
   // 5. Assemble Overlay: bg_capsule at bottom, icon box on top
   gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
   gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
 
-  // Enable overflow so magnified icons pop out over container bounds without
-  // clipping
+  // Enable overflow so magnified icons pop out over container bounds
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
-
-  // Read Scheme configuration parameters
-  state->auto_hide = get_autohide_config();
-  state->show_when_clear = get_show_when_clear_config();
-  state->hover_animate = get_hover_animate_config();
-  state->icon_size = get_icon_size_config();
 
   // Create dock items (launchers, separators, active app icons)
   populate_dock_items(state);
@@ -304,17 +329,15 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
 
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model); // Unref model once popover borrows it
+  g_object_unref(menu_model);
 
   gtk_widget_set_parent(popover, window);
-  gtk_popover_set_has_arrow(GTK_POPOVER(popover),
-                            FALSE); // Clean borderless look
+  gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
   state->popover = popover;
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
   // --- Mouse Click Gesture Controllers ---
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
-  // Listen specifically for Right Mouse Button (Secondary)
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
   g_signal_connect(right_click_gesture, "pressed", G_CALLBACK(on_right_click),
@@ -322,20 +345,18 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
   // --- Wayland Layer Shell Configuration ---
-  setup_layer_shell_window(state);     // Pin window to Wayland desktop layer
-  setup_dock_motion_controller(state); // Handle mouse hover show/hide
+  setup_layer_shell_window(state);
+  setup_dock_motion_controller(state);
 
   // Add state pointer to global tracking list for hot-reloading
   g_active_states = g_list_append(g_active_states, state);
 
-  // When window is destroyed, free allocated memory automatically
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
-  // Present window to desktop compositor
   gtk_window_present(GTK_WINDOW(window));
 
-  // Track running applications to display indicators under active icons
+  // Track running applications
   init_toplevel_tracker(state);
 
   // Start initial auto-hide countdown if enabled

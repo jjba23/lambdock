@@ -266,17 +266,16 @@ void hide_dock(LambdockState *state) {
                                   ? GTK_ORIENTATION_VERTICAL
                                   : GTK_ORIENTATION_HORIZONTAL;
 
-  int min_sz = 0, nat_sz = 0;
-  if (state->box) {
-    gtk_widget_measure(state->box, dim_orient, -1, &min_sz, &nat_sz, NULL,
-                       NULL);
-  }
-
-  int window_dim = nat_sz;
-  if (window_dim <= 0 && state->window) {
+  int window_dim = 0;
+  if (state->window) {
     window_dim = (dim_orient == GTK_ORIENTATION_VERTICAL)
                      ? gtk_widget_get_height(state->window)
                      : gtk_widget_get_width(state->window);
+  }
+
+  // Fallback to max window dimension if window isn't mapped yet
+  if (window_dim <= 10) {
+    window_dim = (int)(state->icon_size * 1.5) + 24;
   }
 
   // Leave 2px strip exposed on screen edge to trigger hover re-entry
