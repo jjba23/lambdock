@@ -177,15 +177,23 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
     if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
       gtk_widget_set_valign(image, GTK_ALIGN_END);
       gtk_widget_set_valign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
       gtk_widget_set_valign(image, GTK_ALIGN_START);
       gtk_widget_set_valign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
       gtk_widget_set_halign(image, GTK_ALIGN_START);
       gtk_widget_set_halign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
       gtk_widget_set_halign(image, GTK_ALIGN_END);
       gtk_widget_set_halign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     }
   }
 
@@ -525,6 +533,10 @@ void reload_dock_instance(LambdockState *state) {
                              : GTK_ORIENTATION_HORIZONTAL;
     gtk_orientable_set_orientation(GTK_ORIENTABLE(state->box),
                                    state->orientation);
+    if (state->bg_capsule) {
+      gtk_orientable_set_orientation(GTK_ORIENTABLE(state->bg_capsule),
+                                     state->orientation);
+    }
 
     // Reset margin and animation offsets
     state->current_margin = 0;
@@ -540,6 +552,13 @@ void reload_dock_instance(LambdockState *state) {
   state->hover_animate = get_hover_animate_config();
   state->icon_size = get_icon_size_config();
 
+  // Clear pinned items and repopulate dock launcher layout first
+  clear_favorite_dock_items(state);
+  populate_dock_items(state);
+
+  // Re-sync Wayland foreign window handles back to newly populated launchers
+  sync_window_trackers(state);
+
   update_dock_dimensions(state);
 
   if (state->auto_hide) {
@@ -553,14 +572,8 @@ void reload_dock_instance(LambdockState *state) {
     }
   } else {
     // Reserve desktop screen space dynamically when auto-hide is disabled
-    gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(state->window));
+    gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window),
+                                 state->icon_size + 24);
     reveal_dock(state);
   }
-
-  // Clear pinned items and repopulate dock launcher layout
-  clear_favorite_dock_items(state);
-  populate_dock_items(state);
-
-  // Re-sync Wayland foreign window handles back to newly populated launchers
-  sync_window_trackers(state);
 }

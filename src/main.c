@@ -272,11 +272,9 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
-  GtkSizeGroup *size_group = gtk_size_group_new(mode);
-  gtk_size_group_add_widget(size_group, bg_capsule);
-  gtk_size_group_add_widget(size_group, box);
-  // Unref size_group: the widgets maintain internal references to it
-  g_object_unref(size_group);
+  state->size_group = gtk_size_group_new(mode);
+  gtk_size_group_add_widget(state->size_group, bg_capsule);
+  gtk_size_group_add_widget(state->size_group, box);
 
   // Layer sequence: bg_capsule sits at the bottom, box sits directly on top
   gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);

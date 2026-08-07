@@ -30,7 +30,8 @@
  */
 #define ANIMATION_DURATION_US 250000
 
-/* Forward declaration of low-level Wayland foreign toplevel handle struct */
+/* Forward declaration of low-level Wayland
+   foreign toplevel handle struct */
 struct zwlr_foreign_toplevel_handle_v1;
 
 /* Forward declaration of central application state structure */
@@ -84,6 +85,7 @@ struct LambdockState {
   GtkWidget *bg_capsule; /* Capsule background box */
   GtkWidget *box;        /* Icon container box */
   GtkWidget *popover;
+  GtkSizeGroup *size_group;
   gboolean auto_hide;
   gboolean show_when_clear;
   gboolean hover_animate;

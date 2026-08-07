@@ -119,7 +119,8 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
 
 /**
  * reset_dock_items_scale:
- * Resets all dock item icons back to their default base pixel size.
+ * Resets all dock item icons back to their default base pixel size and resets
+ * widget size requests cleanly.
  */
 static void reset_dock_items_scale(LambdockState *state) {
   if (!state || !state->dock_items)
@@ -129,14 +130,17 @@ static void reset_dock_items_scale(LambdockState *state) {
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    if (!item || !item->button)
       continue;
 
-    GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-    if (child && GTK_IS_IMAGE(child)) {
-      if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != base_sz) {
+    // Reset button size request back to default
+    gtk_widget_set_size_request(item->button, -1, -1);
+
+    if (GTK_IS_BUTTON(item->button)) {
+      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+      if (child && GTK_IS_IMAGE(child)) {
         gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
-        gtk_widget_set_size_request(child, base_sz, base_sz);
+        gtk_widget_set_size_request(child, -1, -1);
       }
     }
   }
@@ -273,9 +277,10 @@ void hide_dock(LambdockState *state) {
                      : gtk_widget_get_width(state->window);
   }
 
-  // Fallback to max window dimension if window isn't mapped yet
-  if (window_dim <= 10) {
-    window_dim = (int)(state->icon_size * 1.5) + 24;
+  // Ensure window_dim is deterministic even before initial GTK layout/mapping
+  int max_cross_dim = (int)(state->icon_size * 1.65) + 36;
+  if (window_dim < max_cross_dim) {
+    window_dim = max_cross_dim;
   }
 
   // Leave 2px strip exposed on screen edge to trigger hover re-entry
@@ -417,11 +422,11 @@ void setup_layer_shell_window(LambdockState *state) {
   gtk_layer_set_anchor(window, state->edge, TRUE);
 
   // Exclusive zone reserves desktop space so windows do not overlap dock.
-  // Set to 0 during auto-hide to allow windows to occupy full screen.
+  // Reserve exact background capsule thickness when auto-hide is disabled.
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
-    gtk_layer_auto_exclusive_zone_enable(window);
+    gtk_layer_set_exclusive_zone(window, state->icon_size + 24);
   }
 }
 
@@ -463,6 +468,11 @@ void schedule_initial_autohide(LambdockState *state) {
 void free_lambdock_state(LambdockState *state) {
   if (!state)
     return;
+
+  if (state->size_group) {
+    g_object_unref(state->size_group);
+    state->size_group = NULL;
+  }
 
   // --- Free Wayland foreign-toplevel window tracker objects ---
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
@@ -581,13 +591,22 @@ void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = state->icon_size + 18; // Capsule thickness
+  int bg_fixed_dim = state->icon_size + 24; // Capsule thickness
   int max_cross_dim =
       (int)(state->icon_size * 1.65) + 36; // Window headroom for magnification
+
+  if (state->size_group) {
+    GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                                ? GTK_SIZE_GROUP_HORIZONTAL
+                                : GTK_SIZE_GROUP_VERTICAL;
+    gtk_size_group_set_mode(state->size_group, mode);
+  }
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
     gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
+    gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
 
     if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
       gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_START);
@@ -599,6 +618,8 @@ void update_dock_dimensions(LambdockState *state) {
   } else {
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
     gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
+    gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
 
     if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
       gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_START);
