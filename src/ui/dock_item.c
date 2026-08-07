@@ -160,10 +160,11 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   item->is_favorite = is_favorite;
 
   // Retrieve default icon theme for current display and look up the desktop
-  // icon image (32px)
+  // icon image at configured size
   GdkDisplay *display = gdk_display_get_default();
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
-  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, 32);
+  int icon_sz = (state && state->icon_size > 0) ? state->icon_size : 48;
+  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
 
   // Create standard GTK button and insert the icon image widget inside it
   item->button = gtk_button_new();
@@ -508,10 +509,12 @@ void reload_dock_instance(LambdockState *state) {
     state->is_hidden = FALSE;
   }
 
-  // Hot-reload Auto-Hide & Layer Shell Exclusive Zone
+  // Hot-reload Auto-Hide, Hover Animation, Base Icon Size & Layer Shell
+  // Exclusive Zone
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
   state->hover_animate = get_hover_animate_config();
+  state->icon_size = get_icon_size_config();
 
   if (state->auto_hide) {
     // Set exclusive zone to 0 so windows can occupy full screen space

@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
+#include "guile_bridge.h"
 #include "logger.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
@@ -118,11 +119,13 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
 
 /**
  * reset_dock_items_scale:
- * Resets all dock item icons back to their default base pixel size (32px).
+ * Resets all dock item icons back to their default base pixel size.
  */
 static void reset_dock_items_scale(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
+
+  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
@@ -131,8 +134,8 @@ static void reset_dock_items_scale(LambdockState *state) {
 
     GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
     if (child && GTK_IS_IMAGE(child)) {
-      if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != 32) {
-        gtk_image_set_pixel_size(GTK_IMAGE(child), 32);
+      if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != base_sz) {
+        gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
       }
     }
   }
@@ -145,10 +148,12 @@ static void reset_dock_items_scale(LambdockState *state) {
  */
 static void update_dock_items_fisheye(LambdockState *state, double x,
                                       double y) {
-  if (!state || !state->dock_items || !state->hover_animate)
+  // Do not run hover magnification if disabled, hidden, or animating slide
+  if (!state || !state->dock_items || !state->hover_animate ||
+      state->is_hidden || state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
-  const double base_size = 32.0;
+  double base_size = (double)((state->icon_size > 0) ? state->icon_size : 48);
   const double max_scale = 1.55; // 55% max size magnification
   const double radius = 160.0;   // Influence radius in pixels
 
@@ -241,11 +246,28 @@ void hide_dock(LambdockState *state) {
   if (state->show_when_clear && state->window_trackers == NULL)
     return;
 
-  // Determine height or width based on screen orientation
-  int window_dim = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
-                    state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
-                       ? gtk_widget_get_height(state->window)
-                       : gtk_widget_get_width(state->window);
+  // Reset icon scaling to base size before calculating window dimensions
+  if (state->hover_animate) {
+    reset_dock_items_scale(state);
+  }
+
+  GtkOrientation dim_orient = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                               state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
+                                  ? GTK_ORIENTATION_VERTICAL
+                                  : GTK_ORIENTATION_HORIZONTAL;
+
+  int min_sz = 0, nat_sz = 0;
+  if (state->box) {
+    gtk_widget_measure(state->box, dim_orient, -1, &min_sz, &nat_sz, NULL,
+                       NULL);
+  }
+
+  int window_dim = nat_sz;
+  if (window_dim <= 0 && state->window) {
+    window_dim = (dim_orient == GTK_ORIENTATION_VERTICAL)
+                     ? gtk_widget_get_height(state->window)
+                     : gtk_widget_get_width(state->window);
+  }
 
   // Leave 2px strip exposed on screen edge to trigger hover re-entry
   int hide_margin = -(window_dim - 2);
@@ -289,11 +311,10 @@ void on_popover_closed(GtkPopover *popover, gpointer user_data) {
 static void on_motion_enter(GtkEventControllerMotion *controller, double x,
                             double y, gpointer user_data) {
   (void)controller;
+  (void)x;
+  (void)y;
   LambdockState *state = (LambdockState *)user_data;
   reveal_dock(state);
-  if (state && state->hover_animate) {
-    update_dock_items_fisheye(state, x, y);
-  }
 }
 
 /**
@@ -327,7 +348,8 @@ static void on_motion_notify(GtkEventControllerMotion *controller, double x,
                              double y, gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
-  if (state && state->hover_animate) {
+  if (state && state->hover_animate && !state->is_hidden &&
+      state->tick_cb_id == 0 && state->current_margin == 0) {
     update_dock_items_fisheye(state, x, y);
   }
 }

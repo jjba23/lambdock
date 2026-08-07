@@ -85,6 +85,7 @@ struct LambdockState {
   gboolean auto_hide;
   gboolean show_when_clear;
   gboolean hover_animate;
+  int icon_size;
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;

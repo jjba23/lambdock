@@ -134,4 +134,14 @@ gboolean get_show_when_clear_config(void);
  */
 gboolean get_hover_animate_config(void);
 
+/**
+ * get_icon_size_config:
+ *
+ * Calls Guile Scheme function 'get-dock-icon-size' to read user base icon size
+ * configuration.
+ *
+ * Returns: Integer icon pixel size (default 48).
+ */
+int get_icon_size_config(void);
+
 #endif // GUILE_BRIDGE_H
