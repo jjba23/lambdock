@@ -78,12 +78,12 @@ button.flat {
 /* Icon lifts up in 3D space on hover */
 button.flat:hover {
   background-color: rgba(255, 255, 255, 0.22);
-  transform: translateY(-6px) scale(1.16);
+  /* transform: translateY(-6px) scale(1.16); */
   box-shadow: 0 8px 12px rgba(0, 0, 0, 0.25);
 }
 
 button.flat:active {
-  transform: translateY(1px) scale(0.96);
+  /* transform: translateY(1px) scale(0.96); */
   background-color: rgba(255, 255, 255, 0.35);
 }
 
