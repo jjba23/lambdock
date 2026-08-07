@@ -187,18 +187,12 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
         if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
           gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
 
-          // Constrain cross-axis size request to base_sz so container
-          // height/width stays constant, while main-axis size expands to
-          // target_size.
           if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-            // Horizontal dock: X grows (target_size), Y stays constant
-            // (base_sz)
-            gtk_widget_set_size_request(child, target_size, base_sz);
-            gtk_widget_set_size_request(item->button, target_size, base_sz);
+            // Expand width along X axis; Y axis remains unconstrained
+            gtk_widget_set_size_request(item->button, target_size, -1);
           } else {
-            // Vertical dock: Y grows (target_size), X stays constant (base_sz)
-            gtk_widget_set_size_request(child, base_sz, target_size);
-            gtk_widget_set_size_request(item->button, base_sz, target_size);
+            // Expand height along Y axis; X axis remains unconstrained
+            gtk_widget_set_size_request(item->button, -1, target_size);
           }
         }
       }

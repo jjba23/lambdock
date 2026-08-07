@@ -169,8 +169,10 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // Allow image to overflow button boundaries when magnified
   gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
 
-  // Align image and button toward screen edge so fisheye scaling pops out
-  // toward center
+  // 1. Instantiate the button widget FIRST
+  item->button = gtk_button_new();
+
+  // 2. Now configure alignment on both the image and the valid button widget
   if (state) {
     if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
       gtk_widget_set_valign(image, GTK_ALIGN_END);
@@ -187,11 +189,9 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
     }
   }
 
-  // Create standard GTK button and insert the icon image widget inside it
-  item->button = gtk_button_new();
+  // Insert image widget inside button
   gtk_button_set_child(GTK_BUTTON(item->button), image);
-  gtk_widget_add_css_class(item->button,
-                           "flat"); // Remove default button borders via CSS
+  gtk_widget_add_css_class(item->button, "flat");
 
   // Enable overflow on button so magnified icons pop out without clipping
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);

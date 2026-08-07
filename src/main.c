@@ -239,13 +239,52 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
-  // Create primary container box widget inside the window (8px spacing)
+  // Create a GtkOverlay as the main window child
+  GtkWidget *overlay = gtk_overlay_new();
+  gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
+  gtk_window_set_child(GTK_WINDOW(window), overlay);
+
+  // Create the empty background capsule widget
+  GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
+  gtk_widget_add_css_class(bg_capsule, "lambdock-window");
+
+  // Fix the background cross-axis size (e.g., 48px icon + 12px padding = 60px)
+  int bg_fixed_dim = state->icon_size + 12;
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_size_request(bg_capsule, -1, bg_fixed_dim);
+    gtk_widget_set_valign(bg_capsule, GTK_ALIGN_END);
+  } else {
+    gtk_widget_set_size_request(bg_capsule, bg_fixed_dim, -1);
+    gtk_widget_set_halign(bg_capsule, GTK_ALIGN_END);
+  }
+
+  // Create the icon container box (floats on top of background)
   GtkWidget *box = gtk_box_new(state->orientation, 8);
-  gtk_widget_add_css_class(box, "lambdock-window");
-  gtk_window_set_child(GTK_WINDOW(window), box);
+  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   state->box = box;
 
-  // Enable overflow so magnified icons pop out over container bounds without clipping
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_valign(box, GTK_ALIGN_END);
+  } else {
+    gtk_widget_set_halign(box, GTK_ALIGN_END);
+  }
+
+  // Create a GtkSizeGroup to lock the main-axis lengths together
+  GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                              ? GTK_SIZE_GROUP_HORIZONTAL
+                              : GTK_SIZE_GROUP_VERTICAL;
+  GtkSizeGroup *size_group = gtk_size_group_new(mode);
+  gtk_size_group_add_widget(size_group, bg_capsule);
+  gtk_size_group_add_widget(size_group, box);
+  g_object_unref(size_group); // Group ownership handed over to widgets
+
+  // 5. Assemble Overlay: bg_capsule at bottom, icon box on top
+  gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
+  gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
+
+  // Enable overflow so magnified icons pop out over container bounds without
+  // clipping
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
 
@@ -380,7 +419,7 @@ static void inner_main(void *data, int argc, char **argv) {
 
   // Construct GtkApplication instance using unique reverse-DNS identifier
   GtkApplication *app = gtk_application_new("org.jointhefreeworld.lambdock",
-                                             G_APPLICATION_DEFAULT_FLAGS);
+                                            G_APPLICATION_DEFAULT_FLAGS);
 
   // Connect GTK 'activate' signal to our setup function
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
