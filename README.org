@@ -468,18 +468,12 @@ Lambdock features a smooth, frame-clock-driven auto-hide mechanism powered by mo
 
 Starting with the auto-hide feature, lambdock features a cubic ease-out spatial transition to give a smooth showing and hiding to screen edge (within 250ms), and synchronizes with display refresh rates (60 Hz, 120 Hz, etc.) using =gtk_widget_add_tick_callback=.
 
+Also the opt-in fish-eye effect  (~dock-hover-animate?~) uses a cosine bell curve scaling for smooth zooming and sizing.
+
 Of course, you are also free to add CSS ~transform~ directives or other things to your liking, e.g.
 #+begin_src css
 button.flat:hover {
   transform: scale(1.15) translateY(-4px);
-  background-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
-}
-
-button.flat:active {
-  transform: scale(0.94) translateY(0px);
-  background-color: rgba(0, 0, 0, 0.14);
-  box-shadow: none;
 }
 #+end_src
 
@@ -554,10 +548,6 @@ Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~
           #:badge-thunk (lambda () (format #f "~aMB" (free-memory))))
 #+end_src
 *** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
-*** TODO: True fish-eye effect and configurable animations (user should be able to toggle animations on/off and choose style)
-CSS `:hover` scale (`transform: scale(1.16)`) scales the single hovered button in place, but does not push adjacent dock items aside.
-*Idea:* Implement a true continuous Gaussian/cosine fisheye curve calculated during `on_motion_enter` / `on_motion_leave` callbacks. As the pointer slides across the dock, neighboring icons smoothly expand and contract, giving that iconic classic macOS / CairoDock fluid physics feel.
-$$S(x) = 1.0 + A \cdot \cos\left(\frac{x - x_{\text{cursor}}}{\sigma}\right)$$
 *** TODO: Finish Guix package and upstream it
 *** TODO: Finish Debian package and publish it
 *** TODO: Finish Fedora package and publish it
