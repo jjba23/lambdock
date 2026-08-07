@@ -602,7 +602,15 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_size_group_set_mode(state->size_group, mode);
   }
 
+  // Main-axis capsule ends padding
+  int padding = 12;
+
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_margin_start(state->box, padding);
+    gtk_widget_set_margin_end(state->box, padding);
+    gtk_widget_set_margin_top(state->box, 0);
+    gtk_widget_set_margin_bottom(state->box, 0);
+
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
     gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
     gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
@@ -616,6 +624,11 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_widget_set_valign(state->box, GTK_ALIGN_END);
     }
   } else {
+    gtk_widget_set_margin_top(state->box, padding);
+    gtk_widget_set_margin_bottom(state->box, padding);
+    gtk_widget_set_margin_start(state->box, 0);
+    gtk_widget_set_margin_end(state->box, 0);
+
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
     gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
     gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
