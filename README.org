@@ -32,7 +32,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 -------
 
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-30-06.gif]]
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
 
 -------
 
