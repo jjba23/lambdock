@@ -571,11 +571,12 @@ void reload_dock_instance(LambdockState *state) {
   // Re-sync Wayland foreign window handles back to newly populated launchers
   sync_window_trackers(state);
 
-  // Update widget alignments for any remaining dynamic dock items
+  // Update widget alignments for any remaining dynamic dock launcher items
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button)
+    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
       continue;
+
     GtkWidget *image = gtk_button_get_child(GTK_BUTTON(item->button));
     if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
       if (image) {
