@@ -49,6 +49,7 @@
                get-dock-exclude-apps
                get-dock-enable-repl?
                get-dock-repl-socket-path
+               get-dock-hover-animate?
 
                ;; Setters
                set-dock-items!
@@ -61,6 +62,7 @@
                set-dock-exclude-apps!
                set-dock-enable-repl!
                set-dock-repl-socket-path!
+               set-dock-hover-animate!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -108,7 +110,8 @@
                                       #:enable-repl? (cfg 'dock-enable-repl?
                                                           #f)
                                       #:repl-socket-path (cfg 'dock-repl-socket-path
-                                                          "/tmp/lambdock-repl.sock"))))
+                                                          "/tmp/lambdock-repl.sock")
+                                      #:hover-animate? (cfg 'dock-hover-animate? #t))))
                  (lambda (key . args)
                    (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
                               key args))))

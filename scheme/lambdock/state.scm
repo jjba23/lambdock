@@ -33,6 +33,7 @@
             get-dock-enable-repl?
             get-dock-repl-socket-path
             get-dock-show-when-clear?
+            get-dock-hover-animate?
 
             ;; Setters
             set-dock-items!
@@ -44,7 +45,8 @@
             set-dock-exclude-apps!
             set-dock-enable-repl!
             set-dock-repl-socket-path!
-            set-dock-show-when-clear!))
+            set-dock-show-when-clear!
+            set-dock-hover-animate!))
 
 (define-syntax define-config-field
   (syntax-rules ()
@@ -99,6 +101,9 @@
                        (and (string? p)
                             (not (string-null? p)))))
 
+(define-config-field *dock-hover-animate?* get-dock-hover-animate?
+                     set-dock-hover-animate! #f boolean?)
+
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
@@ -112,10 +117,11 @@
                           (monitor 'default)
                           (exclude-apps '())
                           (enable-repl? #f)
-                          (repl-socket-path "/tmp/lambdock-repl.sock"))
+                          (repl-socket-path "/tmp/lambdock-repl.sock")
+                          (hover-animate? #t))
   "Sets the primary configuration parameters for the dock."
  (log-info "State"
-   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, show-when-clear?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a, repl-socket: ~a"
+   "Registering: ~a items at ~apx, theme: ~a, auto-hide?: ~a, show-when-clear?: ~a, position: ~a, monitor: ~a, excluded items: ~a, repl?: ~a, repl-socket: ~a, hover-animate?: ~a"
    (if (list? items)
        (length items) 0)
    icon-size
@@ -127,7 +133,8 @@
    (if (list? exclude-apps)
        (length exclude-apps) 0)
    enable-repl?
-   repl-socket-path)
+   repl-socket-path
+   hover-animate?)
 
   (set-dock-position! position)
   (set-dock-theme! theme)
@@ -139,5 +146,6 @@
   (set-dock-enable-repl! enable-repl?)
   (set-dock-repl-socket-path! repl-socket-path)
   (set-dock-show-when-clear! show-when-clear?)
+  (set-dock-hover-animate! hover-animate?)
 
   (log-info "State" "Configuration loaded successfully."))

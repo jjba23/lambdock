@@ -98,6 +98,9 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
 (define dock-repl-socket-path
   "/tmp/lambdock-repl.sock")
 
+;; Whether to animate dock items when hovering on them with the mouse
+(define dock-hover-animate? #t)
+
 (define dock-items
   (list (preset-launcher 'alacritty)
         ;; using preset launchers and icons can be convenient
