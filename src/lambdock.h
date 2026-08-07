@@ -80,7 +80,9 @@ typedef struct DockItem {
  */
 struct LambdockState {
   GtkWidget *window;
-  GtkWidget *box;
+  GtkWidget *overlay;    /* Main overlay container */
+  GtkWidget *bg_capsule; /* Capsule background box */
+  GtkWidget *box;        /* Icon container box */
   GtkWidget *popover;
   gboolean auto_hide;
   gboolean show_when_clear;

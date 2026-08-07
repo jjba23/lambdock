@@ -121,4 +121,11 @@ void on_popover_closed(GtkPopover *popover, gpointer user_data);
 void on_about_action(GSimpleAction *action, GVariant *parameter,
                      gpointer user_data);
 
+/**
+ * update_dock_dimensions:
+ * Recalculates and updates size requests for overlay surface and background
+ * capsule based on the active icon size, orientation, and screen edge.
+ */
+void update_dock_dimensions(LambdockState *state);
+
 #endif // DOCK_WINDOW_H

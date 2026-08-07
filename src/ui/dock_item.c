@@ -540,6 +540,8 @@ void reload_dock_instance(LambdockState *state) {
   state->hover_animate = get_hover_animate_config();
   state->icon_size = get_icon_size_config();
 
+  update_dock_dimensions(state);
+
   if (state->auto_hide) {
     // Set exclusive zone to 0 so windows can occupy full screen space
     gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window), 0);

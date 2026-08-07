@@ -576,3 +576,36 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);
   gtk_window_present(GTK_WINDOW(about));
 }
+
+void update_dock_dimensions(LambdockState *state) {
+  if (!state || !state->bg_capsule || !state->overlay)
+    return;
+
+  int bg_fixed_dim = state->icon_size + 18; // Capsule thickness
+  int max_cross_dim =
+      (int)(state->icon_size * 1.65) + 36; // Window headroom for magnification
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
+    gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
+
+    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_START);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_END);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_END);
+    }
+  } else {
+    gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
+    gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
+
+    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_START);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_END);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_END);
+    }
+  }
+}

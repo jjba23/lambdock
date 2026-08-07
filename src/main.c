@@ -218,125 +218,95 @@ static void setup_config_file_monitors(void) {
  * @param monitor GdkMonitor target (or NULL for default monitor).
  */
 static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
-  // Allocate zero-initialized memory block for this dock's state wrapper
+  // Allocate zero-initialized memory for this dock instance's state context
   LambdockState *state = g_new0(LambdockState, 1);
   state->monitor = monitor;
-  state->theme = get_theme_config();
 
-  // Load custom user CSS styles into GTK CSS Provider
+  // Load global/theme styling configurations
+  state->theme = get_theme_config();
   load_custom_css(state);
 
-  // Read dock screen placement from Guile config ('top, 'bottom, 'left, 'right)
+  // Retrieve dock position preference (Top, Bottom, Left, Right)
   state->edge = get_position_config();
 
-  // Set orientation to Vertical if docked on left/right edges, else Horizontal
+  // Determine layout orientation based on screen edge attachment
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
                         state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  // Create GTK Application Window
+  // Create the underlying top-level application window
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
-  // Read Scheme configuration parameters early
+  // Load remaining user preferences into the state struct
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
   state->hover_animate = get_hover_animate_config();
   state->icon_size = get_icon_size_config();
 
-  // Create a GtkOverlay as the main window child
+  // Main Overlay Container
+  // Allows layering the icon box directly over the styled background capsule
   GtkWidget *overlay = gtk_overlay_new();
-  gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
+  gtk_widget_set_overflow(overlay,
+                          GTK_OVERFLOW_VISIBLE); // Prevent icon zoom clipping
   gtk_window_set_child(GTK_WINDOW(window), overlay);
+  state->overlay = overlay;
 
-  int bg_fixed_dim = state->icon_size + 16; // ~64px capsule size
-  int max_cross_dim =
-      (int)(state->icon_size * 1.5) + 28; // ~100px window height
-
-  // Give Overlay enough cross-axis space so magnified icons aren't clipped by
-  // window bounds
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_widget_set_size_request(overlay, -1, max_cross_dim);
-  } else {
-    gtk_widget_set_size_request(overlay, max_cross_dim, -1);
-  }
-
-  // Create the empty background capsule widget
+  // Serves as the rendered background shape for the dock
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
+  state->bg_capsule = bg_capsule;
 
-  // Fix the capsule size and align it toward the screen edge
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_widget_set_size_request(bg_capsule, -1, bg_fixed_dim);
-    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_valign(bg_capsule, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_valign(bg_capsule, GTK_ALIGN_END);
-    }
-  } else {
-    gtk_widget_set_size_request(bg_capsule, bg_fixed_dim, -1);
-    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_halign(bg_capsule, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_halign(bg_capsule, GTK_ALIGN_END);
-    }
-  }
-
-  // Create icon container box (floats on top of background)
+  // Container holding individual application launcher items (8px spacing)
   GtkWidget *box = gtk_box_new(state->orientation, 8);
-  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
+  gtk_widget_set_overflow(
+      box, GTK_OVERFLOW_VISIBLE); // Allow hover animations to bleed out
   state->box = box;
 
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_valign(box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_valign(box, GTK_ALIGN_END);
-    }
-  } else {
-    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_halign(box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_halign(box, GTK_ALIGN_END);
-    }
-  }
+  // Update dynamic sizing, margins, and alignments based on state settings
+  update_dock_dimensions(state);
 
-  // 4. Lock main-axis lengths together
+  // Ensure the background capsule stretches to match the main-axis dimension
+  // of the icon container (e.g., width for HORIZONTAL, height for VERTICAL)
   GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
   GtkSizeGroup *size_group = gtk_size_group_new(mode);
   gtk_size_group_add_widget(size_group, bg_capsule);
   gtk_size_group_add_widget(size_group, box);
+  // Unref size_group: the widgets maintain internal references to it
   g_object_unref(size_group);
 
-  // 5. Assemble Overlay: bg_capsule at bottom, icon box on top
+  // Layer sequence: bg_capsule sits at the bottom, box sits directly on top
   gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
   gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
 
-  // Enable overflow so magnified icons pop out over container bounds
+  // Guarantee overflow visibility remains intact after overlay binding
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
 
-  // Create dock items (launchers, separators, active app icons)
+  // Populate the dock box with items (launchers, running apps, separators)
   populate_dock_items(state);
 
-  // --- Right-Click Context Popover Menu ---
+  // Build declarative menu model
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "About Lambdock", "app.about");
   g_menu_append(menu_model, "Quit", "app.quit");
 
+  // Construct context popover menu from model
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model);
+  g_object_unref(menu_model); // Popover keeps its own internal reference
 
   gtk_widget_set_parent(popover, window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
   state->popover = popover;
+
+  // Clean up or state updates when popover closes
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
-  // --- Mouse Click Gesture Controllers ---
+  // Attach Secondary (Right) Click Gesture Controller to the top-level window
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
@@ -344,22 +314,24 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  // --- Wayland Layer Shell Configuration ---
+  // Apply Wayland Layer Shell surface constraints (anchors, exclusive zones)
   setup_layer_shell_window(state);
+
+  // Set up mouse motion trackings (detect enter/leave for autohide/zoom)
   setup_dock_motion_controller(state);
 
-  // Add state pointer to global tracking list for hot-reloading
+  // Register this dock state instance into global active instances tracking
   g_active_states = g_list_append(g_active_states, state);
 
+  // Bind memory cleanup to window destruction
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
+  // Display the window on screen
   gtk_window_present(GTK_WINDOW(window));
 
-  // Track running applications
+  // Initialize active window tracking and set initial autohide state
   init_toplevel_tracker(state);
-
-  // Start initial auto-hide countdown if enabled
   schedule_initial_autohide(state);
 }
 
