@@ -112,6 +112,26 @@ gboolean is_app_excluded(const char *app_id);
  */
 gboolean get_repl_config(void);
 
+/**
+ * get_show_when_clear_config:
+ *
+ * Calls Guile Scheme function 'get-dock-show-when-clear?' to read user show
+ * when clear preference.
+ *
+ * Returns: TRUE if show when clear is enabled in Scheme configuration; FALSE
+ * otherwise.
+ */
 gboolean get_show_when_clear_config(void);
+
+/**
+ * get_hover_animate_config:
+ *
+ * Calls Guile Scheme function 'get-dock-hover-animate?' to read user hover
+ * animation preference.
+ *
+ * Returns: TRUE if hover animation is enabled in Scheme configuration; FALSE
+ * otherwise.
+ */
+gboolean get_hover_animate_config(void);
 
 #endif // GUILE_BRIDGE_H

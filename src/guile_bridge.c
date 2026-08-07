@@ -76,6 +76,10 @@ gboolean get_show_when_clear_config(void) {
   return get_guile_bool("get-dock-show-when-clear?");
 }
 
+gboolean get_hover_animate_config(void) {
+  return get_guile_bool("get-dock-hover-animate?");
+}
+
 gboolean get_repl_config(void) {
   return get_guile_bool("get-dock-enable-repl?");
 }
