@@ -172,6 +172,26 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_add_css_class(item->button,
                            "flat"); // Remove default button borders via CSS
 
+  // Lock cross-axis dimension on the button so the dock window only resizes in
+  // 1 axis
+  if (state) {
+    int max_sz = state->hover_animate ? (int)(icon_sz * 1.55) : icon_sz;
+
+    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+      gtk_widget_set_size_request(item->button, -1, max_sz);
+      gtk_widget_set_valign(image, GTK_ALIGN_END);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_size_request(item->button, -1, max_sz);
+      gtk_widget_set_valign(image, GTK_ALIGN_START);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_size_request(item->button, max_sz, -1);
+      gtk_widget_set_halign(image, GTK_ALIGN_START);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+      gtk_widget_set_size_request(item->button, max_sz, -1);
+      gtk_widget_set_halign(image, GTK_ALIGN_END);
+    }
+  }
+
   // Attach a mouse hover tooltip text showing the application name
   if (item->name && *item->name != '\0') {
     gtk_widget_set_tooltip_text(item->button, item->name);
