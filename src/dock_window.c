@@ -154,8 +154,8 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
     return;
 
   double base_size = (double)((state->icon_size > 0) ? state->icon_size : 48);
-  const double max_scale = 1.55; // 55% max size magnification
-  const double radius = 160.0;   // Influence radius in pixels
+  const double max_scale = 1.45; // 45% max size magnification
+  const double radius = 140.0;   // Influence radius in pixels
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;

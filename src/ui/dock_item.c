@@ -172,22 +172,26 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_add_css_class(item->button,
                            "flat"); // Remove default button borders via CSS
 
-  // Lock cross-axis dimension on the button so the dock window only resizes in
-  // 1 axis
+  // Enable overflow so magnified icons pop out over dock bounds without
+  // clipping
+  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  // Lock cross-axis size request to base_size + padding so window height stays
+  // constant
   if (state) {
-    int max_sz = state->hover_animate ? (int)(icon_sz * 1.55) : icon_sz;
+    int tight_cross_sz = icon_sz + 12;
 
     if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      gtk_widget_set_size_request(item->button, -1, max_sz);
+      gtk_widget_set_size_request(item->button, -1, tight_cross_sz);
       gtk_widget_set_valign(image, GTK_ALIGN_END);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_size_request(item->button, -1, max_sz);
+      gtk_widget_set_size_request(item->button, -1, tight_cross_sz);
       gtk_widget_set_valign(image, GTK_ALIGN_START);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_size_request(item->button, max_sz, -1);
+      gtk_widget_set_size_request(item->button, tight_cross_sz, -1);
       gtk_widget_set_halign(image, GTK_ALIGN_START);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-      gtk_widget_set_size_request(item->button, max_sz, -1);
+      gtk_widget_set_size_request(item->button, tight_cross_sz, -1);
       gtk_widget_set_halign(image, GTK_ALIGN_END);
     }
   }

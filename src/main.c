@@ -245,6 +245,11 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   gtk_window_set_child(GTK_WINDOW(window), box);
   state->box = box;
 
+  // Enable overflow so magnified icons pop out over container bounds without
+  // clipping
+  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
+  gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
+
   // Read Scheme configuration parameters
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
