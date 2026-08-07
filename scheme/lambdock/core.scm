@@ -91,27 +91,19 @@
                  (lambda ()
                    (load config-file)
                    (let* ((settings (resolve-dock-configuration))
-                          (cfg (lambda (key default)
-                                 (let ((val (assq-ref settings key)))
-                                   (if val val default)))))
-                     (configure-dock! #:position (cfg 'dock-position
-                                                      'bottom)
-                                      #:icon-size (cfg 'dock-icon-size 48)
-                                      #:items (cfg 'dock-items
-                                                   '())
-                                      #:theme (cfg 'dock-theme
-                                                   'vanilla)
-                                      #:monitor (cfg 'dock-monitor
-                                                     'default)
-                                      #:auto-hide? (cfg 'dock-auto-hide? #f)
-                                      #:show-when-clear? (cfg 'dock-show-when-clear? #t)
-                                      #:exclude-apps (cfg 'dock-exclude-apps
-                                                          '())
-                                      #:enable-repl? (cfg 'dock-enable-repl?
-                                                          #f)
-                                      #:repl-socket-path (cfg 'dock-repl-socket-path
-                                                          "/tmp/lambdock-repl.sock")
-                                      #:hover-animate? (cfg 'dock-hover-animate? #t))))
+                          (cfg (lambda (key)
+                                 (assq-ref settings key))))
+                     (configure-dock! #:position (cfg 'dock-position)
+                                      #:icon-size (cfg 'dock-icon-size)
+                                      #:items (cfg 'dock-items)
+                                      #:theme (cfg 'dock-theme)
+                                      #:monitor (cfg 'dock-monitor)
+                                      #:auto-hide? (cfg 'dock-auto-hide?)
+                                      #:show-when-clear? (cfg 'dock-show-when-clear?)
+                                      #:exclude-apps (cfg 'dock-exclude-apps)
+                                      #:enable-repl? (cfg 'dock-enable-repl?)
+                                      #:repl-socket-path (cfg 'dock-repl-socket-path)
+                                      #:hover-animate? (cfg 'dock-hover-animate?))))
                  (lambda (key . args)
                    (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
                               key args))))
@@ -137,20 +129,20 @@
 
 (define (start-repl!)
   (define (mkdir-p path)
-  (unless (or (string-null? path)
-              (file-exists? path))
-    (let ((parent (dirname path)))
-      (when (and (not (string=? parent path))
-                 (not (string=? parent ".")))
-        (mkdir-p parent))
-      (catch 'system-error
-             (lambda ()
-               (mkdir path))
-             (lambda (key . args)
-               (unless (and (file-exists? path)
-                            (eq? 'directory
-                                 (stat:type (stat path))))
-                 (apply throw key args)))))))
+    (unless (or (string-null? path)
+                (file-exists? path))
+      (let ((parent (dirname path)))
+        (when (and (not (string=? parent path))
+                   (not (string=? parent ".")))
+          (mkdir-p parent))
+        (catch 'system-error
+               (lambda ()
+                 (mkdir path))
+               (lambda (key . args)
+                 (unless (and (file-exists? path)
+                              (eq? 'directory
+                                   (stat:type (stat path))))
+                   (apply throw key args)))))))
   (when (and (get-dock-enable-repl?)
              (not *repl-started?*))
     (set! *repl-started?* #t)

@@ -64,7 +64,7 @@ Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usua
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
                           dock-monitor dock-exclude-apps dock-enable-repl?
-                          dock-repl-socket-path))
+                          dock-repl-socket-path dock-hover-animate?))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)

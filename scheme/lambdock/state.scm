@@ -102,7 +102,7 @@
                             (not (string-null? p)))))
 
 (define-config-field *dock-hover-animate?* get-dock-hover-animate?
-                     set-dock-hover-animate! #f boolean?)
+                     set-dock-hover-animate! #t boolean?)
 
 ;; =============================================================================
 ;; Configuration Interface
