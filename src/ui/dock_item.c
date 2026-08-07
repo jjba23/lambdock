@@ -169,16 +169,21 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // Allow image to overflow button boundaries when magnified
   gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
 
-  // Align image toward screen edge so fisheye scaling pops out toward center
+  // Align image and button toward screen edge so fisheye scaling pops out
+  // toward center
   if (state) {
     if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
       gtk_widget_set_valign(image, GTK_ALIGN_END);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_END);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
       gtk_widget_set_valign(image, GTK_ALIGN_START);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_START);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
       gtk_widget_set_halign(image, GTK_ALIGN_START);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_START);
     } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
       gtk_widget_set_halign(image, GTK_ALIGN_END);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_END);
     }
   }
 

@@ -175,7 +175,8 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
 
       double scale = 1.0;
       if (dist < radius) {
-        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at center)
+        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at
+        // center)
         double factor = 0.5 * (1.0 + cos(M_PI * dist / radius));
         scale = 1.0 + (max_scale - 1.0) * factor;
       }
@@ -186,13 +187,18 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
         if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
           gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
 
-          // Constrain cross-axis size request to base_sz so container height/width stays constant
+          // Constrain cross-axis size request to base_sz so container
+          // height/width stays constant, while main-axis size expands to
+          // target_size.
           if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-            // Horizontal dock: X grows (target_size), Y stays constant (base_sz)
+            // Horizontal dock: X grows (target_size), Y stays constant
+            // (base_sz)
             gtk_widget_set_size_request(child, target_size, base_sz);
+            gtk_widget_set_size_request(item->button, target_size, base_sz);
           } else {
             // Vertical dock: Y grows (target_size), X stays constant (base_sz)
             gtk_widget_set_size_request(child, base_sz, target_size);
+            gtk_widget_set_size_request(item->button, base_sz, target_size);
           }
         }
       }
