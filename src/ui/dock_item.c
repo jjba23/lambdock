@@ -515,9 +515,21 @@ void reload_dock_instance(LambdockState *state) {
   state->theme = get_theme_config();
   load_custom_css(state);
 
+  // Cancel any pending auto-hide timer
+  if (state->hide_timer_id != 0) {
+    g_source_remove(state->hide_timer_id);
+    state->hide_timer_id = 0;
+  }
+
   // Hot-reload Position & Layer Shell Edge Anchoring
   GtkLayerShellEdge new_edge = get_position_config();
   if (new_edge != state->edge) {
+    // Stop active tick animation callback if running
+    if (state->tick_cb_id != 0) {
+      gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+      state->tick_cb_id = 0;
+    }
+
     // Reset margin on old edge and un-anchor it
     gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
     gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
@@ -558,6 +570,43 @@ void reload_dock_instance(LambdockState *state) {
 
   // Re-sync Wayland foreign window handles back to newly populated launchers
   sync_window_trackers(state);
+
+  // Update widget alignments for any remaining dynamic dock items
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button)
+      continue;
+    GtkWidget *image = gtk_button_get_child(GTK_BUTTON(item->button));
+    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+      if (image) {
+        gtk_widget_set_valign(image, GTK_ALIGN_END);
+        gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      }
+      gtk_widget_set_valign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      if (image) {
+        gtk_widget_set_valign(image, GTK_ALIGN_START);
+        gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      }
+      gtk_widget_set_valign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      if (image) {
+        gtk_widget_set_halign(image, GTK_ALIGN_START);
+        gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      }
+      gtk_widget_set_halign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+      if (image) {
+        gtk_widget_set_halign(image, GTK_ALIGN_END);
+        gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      }
+      gtk_widget_set_halign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    }
+  }
 
   update_dock_dimensions(state);
 

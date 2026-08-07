@@ -16,18 +16,18 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 -------
 
-- *Wayland Native* 🚀: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
-- *Dynamic Window Tracking* ⚡: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
+- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
+- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
 - *Multi-Monitor Flexibility* 🖥️: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
 - *Smooth Auto-Hide*: Keeps the dock out of your way with configurable reveal thresholds and fluid sliding animations.
 - *Declarative Lisp Configuration* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options.
+- *Smart and Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
 - *Live Interactive Socket REPL* 📡: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
-- *Thread-Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
 - *Theme Engine* 🎨: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
 - *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme icons, absolute paths, system pixmaps, and symbolic variants.
 - *Async Command Launching*: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
 - *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
-- *Reproducible Builds* 🛠️: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
+- *Reproducible Builds*: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
 
 -------
 

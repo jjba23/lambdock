@@ -277,9 +277,11 @@ void hide_dock(LambdockState *state) {
                      : gtk_widget_get_width(state->window);
   }
 
-  // Ensure window_dim is deterministic even before initial GTK layout/mapping
+  // Ensure window_dim is deterministic even before initial GTK layout/mapping.
+  // If GTK layout hasn't run yet after an orientation hot-reload, window_dim
+  // can hold stale main-axis dimensions from the previous orientation.
   int max_cross_dim = (int)(state->icon_size * 1.65) + 36;
-  if (window_dim < max_cross_dim) {
+  if (window_dim <= 0 || window_dim > max_cross_dim + 20) {
     window_dim = max_cross_dim;
   }
 
