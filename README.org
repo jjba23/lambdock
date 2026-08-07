@@ -456,6 +456,31 @@ maak run
 
 -------
 
+* Animations
+
+There are several approaches and layers to getting animations and smooth visual effects on the dock.
+
+Lambdock features a smooth, frame-clock-driven auto-hide mechanism powered by modern GTK4 APIs and the Wayland Layer Shell protocol.
+
+Starting with the auto-hide feature, lambdock features a cubic ease-out spatial transition to give a smooth showing and hiding to screen edge (within 250ms), and synchronizes with display refresh rates (60 Hz, 120 Hz, etc.) using =gtk_widget_add_tick_callback=.
+
+Of course, you are also free to add CSS ~transform~ directives or other things to your liking, e.g.
+#+begin_src css
+button.flat:hover {
+  transform: scale(1.15) translateY(-4px);
+  background-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+button.flat:active {
+  transform: scale(0.94) translateY(0px);
+  background-color: rgba(0, 0, 0, 0.14);
+  box-shadow: none;
+}
+#+end_src
+
+-------
+
 * Licensing
 Lambdock and all of its source code are free software, licensed under the GNU General Public License v3 (or newer at your convenience).
 
