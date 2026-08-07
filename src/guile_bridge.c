@@ -1,11 +1,19 @@
 // lambdock
-//
+
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
-//
-// lambdock is free software: you can redistribute it and/or modify
+
+// lambdock is free software : you can redistribute it and / or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
+
+// lambdock is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+// GNU General Public License for more details.
+
+// You should have received a copy of the GNU General Public License
+// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "guile_bridge.h" // Header file defining function declarations and LambdockState
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
@@ -63,11 +71,11 @@ static SCM call_core_proc(const char *func_name) {
  * Calls a Scheme function that returns a string or symbol, and converts it into
  * a C string.
  *
- * @param func_name       The Scheme procedure to call.
+ * @param func_name        The Scheme procedure to call.
  * @param fallback_module Optional alternate module name (defaults to "lambdock
  * core" if NULL).
- * @param default_val     Fallback string returned if the Scheme lookup fails or
- * returns empty.
+ * @param default_val      Fallback string returned if the Scheme lookup fails
+ * or returns empty.
  * @return Dynamically allocated C string pointer (must be freed by caller using
  * g_free / free).
  */
@@ -156,7 +164,7 @@ int get_icon_size_config(void) {
     if (sz > 0)
       return sz; // Valid positive icon dimension
   }
-  return 48; // Safe default fallback size (48x48 pixels)
+  return DEFAULT_ICON_SIZE;
 }
 
 /** Checks if the live Guile REPL (interactive Unix socket console) is enabled.

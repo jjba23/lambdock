@@ -163,7 +163,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // icon image at configured size
   GdkDisplay *display = gdk_display_get_default();
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
-  int icon_sz = (state && state->icon_size > 0) ? state->icon_size : 48;
+  int icon_sz =
+      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
 
   // Allow image to overflow button boundaries when magnified
@@ -480,11 +481,11 @@ DockItem *create_separator_dock_item(LambdockState *state,
 
   // Apply padding margins depending on vertical/horizontal orientation
   if (orientation == GTK_ORIENTATION_VERTICAL) {
-    gtk_widget_set_margin_start(item->button, 4);
-    gtk_widget_set_margin_end(item->button, 4);
+    gtk_widget_set_margin_start(item->button, SEPARATOR_MARGIN_PX);
+    gtk_widget_set_margin_end(item->button, SEPARATOR_MARGIN_PX);
   } else {
-    gtk_widget_set_margin_top(item->button, 4);
-    gtk_widget_set_margin_bottom(item->button, 4);
+    gtk_widget_set_margin_top(item->button, SEPARATOR_MARGIN_PX);
+    gtk_widget_set_margin_bottom(item->button, SEPARATOR_MARGIN_PX);
   }
 
   // Pack separator into UI container box and global dock items list
@@ -623,7 +624,7 @@ void reload_dock_instance(LambdockState *state) {
   } else {
     // Reserve desktop screen space dynamically when auto-hide is disabled
     gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window),
-                                 state->icon_size + 24);
+                                 state->icon_size + CAPSULE_PADDING_PX);
     reveal_dock(state);
   }
 }

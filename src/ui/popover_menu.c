@@ -199,13 +199,13 @@ void populate_popover_menu(DockItem *item) {
   if (old_child)
     gtk_popover_set_child(GTK_POPOVER(item->popover), NULL);
 
-  // Create main vertical container box with 4px element spacing and 8px padding
-  // margins
-  GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-  gtk_widget_set_margin_start(vbox, 8);
-  gtk_widget_set_margin_end(vbox, 8);
-  gtk_widget_set_margin_top(vbox, 8);
-  gtk_widget_set_margin_bottom(vbox, 8);
+  // Create main vertical container box with configured element spacing and
+  // padding margins
+  GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, POPOVER_VBOX_SPACING);
+  gtk_widget_set_margin_start(vbox, POPOVER_VBOX_MARGIN);
+  gtk_widget_set_margin_end(vbox, POPOVER_VBOX_MARGIN);
+  gtk_widget_set_margin_top(vbox, POPOVER_VBOX_MARGIN);
+  gtk_widget_set_margin_bottom(vbox, POPOVER_VBOX_MARGIN);
 
   // --------------------------------------------------------------------------
   // App Header Title & Separator Line
@@ -230,7 +230,8 @@ void populate_popover_menu(DockItem *item) {
       AppWindow *win = (AppWindow *)l->data;
 
       // Horizontal row container: [ Focus Button | Close Button ]
-      GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+      GtkWidget *row =
+          gtk_box_new(GTK_ORIENTATION_HORIZONTAL, POPOVER_ROW_SPACING);
 
       const char *win_title =
           (win->title && *win->title != '\0') ? win->title : "Window";
@@ -241,12 +242,12 @@ void populate_popover_menu(DockItem *item) {
       gtk_widget_set_hexpand(btn_focus,
                              TRUE); // Allow button to expand horizontally
 
-      // Format title text: Ellipsize long window titles with "..." at end max
-      // 30 chars
+      // Format title text: Ellipsize long window titles with "..." at end
       GtkWidget *child_label = gtk_button_get_child(GTK_BUTTON(btn_focus));
       if (GTK_IS_LABEL(child_label)) {
         gtk_label_set_ellipsize(GTK_LABEL(child_label), PANGO_ELLIPSIZE_END);
-        gtk_label_set_max_width_chars(GTK_LABEL(child_label), 30);
+        gtk_label_set_max_width_chars(GTK_LABEL(child_label),
+                                      POPOVER_TITLE_MAX_CHARS);
       }
 
       // Prepare action data and attach click signal for focusing window

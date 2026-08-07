@@ -113,10 +113,9 @@ static void setup_guile_primitives(void) {
 
 /**
  * on_config_reload_timeout:
- * Callback executed 150ms after config file writes cease.
- * * CONCEPT: Debouncing
- * When saving a file in text editors (Vim, VS Code), multiple file write events
- * trigger in milliseconds. Debouncing waits until editing stops before
+ * Callback executed after config file writes cease.
+ * When saving a file in text editors (Emacs, Vim, VS Code), multiple file write
+ * events trigger in milliseconds. Debouncing waits until editing stops before
  * reloading.
  */
 static gboolean on_config_reload_timeout(gpointer user_data) {
@@ -159,8 +158,9 @@ static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
       g_source_remove(g_reload_timer_id);
     }
 
-    // Schedule timeout callback to run after 150ms of silence
-    g_reload_timer_id = g_timeout_add(150, on_config_reload_timeout, NULL);
+    // Schedule timeout callback to run after silence interval
+    g_reload_timer_id = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
+                                      on_config_reload_timeout, NULL);
   }
 }
 
@@ -258,8 +258,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
   state->bg_capsule = bg_capsule;
 
-  // Container holding individual application launcher items (8px spacing)
-  GtkWidget *box = gtk_box_new(state->orientation, 8);
+  // Container holding individual application launcher items
+  GtkWidget *box = gtk_box_new(state->orientation, DOCK_BOX_SPACING_PX);
   gtk_widget_set_overflow(
       box, GTK_OVERFLOW_VISIBLE); // Allow hover animations to bleed out
   state->box = box;

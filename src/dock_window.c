@@ -126,7 +126,7 @@ static void reset_dock_items_scale(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
-  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
+  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
@@ -158,10 +158,10 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       state->is_hidden || state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
-  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
+  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
   double base_size = (double)base_sz;
-  const double max_scale = 1.45; // 45% max size magnification
-  const double radius = 140.0;   // Influence radius in pixels
+  const double max_scale = FISHEYE_MAX_SCALE; // Max size magnification
+  const double radius = FISHEYE_RADIUS_PX;    // Influence radius in pixels
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
@@ -246,7 +246,7 @@ static gboolean on_hide_timeout(gpointer user_data) {
 /**
  * hide_dock:
  * Calculates window dimensions and slides the dock off-screen into hidden
- * margin. Keeps a 2-pixel strip visible on screen edge to receive mouse hover
+ * margin. Keeps a trigger strip visible on screen edge to receive mouse hover
  * events.
  *
  * @param state Pointer to LambdockState.
@@ -280,13 +280,14 @@ void hide_dock(LambdockState *state) {
   // Ensure window_dim is deterministic even before initial GTK layout/mapping.
   // If GTK layout hasn't run yet after an orientation hot-reload, window_dim
   // can hold stale main-axis dimensions from the previous orientation.
-  int max_cross_dim = (int)(state->icon_size * 1.65) + 36;
-  if (window_dim <= 0 || window_dim > max_cross_dim + 20) {
+  int max_cross_dim =
+      (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
+  if (window_dim <= 0 || window_dim > max_cross_dim + CROSS_DIM_TOLERANCE_PX) {
     window_dim = max_cross_dim;
   }
 
-  // Leave 2px strip exposed on screen edge to trigger hover re-entry
-  int hide_margin = -(window_dim - 2);
+  // Leave exposed strip on screen edge to trigger hover re-entry
+  int hide_margin = -(window_dim - AUTOHIDE_TRIGGER_STRIP_PX);
 
   if (!state->is_hidden || state->target_margin != hide_margin) {
     start_margin_animation(state, hide_margin);
@@ -311,12 +312,13 @@ void on_popover_closed(GtkPopover *popover, gpointer user_data) {
     state->active_popovers--;
   }
 
-  // If no menus remain open, schedule autohide after 400ms delay
+  // If no menus remain open, schedule autohide after delay
   if (state->auto_hide && state->active_popovers == 0) {
     if (state->hide_timer_id != 0) {
       g_source_remove(state->hide_timer_id);
     }
-    state->hide_timer_id = g_timeout_add(400, on_hide_timeout, state);
+    state->hide_timer_id =
+        g_timeout_add(AUTOHIDE_POPOVER_DELAY_MS, on_hide_timeout, state);
   }
 }
 
@@ -351,7 +353,8 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
       if (state->hide_timer_id != 0) {
         g_source_remove(state->hide_timer_id);
       }
-      state->hide_timer_id = g_timeout_add(600, on_hide_timeout, state);
+      state->hide_timer_id =
+          g_timeout_add(AUTOHIDE_LEAVE_DELAY_MS, on_hide_timeout, state);
     }
   }
 }
@@ -428,7 +431,7 @@ void setup_layer_shell_window(LambdockState *state) {
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
-    gtk_layer_set_exclusive_zone(window, state->icon_size + 24);
+    gtk_layer_set_exclusive_zone(window, state->icon_size + CAPSULE_PADDING_PX);
   }
 }
 
@@ -452,7 +455,8 @@ void setup_dock_motion_controller(LambdockState *state) {
  */
 void schedule_initial_autohide(LambdockState *state) {
   if (state->auto_hide) {
-    state->hide_timer_id = g_timeout_add(1000, on_hide_timeout, state);
+    state->hide_timer_id =
+        g_timeout_add(AUTOHIDE_INITIAL_DELAY_MS, on_hide_timeout, state);
   }
 }
 
@@ -593,9 +597,9 @@ void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = state->icon_size + 24; // Capsule thickness
-  int max_cross_dim =
-      (int)(state->icon_size * 1.65) + 36; // Window headroom for magnification
+  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX; // Capsule thickness
+  int max_cross_dim = (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) +
+                      CROSS_DIM_PADDING_PX; // Window headroom for magnification
 
   if (state->size_group) {
     GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
@@ -605,7 +609,7 @@ void update_dock_dimensions(LambdockState *state) {
   }
 
   // Main-axis capsule ends padding
-  int padding = 12;
+  int padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
     gtk_widget_set_margin_start(state->box, padding);

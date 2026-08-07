@@ -28,6 +28,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 - *Async Command Launching*: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
 - *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
 - *Reproducible Builds*: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
+- *Native fluid fish-eye* magnification effect on hover (a la macOS) which is opt-in since some users might want less animations.
 
 -------
 

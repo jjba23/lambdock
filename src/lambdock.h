@@ -30,8 +30,40 @@
  */
 #define ANIMATION_DURATION_US 250000
 
-/* Forward declaration of low-level Wayland
-   foreign toplevel handle struct */
+/* --- UI Layout & Dimension Constants --- */
+#define DEFAULT_ICON_SIZE 48
+#define CAPSULE_PADDING_PX 24
+#define CAPSULE_MAIN_AXIS_PADDING_PX 12
+#define DOCK_BOX_SPACING_PX 8
+#define SEPARATOR_MARGIN_PX 4
+
+/* Cross-axis headroom calculation for fisheye magnification */
+#define CROSS_DIM_SCALE_FACTOR 1.65
+#define CROSS_DIM_PADDING_PX 36
+#define CROSS_DIM_TOLERANCE_PX 20
+
+/* Fisheye Hover Magnification */
+#define FISHEYE_MAX_SCALE 1.45
+#define FISHEYE_RADIUS_PX 140.0
+
+/* Auto-hide & Timer Constants */
+#define AUTOHIDE_TRIGGER_STRIP_PX 2
+#define AUTOHIDE_INITIAL_DELAY_MS 1000
+#define AUTOHIDE_LEAVE_DELAY_MS 600
+#define AUTOHIDE_POPOVER_DELAY_MS 400
+#define CONFIG_RELOAD_DEBOUNCE_MS 150
+
+/* Popover Menu Layout Constants */
+#define POPOVER_VBOX_SPACING 4
+#define POPOVER_VBOX_MARGIN 8
+#define POPOVER_ROW_SPACING 6
+#define POPOVER_TITLE_MAX_CHARS 30
+
+/* Resource Parsing Constants */
+#define RESOURCE_URI_PREFIX "resource://"
+#define RESOURCE_URI_PREFIX_LEN 11
+
+/* Forward declaration of low-level Wayland foreign toplevel handle struct */
 struct zwlr_foreign_toplevel_handle_v1;
 
 /* Forward declaration of central application state structure */
