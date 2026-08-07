@@ -468,8 +468,8 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * @state: Global Lambdock application state.
  *
  * Hot-reloads dock UI appearance, Scheme/Guile configuration rules, custom CSS
- * themes, autohide behavior, screen edge positioning, and rebuilds dock launcher layout
- * without restarting application.
+ * themes, autohide behavior, screen edge positioning, and rebuilds dock
+ * launcher layout without restarting application.
  */
 void reload_dock_instance(LambdockState *state) {
   if (!state)
@@ -511,6 +511,7 @@ void reload_dock_instance(LambdockState *state) {
   // Hot-reload Auto-Hide & Layer Shell Exclusive Zone
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
+  state->hover_animate = get_hover_animate_config();
 
   if (state->auto_hide) {
     // Set exclusive zone to 0 so windows can occupy full screen space

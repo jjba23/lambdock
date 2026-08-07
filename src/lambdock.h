@@ -84,6 +84,7 @@ struct LambdockState {
   GtkWidget *popover;
   gboolean auto_hide;
   gboolean show_when_clear;
+  gboolean hover_animate;
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;

@@ -113,6 +113,79 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
 }
 
 /* =========================================================================
+ * FISHEYE HOVER MAGNIFICATION ENGINE
+ * ========================================================================= */
+
+/**
+ * reset_dock_items_scale:
+ * Resets all dock item icons back to their default base pixel size (32px).
+ */
+static void reset_dock_items_scale(LambdockState *state) {
+  if (!state || !state->dock_items)
+    return;
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+      continue;
+
+    GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+    if (child && GTK_IS_IMAGE(child)) {
+      if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != 32) {
+        gtk_image_set_pixel_size(GTK_IMAGE(child), 32);
+      }
+    }
+  }
+}
+
+/**
+ * update_dock_items_fisheye:
+ * Computes fisheye magnification for dock icons based on current
+ * cursor coordinates relative to dock item centers.
+ */
+static void update_dock_items_fisheye(LambdockState *state, double x,
+                                      double y) {
+  if (!state || !state->dock_items || !state->hover_animate)
+    return;
+
+  const double base_size = 32.0;
+  const double max_scale = 1.55; // 55% max size magnification
+  const double radius = 160.0;   // Influence radius in pixels
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+      continue;
+
+    graphene_rect_t bounds;
+    if (gtk_widget_compute_bounds(item->button, state->window, &bounds)) {
+      double center_x = bounds.origin.x + bounds.size.width / 2.0;
+      double center_y = bounds.origin.y + bounds.size.height / 2.0;
+
+      double dist = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                        ? fabs(x - center_x)
+                        : fabs(y - center_y);
+
+      double scale = 1.0;
+      if (dist < radius) {
+        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at
+        // center)
+        double factor = 0.5 * (1.0 + cos(M_PI * dist / radius));
+        scale = 1.0 + (max_scale - 1.0) * factor;
+      }
+
+      int target_size = (int)(base_size * scale);
+      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+      if (child && GTK_IS_IMAGE(child)) {
+        if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
+          gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
+        }
+      }
+    }
+  }
+}
+
+/* =========================================================================
  * AUTO-HIDE & REVEAL LOGIC
  * ========================================================================= */
 
@@ -216,27 +289,46 @@ void on_popover_closed(GtkPopover *popover, gpointer user_data) {
 static void on_motion_enter(GtkEventControllerMotion *controller, double x,
                             double y, gpointer user_data) {
   (void)controller;
-  (void)x;
-  (void)y;
   LambdockState *state = (LambdockState *)user_data;
   reveal_dock(state);
+  if (state && state->hover_animate) {
+    update_dock_items_fisheye(state, x, y);
+  }
 }
 
 /**
  * on_motion_leave:
  * Mouse motion controller event when pointer leaves the dock surface.
- * Schedules an auto-hide check after 600ms.
+ * Resets icon scaling and schedules an auto-hide check after interval.
  */
 static void on_motion_leave(GtkEventControllerMotion *controller,
                             gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
 
-  if (state->auto_hide) {
-    if (state->hide_timer_id != 0) {
-      g_source_remove(state->hide_timer_id);
+  if (state) {
+    if (state->hover_animate) {
+      reset_dock_items_scale(state);
     }
-    state->hide_timer_id = g_timeout_add(600, on_hide_timeout, state);
+    if (state->auto_hide) {
+      if (state->hide_timer_id != 0) {
+        g_source_remove(state->hide_timer_id);
+      }
+      state->hide_timer_id = g_timeout_add(600, on_hide_timeout, state);
+    }
+  }
+}
+
+/**
+ * on_motion_notify:
+ * Mouse motion callback tracking cursor position across dock items for fisheye.
+ */
+static void on_motion_notify(GtkEventControllerMotion *controller, double x,
+                             double y, gpointer user_data) {
+  (void)controller;
+  LambdockState *state = (LambdockState *)user_data;
+  if (state && state->hover_animate) {
+    update_dock_items_fisheye(state, x, y);
   }
 }
 
@@ -304,13 +396,14 @@ void setup_layer_shell_window(LambdockState *state) {
 
 /**
  * setup_dock_motion_controller:
- * Attaches GtkEventControllerMotion to monitor cursor entry and exit events.
+ * Attaches GtkEventControllerMotion to monitor cursor entry, leave, and motion.
  */
 void setup_dock_motion_controller(LambdockState *state) {
   GtkEventController *motion = gtk_event_controller_motion_new();
 
   g_signal_connect(motion, "enter", G_CALLBACK(on_motion_enter), state);
   g_signal_connect(motion, "leave", G_CALLBACK(on_motion_leave), state);
+  g_signal_connect(motion, "motion", G_CALLBACK(on_motion_notify), state);
 
   gtk_widget_add_controller(state->window, motion);
 }
