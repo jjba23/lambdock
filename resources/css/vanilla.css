@@ -72,12 +72,12 @@ button.flat {
 
 button.flat:hover {
   background-color: rgba(255, 255, 255, 0.14);
-  transform: scale(1.15) translateY(-4px);
+  /* transform: scale(1.15) translateY(-4px); */
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 
 button.flat:active {
-  transform: scale(0.94) translateY(0px);
+  /* transform: scale(0.94) translateY(0px); */
   background-color: rgba(255, 255, 255, 0.22);
   box-shadow: none;
 }

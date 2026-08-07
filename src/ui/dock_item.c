@@ -160,16 +160,49 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   item->is_favorite = is_favorite;
 
   // Retrieve default icon theme for current display and look up the desktop
-  // icon image (32px)
+  // icon image at configured size
   GdkDisplay *display = gdk_display_get_default();
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
-  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, 32);
+  int icon_sz = (state && state->icon_size > 0) ? state->icon_size : 48;
+  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
 
-  // Create standard GTK button and insert the icon image widget inside it
+  // Allow image to overflow button boundaries when magnified
+  gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+
+  // 1. Instantiate the button widget FIRST
   item->button = gtk_button_new();
+
+  // 2. Now configure alignment on both the image and the valid button widget
+  if (state) {
+    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+      gtk_widget_set_valign(image, GTK_ALIGN_END);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(image, GTK_ALIGN_START);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(image, GTK_ALIGN_START);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_START);
+      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+      gtk_widget_set_halign(image, GTK_ALIGN_END);
+      gtk_widget_set_halign(item->button, GTK_ALIGN_END);
+      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    }
+  }
+
+  // Insert image widget inside button
   gtk_button_set_child(GTK_BUTTON(item->button), image);
-  gtk_widget_add_css_class(item->button,
-                           "flat"); // Remove default button borders via CSS
+  gtk_widget_add_css_class(item->button, "flat");
+
+  // Enable overflow on button so magnified icons pop out without clipping
+  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 
   // Attach a mouse hover tooltip text showing the application name
   if (item->name && *item->name != '\0') {
@@ -468,8 +501,8 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * @state: Global Lambdock application state.
  *
  * Hot-reloads dock UI appearance, Scheme/Guile configuration rules, custom CSS
- * themes, autohide behavior, screen edge positioning, and rebuilds dock launcher layout
- * without restarting application.
+ * themes, autohide behavior, screen edge positioning, and rebuilds dock
+ * launcher layout without restarting application.
  */
 void reload_dock_instance(LambdockState *state) {
   if (!state)
@@ -500,6 +533,10 @@ void reload_dock_instance(LambdockState *state) {
                              : GTK_ORIENTATION_HORIZONTAL;
     gtk_orientable_set_orientation(GTK_ORIENTABLE(state->box),
                                    state->orientation);
+    if (state->bg_capsule) {
+      gtk_orientable_set_orientation(GTK_ORIENTABLE(state->bg_capsule),
+                                     state->orientation);
+    }
 
     // Reset margin and animation offsets
     state->current_margin = 0;
@@ -508,9 +545,21 @@ void reload_dock_instance(LambdockState *state) {
     state->is_hidden = FALSE;
   }
 
-  // Hot-reload Auto-Hide & Layer Shell Exclusive Zone
+  // Hot-reload Auto-Hide, Hover Animation, Base Icon Size & Layer Shell
+  // Exclusive Zone
   state->auto_hide = get_autohide_config();
   state->show_when_clear = get_show_when_clear_config();
+  state->hover_animate = get_hover_animate_config();
+  state->icon_size = get_icon_size_config();
+
+  // Clear pinned items and repopulate dock launcher layout first
+  clear_favorite_dock_items(state);
+  populate_dock_items(state);
+
+  // Re-sync Wayland foreign window handles back to newly populated launchers
+  sync_window_trackers(state);
+
+  update_dock_dimensions(state);
 
   if (state->auto_hide) {
     // Set exclusive zone to 0 so windows can occupy full screen space
@@ -523,14 +572,8 @@ void reload_dock_instance(LambdockState *state) {
     }
   } else {
     // Reserve desktop screen space dynamically when auto-hide is disabled
-    gtk_layer_auto_exclusive_zone_enable(GTK_WINDOW(state->window));
+    gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window),
+                                 state->icon_size + 24);
     reveal_dock(state);
   }
-
-  // Clear pinned items and repopulate dock launcher layout
-  clear_favorite_dock_items(state);
-  populate_dock_items(state);
-
-  // Re-sync Wayland foreign window handles back to newly populated launchers
-  sync_window_trackers(state);
 }

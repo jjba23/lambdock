@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
+#include "guile_bridge.h"
 #include "logger.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
@@ -113,6 +114,97 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
 }
 
 /* =========================================================================
+ * FISHEYE HOVER MAGNIFICATION ENGINE
+ * ========================================================================= */
+
+/**
+ * reset_dock_items_scale:
+ * Resets all dock item icons back to their default base pixel size and resets
+ * widget size requests cleanly.
+ */
+static void reset_dock_items_scale(LambdockState *state) {
+  if (!state || !state->dock_items)
+    return;
+
+  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button)
+      continue;
+
+    // Reset button size request back to default
+    gtk_widget_set_size_request(item->button, -1, -1);
+
+    if (GTK_IS_BUTTON(item->button)) {
+      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+      if (child && GTK_IS_IMAGE(child)) {
+        gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
+        gtk_widget_set_size_request(child, -1, -1);
+      }
+    }
+  }
+}
+
+/**
+ * update_dock_items_fisheye:
+ * Computes fisheye magnification for dock icons based on current
+ * cursor coordinates relative to dock item centers.
+ */
+static void update_dock_items_fisheye(LambdockState *state, double x,
+                                      double y) {
+  // Do not run hover magnification if disabled, hidden, or animating slide
+  if (!state || !state->dock_items || !state->hover_animate ||
+      state->is_hidden || state->tick_cb_id != 0 || state->current_margin != 0)
+    return;
+
+  int base_sz = (state->icon_size > 0) ? state->icon_size : 48;
+  double base_size = (double)base_sz;
+  const double max_scale = 1.45; // 45% max size magnification
+  const double radius = 140.0;   // Influence radius in pixels
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+      continue;
+
+    graphene_rect_t bounds;
+    if (gtk_widget_compute_bounds(item->button, state->window, &bounds)) {
+      double center_x = bounds.origin.x + bounds.size.width / 2.0;
+      double center_y = bounds.origin.y + bounds.size.height / 2.0;
+
+      double dist = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                        ? fabs(x - center_x)
+                        : fabs(y - center_y);
+
+      double scale = 1.0;
+      if (dist < radius) {
+        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at
+        // center)
+        double factor = 0.5 * (1.0 + cos(M_PI * dist / radius));
+        scale = 1.0 + (max_scale - 1.0) * factor;
+      }
+
+      int target_size = (int)(base_size * scale);
+      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+      if (child && GTK_IS_IMAGE(child)) {
+        if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
+          gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
+
+          if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+            // Expand width along X axis; Y axis remains unconstrained
+            gtk_widget_set_size_request(item->button, target_size, -1);
+          } else {
+            // Expand height along Y axis; X axis remains unconstrained
+            gtk_widget_set_size_request(item->button, -1, target_size);
+          }
+        }
+      }
+    }
+  }
+}
+
+/* =========================================================================
  * AUTO-HIDE & REVEAL LOGIC
  * ========================================================================= */
 
@@ -168,11 +260,28 @@ void hide_dock(LambdockState *state) {
   if (state->show_when_clear && state->window_trackers == NULL)
     return;
 
-  // Determine height or width based on screen orientation
-  int window_dim = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
-                    state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
-                       ? gtk_widget_get_height(state->window)
-                       : gtk_widget_get_width(state->window);
+  // Reset icon scaling to base size before calculating window dimensions
+  if (state->hover_animate) {
+    reset_dock_items_scale(state);
+  }
+
+  GtkOrientation dim_orient = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                               state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
+                                  ? GTK_ORIENTATION_VERTICAL
+                                  : GTK_ORIENTATION_HORIZONTAL;
+
+  int window_dim = 0;
+  if (state->window) {
+    window_dim = (dim_orient == GTK_ORIENTATION_VERTICAL)
+                     ? gtk_widget_get_height(state->window)
+                     : gtk_widget_get_width(state->window);
+  }
+
+  // Ensure window_dim is deterministic even before initial GTK layout/mapping
+  int max_cross_dim = (int)(state->icon_size * 1.65) + 36;
+  if (window_dim < max_cross_dim) {
+    window_dim = max_cross_dim;
+  }
 
   // Leave 2px strip exposed on screen edge to trigger hover re-entry
   int hide_margin = -(window_dim - 2);
@@ -225,18 +334,37 @@ static void on_motion_enter(GtkEventControllerMotion *controller, double x,
 /**
  * on_motion_leave:
  * Mouse motion controller event when pointer leaves the dock surface.
- * Schedules an auto-hide check after 600ms.
+ * Resets icon scaling and schedules an auto-hide check after interval.
  */
 static void on_motion_leave(GtkEventControllerMotion *controller,
                             gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
 
-  if (state->auto_hide) {
-    if (state->hide_timer_id != 0) {
-      g_source_remove(state->hide_timer_id);
+  if (state) {
+    if (state->hover_animate) {
+      reset_dock_items_scale(state);
     }
-    state->hide_timer_id = g_timeout_add(600, on_hide_timeout, state);
+    if (state->auto_hide) {
+      if (state->hide_timer_id != 0) {
+        g_source_remove(state->hide_timer_id);
+      }
+      state->hide_timer_id = g_timeout_add(600, on_hide_timeout, state);
+    }
+  }
+}
+
+/**
+ * on_motion_notify:
+ * Mouse motion callback tracking cursor position across dock items for fisheye.
+ */
+static void on_motion_notify(GtkEventControllerMotion *controller, double x,
+                             double y, gpointer user_data) {
+  (void)controller;
+  LambdockState *state = (LambdockState *)user_data;
+  if (state && state->hover_animate && !state->is_hidden &&
+      state->tick_cb_id == 0 && state->current_margin == 0) {
+    update_dock_items_fisheye(state, x, y);
   }
 }
 
@@ -294,23 +422,24 @@ void setup_layer_shell_window(LambdockState *state) {
   gtk_layer_set_anchor(window, state->edge, TRUE);
 
   // Exclusive zone reserves desktop space so windows do not overlap dock.
-  // Set to 0 during auto-hide to allow windows to occupy full screen.
+  // Reserve exact background capsule thickness when auto-hide is disabled.
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
-    gtk_layer_auto_exclusive_zone_enable(window);
+    gtk_layer_set_exclusive_zone(window, state->icon_size + 24);
   }
 }
 
 /**
  * setup_dock_motion_controller:
- * Attaches GtkEventControllerMotion to monitor cursor entry and exit events.
+ * Attaches GtkEventControllerMotion to monitor cursor entry, leave, and motion.
  */
 void setup_dock_motion_controller(LambdockState *state) {
   GtkEventController *motion = gtk_event_controller_motion_new();
 
   g_signal_connect(motion, "enter", G_CALLBACK(on_motion_enter), state);
   g_signal_connect(motion, "leave", G_CALLBACK(on_motion_leave), state);
+  g_signal_connect(motion, "motion", G_CALLBACK(on_motion_notify), state);
 
   gtk_widget_add_controller(state->window, motion);
 }
@@ -339,6 +468,11 @@ void schedule_initial_autohide(LambdockState *state) {
 void free_lambdock_state(LambdockState *state) {
   if (!state)
     return;
+
+  if (state->size_group) {
+    g_object_unref(state->size_group);
+    state->size_group = NULL;
+  }
 
   // --- Free Wayland foreign-toplevel window tracker objects ---
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
@@ -451,4 +585,61 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   // Display dialog modally
   gtk_window_set_modal(GTK_WINDOW(about), TRUE);
   gtk_window_present(GTK_WINDOW(about));
+}
+
+void update_dock_dimensions(LambdockState *state) {
+  if (!state || !state->bg_capsule || !state->overlay)
+    return;
+
+  int bg_fixed_dim = state->icon_size + 24; // Capsule thickness
+  int max_cross_dim =
+      (int)(state->icon_size * 1.65) + 36; // Window headroom for magnification
+
+  if (state->size_group) {
+    GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                                ? GTK_SIZE_GROUP_HORIZONTAL
+                                : GTK_SIZE_GROUP_VERTICAL;
+    gtk_size_group_set_mode(state->size_group, mode);
+  }
+
+  // Main-axis capsule ends padding
+  int padding = 12;
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_margin_start(state->box, padding);
+    gtk_widget_set_margin_end(state->box, padding);
+    gtk_widget_set_margin_top(state->box, 0);
+    gtk_widget_set_margin_bottom(state->box, 0);
+
+    gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
+    gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
+    gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
+
+    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_START);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_END);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_END);
+    }
+  } else {
+    gtk_widget_set_margin_top(state->box, padding);
+    gtk_widget_set_margin_bottom(state->box, padding);
+    gtk_widget_set_margin_start(state->box, 0);
+    gtk_widget_set_margin_end(state->box, 0);
+
+    gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
+    gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
+    gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
+
+    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_START);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_END);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_END);
+    }
+  }
 }
