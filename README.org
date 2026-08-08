@@ -8,11 +8,11 @@
 The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Scheme + GTK4)
 #+end_quote
 
-lambdock is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS. An aesthetic flair.
+~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS. An aesthetic flair.
 
-Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, lambdock brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
+Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, ~lambdock~ brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
 
-lambdock is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
+~lambdock~ is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
 -------
 
@@ -38,7 +38,7 @@ lambdock is a lightweight, Wayland-native desktop dock built with a high-perform
 
 * What systems does lambdock support?
 
-~lambdock~ is a GNU/Linux first utility.
+~~lambdock~~ is a GNU/Linux first utility.
 
 The tool uses ~gtk4-layer-shell~ to render to the screen and positioning and for dock behavior.
 
@@ -58,6 +58,8 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors. Most of the options have sensible defaults, so you only need to configure what you want to modify, in your config file.
 
 Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~) and it will be hot-reloaded.
+
+Thanks to the nature of Lisp, you can also easily do meta-programming and for example have dynamic theme choices and settings with S-expression templating and quoting and quasi-quoting, like in [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][my Heks-GNU/Linux config]] where I integrate ~lambdock~ deeply with my system.
 
 #+begin_src scheme
 (define-module (lambdock settings)
@@ -205,7 +207,7 @@ An example override of a theme could look like this:
 
 * Finding icon names
 
-lambdock supports loading and specifying icons in different ways. It loads the active GTK 4 Icon theme and proceeds to load the icon.
+~lambdock~ supports loading and specifying icons in different ways. It loads the active GTK 4 Icon theme and proceeds to load the icon.
 
 When you pass an icon string to ~app-item~, the C runtime's ~create_image_for_icon~ function checks for the icon in this order:
 
@@ -247,7 +249,7 @@ The name /lambdock/ is a play on words combining:
 <img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
 #+END_EXPORT
 
-lambdock adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
+~lambdock~ adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
 
 You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
 
@@ -256,7 +258,7 @@ You could say using this dock /es casi una experiencia religiosa como la de [[ht
 
 * Interactive lambdock REPL
 
-For purposes of development, experimentation and live hackability, lambdock features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
+For purposes of development, experimentation and live hackability, ~lambdock~ features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
 
 In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. You can optionally customize the socket path using =#:repl-socket-path= (defaults to =/tmp/lambdock-repl.sock=):
 
@@ -271,7 +273,7 @@ In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. Yo
 
 You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
 
-Once connected, you can evaluate Scheme expressions against the running Lambdock instance, possibilities are endless, e.g.
+Once connected, you can evaluate Scheme expressions against the running ~lambdock~ instance, possibilities are endless, e.g.
 
 #+begin_example
 scheme@(guile-user)> (use-modules (lambdock core))
