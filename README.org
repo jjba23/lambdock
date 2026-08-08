@@ -171,25 +171,25 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 While tools like Waybar and EWW excel as status bars or custom widget dashboards, ~lambdock~ is specifically engineered as a hyper-hackable, Wayland-native high-performance application dock with an embedded Lisp engine and full GTK4 graphics core.
 
 #+ATTR_CENTRAL: :align c
-| Feature / Dimension                | ~lambdock~                   | macOS Dock           | Cairo-Dock / Plank | Waybar            | EWW / Bar Engines    |
-|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
-| Primary Design Target | Application Dock | Application Dock | Application Dock   | Top/Bottom Bar    | Widget Dashboard     |
-| Wayland Native (~wlr-layer-shell~) | ✅                            | ❌ (macOS Quartz)    | ❌ (X11 / WNCK)     | ✅                 | ✅                    |
-| UI Toolkit & Graphics Core | GTK4 (GL / GSK)          | Cocoa / Metal        | GTK2 / GTK3        | GTK3              | GTK3 / Cairo         |
-|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
-| Config & Scripting Engine | GNU Guile Scheme (Lisp) | Static plist         | Static INI / C     | JSON / JSONC      | yuck (Custom DSL)    |
-| Live Interactive Socket REPL | ✅ (Emacs/Geiser, ~socat~)   | ❌                    | ❌                  | ❌                 | ❌                    |
-| Hot-Reloading | ✅ Live Code & GTK4 CSS      | ❌ (~killall Dock~)  | ❌                  | ⚠️ Config/CSS     | ✅ Config/CSS        |
-| Thread-Safe Async Dispatch | ✅ GLib ~g_idle_add~         | ✅ GCD / Dispatch    | ❌                  | ⚠️ Thread sync     | ⚠️ IPC daemon        |
-|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
-| Wayland Window Tracking | ✅ ~zwlr_foreign_toplevel_v1~| ❌ (macOS Server)    | ❌ (X11 only)       | ⚠️ Taskbar module  | ❌ (External scripts) |
-| Multi-Instance Window HUD | ✅ Focus / Close / Close-All | ⚠️ Basic menu        | ⚠️ Basic menu      | ⚠️ Basic menu     | ❌ Manual IPC        |
-| Hover Magnification (Fish-eye) | ✅ Cosine-Bell Curve         | ✅ Native            | ✅ (X11 composite)  | ❌                 | ❌                    |
-| Smooth Auto-Hide Animations | ✅ Frame-Clock Eased Slide   | ✅ Native            | ⚠️ Basic           | ⚠️ Basic          | ⚠️ CSS transitions    |
-|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
-| Metaprogramming & Macros | ✅ S-Exprs & Quasiquoting    | ❌                    | ❌                  | ❌                 | ⚠️ Limited yuck      |
-| Hermetic Guix & Nix Packaging | ✅ ~guix.scm~ + ~flake.nix~   | ❌ Proprietary OS    | ❌                  | ⚠️ Distro packages | ⚠️ Distro packages    |
-| Preset Launcher Builders | ✅ ~preset-launchers-for~    | ❌ Drag-and-drop     | ❌                  | ❌                 | ❌                    |
+| Feature / Dimension              | ~lambdock~                     | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | macOS Dock        |
+|----------------------------------+------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Primary Design Target            | Application Dock             | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
+| Wayland Native (~wlr-layer-shell~) | ✅                           | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (macOS Quartz)   |
+| UI Toolkit & Graphics Core       | GTK4 (GL / GSK)              | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
+|----------------------------------+------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Config & Scripting Engine        | GNU Guile Scheme (Lisp)      | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
+| Live Interactive Socket REPL     | ✅ (Emacs/Geiser, ~socat~)     | ❌                 | ❌                 | ❌                    | ❌                |
+| Hot-Reloading                    | ✅ Live Code & GTK4 CSS      | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
+| Thread-Safe Async Dispatch       | ✅ GLib ~g_idle_add~           | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
+|----------------------------------+------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Wayland Window Tracking          | ✅ ~zwlr_foreign_toplevel_v1~   | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)   |
+| Multi-Instance Window HUD        | ✅ Focus / Close / Close-All | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu     |
+| Hover Magnification (Fish-eye)   | ✅ Cosine-Bell Curve         | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
+| Smooth Auto-Hide Animations      | ✅ Frame-Clock Eased Slide   | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
+|----------------------------------+------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Metaprogramming & Macros         | ✅ S-Exprs & Quasiquoting    | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                |
+| Hermetic Guix & Nix Packaging    | ✅ ~guix.scm~ + ~flake.nix~      | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages    | ❌ Proprietary OS |
+| Preset Launcher Builders         | ✅ ~preset-launchers-for~      | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
 
 --------------
