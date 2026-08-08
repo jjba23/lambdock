@@ -8,7 +8,9 @@
 The dock for Wayland (GNU/Linux) that you didn't know you needed (C and Guile Scheme + GTK4)
 #+end_quote
 
-~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for Linux ricers, free sofware and Lisp enthusiasts, Wayland minimalists... Built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS. An aesthetic flair.
+~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for GNU/Linux users, people that like docks, macOS refugees,  ricers, free software and Lisp enthusiasts, Wayland minimalists...
+
+It's built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS.
 
 Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, ~lambdock~ brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
 
@@ -61,6 +63,7 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 - *Styles Location*  ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually =~/.config/lambdock/styles.css=).
 - *Hot-Reloading:* Save your files, and ~lambdock~ automatically re-evaluates settings on the fly via =GFileMonitor=.
 - *Sensible Defaults:* Every option comes pre-configured—you only need to override and export the settings you wish to customize.
+- *Presets* that can help you reduce boilerplate, see [[file:scheme/lambdock/presets.scm]]
 
 --------------------
 
@@ -107,43 +110,35 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 ;; Whether to animate dock items when hovering on them with the mouse
 (define dock-hover-animate? #t)
 
+;; Application launchers list
 (define dock-items
   (list (preset-launcher 'alacritty)
-        ;; using preset launchers and icons can be convenient
-        (preset-launcher 'google-chrome)
+        (preset-launcher 'google-chrome-flatpak)
         (app-item #:name "Spotify"
                   #:exec "flatpak run com.spotify.Client"
                   #:icon "com.spotify.Client")
         (app-item #:name "Files"
                   #:exec "nautilus -w"
                   #:icon (preset-icon 'nautilus))
-        (app-item #:name "Nyxt"
-                  #:exec "flatpak run engineer.atlas.Nyxt"
-                  #:icon "engineer.atlas.Nyxt")
-        (app-item #:name "Agenda"
-                  #:exec "gnome-calendar"
-                  #:icon "org.gnome.Calendar")
         (separator-item)
         (app-item #:name "Emacs"
                   #:exec "emacsclient -c"
-                  #:icon "emacs")
-        (app-item #:name "Bruno"
-                  #:exec "flatpak run com.usebruno.Bruno"
-                  #:icon "com.usebruno.Bruno")))
+                  #:icon "emacs")))
+#+end_src
 
-;; or go fancier and do
+*** Advanced Functional Setup (Batch Presets)
+
+#+begin_src scheme
+;; Alternatively, construct dock-items procedurally using list operations:
 (define dock-items
   (append (preset-launchers-for 'alacritty
-                                'google-chrome
+                                'google-chrome-flatpak
                                 'spotify
                                 'nautilus
-                                'nyxt
-                                'gnome-calendar
-                                'gnome-calculator
-                                'zapzap)
+                                'nyxt)
           (list (separator-item))
           (preset-launchers-for 'emacs
-                                'intellij
+                                'intellij-flatpak
                                 'bruno)
           (list (separator-item))
           (preset-launchers-for 'btop
@@ -174,7 +169,7 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 
 - Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
-- Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted flass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
+- Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted glass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png]]
 - Snow Leopard 3D Glass 🍎  (~'snow-leopard~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png]]
@@ -262,7 +257,7 @@ find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg
 
 ---------
 
-* Etimology
+* Etymology
 
 The name /lambdock/ is a play on words combining:
 
@@ -275,7 +270,7 @@ The name /lambdock/ is a play on words combining:
 <img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
 #+END_EXPORT
 
-~lambdock~ adopts as  project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
+~lambdock~ adopts as  its project logo the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]]: The Lamb of God carrying a cross and a red flag
 
 You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
 
@@ -562,6 +557,20 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
 
 ----------
+
+* Why lambdock? A comparison table
+
+| Feature                          | lambdock                   | Cairo-Dock / Plank | Waybar / Wayland Docks | EWW / Bar Engines  |
+|----------------------------------+----------------------------+--------------------+------------------------+--------------------|
+| Wayland Native (wlr-layer-shell) | ✅                          | ❌ (X11 focused)   | ✅                      | ✅                  |
+| UI Toolkit                       | GTK4                       | GTK2 / GTK3        | GTK3                   | GTK3 / Custom      |
+| Live REPL Runtime                | ✅ Guile Scheme            | ❌                  | ❌                      | ❌                  |
+| Hot-Reloading                    | ✅ (CSS + Logic)           | ❌                  | ✅ (CSS/Config)        | ✅                  |
+| Window Tracking HUD              | ✅ (zwlr_foreign_toplevel) | ⚠️                 | ⚠️                     | ❌ (Manual scripts) |
+| Hermetic Guix/Nix Builds         | ✅                          | ❌                  | ⚠️                     | ⚠️                 |
+
+---------
+
 * Backlog and Ideas
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
 *** TODO: Implement XDG desktop entry cache reader to inspect ~/usr/share/applications/*.desktop~ and ~~/.local/share/applications/*.desktop~ and flatpaks for  Flawless ~app_id~ Matching
@@ -576,7 +585,7 @@ Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~
           #:badge-thunk (lambda () (format #f "~aMB" (free-memory))))
 #+end_src
 *** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
-*** TODO: Finish Guix package and upstream it
+*** WIP Finish Guix package and upstream it
 *** TODO: Finish Debian package and publish it
 *** TODO: Finish Fedora package and publish it
 *** TODO: Finish Arch package and publish it
