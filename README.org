@@ -166,6 +166,34 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 
 -----------
 
+* Why lambdock? A comparison table
+
+While tools like Waybar and EWW excel as status bars or custom widget dashboards, ~lambdock~ is specifically engineered as a hyper-hackable, Wayland-native high-performance application dock with an embedded Lisp engine and full GTK4 graphics core.
+
+#+ATTR_CENTRAL: :align c
+| Feature / Dimension                | ~lambdock~                   | macOS Dock           | Cairo-Dock / Plank | Waybar            | EWW / Bar Engines    |
+|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
+| Primary Design Target | Application Dock | Application Dock | Application Dock   | Top/Bottom Bar    | Widget Dashboard     |
+| Wayland Native (~wlr-layer-shell~) | ✅                            | ❌ (macOS Quartz)    | ❌ (X11 / WNCK)     | ✅                 | ✅                    |
+| UI Toolkit & Graphics Core | GTK4 (GL / GSK)          | Cocoa / Metal        | GTK2 / GTK3        | GTK3              | GTK3 / Cairo         |
+|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
+| Config & Scripting Engine | GNU Guile Scheme (Lisp) | Static plist         | Static INI / C     | JSON / JSONC      | yuck (Custom DSL)    |
+| Live Interactive Socket REPL | ✅ (Emacs/Geiser, ~socat~)   | ❌                    | ❌                  | ❌                 | ❌                    |
+| Hot-Reloading | ✅ Live Code & GTK4 CSS      | ❌ (~killall Dock~)  | ❌                  | ⚠️ Config/CSS     | ✅ Config/CSS        |
+| Thread-Safe Async Dispatch | ✅ GLib ~g_idle_add~         | ✅ GCD / Dispatch    | ❌                  | ⚠️ Thread sync     | ⚠️ IPC daemon        |
+|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
+| Wayland Window Tracking | ✅ ~zwlr_foreign_toplevel_v1~| ❌ (macOS Server)    | ❌ (X11 only)       | ⚠️ Taskbar module  | ❌ (External scripts) |
+| Multi-Instance Window HUD | ✅ Focus / Close / Close-All | ⚠️ Basic menu        | ⚠️ Basic menu      | ⚠️ Basic menu     | ❌ Manual IPC        |
+| Hover Magnification (Fish-eye) | ✅ Cosine-Bell Curve         | ✅ Native            | ✅ (X11 composite)  | ❌                 | ❌                    |
+| Smooth Auto-Hide Animations | ✅ Frame-Clock Eased Slide   | ✅ Native            | ⚠️ Basic           | ⚠️ Basic          | ⚠️ CSS transitions    |
+|------------------------------------+------------------------------+----------------------+--------------------+-------------------+----------------------|
+| Metaprogramming & Macros | ✅ S-Exprs & Quasiquoting    | ❌                    | ❌                  | ❌                 | ⚠️ Limited yuck      |
+| Hermetic Guix & Nix Packaging | ✅ ~guix.scm~ + ~flake.nix~   | ❌ Proprietary OS    | ❌                  | ⚠️ Distro packages | ⚠️ Distro packages    |
+| Preset Launcher Builders | ✅ ~preset-launchers-for~    | ❌ Drag-and-drop     | ❌                  | ❌                 | ❌                    |
+
+
+--------------
+
 * Styling & Theming 🎨
 
 ~lambdock~ ships with pre-baked themes embedded via build defines:
@@ -560,19 +588,6 @@ Far from rigid, absolute reproducibility empowers fearless experimentation:
 - *Unified Tooling:* One tool seamlessly handles dev shells, containers, system configs, and package builds.
 
 ----------
-
-* Why lambdock? A comparison table
-
-| Feature                          | lambdock                   | Cairo-Dock / Plank | Waybar / Wayland Docks | EWW / Bar Engines  |
-|----------------------------------+----------------------------+--------------------+------------------------+--------------------|
-| Wayland Native (wlr-layer-shell) | ✅                          | ❌ (X11 focused)   | ✅                      | ✅                  |
-| UI Toolkit                       | GTK4                       | GTK2 / GTK3        | GTK3                   | GTK3 / Custom      |
-| Live REPL Runtime                | ✅ Guile Scheme            | ❌                  | ❌                      | ❌                  |
-| Hot-Reloading                    | ✅ (CSS + Logic)           | ❌                  | ✅ (CSS/Config)        | ✅                  |
-| Window Tracking HUD              | ✅ (zwlr_foreign_toplevel) | ⚠️                 | ⚠️                     | ❌ (Manual scripts) |
-| Hermetic Guix/Nix Builds         | ✅                          | ❌                  | ⚠️                     | ⚠️                 |
-
----------
 
 * Backlog and Ideas
 *** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
