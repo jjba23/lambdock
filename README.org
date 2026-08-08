@@ -1,5 +1,5 @@
 #+title: lambdock
-#+options: num:nil
+#+options: num:nil toc:2
 #+author: Josep Jesus Bigorra Algaba
 #+email: jjbigorra@gmail.com
 #+language: en
