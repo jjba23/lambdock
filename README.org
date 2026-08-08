@@ -159,11 +159,6 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 | ~(separator-item)~ | Record | Layout divider line | None |
 | ~(preset-icon 'symbol)~ | String | Resolves default icon name string for a given preset | Symbol |
 
-
--------
-
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
-
 -----------
 
 * Why lambdock? A comparison table
@@ -191,6 +186,10 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 | Hermetic Guix & Nix Packaging    | ✅ ~guix.scm~ + ~flake.nix~      | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages    | ❌ Proprietary OS |
 | Preset Launcher Builders         | ✅ ~preset-launchers-for~      | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
+
+Here a small demo of hot-reload config feature:
+
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
 
 --------------
 
