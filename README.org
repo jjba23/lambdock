@@ -38,7 +38,7 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 
 * What systems does lambdock support?
 
-~~lambdock~~ is a GNU/Linux first utility.
+~lambdock~ is a GNU/Linux first utility.
 
 The tool uses ~gtk4-layer-shell~ to render to the screen and positioning and for dock behavior.
 
@@ -53,13 +53,16 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 
 --------
 
-* Scheme Configuration
+* Configuring lambdock
 
-Configurations are written in GNU Guile Scheme. You can customize dock items, icon sizes, and placement using declarative constructors. Most of the options have sensible defaults, so you only need to configure what you want to modify, in your config file.
+Configurations are written in GNU Guile Scheme and user style overrides are written in CSS/GTK4.
 
-Place your config file at ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (this is usually ~$HOME/.config/...~) and it will be hot-reloaded.
+- *Settings Location:* ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (usually =~/.config/lambdock/settings.scm=).
+- *Styles Location*  ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually =~/.config/lambdock/styles.css=).
+- *Hot-Reloading:* Save your files, and ~lambdock~ automatically re-evaluates settings on the fly via =GFileMonitor=.
+- *Sensible Defaults:* Every option comes pre-configured—you only need to override and export the settings you wish to customize.
 
-Thanks to the nature of Lisp, you can also easily do meta-programming and for example have dynamic theme choices and settings with S-expression templating and quoting and quasi-quoting, like in [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][my Heks-GNU/Linux config]] where I integrate ~lambdock~ deeply with my system.
+--------------------
 
 #+begin_src scheme
 (define-module (lambdock settings)
@@ -150,10 +153,13 @@ Thanks to the nature of Lisp, you can also easily do meta-programming and for ex
 
 *** Available Item Constructors
 
-| Scheme Function | Description | Key Arguments |
-|-----------------+-------------+---------------|
-| ~(app-item ...)~ | Generic application launcher | ~#:name~, ~#:icon~, ~#:exec~ |
-| ~(separator-item)~ | Vertical/Horizontal layout divider bar | None |
+| Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
+|--------------------------------+-------------+-------------+-------------------|
+| ~(app-item ...)~ | Record | Custom application launcher definition | ~#:name~, ~#:exec~, ~#:icon~ |
+| ~(preset-launcher 'symbol)~ | Record | Standard launcher resolved from internal preset list | Symbol (e.g. ~'emacs~, ~'alacritty~) |
+| ~(preset-launchers-for 'a 'b)~ | List | Batch helper returning a list of preset launchers | Variadic list of symbols |
+| ~(separator-item)~ | Record | Layout divider line | None |
+| ~(preset-icon 'symbol)~ | String | Resolves default icon name string for a given preset | Symbol |
 
 
 -------
@@ -204,6 +210,26 @@ An example override of a theme could look like this:
 
 
 -------
+
+* Why Lisp (GNU Guile Scheme) ? 🔮
+
+Desktop docks traditionally rely on static configuration formats like JSON, INI, or YAML. While straightforward, these formats force a compromise: adding dynamic behavior or custom logic requires writing C plugins or re-compiling the binary.
+
+~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be limited to static key-value pairs. It should be an active, extensible programming environment.
+
+*** ⚡ Live Interactive REPL & Inspectability
+Lisp is built around live interactive development. With Guile embedded directly inside the C graphics core, you can connect a Unix domain socket REPL (via Emacs/Geiser or terminal tools like ~socat~) directly into the running dock process.
+With ~lambdock~ you can inspect state variables, swap themes, dynamically insert launchers, or execute arbitrary Scheme functions on the fly, all without restarting the application or dropping Wayland frames.
+
+*** 🔮 Power of Lisp
+- Clean and powerful  abstractions to batch-generate config dynamically and without boilerplate.
+- *S-Expression Templating:* Use meta-programming and quasiquoting and macro expansion for Lisp super powers
+Code that manipulates and emits other code, write Lisp from Lisp, for my use-case in a deep system integration with my OS, (as demonstrated in my [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]] ).
+
+*** 🔄 Bi-Directional C / Guile Interop
+Guile is engineered from the ground up as the official GNU extension language. Through the ~libguile~ API, execution flows seamlessly in both directions. This gives many interesting advantages. Read further ahead to learn more about this.
+
+--------------
 
 * Finding icon names
 
