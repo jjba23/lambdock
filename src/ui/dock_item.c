@@ -181,6 +181,7 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
  * @app_id: Desktop file / Wayland application ID string.
  * @is_favorite: TRUE if pinned launcher; FALSE if dynamic running app
  * indicator.
+ * @hover_animate: TRUE if hover fisheye magnification applies to this item.
  *
  * Allocates, initializes, and displays a new dock launcher item.
  *
@@ -188,7 +189,8 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
  */
 DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
-                           const char *app_id, gboolean is_favorite) {
+                           const char *app_id, gboolean is_favorite,
+                           gboolean hover_animate) {
   // `g_new0` allocates memory for 1 DockItem struct and fills memory with
   // zeros.
   DockItem *item = g_new0(DockItem, 1);
@@ -201,6 +203,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // Fallback: Use icon name as app_id if explicit app_id wasn't provided
   item->app_id = g_strdup(app_id ? app_id : icon);
   item->is_favorite = is_favorite;
+  item->hover_animate = hover_animate;
 
   // Retrieve default icon theme for current display and look up the desktop
   // icon image at configured size
@@ -296,7 +299,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
  */
 DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                                    const char *icon, const char *exec,
-                                   SCM poll_fn, guint interval_ms) {
+                                   SCM poll_fn, guint interval_ms,
+                                   gboolean hover_animate) {
   DockItem *item = g_new0(DockItem, 1);
 
   item->state = state;
@@ -306,6 +310,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   item->app_id = g_strdup(name);
   item->is_favorite = TRUE;
   item->poll_fn = poll_fn;
+  item->hover_animate = hover_animate;
 
   // Protect Scheme procedure object from Guile Garbage Collector
   if (scm_is_true(poll_fn)) {
@@ -615,8 +620,9 @@ DockItem *create_separator_dock_item(LambdockState *state,
                                      GtkOrientation orientation) {
   DockItem *item = g_new0(DockItem, 1);
   item->state = state;
-  item->is_favorite = TRUE; // Mark as layout element so clear cycles
-                            // preserve/handle as pinned structure
+  item->is_favorite = TRUE;    // Mark as layout element so clear cycles
+                               // preserve/handle as pinned structure
+  item->hover_animate = FALSE; // Separators do not use hover animation
 
   // Instantiates standard GTK separator widget line
   item->button = gtk_separator_new(orientation);

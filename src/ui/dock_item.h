@@ -27,7 +27,8 @@
  */
 DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
-                           const char *app_id, gboolean is_favorite);
+                           const char *app_id, gboolean is_favorite,
+                           gboolean hover_animate);
 
 /**
  * create_dynamic_dock_item:
@@ -35,7 +36,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
  */
 DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                                    const char *icon, const char *exec,
-                                   SCM poll_fn, guint interval_ms);
+                                   SCM poll_fn, guint interval_ms,
+                                   gboolean hover_animate);
 
 /**
  * free_dock_item:

@@ -117,10 +117,6 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
  * FISHEYE HOVER MAGNIFICATION ENGINE
  * ========================================================================= */
 
-/* =========================================================================
- * FISHEYE HOVER MAGNIFICATION ENGINE
- * ========================================================================= */
-
 /**
  * get_item_image_widget:
  * Helper to locate the GtkImage widget inside a DockItem.
@@ -199,9 +195,9 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
 
-    // Explicit guard: ensure button is a GtkButton (skips GtkSeparator and
-    // others)
-    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    // Guard: check that button is a GtkButton AND item allows hover animation
+    if (!item || !item->hover_animate || !item->button ||
+        !GTK_IS_BUTTON(item->button))
       continue;
 
     graphene_rect_t bounds;

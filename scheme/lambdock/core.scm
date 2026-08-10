@@ -34,6 +34,7 @@
                dock-item-exec
                dock-item-poll-fn
                dock-item-poll-interval
+               dock-item-hover-animate?
                app-item
                separator-item
                dynamic-item

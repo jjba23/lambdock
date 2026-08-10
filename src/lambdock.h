@@ -97,6 +97,7 @@ typedef struct AppWindow {
  * @poll_fn: Guile procedure called periodically to fetch updated item text.
  * @poll_timer_id: GLib timeout source ID managing polling intervals.
  * @label: GtkLabel rendering text output for dynamic items.
+ * @hover_animate: TRUE if hover fisheye magnification applies to this item.
  */
 typedef struct DockItem {
   char *name;
@@ -111,6 +112,7 @@ typedef struct DockItem {
   SCM poll_fn;
   guint poll_timer_id;
   GtkWidget *label;
+  gboolean hover_animate;
 } DockItem;
 
 /**

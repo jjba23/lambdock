@@ -223,7 +223,7 @@ toplevel_handle_app_id(void *data,
     // If no pinned item matches, create a dynamic running dock launcher button
     LOG_C_INFO("Tracker", "Creating dynamic dock item for running app '%s'",
                app_id);
-    item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE);
+    item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE, TRUE);
   }
 
   // Bind window handle to DockItem's active window list
@@ -478,7 +478,7 @@ void sync_window_trackers(LambdockState *state) {
     if (!item) {
       // Create new dynamic dock launcher if item is missing
       item = create_dock_item(state, tracker->app_id, tracker->app_id, NULL,
-                              tracker->app_id, FALSE);
+                              tracker->app_id, FALSE, TRUE);
     }
 
     tracker->dock_item = item;

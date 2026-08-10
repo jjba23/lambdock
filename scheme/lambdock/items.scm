@@ -28,6 +28,7 @@
                         dock-item-exec
                         dock-item-poll-fn
                         dock-item-poll-interval
+                        dock-item-hover-animate?
 
                         ;; Generic Constructors
                         app-item
@@ -50,21 +51,23 @@
 ;; Data Structures
 ;; =============================================================================
 
-;; Record type definition with accessors for polling logic
+;; Record type definition with accessors for polling logic and animation flags
 (define-record-type <dock-item>
   (make-dock-item type
                   name
                   icon
                   exec
                   poll-fn
-                  poll-interval)
+                  poll-interval
+                  hover-animate?)
   dock-item?
   (type %dock-item-type)
   (name %dock-item-name)
   (icon %dock-item-icon)
   (exec %dock-item-exec)
   (poll-fn %dock-item-poll-fn)
-  (poll-interval %dock-item-poll-interval))
+  (poll-interval %dock-item-poll-interval)
+  (hover-animate? %dock-item-hover-animate?))
 
 ;; Public procedure wrappers
 (define (dock-item-type item)
@@ -85,16 +88,21 @@
 (define (dock-item-poll-interval item)
   (%dock-item-poll-interval item))
 
+(define (dock-item-hover-animate? item)
+  (%dock-item-hover-animate? item))
+
 ;; Generic constructor for custom app launchers
 (define* (app-item #:key (name "Unknown")
                    (icon "application-x-executable")
-                   (exec ""))
+                   (exec "")
+                   (hover-animate? #t))
   (make-dock-item 'app
                   name
                   icon
                   exec
                   #f
-                  0))
+                  0
+                  hover-animate?))
 
 ;; Generic constructor for separators
 (define (separator-item)
@@ -103,20 +111,23 @@
                   ""
                   ""
                   #f
-                  0))
+                  0
+                  #f))
 
 ;; Generic constructor for dynamic polling items
 (define* (dynamic-item #:key (name "Dynamic")
                        (icon "")
                        (exec "")
                        (poll-fn #f)
-                       (poll-interval 2000))
+                       (poll-interval 2000)
+                       (hover-animate? #t))
   (make-dock-item 'dynamic
                   name
                   icon
                   exec
                   poll-fn
-                  poll-interval))
+                  poll-interval
+                  hover-animate?))
 
 ;; =============================================================================
 ;; Dynamic Helper Procedures & Presets
@@ -149,73 +160,87 @@
 
 (define* (ram-item #:key (icon "btop")
                    (exec "alacritty -e 'btop'")
-                   (poll-interval 2000))
+                   (poll-interval 2000)
+                   (hover-animate? #f))
   "Preset builder for dynamic RAM monitoring item."
   (dynamic-item #:name "Free RAM"
                 #:icon icon
                 #:exec exec
                 #:poll-fn get-free-ram-mb
-                #:poll-interval poll-interval))
+                #:poll-interval poll-interval
+                #:hover-animate? hover-animate?))
 
 (define (get-clock-text)
-  (strftime "%a %b %d  %H:%M" (localtime (current-time))))
+  (strftime "%a %b %d  %H:%M"
+            (localtime (current-time))))
 
-(define (clock-item)
+(define* (clock-item #:key (hover-animate? #f))
   (dynamic-item #:name "Clock"
                 #:icon "org.gnome.Calendar"
                 #:exec "gnome-calendar"
                 #:poll-fn get-clock-text
-                #:poll-interval 1000))
+                #:poll-interval 1000
+                #:hover-animate? hover-animate?))
 
 (define (get-cpu-loadavg)
   (catch #t
-    (lambda ()
-      (call-with-input-file "/proc/loadavg"
-        (lambda (port)
-          (let* ((line (read-line port))
-                 (parts (string-split line #\space)))
-            (format #f "CPU ~a" (car parts))))))
-    (lambda _ "CPU N/A")))
+         (lambda ()
+           (call-with-input-file "/proc/loadavg"
+             (lambda (port)
+               (let* ((line (read-line port))
+                      (parts (string-split line #\space)))
+                 (format #f "CPU ~a"
+                         (car parts))))))
+         (lambda _
+           "CPU N/A")))
 
-(define (cpu-item)
+(define* (cpu-item #:key (hover-animate? #f))
   (dynamic-item #:name "CPU Load"
                 #:icon "utilities-system-monitor"
                 #:exec "alacritty -e 'btop'"
                 #:poll-fn get-cpu-loadavg
-                #:poll-interval 2000))
+                #:poll-interval 2000
+                #:hover-animate? hover-animate?))
 
 (define (get-battery-status)
   (catch #t
-    (lambda ()
-      (let* ((cap-path "/sys/class/power_supply/BAT0/capacity")
-             (stat-path "/sys/class/power_supply/BAT0/status")
-             (cap (string-trim-both (call-with-input-file cap-path read-line)))
-             (stat (string-trim-both (call-with-input-file stat-path read-line)))
-             (charging? (string-ci=? stat "Charging")))
-        (format #f "~a%~a" cap (if charging? " ⚡" ""))))
-    (lambda _ "Bat N/A")))
+         (lambda ()
+           (let* ((cap-path "/sys/class/power_supply/BAT0/capacity")
+                  (stat-path "/sys/class/power_supply/BAT0/status")
+                  (cap (string-trim-both (call-with-input-file cap-path
+                                           read-line)))
+                  (stat (string-trim-both (call-with-input-file stat-path
+                                            read-line)))
+                  (charging? (string-ci=? stat "Charging")))
+             (format #f "~a%~a" cap
+                     (if charging? " ⚡" ""))))
+         (lambda _
+           "Bat N/A")))
 
-(define (battery-item)
+(define* (battery-item #:key (hover-animate? #f))
   (dynamic-item #:name "Battery"
                 #:icon "battery"
                 #:exec "gnome-control-center power"
                 #:poll-fn get-battery-status
-                #:poll-interval 5000))
+                #:poll-interval 5000
+                #:hover-animate? hover-animate?))
 
 (define (get-cpu-temp)
   (catch #t
-    (lambda ()
-      (call-with-input-file "/sys/class/thermal/thermal_zone0/temp"
-        (lambda (port)
-          (let ((raw (string->number (string-trim-both (read-line port)))))
-            (if raw
-                (format #f "~a°C" (round (/ raw 1000)))
-                "Temp N/A")))))
-    (lambda _ "Temp N/A")))
+         (lambda ()
+           (call-with-input-file "/sys/class/thermal/thermal_zone0/temp"
+             (lambda (port)
+               (let ((raw (string->number (string-trim-both (read-line port)))))
+                 (if raw
+                     (format #f "~a°C"
+                             (round (/ raw 1000))) "Temp N/A")))))
+         (lambda _
+           "Temp N/A")))
 
-(define (cpu-temp-item)
+(define* (cpu-temp-item #:key (hover-animate? #f))
   (dynamic-item #:name "CPU Temp"
                 #:icon "sensors-applet"
                 #:exec "alacritty -e 'btop'"
                 #:poll-fn get-cpu-temp
-                #:poll-interval 3000))
+                #:poll-interval 3000
+                #:hover-animate? hover-animate?))

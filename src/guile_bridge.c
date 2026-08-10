@@ -281,6 +281,8 @@ void populate_dock_items(LambdockState *state) {
   SCM get_poll_fn = scm_c_public_ref("lambdock core", "dock-item-poll-fn");
   SCM get_poll_interval_fn =
       scm_c_public_ref("lambdock core", "dock-item-poll-interval");
+  SCM get_hover_animate_fn =
+      scm_c_public_ref("lambdock core", "dock-item-hover-animate?");
 
   // Determine separator bar orientation based on overall dock layout direction
   GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
@@ -296,6 +298,8 @@ void populate_dock_items(LambdockState *state) {
     char *type_str =
         scm_to_utf8_string(scm_symbol_to_string(scm_call_1(get_type_fn, item)));
 
+    gboolean hover_anim = scm_is_true(scm_call_1(get_hover_animate_fn, item));
+
     if (g_strcmp0(type_str, "app") == 0) {
       // Extract application launcher record attributes
       char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
@@ -305,7 +309,7 @@ void populate_dock_items(LambdockState *state) {
       // Create C launcher button only if name/icon/exec are not excluded
       if (!is_app_excluded(name) && !is_app_excluded(icon) &&
           !is_app_excluded(exec)) {
-        create_dock_item(state, name, icon, exec, name, TRUE);
+        create_dock_item(state, name, icon, exec, name, TRUE, hover_anim);
         LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
       } else {
         LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s", name);
@@ -327,7 +331,8 @@ void populate_dock_items(LambdockState *state) {
               : 1000;
 
       if (!is_app_excluded(name) && !is_app_excluded(exec)) {
-        create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms);
+        create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms,
+                                 hover_anim);
         LOG_C_INFO("GuileBridge",
                    "Created dynamic item: %s (%s, poll interval: %dms)", name,
                    exec, interval_ms);
