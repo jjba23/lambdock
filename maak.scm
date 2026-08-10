@@ -23,6 +23,7 @@
 
 (define (run)
   "Run lambdock with Guix"
+  ($ '("pkill lambdock || true"))
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
