@@ -21,6 +21,13 @@
 #include "../lambdock.h"
 
 /**
+ * apply_dock_item_alignment:
+ * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
+ * ensuring non-animated items and separators remain anchored to the dock edge.
+ */
+void apply_dock_item_alignment(DockItem *item);
+
+/**
  * create_dock_item:
  * Constructs a DockItem, instantiates its GTK button/popover widgets,
  * and appends it to the dock container layout.

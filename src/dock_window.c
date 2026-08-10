@@ -164,6 +164,15 @@ static void reset_dock_items_scale(LambdockState *state) {
     if (!item || !item->button)
       continue;
 
+    if (GTK_IS_SEPARATOR(item->button)) {
+      if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+        gtk_widget_set_size_request(item->button, -1, base_sz);
+      } else {
+        gtk_widget_set_size_request(item->button, base_sz, -1);
+      }
+      continue;
+    }
+
     // Reset button size request back to default
     gtk_widget_set_size_request(item->button, -1, -1);
 

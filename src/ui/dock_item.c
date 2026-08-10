@@ -24,6 +24,92 @@
 #include "theme_engine.h" // CSS and theme engine utilities
 
 /* ============================================================================
+ * ALIGNMENT HELPERS
+ * ============================================================================
+ */
+
+/**
+ * apply_dock_item_alignment:
+ * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
+ * ensuring non-animated items and separators remain anchored to the dock edge.
+ */
+void apply_dock_item_alignment(DockItem *item) {
+  if (!item || !item->button || !item->state)
+    return;
+
+  LambdockState *state = item->state;
+  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+
+  // Set fixed base dimension on separators to prevent stretching
+  if (GTK_IS_SEPARATOR(item->button)) {
+    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+      gtk_widget_set_size_request(item->button, -1, base_sz);
+    } else {
+      gtk_widget_set_size_request(item->button, base_sz, -1);
+    }
+  }
+
+  GtkWidget *child = NULL;
+  if (GTK_IS_BUTTON(item->button)) {
+    child = gtk_button_get_child(GTK_BUTTON(item->button));
+  }
+
+  if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+    gtk_widget_set_valign(item->button, GTK_ALIGN_END);
+    gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    if (child) {
+      gtk_widget_set_valign(child, GTK_ALIGN_END);
+      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
+      if (GTK_IS_BOX(child)) {
+        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+             w = gtk_widget_get_next_sibling(w)) {
+          gtk_widget_set_valign(w, GTK_ALIGN_END);
+        }
+      }
+    }
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+    gtk_widget_set_valign(item->button, GTK_ALIGN_START);
+    gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
+    if (child) {
+      gtk_widget_set_valign(child, GTK_ALIGN_START);
+      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
+      if (GTK_IS_BOX(child)) {
+        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+             w = gtk_widget_get_next_sibling(w)) {
+          gtk_widget_set_valign(w, GTK_ALIGN_START);
+        }
+      }
+    }
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+    gtk_widget_set_halign(item->button, GTK_ALIGN_START);
+    gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    if (child) {
+      gtk_widget_set_halign(child, GTK_ALIGN_START);
+      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
+      if (GTK_IS_BOX(child)) {
+        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+             w = gtk_widget_get_next_sibling(w)) {
+          gtk_widget_set_halign(w, GTK_ALIGN_START);
+        }
+      }
+    }
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+    gtk_widget_set_halign(item->button, GTK_ALIGN_END);
+    gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
+    if (child) {
+      gtk_widget_set_halign(child, GTK_ALIGN_END);
+      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
+      if (GTK_IS_BOX(child)) {
+        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+             w = gtk_widget_get_next_sibling(w)) {
+          gtk_widget_set_halign(w, GTK_ALIGN_END);
+        }
+      }
+    }
+  }
+}
+
+/* ============================================================================
  * EVENT CALLBACK HANDLERS (MOUSE CLICKS & INTERACTIONS)
  * ============================================================================
  */
@@ -219,37 +305,17 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // 1. Instantiate the button widget FIRST
   item->button = gtk_button_new();
 
-  // 2. Now configure alignment on both the image and the valid button widget
-  if (state) {
-    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      gtk_widget_set_valign(image, GTK_ALIGN_END);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_END);
-      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_valign(image, GTK_ALIGN_START);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_START);
-      gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_halign(image, GTK_ALIGN_START);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_START);
-      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-      gtk_widget_set_halign(image, GTK_ALIGN_END);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_END);
-      gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    }
-  }
-
   // Insert image widget inside button
   gtk_button_set_child(GTK_BUTTON(item->button), image);
   gtk_widget_add_css_class(item->button, "flat");
 
   // Enable overflow on button so magnified icons pop out without clipping
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  // 2. Configure alignment on both the image and the valid button widget
+  if (state) {
+    apply_dock_item_alignment(item);
+  }
 
   // Attach a mouse hover tooltip text showing the application name
   if (item->name && *item->name != '\0') {
@@ -339,6 +405,10 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   gtk_widget_add_css_class(item->button, "flat");
   gtk_widget_add_css_class(item->button, "dynamic-item");
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  if (state) {
+    apply_dock_item_alignment(item);
+  }
 
   if (item->name && *item->name != '\0') {
     gtk_widget_set_tooltip_text(item->button, item->name);
@@ -636,6 +706,10 @@ DockItem *create_separator_dock_item(LambdockState *state,
     gtk_widget_set_margin_bottom(item->button, SEPARATOR_MARGIN_PX);
   }
 
+  if (state) {
+    apply_dock_item_alignment(item);
+  }
+
   // Pack separator into UI container box and global dock items list
   if (state && state->box)
     gtk_box_append(GTK_BOX(state->box), item->button);
@@ -720,42 +794,13 @@ void reload_dock_instance(LambdockState *state) {
   // Re-sync Wayland foreign window handles back to newly populated launchers
   sync_window_trackers(state);
 
-  // Update widget alignments for any remaining dynamic dock launcher items
+  // Update widget alignments for all dock items
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    if (!item || !item->button)
       continue;
 
-    GtkWidget *image = gtk_button_get_child(GTK_BUTTON(item->button));
-    if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      if (image) {
-        gtk_widget_set_valign(image, GTK_ALIGN_END);
-        gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
-      }
-      gtk_widget_set_valign(item->button, GTK_ALIGN_END);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      if (image) {
-        gtk_widget_set_valign(image, GTK_ALIGN_START);
-        gtk_widget_set_halign(image, GTK_ALIGN_CENTER);
-      }
-      gtk_widget_set_valign(item->button, GTK_ALIGN_START);
-      gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      if (image) {
-        gtk_widget_set_halign(image, GTK_ALIGN_START);
-        gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
-      }
-      gtk_widget_set_halign(item->button, GTK_ALIGN_START);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-      if (image) {
-        gtk_widget_set_halign(image, GTK_ALIGN_END);
-        gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
-      }
-      gtk_widget_set_halign(item->button, GTK_ALIGN_END);
-      gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    }
+    apply_dock_item_alignment(item);
   }
 
   update_dock_dimensions(state);
