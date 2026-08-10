@@ -117,6 +117,41 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
  * FISHEYE HOVER MAGNIFICATION ENGINE
  * ========================================================================= */
 
+/* =========================================================================
+ * FISHEYE HOVER MAGNIFICATION ENGINE
+ * ========================================================================= */
+
+/**
+ * get_item_image_widget:
+ * Helper to locate the GtkImage widget inside a DockItem.
+ * - For 'app items, the child of button is directly a GtkImage.
+ * - For 'dynamic items, the child of button is a GtkBox holding an image +
+ * label.
+ * - For 'separator items, button is a GtkSeparator, returning NULL.
+ */
+static GtkWidget *get_item_image_widget(DockItem *item) {
+  if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    return NULL; // Bypasses separators automatically (GtkSeparator !=
+                 // GtkButton)
+
+  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!child)
+    return NULL;
+
+  if (GTK_IS_IMAGE(child)) {
+    return child; // Standard 'app launcher item
+  } else if (GTK_IS_BOX(child)) {
+    // Dynamic item: iterate through container box children to find GtkImage
+    for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+         w = gtk_widget_get_next_sibling(w)) {
+      if (GTK_IS_IMAGE(w))
+        return w;
+    }
+  }
+
+  return NULL;
+}
+
 /**
  * reset_dock_items_scale:
  * Resets all dock item icons back to their default base pixel size and resets
@@ -136,12 +171,10 @@ static void reset_dock_items_scale(LambdockState *state) {
     // Reset button size request back to default
     gtk_widget_set_size_request(item->button, -1, -1);
 
-    if (GTK_IS_BUTTON(item->button)) {
-      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-      if (child && GTK_IS_IMAGE(child)) {
-        gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
-        gtk_widget_set_size_request(child, -1, -1);
-      }
+    GtkWidget *image = get_item_image_widget(item);
+    if (image) {
+      gtk_image_set_pixel_size(GTK_IMAGE(image), base_sz);
+      gtk_widget_set_size_request(image, -1, -1);
     }
   }
 }
@@ -165,6 +198,9 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
+
+    // Explicit guard: ensure button is a GtkButton (skips GtkSeparator and
+    // others)
     if (!item || !item->button || !GTK_IS_BUTTON(item->button))
       continue;
 
@@ -186,10 +222,11 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       }
 
       int target_size = (int)(base_size * scale);
-      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-      if (child && GTK_IS_IMAGE(child)) {
-        if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
-          gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
+      GtkWidget *image = get_item_image_widget(item);
+
+      if (image) {
+        if (gtk_image_get_pixel_size(GTK_IMAGE(image)) != target_size) {
+          gtk_image_set_pixel_size(GTK_IMAGE(image), target_size);
 
           if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
             // Expand width along X axis; Y axis remains unconstrained
