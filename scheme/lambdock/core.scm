@@ -32,8 +32,13 @@
                dock-item-name
                dock-item-icon
                dock-item-exec
+               dock-item-poll-fn
+               dock-item-poll-interval
                app-item
                separator-item
+               dynamic-item
+               get-free-ram-mb
+               ram-item
 
                ;; Primary Configurator
                configure-dock!
