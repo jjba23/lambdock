@@ -280,6 +280,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   // `g_new0` allocates memory for 1 DockItem struct and fills memory with
   // zeros.
   DockItem *item = g_new0(DockItem, 1);
+  item->poll_fn = SCM_BOOL_F;
 
   // Store reference to global state and copy string arguments into heap memory
   item->state = state;
@@ -375,11 +376,11 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   item->exec = g_strdup(exec);
   item->app_id = g_strdup(name);
   item->is_favorite = TRUE;
-  item->poll_fn = poll_fn;
+  item->poll_fn = SCM_BOOL_F;
   item->hover_animate = hover_animate;
 
-  // Protect Scheme procedure object from Guile Garbage Collector
-  if (scm_is_true(poll_fn)) {
+  if (scm_is_true(poll_fn) && scm_is_true(scm_procedure_p(poll_fn))) {
+    item->poll_fn = poll_fn;
     scm_gc_protect_object(poll_fn);
   }
 
@@ -469,7 +470,8 @@ void free_dock_item(DockItem *item) {
   }
 
   // Unprotect Scheme procedure object from GC
-  if (scm_is_true(item->poll_fn)) {
+  if (item->poll_fn != SCM_BOOL_F &&
+      scm_is_true(scm_procedure_p(item->poll_fn))) {
     scm_gc_unprotect_object(item->poll_fn);
     item->poll_fn = SCM_BOOL_F;
   }
@@ -689,6 +691,7 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
 DockItem *create_separator_dock_item(LambdockState *state,
                                      GtkOrientation orientation) {
   DockItem *item = g_new0(DockItem, 1);
+  item->poll_fn = SCM_BOOL_F;
   item->state = state;
   item->is_favorite = TRUE;    // Mark as layout element so clear cycles
                                // preserve/handle as pinned structure
