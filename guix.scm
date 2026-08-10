@@ -39,9 +39,9 @@
                  #:recursive? #t
                  #:select? (git-predicate %source-dir)))
     (build-system meson-build-system)
-    (native-inputs (list pkg-config))
-    (inputs (list (list glib "bin")
-                  gtk
+    (native-inputs (list (list glib "bin")
+                         pkg-config))
+    (inputs (list gtk
                   gtk4-layer-shell
                   guile-3.0
                   wlr-protocols))
