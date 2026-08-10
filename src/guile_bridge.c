@@ -278,6 +278,9 @@ void populate_dock_items(LambdockState *state) {
   SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
   SCM get_icon_fn = scm_c_public_ref("lambdock core", "dock-item-icon");
   SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
+  SCM get_poll_fn = scm_c_public_ref("lambdock core", "dock-item-poll-fn");
+  SCM get_poll_interval_fn =
+      scm_c_public_ref("lambdock core", "dock-item-poll-interval");
 
   // Determine separator bar orientation based on overall dock layout direction
   GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
@@ -288,7 +291,8 @@ void populate_dock_items(LambdockState *state) {
   while (scm_is_pair(items_list)) {
     SCM item = scm_car(items_list); // Extract current item record
 
-    // Get item type symbol ('app or 'separator) and convert to C string
+    // Get item type symbol ('app, 'dynamic, or 'separator) and convert to C
+    // string
     char *type_str =
         scm_to_utf8_string(scm_symbol_to_string(scm_call_1(get_type_fn, item)));
 
@@ -308,6 +312,27 @@ void populate_dock_items(LambdockState *state) {
       }
 
       // Free temporary attribute string allocations
+      free(name);
+      free(icon);
+      free(exec);
+    } else if (g_strcmp0(type_str, "dynamic") == 0) {
+      char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
+      char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
+      SCM poll_fn = scm_call_1(get_poll_fn, item);
+      SCM interval_scm = scm_call_1(get_poll_interval_fn, item);
+      guint interval_ms =
+          (scm_is_integer(interval_scm) || scm_is_number(interval_scm))
+              ? scm_to_uint(interval_scm)
+              : 1000;
+
+      if (!is_app_excluded(name) && !is_app_excluded(exec)) {
+        create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms);
+        LOG_C_INFO("GuileBridge",
+                   "Created dynamic item: %s (%s, poll interval: %dms)", name,
+                   exec, interval_ms);
+      }
+
       free(name);
       free(icon);
       free(exec);

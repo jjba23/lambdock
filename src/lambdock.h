@@ -94,6 +94,9 @@ typedef struct AppWindow {
  * @windows: Pointer to GLib Doubly Linked List (GList*) storing active
  * AppWindow structs.
  * @state: Reference pointer back to the main LambdockState structure.
+ * @poll_fn: Guile procedure called periodically to fetch updated item text.
+ * @poll_timer_id: GLib timeout source ID managing polling intervals.
+ * @label: GtkLabel rendering text output for dynamic items.
  */
 typedef struct DockItem {
   char *name;
@@ -105,6 +108,9 @@ typedef struct DockItem {
   GtkWidget *popover;
   GList *windows;
   LambdockState *state;
+  SCM poll_fn;
+  guint poll_timer_id;
+  GtkWidget *label;
 } DockItem;
 
 /**

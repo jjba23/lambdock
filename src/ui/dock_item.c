@@ -125,6 +125,49 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
 }
 
 /* ============================================================================
+ * DYNAMIC ITEM POLLING LOGIC & SCHEME EXCEPTION HANDLING
+ * ============================================================================
+ */
+
+static SCM call_guile_proc_safe(void *data) {
+  SCM fn = (SCM)data;
+  return scm_call_0(fn);
+}
+
+static SCM handle_guile_proc_error(void *data, SCM key, SCM args) {
+  (void)data;
+  (void)key;
+  (void)args;
+  return SCM_BOOL_F;
+}
+
+static gboolean on_dynamic_item_poll(gpointer user_data) {
+  DockItem *item = (DockItem *)user_data;
+  if (!item || !scm_is_true(item->poll_fn) ||
+      !scm_is_true(scm_procedure_p(item->poll_fn))) {
+    return G_SOURCE_REMOVE;
+  }
+
+  // Safely execute Guile procedure catching any Scheme runtime exceptions
+  SCM res =
+      scm_internal_catch(SCM_BOOL_T, call_guile_proc_safe,
+                         (void *)item->poll_fn, handle_guile_proc_error, NULL);
+
+  if (scm_is_string(res)) {
+    char *text = scm_to_utf8_string(res);
+    if (text) {
+      if (item->label && GTK_IS_LABEL(item->label)) {
+        gtk_label_set_text(GTK_LABEL(item->label), text);
+      }
+      gtk_widget_set_tooltip_text(item->button, text);
+      free(text);
+    }
+  }
+
+  return G_SOURCE_CONTINUE;
+}
+
+/* ============================================================================
  * DOCK ITEM LIFECYCLE (CREATION & DESTRUCTION)
  * ============================================================================
  */
@@ -247,6 +290,93 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 }
 
 /**
+ * create_dynamic_dock_item:
+ * Allocates and initializes a dynamic dock item widget with periodic text
+ * polling.
+ */
+DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
+                                   const char *icon, const char *exec,
+                                   SCM poll_fn, guint interval_ms) {
+  DockItem *item = g_new0(DockItem, 1);
+
+  item->state = state;
+  item->name = g_strdup(name);
+  item->icon = g_strdup(icon);
+  item->exec = g_strdup(exec);
+  item->app_id = g_strdup(name);
+  item->is_favorite = TRUE;
+  item->poll_fn = poll_fn;
+
+  // Protect Scheme procedure object from Guile Garbage Collector
+  if (scm_is_true(poll_fn)) {
+    scm_gc_protect_object(poll_fn);
+  }
+
+  item->button = gtk_button_new();
+
+  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+
+  if (icon && *icon != '\0') {
+    GdkDisplay *display = gdk_display_get_default();
+    GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
+    int icon_sz =
+        (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+    GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
+    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+    gtk_box_append(GTK_BOX(content_box), image);
+  }
+
+  item->label = gtk_label_new(name);
+  gtk_widget_add_css_class(item->label, "dynamic-item-label");
+  gtk_box_append(GTK_BOX(content_box), item->label);
+
+  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
+  gtk_widget_add_css_class(item->button, "flat");
+  gtk_widget_add_css_class(item->button, "dynamic-item");
+  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  if (item->name && *item->name != '\0') {
+    gtk_widget_set_tooltip_text(item->button, item->name);
+  }
+
+  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
+                   item);
+
+  item->popover = gtk_popover_new();
+  gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
+  gtk_widget_set_parent(item->popover, item->button);
+
+  if (state) {
+    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
+                     state);
+  }
+
+  GtkGesture *right_click = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
+                   item);
+  gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
+
+  if (state && state->box)
+    gtk_box_append(GTK_BOX(state->box), item->button);
+
+  if (state)
+    state->dock_items = g_list_append(state->dock_items, item);
+
+  // Execute initial poll to populate label immediately upon creation
+  on_dynamic_item_poll(item);
+
+  // Register timer for dynamic interval polling
+  if (interval_ms > 0 && scm_is_true(poll_fn)) {
+    item->poll_timer_id =
+        g_timeout_add(interval_ms, on_dynamic_item_poll, item);
+  }
+
+  return item;
+}
+
+/**
  * free_dock_item:
  * @item: Pointer to the DockItem to be destroyed and unallocated.
  *
@@ -256,6 +386,18 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 void free_dock_item(DockItem *item) {
   if (!item)
     return; // Exit if already NULL
+
+  // Unregister active GLib timer callback
+  if (item->poll_timer_id > 0) {
+    g_source_remove(item->poll_timer_id);
+    item->poll_timer_id = 0;
+  }
+
+  // Unprotect Scheme procedure object from GC
+  if (scm_is_true(item->poll_fn)) {
+    scm_gc_unprotect_object(item->poll_fn);
+    item->poll_fn = SCM_BOOL_F;
+  }
 
   // Detach popover menu widget from GTK hierarchy
   if (item->popover) {

@@ -30,9 +30,17 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *app_id, gboolean is_favorite);
 
 /**
+ * create_dynamic_dock_item:
+ * Constructs a dynamic polling DockItem with text label and interval timer.
+ */
+DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
+                                   const char *icon, const char *exec,
+                                   SCM poll_fn, guint interval_ms);
+
+/**
  * free_dock_item:
- * Unparents widgets, cleans child window trackers, and deallocates DockItem
- * memory.
+ * Unparents widgets, cleans child window trackers, cancels timers,
+ * unprotects Scheme procedure objects, and deallocates DockItem memory.
  */
 void free_dock_item(DockItem *item);
 
