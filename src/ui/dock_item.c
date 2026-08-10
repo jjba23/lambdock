@@ -63,7 +63,7 @@ void apply_dock_item_alignment(DockItem *item) {
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
              w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_valign(w, GTK_ALIGN_END);
+          gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
         }
       }
     }
@@ -76,7 +76,7 @@ void apply_dock_item_alignment(DockItem *item) {
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
              w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_valign(w, GTK_ALIGN_START);
+          gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
         }
       }
     }
@@ -89,7 +89,7 @@ void apply_dock_item_alignment(DockItem *item) {
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
              w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_halign(w, GTK_ALIGN_START);
+          gtk_widget_set_halign(w, GTK_ALIGN_CENTER);
         }
       }
     }
@@ -102,7 +102,7 @@ void apply_dock_item_alignment(DockItem *item) {
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
              w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_halign(w, GTK_ALIGN_END);
+          gtk_widget_set_halign(w, GTK_ALIGN_CENTER);
         }
       }
     }
@@ -399,6 +399,8 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   }
 
   item->label = gtk_label_new(name);
+  gtk_label_set_yalign(GTK_LABEL(item->label), 0.5f);
+  gtk_widget_set_valign(item->label, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(item->label, "dynamic-item-label");
   gtk_box_append(GTK_BOX(content_box), item->label);
 
