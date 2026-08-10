@@ -65,13 +65,29 @@ static gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
     GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(
         GTK_SCROLLED_WINDOW(state->scrolled_window));
     double delta = (fabs(dx) > fabs(dy)) ? dx : dy;
+    double page_size = gtk_adjustment_get_page_size(adj);
+    double upper = gtk_adjustment_get_upper(adj);
+    double lower = gtk_adjustment_get_lower(adj);
+    double max_scroll = upper - page_size;
     double new_val = gtk_adjustment_get_value(adj) + delta * 30.0;
+    if (new_val < lower)
+      new_val = lower;
+    if (new_val > max_scroll)
+      new_val = max_scroll;
     gtk_adjustment_set_value(adj, new_val);
     return TRUE;
   } else {
     GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
         GTK_SCROLLED_WINDOW(state->scrolled_window));
+    double page_size = gtk_adjustment_get_page_size(adj);
+    double upper = gtk_adjustment_get_upper(adj);
+    double lower = gtk_adjustment_get_lower(adj);
+    double max_scroll = upper - page_size;
     double new_val = gtk_adjustment_get_value(adj) + dy * 30.0;
+    if (new_val < lower)
+      new_val = lower;
+    if (new_val > max_scroll)
+      new_val = max_scroll;
     gtk_adjustment_set_value(adj, new_val);
     return TRUE;
   }

@@ -643,6 +643,43 @@ void update_dock_dimensions(LambdockState *state) {
   int max_cross_dim = (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) +
                       CROSS_DIM_PADDING_PX; // Window headroom for magnification
 
+  // Query active monitor geometry to cap maximum dock viewport content
+  // dimensions
+  GdkMonitor *mon = state->monitor;
+  if (!mon) {
+    GdkDisplay *display = gdk_display_get_default();
+    if (display) {
+      GListModel *monitors = gdk_display_get_monitors(display);
+      if (monitors && g_list_model_get_n_items(monitors) > 0) {
+        gpointer item = g_list_model_get_item(monitors, 0);
+        if (item) {
+          mon = GDK_MONITOR(item);
+          g_object_unref(item);
+        }
+      }
+    }
+  }
+
+  int mon_width = 1920;  // Default fallback dimension
+  int mon_height = 1080; // Default fallback dimension
+  if (mon) {
+    GdkRectangle geom;
+    gdk_monitor_get_geometry(mon, &geom);
+    if (geom.width > 0)
+      mon_width = geom.width;
+    if (geom.height > 0)
+      mon_height = geom.height;
+  }
+
+  // Set maximum viewport dimension inside screen bounds (leaving 32px screen
+  // edge margin)
+  int max_main_dim_h = mon_width - 32;
+  int max_main_dim_v = mon_height - 32;
+  if (max_main_dim_h < 100)
+    max_main_dim_h = 100;
+  if (max_main_dim_v < 100)
+    max_main_dim_v = 100;
+
   if (state->size_group) {
     GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                                 ? GTK_SIZE_GROUP_HORIZONTAL
@@ -655,10 +692,14 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_scrolled_window_set_policy(
           GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_EXTERNAL,
           GTK_POLICY_NEVER);
+      gtk_scrolled_window_set_max_content_width(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_h);
     } else {
       gtk_scrolled_window_set_policy(
           GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_NEVER,
           GTK_POLICY_EXTERNAL);
+      gtk_scrolled_window_set_max_content_height(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_v);
     }
   }
 
