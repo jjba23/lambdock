@@ -121,9 +121,10 @@ typedef struct DockItem {
  */
 struct LambdockState {
   GtkWidget *window;
-  GtkWidget *overlay;    /* Main overlay container */
-  GtkWidget *bg_capsule; /* Capsule background box */
-  GtkWidget *box;        /* Icon container box */
+  GtkWidget *overlay;         /* Main overlay container */
+  GtkWidget *bg_capsule;      /* Capsule background box */
+  GtkWidget *scrolled_window; /* Scroll viewport container for dock items */
+  GtkWidget *box;             /* Icon container box */
   GtkWidget *popover;
   GtkSizeGroup *size_group;
   gboolean auto_hide;

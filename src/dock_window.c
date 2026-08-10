@@ -650,6 +650,18 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_size_group_set_mode(state->size_group, mode);
   }
 
+  if (state->scrolled_window) {
+    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+      gtk_scrolled_window_set_policy(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_EXTERNAL,
+          GTK_POLICY_NEVER);
+    } else {
+      gtk_scrolled_window_set_policy(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_NEVER,
+          GTK_POLICY_EXTERNAL);
+    }
+  }
+
   // Main-axis capsule ends padding
   int padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
@@ -661,6 +673,15 @@ void update_dock_dimensions(LambdockState *state) {
 
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
     gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
+
+    if (state->scrolled_window) {
+      gtk_widget_set_valign(state->scrolled_window,
+                            (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+                                ? GTK_ALIGN_START
+                                : GTK_ALIGN_END);
+      gtk_widget_set_halign(state->scrolled_window, GTK_ALIGN_CENTER);
+    }
+
     gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
     gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
 
@@ -679,6 +700,15 @@ void update_dock_dimensions(LambdockState *state) {
 
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
     gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
+
+    if (state->scrolled_window) {
+      gtk_widget_set_halign(state->scrolled_window,
+                            (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
+                                ? GTK_ALIGN_START
+                                : GTK_ALIGN_END);
+      gtk_widget_set_valign(state->scrolled_window, GTK_ALIGN_CENTER);
+    }
+
     gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
 

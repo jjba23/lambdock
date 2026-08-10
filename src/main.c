@@ -49,6 +49,36 @@ static guint g_reload_timer_id = 0;
  * ========================================================================= */
 
 /**
+ * on_dock_scroll:
+ * Mouse wheel scroll event controller callback handler. Converts mouse wheel
+ * motion (dy/dx) into smooth viewport scrolling along the active main dock
+ * axis.
+ */
+static gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
+                               double dy, gpointer user_data) {
+  (void)controller;
+  LambdockState *state = (LambdockState *)user_data;
+  if (!state || !state->scrolled_window)
+    return FALSE;
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(
+        GTK_SCROLLED_WINDOW(state->scrolled_window));
+    double delta = (fabs(dx) > fabs(dy)) ? dx : dy;
+    double new_val = gtk_adjustment_get_value(adj) + delta * 30.0;
+    gtk_adjustment_set_value(adj, new_val);
+    return TRUE;
+  } else {
+    GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
+        GTK_SCROLLED_WINDOW(state->scrolled_window));
+    double new_val = gtk_adjustment_get_value(adj) + dy * 30.0;
+    gtk_adjustment_set_value(adj, new_val);
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/**
  * on_manual_reload_idle:
  * GTK Idle callback function executed on the main UI thread.
  * * WHY IS THIS NEEDED?
@@ -264,21 +294,53 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
       box, GTK_OVERFLOW_VISIBLE); // Allow hover animations to bleed out
   state->box = box;
 
+  // Wrap dock item box inside a GtkScrolledWindow to support scrolling
+  GtkWidget *scrolled_window = gtk_scrolled_window_new();
+  state->scrolled_window = scrolled_window;
+  gtk_widget_set_overflow(scrolled_window, GTK_OVERFLOW_VISIBLE);
+
+  // Propagate natural size so the dock expands to fit content without
+  // collapsing
+  gtk_scrolled_window_set_propagate_natural_width(
+      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
+  gtk_scrolled_window_set_propagate_natural_height(
+      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
+
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), box);
+
+  // Set scrollbar policy (GTK_POLICY_EXTERNAL allows wheel scroll while hiding
+  // scrollbars)
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
+  } else {
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
+  }
+
+  // Attach scroll event controller for mouse wheel interaction
+  GtkEventController *scroll_ctrl =
+      gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+  g_signal_connect(scroll_ctrl, "scroll", G_CALLBACK(on_dock_scroll), state);
+  gtk_widget_add_controller(scrolled_window, scroll_ctrl);
+
   // Update dynamic sizing, margins, and alignments based on state settings
   update_dock_dimensions(state);
 
   // Ensure the background capsule stretches to match the main-axis dimension
-  // of the icon container (e.g., width for HORIZONTAL, height for VERTICAL)
+  // of the icon viewport container (e.g., width for HORIZONTAL, height for
+  // VERTICAL)
   GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
   state->size_group = gtk_size_group_new(mode);
   gtk_size_group_add_widget(state->size_group, bg_capsule);
-  gtk_size_group_add_widget(state->size_group, box);
+  gtk_size_group_add_widget(state->size_group, scrolled_window);
 
-  // Layer sequence: bg_capsule sits at the bottom, box sits directly on top
+  // Layer sequence: bg_capsule sits at the bottom, scrolled_window sits
+  // directly on top
   gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
-  gtk_overlay_add_overlay(GTK_OVERLAY(overlay), box);
+  gtk_overlay_add_overlay(GTK_OVERLAY(overlay), scrolled_window);
 
   // Guarantee overflow visibility remains intact after overlay binding
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
