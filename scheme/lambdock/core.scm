@@ -37,8 +37,17 @@
                app-item
                separator-item
                dynamic-item
+               ;; Dynamic items
                get-free-ram-mb
                ram-item
+               get-clock-text
+               clock-item
+               get-cpu-loadavg
+               cpu-item
+               get-battery-status
+               battery-item
+               get-cpu-temp
+               cpu-temp-item
 
                ;; Primary Configurator
                configure-dock!

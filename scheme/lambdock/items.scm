@@ -19,6 +19,7 @@
   #:declarative? #t
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 rdelim)
+  #:use-module (ice-9 time)
   #:use-module (ice-9 format)
   #:export (<dock-item> dock-item?
                         dock-item-type
@@ -35,7 +36,15 @@
 
                         ;; Dynamic Item Helpers & Presets
                         get-free-ram-mb
-                        ram-item))
+                        ram-item
+                        get-clock-text
+                        clock-item
+                        get-cpu-loadavg
+                        cpu-item
+                        get-battery-status
+                        battery-item
+                        get-cpu-temp
+                        cpu-temp-item))
 
 ;; =============================================================================
 ;; Data Structures
@@ -147,3 +156,66 @@
                 #:exec exec
                 #:poll-fn get-free-ram-mb
                 #:poll-interval poll-interval))
+
+(define (get-clock-text)
+  (strftime "%a %b %d  %H:%M" (localtime (current-time))))
+
+(define (clock-item)
+  (dynamic-item #:name "Clock"
+                #:icon "org.gnome.Calendar"
+                #:exec "gnome-calendar"
+                #:poll-fn get-clock-text
+                #:poll-interval 1000))
+
+(define (get-cpu-loadavg)
+  (catch #t
+    (lambda ()
+      (call-with-input-file "/proc/loadavg"
+        (lambda (port)
+          (let* ((line (read-line port))
+                 (parts (string-split line #\space)))
+            (format #f "CPU ~a" (car parts))))))
+    (lambda _ "CPU N/A")))
+
+(define (cpu-item)
+  (dynamic-item #:name "CPU Load"
+                #:icon "utilities-system-monitor"
+                #:exec "alacritty -e 'btop'"
+                #:poll-fn get-cpu-loadavg
+                #:poll-interval 2000))
+
+(define (get-battery-status)
+  (catch #t
+    (lambda ()
+      (let* ((cap-path "/sys/class/power_supply/BAT0/capacity")
+             (stat-path "/sys/class/power_supply/BAT0/status")
+             (cap (string-trim-both (call-with-input-file cap-path read-line)))
+             (stat (string-trim-both (call-with-input-file stat-path read-line)))
+             (charging? (string-ci=? stat "Charging")))
+        (format #f "~a%~a" cap (if charging? " ⚡" ""))))
+    (lambda _ "Bat N/A")))
+
+(define (battery-item)
+  (dynamic-item #:name "Battery"
+                #:icon "battery"
+                #:exec "gnome-control-center power"
+                #:poll-fn get-battery-status
+                #:poll-interval 5000))
+
+(define (get-cpu-temp)
+  (catch #t
+    (lambda ()
+      (call-with-input-file "/sys/class/thermal/thermal_zone0/temp"
+        (lambda (port)
+          (let ((raw (string->number (string-trim-both (read-line port)))))
+            (if raw
+                (format #f "~a°C" (round (/ raw 1000)))
+                "Temp N/A")))))
+    (lambda _ "Temp N/A")))
+
+(define (cpu-temp-item)
+  (dynamic-item #:name "CPU Temp"
+                #:icon "sensors-applet"
+                #:exec "alacritty -e 'btop'"
+                #:poll-fn get-cpu-temp
+                #:poll-interval 3000))

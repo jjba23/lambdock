@@ -22,6 +22,7 @@
   #:declarative? #t)
 
 (define (run)
+  "Run lambdock with Guix"
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
