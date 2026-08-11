@@ -1,0 +1,22 @@
+#+title: Changelog and News 📰
+#+author: Josep Bigorra
+#+email: jjbigorra@gmail.com
+#+options: toc:nil
+
+All notable changes to this project will be documented in this file. Changes are listed per project release (tag) and within each tag there are details about changes, additions, fixes and removals.
+
+This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
+
+*[Unreleased]*
+
+** v0.5.0 (TBD)
+- Add dynamic apps and ~poll~ + ~poll_fn~
+- Add multi-config support
+
+---------
+
+*[Released]*
+
+** v0.4.1 (2026-08-07)
+- Implement multi-monitor support and multi-instance
+- Improve stability and fix crashes
