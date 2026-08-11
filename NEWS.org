@@ -9,17 +9,19 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-** v0.5.0 (TBD)
+---------
+
+*[Released]*
+
+
+** v0.5.0 (2026-08-07)
 - Add dynamic apps and ~poll~ + ~poll_fn~
 - Add re-usable dynamic apps and  widget presets for RAM, CPU, TEMP, etc
 - Add multi-config support with hot-reload
 - Add dock scrolling when overflow occurs
 - Improve stability of the dock and animations are smoother
 - Add hover animate toggle per item
-
----------
-
-*[Released]*
+- Improve CSS themes
 
 ** v0.4.1 (2026-08-07)
 - Implement multi-monitor support and multi-instance
