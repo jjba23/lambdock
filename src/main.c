@@ -343,31 +343,37 @@ static void sync_docks_with_disk(GtkApplication *app) {
   g_list_free_full(disk_files, g_free);
 }
 
+/* =========================================================================
+ * REPL HOT-RELOAD vs DISK SYNC
+ * ========================================================================= */
+
 /**
- * on_manual_reload_idle:
- * GTK Idle callback function executed on the main UI thread.
+ * redraw_active_docks:
+ * Re-applies active in-memory Guile state to GTK widgets without re-reading
+ * disk files.
  */
+static void redraw_active_docks(void) {
+  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    if (state) {
+      reload_dock_instance(state);
+    }
+  }
+}
+
 static gboolean on_manual_reload_idle(gpointer user_data) {
-  GtkApplication *app = GTK_APPLICATION(user_data);
-  LOG_C_INFO("Main", "Triggering manual UI sync...");
-  sync_docks_with_disk(app);
+  (void)user_data;
+  LOG_C_INFO("Main", "Redrawing UI from in-memory state...");
+  redraw_active_docks();
   return G_SOURCE_REMOVE;
 }
 
 /**
- * trigger_dock_reload:
- * Schedules a UI refresh on the GTK main loop thread as soon as it is idle.
- */
-static void trigger_dock_reload(void) {
-  g_idle_add(on_manual_reload_idle, NULL);
-}
-
-/**
  * scm_reload_dock:
- * C implementation of the `(reload-dock!)` Scheme function.
+ * Scheme procedure (reload-dock!). Redraws UI from current Guile memory state.
  */
 static SCM scm_reload_dock(void) {
-  trigger_dock_reload();
+  g_idle_add(on_manual_reload_idle, NULL);
   return SCM_UNSPECIFIED;
 }
 

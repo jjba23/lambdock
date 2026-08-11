@@ -54,6 +54,7 @@
                configure-dock!
 
                ;; Getters
+               get-dock-config
                get-dock-items
                get-dock-position
                get-dock-theme
@@ -75,7 +76,7 @@
                set-dock-show-when-clear!
                set-dock-monitor!
                set-dock-hover-animate!
-                             set-dock-track-windows!
+               set-dock-track-windows!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -108,7 +109,7 @@
                                                (assq alt-key settings))))
                                  (if pair
                                      (cdr pair) default-val)))))
-
+                   
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
                                                     'position

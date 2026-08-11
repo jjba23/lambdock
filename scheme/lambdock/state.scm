@@ -24,6 +24,7 @@
              configure-dock!
             <dock-config>
             dock-config?
+            get-dock-config
 
             ;; Getters
             get-dock-items
