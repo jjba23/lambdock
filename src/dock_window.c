@@ -504,49 +504,6 @@ void schedule_initial_autohide(LambdockState *state) {
 }
 
 /* =========================================================================
- * MEMORY & DESTRUCTORS
- * ========================================================================= */
-
-/**
- * free_lambdock_state:
- * Destructor for LambdockState structure. Performs deep memory freeing
- * for window tracker lists, dock item lists, theme strings, and config path.
- *
- * @param state Pointer to LambdockState instance.
- */
-void free_lambdock_state(LambdockState *state) {
-  if (!state)
-    return;
-
-  unregister_dock_state(state);
-
-  if (state->size_group) {
-    g_object_unref(state->size_group);
-    state->size_group = NULL;
-  }
-
-  // Safely destroy Wayland proxies & free tracker objects
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    free_window_tracker(l->data);
-  }
-  g_list_free(state->window_trackers);
-  state->window_trackers = NULL;
-
-  // Free dock launcher items
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
-    free_dock_item(item);
-  }
-  g_list_free(state->dock_items);
-  state->dock_items = NULL;
-
-  // Free state strings & main struct pointer
-  g_free(state->config_path);
-  g_free(state->theme);
-  g_free(state);
-}
-
-/* =========================================================================
  * GTK APPLICATION ACTIONS (ABOUT & QUIT)
  * ========================================================================= */
 
@@ -756,4 +713,59 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_widget_set_halign(state->box, GTK_ALIGN_END);
     }
   }
+}
+
+/* =========================================================================
+ * MEMORY & DESTRUCTORS
+ * ========================================================================= */
+
+void destroy_dock_instance(LambdockState *state) {
+  if (!state)
+    return;
+
+  // 1. Unregister from active states list first
+  unregister_dock_state(state);
+
+  // 2. Unparent the state's main background context popover if present
+  if (state->popover) {
+    if (GTK_IS_WIDGET(state->popover) &&
+        gtk_widget_get_parent(state->popover)) {
+      gtk_widget_unparent(state->popover);
+    }
+    state->popover = NULL;
+  }
+
+  // 3. Unparent popovers & free dock items BEFORE destroying the GTK window
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    free_dock_item(item);
+  }
+  g_list_free(state->dock_items);
+  state->dock_items = NULL;
+
+  // 4. Destroy Wayland window trackers and proxy handles
+  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
+    free_window_tracker(l->data);
+  }
+  g_list_free(state->window_trackers);
+  state->window_trackers = NULL;
+
+  // 5. Destroy the GTK window now that buttons have no remaining popover
+  // children
+  if (state->window && GTK_IS_WINDOW(state->window)) {
+    GtkWidget *win = state->window;
+    state->window = NULL; // Prevent double execution
+    g_signal_handlers_disconnect_by_func(win, G_CALLBACK(destroy_dock_instance),
+                                         state);
+    gtk_window_destroy(GTK_WINDOW(win));
+  }
+
+  if (state->size_group) {
+    g_object_unref(state->size_group);
+    state->size_group = NULL;
+  }
+
+  g_free(state->config_path);
+  g_free(state->theme);
+  g_free(state);
 }

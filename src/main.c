@@ -176,8 +176,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
   GList *disk_files = scan_settings_files();
 
   if (disk_files != NULL) {
-    // Step 1: Destroy fallback dock if active (fallback dock has
-    // state->config_path == NULL)
+    // Step 1: Destroy fallback dock if active
     GList *curr = g_active_states;
     while (curr != NULL) {
       GList *next = curr->next;
@@ -185,7 +184,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
       if (state->config_path == NULL) {
         LOG_C_INFO("Main",
                    "Settings file(s) detected. Destroying fallback dock...");
-        gtk_window_destroy(GTK_WINDOW(state->window));
+        destroy_dock_instance(state);
       }
       curr = next;
     }
@@ -207,7 +206,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
           LOG_C_INFO("Main",
                      "Config file deleted: %s. Destroying dock instance...",
                      state->config_path);
-          gtk_window_destroy(GTK_WINDOW(state->window));
+          destroy_dock_instance(state);
         }
       }
       curr = next;
@@ -263,7 +262,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
       GList *next = curr->next;
       LambdockState *state = (LambdockState *)curr->data;
       if (state->config_path != NULL) {
-        gtk_window_destroy(GTK_WINDOW(state->window));
+        destroy_dock_instance(state);
       }
       curr = next;
     }
@@ -486,7 +485,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   g_active_states = g_list_append(g_active_states, state);
 
-  g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
+  g_signal_connect_swapped(window, "destroy", G_CALLBACK(destroy_dock_instance),
                            state);
 
   gtk_window_present(GTK_WINDOW(window));

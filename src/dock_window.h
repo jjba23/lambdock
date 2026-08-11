@@ -67,15 +67,6 @@ void hide_dock(LambdockState *state);
 void schedule_initial_autohide(LambdockState *state);
 
 /**
- * free_lambdock_state:
- * @state: Pointer to global application state structure to deallocate.
- *
- * Safely cleans up all allocated memory, iterating through linked lists and
- * freeing custom structs upon application shutdown.
- */
-void free_lambdock_state(LambdockState *state);
-
-/**
  * on_quit_action:
  * @action: Triggered GSimpleAction object.
  * @parameter: Action target variant parameter (unused).
@@ -134,5 +125,14 @@ void update_dock_dimensions(LambdockState *state);
  * in main.c.
  */
 void unregister_dock_state(LambdockState *state);
+
+/**
+ * destroy_dock_instance:
+ * @state: Pointer to LambdockState context.
+ *
+ * Unparents popovers and widgets, cleans up window trackers and dock items,
+ * and destroys the GTK window safely without disposal warnings.
+ */
+void destroy_dock_instance(LambdockState *state);
 
 #endif // DOCK_WINDOW_H
