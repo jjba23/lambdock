@@ -75,13 +75,6 @@ Configurations are written in GNU Guile Scheme, and user style overrides are wri
 --------------------
 
 #+begin_src scheme
-(define-module (lambdock settings)
-  #:declarative? #t
-  #:use-module (lambdock core)
-  #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
-                          dock-monitor dock-exclude-apps dock-enable-repl?
-                          dock-repl-socket-path dock-hover-animate? dock-track-windows?))
-
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
 
