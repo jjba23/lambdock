@@ -34,6 +34,7 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 - *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
 - *Reproducible Builds*: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
 - *Native fluid fish-eye* magnification effect on hover (a la macOS) which is opt-in since some users might want less animations.
+- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar exceeds available display dimensions.
 
 -------
 
@@ -60,11 +61,14 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 
 * Configuring lambdock
 
-Configurations are written in GNU Guile Scheme and user style overrides are written in CSS/GTK4.
+Configurations are written in GNU Guile Scheme, and user style overrides are written in CSS/GTK4.
 
-- *Settings Location:* ~$XDG_CONFIG_HOME/lambdock/settings.scm~ (usually =~/.config/lambdock/settings.scm=).
-- *Styles Location*  ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually =~/.config/lambdock/styles.css=).
-- *Hot-Reloading:* Save your files, and ~lambdock~ automatically re-evaluates settings on the fly via =GFileMonitor=.
+The configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=).
+
+- Single Configuration File: =~/.config/lambdock/settings.scm=
+- Multi-Instance Configuration Files: =~/.config/lambdock/settings-1.scm=, =~/.config/lambdock/settings-2.scm=, etc.
+- *Styles and overrides*: ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually =~/.config/lambdock/styles.css=).
+- *Hot-Reloading*: Save your files, and ~lambdock~ automatically updates existing docks or spawns/destroys dock instances as files are created or deleted.
 - *Sensible Defaults:* Every option comes pre-configured—you only need to override and export the settings you wish to customize.
 - *Presets* that can help you reduce boilerplate, see [[file:scheme/lambdock/presets.scm]]
 
@@ -154,6 +158,7 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 | Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
 |--------------------------------+-------------+-------------+-------------------|
 | ~(app-item ...)~ | Record | Custom application launcher definition | ~#:name~, ~#:exec~, ~#:icon~ |
+| ~(dynamic-item ...)~ | Record | Dynamic polling widget displaying dynamic textual data | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:interval-ms~, ~#:hover-animate?~ |
 | ~(preset-launcher 'symbol)~ | Record | Standard launcher resolved from internal preset list | Symbol (e.g. ~'emacs~, ~'alacritty~) |
 | ~(preset-launchers-for 'a 'b)~ | List | Batch helper returning a list of preset launchers | Variadic list of symbols |
 | ~(separator-item)~ | Record | Layout divider line | None |
@@ -161,31 +166,55 @@ Configurations are written in GNU Guile Scheme and user style overrides are writ
 
 -----------
 
+*** Multi-Config & Multi-Dock Instance
+
+~lambdock~ features built-in multi-dock orchestration. Rather than being limited to a single dock bar, you can run multiple independent docks simultaneously across different screen edges or monitors.
+
+- *Automatic Directory Monitoring*: ~lambdock~ watches =~/.config/lambdock/= for files matching ~settings.scm~ or ~settings-*.scm~ (e.g., ~settings-left.scm~, ~settings-bottom.scm~).
+
+Each configuration file defines its own isolated ~LambdockState~, position (~dock-position~), theme (~dock-theme~), monitor targets (~dock-monitor~), and item launcher layout (~dock-items~).
+- *Dynamic Spawning*: Creating a new ~settings-2.scm~ file instantly spawns a new dock bar on screen.
+- *Dynamic Hot-Reloading*: Editing any ~settings-*.scm~ file hot-reloads that specific dock instance without flickering or restarting other running instances.
+- *Dynamic Destruction*: Deleting a ~settings-*.scm~ file safely tears down and destroys its corresponding dock window, removing Wayland handles and GTK widgets without crashing the application.
+
+--------
+
+*** Dock Scrolling & Viewport
+
+When a dock contains numerous pinned launchers, running app windows, and dynamic widgets that exceed the available display width or height:
+
+- *GTK Scrolled Viewport*: ~lambdock~ automatically encapsulates dock items inside an overflow-visible scrolled viewport container (~GtkScrolledWindow~).
+- *Mouse Wheel Gestures*: Scrolling your mouse wheel or touchpad over the dock bar translates input deltas smoothly into axis movement along horizontal or vertical docks.
+
+--------
+
 * Why lambdock? A comparison table
 
 While tools like Waybar and EWW excel as status bars or custom widget dashboards, ~lambdock~ is specifically engineered as a hyper-hackable, Wayland-native high-performance application dock with an embedded Lisp engine and full GTK4 graphics core.
 
 #+ATTR_CENTRAL: :align c
-| Feature / Dimension              | ~lambdock~                      | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | macOS Dock        |
-|----------------------------------+-------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Primary Design Target            | Application Dock              | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
-| Wayland Native (~wlr-layer-shell~) | ✅                            | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (macOS Quartz)    |
-| UI Toolkit & Graphics Core       | GTK4 (GL / GSK)               | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
-|----------------------------------+-------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Config & Scripting Engine        | GNU Guile Scheme (Lisp)       | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
-| Live Interactive Socket REPL     | ✅ (Emacs/Geiser, ~socat~)      | ❌                 | ❌                 | ❌                    | ❌                |
-| Hot-Reloading                    | ✅ Live Code & GTK4 CSS       | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
-| Thread-Safe Async Dispatch       | ✅ GLib ~g_idle_add~            | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
-|----------------------------------+-------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Wayland Window Tracking          | ✅ ~zwlr_foreign_toplevel_v1~   | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)    |
-| Multi-Instance Window HUD        | ✅ Focus / Close / Close-All  | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu     |
-| Hover Magnification (Fish-eye)   | ✅ Cosine-Bell Curve          | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
-| Smooth Auto-Hide Animations      | ✅ Frame-Clock Eased Slide    | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
-|----------------------------------+-------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Metaprogramming & Macros         | ✅ S-Exprs & Quasiquoting     | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                |
-| Hermetic Guix & Nix Packaging    | ✅ ~guix.scm~ + ~flake.nix~       | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages    | ❌ Proprietary OS |
-| Preset Launcher Builders         | ✅ ~preset-launchers-for~       | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
-| Dynamic items w/ code            | ✅ lambda expressions & Lisp power | ❌                 | ⚠️                 | ⚠️                      | ❌                |
+| Feature / Dimension               | ~lambdock~                         | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | macOS Dock        |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Primary Design Target             | Application Dock                   | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
+| Wayland Native (~wlr-layer-shell~) | ✅                                 | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (macOS Quartz)    |
+| UI Toolkit & Graphics Core        | GTK4 (GL / GSK)                    | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Config & Scripting Engine         | GNU Guile Scheme (Lisp)            | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
+| Multi-Dock Instances (Files)      | ✅ Dynamic (~settings-*.scm~)      | ⚠️ Limited         | ⚠️ Multi-bar config| ⚠️ Multi-bar config   | ❌ Single dock    |
+| Live Interactive Socket REPL      | ✅ (Emacs/Geiser, ~socat~)         | ❌                 | ❌                 | ❌                    | ❌                 |
+| Hot-Reloading                     | ✅ Runtime Code, Docks & CSS  | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
+| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~                | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Wayland Window Tracking           | ✅ ~zwlr_foreign_toplevel_v1~      | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)    |
+| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu     |
+| Dynamic Polling Widgets           | ✅ Scheme Thunks (RAM/CPU/Clock)   | ⚠️ C Plugins       | ✅ Custom modules  | ✅ Yuck pollers       | ❌ Static         |
+| Hover Magnification (Fish-eye)    | ✅ Cosine-Bell (Per-Item Toggle)   | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
+| Dock Viewport Scrolling           | ✅ Mouse Wheel / Touchpad          | ❌                 | ❌                 | ❌                    | ❌                 |
+| Smooth Auto-Hide Animations       | ✅ Frame-Clock Eased Slide         | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                 |
+| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages    | ❌ Proprietary OS |
+| Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
 
 Here a small demo of hot-reload config feature:

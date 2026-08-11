@@ -15,6 +15,7 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - Add multi-config support with hot-reload
 - Add dock scrolling when overflow occurs
 - Improve stability of the dock and animations are smoother
+- Add hover animate toggle per item
 
 ---------
 
