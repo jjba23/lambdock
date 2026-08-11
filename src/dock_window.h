@@ -142,4 +142,6 @@ void destroy_dock_instance(LambdockState *state);
  */
 gboolean is_monitor_valid(GdkMonitor *mon);
 
+GList *get_active_dock_states(void);
+
 #endif // DOCK_WINDOW_H

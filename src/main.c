@@ -37,6 +37,8 @@
  */
 static GList *g_active_states = NULL;
 
+GList *get_active_dock_states(void) { return g_active_states; }
+
 /**
  * g_reload_timer_id:
  * GLib event source ID for debouncing file modification events.

@@ -25,28 +25,16 @@
 
 #include "wlr-foreign-toplevel-management-unstable-v1-protocol.h"
 
-/* ============================================================================
- * DATA STRUCTURES & GLOBAL WAYLAND HANDLES
- * ============================================================================
- */
-
 typedef struct {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
-  LambdockState *state;
-  DockItem *dock_item;
-  AppWindow *app_win;
   char *title;
   char *app_id;
-} WindowTracker;
+} MasterToplevel;
 
 static struct zwlr_foreign_toplevel_manager_v1 *toplevel_manager = NULL;
 static struct wl_seat *default_seat = NULL;
 static gboolean tracker_initialized = FALSE;
-
-/* ============================================================================
- * PUBLIC WINDOW CONTROLLER ACTIONS
- * ============================================================================
- */
+static GList *g_master_toplevels = NULL;
 
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle && default_seat) {
@@ -69,20 +57,126 @@ static void
 toplevel_handle_title(void *data,
                       struct zwlr_foreign_toplevel_handle_v1 *handle,
                       const char *title) {
-  (void)handle;
-  WindowTracker *tracker = (WindowTracker *)data;
-  if (!tracker)
+  MasterToplevel *top = (MasterToplevel *)data;
+  if (!top || !title)
     return;
 
-  if (title) {
-    g_free(tracker->title);
-    tracker->title = g_strdup(title);
+  g_free(top->title);
+  top->title = g_strdup(title);
 
-    if (tracker->app_win) {
-      g_free(tracker->app_win->title);
-      tracker->app_win->title = g_strdup(title);
+  // Broadcast title update across all active docks
+  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    if (!state)
+      continue;
+
+    DockItem *item =
+        find_dock_item_by_app_id(state, top->app_id ? top->app_id : "");
+    if (item) {
+      for (GList *w = item->windows; w != NULL; w = w->next) {
+        AppWindow *win = (AppWindow *)w->data;
+        if (win && win->handle == handle) {
+          g_free(win->title);
+          win->title = g_strdup(title);
+        }
+      }
     }
   }
+}
+
+static void
+toplevel_handle_app_id(void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *handle,
+                       const char *app_id) {
+  MasterToplevel *top = (MasterToplevel *)data;
+  if (!top || !app_id || *app_id == '\0')
+    return;
+
+  if (g_ascii_strcasecmp(app_id, "lambdock") == 0 ||
+      g_ascii_strcasecmp(app_id, "org.jointhefreeworld.lambdock") == 0) {
+    return;
+  }
+
+  g_free(top->app_id);
+  top->app_id = g_strdup(app_id);
+
+  LOG_C_INFO("Tracker", "App ID resolved globally: '%s'", app_id);
+
+  // Broadcast window creation across all active docks
+  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    if (!state)
+      continue;
+
+    if (is_app_excluded(app_id, state->config_path)) {
+      LOG_C_INFO("Tracker", "Ignoring excluded app_id '%s' for [%s]", app_id,
+                 state->config_path ? state->config_path : "default");
+      continue;
+    }
+
+    DockItem *item = find_dock_item_by_app_id(state, app_id);
+    if (!item) {
+      item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE, TRUE);
+    }
+
+    AppWindow *win = dock_item_add_window(item, handle);
+    if (top->title && win) {
+      g_free(win->title);
+      win->title = g_strdup(top->title);
+    }
+
+    // Register handle in state window_trackers
+    if (!g_list_find(state->window_trackers, handle)) {
+      state->window_trackers = g_list_append(state->window_trackers, handle);
+    }
+
+    if (state->auto_hide && state->show_when_clear &&
+        state->window_trackers != NULL) {
+      hide_dock(state);
+    }
+  }
+}
+
+static void
+toplevel_handle_closed(void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *handle) {
+  MasterToplevel *top = (MasterToplevel *)data;
+  if (!top)
+    return;
+
+  LOG_C_INFO("Tracker", "Window closed globally: '%s'",
+             top->app_id ? top->app_id : "unknown");
+
+  // Broadcast window close across all active docks
+  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+    LambdockState *state = (LambdockState *)l->data;
+    if (!state)
+      continue;
+
+    if (top->app_id) {
+      DockItem *item = find_dock_item_by_app_id(state, top->app_id);
+      if (item) {
+        dock_item_remove_window(item, handle);
+
+        if (item->windows == NULL && !item->is_favorite) {
+          state->dock_items = g_list_remove(state->dock_items, item);
+          free_dock_item(item);
+        }
+      }
+    }
+
+    state->window_trackers = g_list_remove(state->window_trackers, handle);
+
+    if (state->show_when_clear && state->window_trackers == NULL) {
+      reveal_dock(state);
+    }
+  }
+
+  g_master_toplevels = g_list_remove(g_master_toplevels, top);
+  zwlr_foreign_toplevel_handle_v1_destroy(handle);
+  g_free(top->title);
+  g_free(top->app_id);
+  g_free(top);
 }
 
 static void
@@ -119,99 +213,6 @@ toplevel_handle_done(void *data,
   (void)handle;
 }
 
-static void
-toplevel_handle_app_id(void *data,
-                       struct zwlr_foreign_toplevel_handle_v1 *handle,
-                       const char *app_id) {
-  WindowTracker *tracker = (WindowTracker *)data;
-
-  if (!tracker || !app_id || *app_id == '\0')
-    return;
-
-  if (g_ascii_strcasecmp(app_id, "lambdock") == 0 ||
-      g_ascii_strcasecmp(app_id, "org.jointhefreeworld.lambdock") == 0) {
-    return;
-  }
-
-  LambdockState *state = tracker->state;
-  if (!state)
-    return;
-
-  if (is_app_excluded(app_id, state->config_path)) {
-    LOG_C_INFO("Tracker", "Ignoring excluded app_id: '%s'", app_id);
-    return;
-  }
-
-  g_free(tracker->app_id);
-  tracker->app_id = g_strdup(app_id);
-
-  if (tracker->dock_item != NULL)
-    return;
-
-  LOG_C_INFO("Tracker", "App ID resolved: '%s'", app_id);
-
-  DockItem *item = find_dock_item_by_app_id(state, app_id);
-
-  if (item != NULL) {
-    LOG_C_INFO("Tracker", "Unified window with existing dock item for '%s'",
-               app_id);
-  } else {
-    LOG_C_INFO("Tracker", "Creating dynamic dock item for running app '%s'",
-               app_id);
-    item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE, TRUE);
-  }
-
-  tracker->dock_item = item;
-  tracker->app_win = dock_item_add_window(item, handle);
-
-  if (tracker->title && tracker->app_win) {
-    g_free(tracker->app_win->title);
-    tracker->app_win->title = g_strdup(tracker->title);
-  }
-}
-
-static void
-toplevel_handle_closed(void *data,
-                       struct zwlr_foreign_toplevel_handle_v1 *handle) {
-  WindowTracker *tracker = (WindowTracker *)data;
-  if (!tracker)
-    return;
-
-  DockItem *item = tracker->dock_item;
-  if (item) {
-    LOG_C_INFO("Tracker", "Window closed for app_id: '%s'",
-               item->app_id ? item->app_id : "unknown");
-
-    dock_item_remove_window(item, handle);
-    tracker->app_win = NULL;
-
-    if (item->windows == NULL && !item->is_favorite) {
-      if (item->state) {
-        item->state->dock_items = g_list_remove(item->state->dock_items, item);
-      }
-      free_dock_item(item);
-    }
-  }
-
-  if (tracker->state) {
-    tracker->state->window_trackers =
-        g_list_remove(tracker->state->window_trackers, tracker);
-
-    if (tracker->state->show_when_clear &&
-        tracker->state->window_trackers == NULL) {
-      reveal_dock(tracker->state);
-    }
-  }
-
-  if (tracker->handle) {
-    zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
-  }
-
-  g_free(tracker->title);
-  g_free(tracker->app_id);
-  g_free(tracker);
-}
-
 static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
     {
         .title = toplevel_handle_title,
@@ -223,32 +224,19 @@ static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
         .closed = toplevel_handle_closed,
 };
 
-/* ============================================================================
- * WAYLAND TOPLEVEL MANAGER LISTENER
- * ============================================================================
- */
-
 static void
 manager_handle_toplevel(void *data,
                         struct zwlr_foreign_toplevel_manager_v1 *manager,
                         struct zwlr_foreign_toplevel_handle_v1 *toplevel) {
+  (void)data;
   (void)manager;
-  LambdockState *state = (LambdockState *)data;
-  if (!state)
-    return;
 
-  WindowTracker *tracker = g_new0(WindowTracker, 1);
-  tracker->handle = toplevel;
-  tracker->state = state;
-
-  state->window_trackers = g_list_append(state->window_trackers, tracker);
+  MasterToplevel *top = g_new0(MasterToplevel, 1);
+  top->handle = toplevel;
+  g_master_toplevels = g_list_append(g_master_toplevels, top);
 
   zwlr_foreign_toplevel_handle_v1_add_listener(toplevel, &toplevel_listener,
-                                               tracker);
-  if (state->auto_hide && state->show_when_clear &&
-      state->window_trackers != NULL) {
-    hide_dock(state);
-  }
+                                               top);
 }
 
 static void
@@ -264,16 +252,11 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener manager_listener =
         .finished = manager_handle_finished,
 };
 
-/* ============================================================================
- * WAYLAND GLOBAL REGISTRY BINDING & TRACKER INITIALIZATION
- * ============================================================================
- */
-
 static void registry_handle_global(void *data, struct wl_registry *registry,
                                    uint32_t name, const char *interface,
                                    uint32_t version) {
   (void)version;
-  LambdockState *state = (LambdockState *)data;
+  (void)data;
 
   if (g_strcmp0(interface, zwlr_foreign_toplevel_manager_v1_interface.name) ==
       0) {
@@ -281,9 +264,9 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
       toplevel_manager = wl_registry_bind(
           registry, name, &zwlr_foreign_toplevel_manager_v1_interface, 1);
 
-      if (toplevel_manager && state) {
+      if (toplevel_manager) {
         zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager,
-                                                      &manager_listener, state);
+                                                      &manager_listener, NULL);
         LOG_C_INFO("Tracker", "Bound foreign toplevel manager successfully.");
       }
     }
@@ -296,9 +279,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
 }
 
 void init_toplevel_tracker(LambdockState *state) {
-  if (!state)
-    return;
-
+  (void)state;
   GdkDisplay *display = gdk_display_get_default();
 
   if (display && GDK_IS_WAYLAND_DISPLAY(display) && !tracker_initialized) {
@@ -310,84 +291,38 @@ void init_toplevel_tracker(LambdockState *state) {
         .global_remove = NULL,
     };
 
-    wl_registry_add_listener(registry, &registry_listener, state);
+    wl_registry_add_listener(registry, &registry_listener, NULL);
     tracker_initialized = TRUE;
-    LOG_C_INFO("Tracker", "Initialized toplevel tracker listener.");
+    LOG_C_INFO("Tracker", "Initialized global toplevel tracker listener.");
   }
 }
-
-/* ============================================================================
- * TRACKER SYNC & CLEANUP HELPERS
- * ============================================================================
- */
 
 void sync_window_trackers(LambdockState *state) {
   if (!state)
     return;
 
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    WindowTracker *tracker = (WindowTracker *)l->data;
-    if (!tracker || !tracker->app_id)
+  for (GList *l = g_master_toplevels; l != NULL; l = l->next) {
+    MasterToplevel *top = (MasterToplevel *)l->data;
+    if (!top || !top->app_id)
       continue;
 
-    if (is_app_excluded(tracker->app_id, state->config_path))
+    if (is_app_excluded(top->app_id, state->config_path))
       continue;
 
-    DockItem *item = find_dock_item_by_app_id(state, tracker->app_id);
+    DockItem *item = find_dock_item_by_app_id(state, top->app_id);
     if (!item) {
-      item = create_dock_item(state, tracker->app_id, tracker->app_id, NULL,
-                              tracker->app_id, FALSE, TRUE);
+      item = create_dock_item(state, top->app_id, top->app_id, NULL,
+                              top->app_id, FALSE, TRUE);
     }
 
-    tracker->dock_item = item;
-
-    gboolean already_added = FALSE;
-    for (GList *w = item->windows; w != NULL; w = w->next) {
-      AppWindow *win = (AppWindow *)w->data;
-      if (win->handle == tracker->handle) {
-        tracker->app_win = win;
-        already_added = TRUE;
-        break;
-      }
-    }
-
-    if (!already_added) {
-      tracker->app_win = dock_item_add_window(item, tracker->handle);
-      if (tracker->title && tracker->app_win) {
-        g_free(tracker->app_win->title);
-        tracker->app_win->title = g_strdup(tracker->title);
-      }
+    dock_item_add_window(item, top->handle);
+    if (!g_list_find(state->window_trackers, top->handle)) {
+      state->window_trackers =
+          g_list_append(state->window_trackers, top->handle);
     }
   }
 }
 
-void clear_window_tracker_dock_references(LambdockState *state) {
-  if (!state)
-    return;
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    WindowTracker *tracker = (WindowTracker *)l->data;
-    if (tracker) {
-      tracker->dock_item = NULL;
-      tracker->app_win = NULL;
-    }
-  }
-}
+void clear_window_tracker_dock_references(LambdockState *state) { (void)state; }
 
-void free_window_tracker(void *tracker_ptr) {
-  WindowTracker *tracker = (WindowTracker *)tracker_ptr;
-  if (!tracker)
-    return;
-
-  tracker->state = NULL;
-  tracker->dock_item = NULL;
-  tracker->app_win = NULL;
-
-  if (tracker->handle) {
-    zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
-    tracker->handle = NULL;
-  }
-
-  g_free(tracker->title);
-  g_free(tracker->app_id);
-  g_free(tracker);
-}
+void free_window_tracker(void *tracker_ptr) { (void)tracker_ptr; }

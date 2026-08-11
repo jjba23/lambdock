@@ -134,6 +134,7 @@ struct LambdockState {
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;
+  char *active_theme_class; /* Tracked CSS theme class e.g. "theme-unity" */
   char *config_path; /* Absolute path to settings file for this dock instance */
   gboolean is_destroying; /* Re-entrancy guard flag */
 
