@@ -165,17 +165,12 @@ static void reset_dock_items_scale(LambdockState *state) {
     if (!item || !item->button)
       continue;
 
-    if (GTK_IS_SEPARATOR(item->button)) {
-      if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-        gtk_widget_set_size_request(item->button, -1, base_sz);
-      } else {
-        gtk_widget_set_size_request(item->button, base_sz, -1);
-      }
-      continue;
+    // Preserve cross-axis base size for all buttons
+    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+      gtk_widget_set_size_request(item->button, -1, base_sz);
+    } else {
+      gtk_widget_set_size_request(item->button, base_sz, -1);
     }
-
-    // Reset button size request back to default
-    gtk_widget_set_size_request(item->button, -1, -1);
 
     GtkWidget *image = get_item_image_widget(item);
     if (image) {
@@ -233,13 +228,12 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       if (image) {
         if (gtk_image_get_pixel_size(GTK_IMAGE(image)) != target_size) {
           gtk_image_set_pixel_size(GTK_IMAGE(image), target_size);
-
           if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-            // Expand width along X axis; Y axis remains unconstrained
-            gtk_widget_set_size_request(item->button, target_size, -1);
+            // Expand width along X axis; preserve base_sz along Y axis
+            gtk_widget_set_size_request(item->button, target_size, base_sz);
           } else {
-            // Expand height along Y axis; X axis remains unconstrained
-            gtk_widget_set_size_request(item->button, -1, target_size);
+            // Expand height along Y axis; preserve base_sz along X axis
+            gtk_widget_set_size_request(item->button, base_sz, target_size);
           }
         }
       }
