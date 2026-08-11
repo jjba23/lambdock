@@ -42,7 +42,7 @@
              ((guix licenses)
               #:prefix license:))
 
-(packages->manifest (list guile-3.0
+(packages->manifest (list guile-next ;; for production Guile 3.0 is used
                           gcc-toolchain
                           pkg-config
                           meson

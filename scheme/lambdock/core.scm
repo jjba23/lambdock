@@ -32,8 +32,23 @@
                dock-item-name
                dock-item-icon
                dock-item-exec
+               dock-item-poll-fn
+               dock-item-poll-interval
+               dock-item-hover-animate?
                app-item
                separator-item
+               dynamic-item
+               ;; Dynamic items
+               get-free-ram-mb
+               ram-item
+               get-clock-text
+               clock-item
+               get-cpu-loadavg
+               cpu-item
+               get-battery-status
+               battery-item
+               get-cpu-temp
+               cpu-temp-item
 
                ;; Primary Configurator
                configure-dock!
@@ -50,19 +65,17 @@
                get-dock-enable-repl?
                get-dock-repl-socket-path
                get-dock-hover-animate?
+               get-dock-track-windows?
 
                ;; Setters
-               set-dock-items!
                set-dock-position!
                set-dock-theme!
                set-dock-icon-size!
                set-dock-auto-hide!
                set-dock-show-when-clear!
                set-dock-monitor!
-               set-dock-exclude-apps!
-               set-dock-enable-repl!
-               set-dock-repl-socket-path!
                set-dock-hover-animate!
+                             set-dock-track-windows!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -74,40 +87,71 @@
                preset-icon
                preset-launcher
                preset-launchers-for)
-  #:export (init-dock! start-repl!))
+  #:export (init-dock! load-dock-config! start-repl!))
 
 ;; =============================================================================
 ;; Core Hooks
 ;; =============================================================================
 
+(define* (load-dock-config! file-path)
+  "Loads a specific settings file in isolation and registers its configuration record."
+  (if (and file-path
+           (file-exists? file-path))
+      (begin
+        (log-info "Core" "Loading user settings from: ~a" file-path)
+        (catch #t
+               (lambda ()
+                 (let* ((settings (resolve-dock-configuration file-path))
+                        ;; Helper to lookup both 'dock-foo and 'foo
+                        (cfg (lambda (key alt-key default-val)
+                               (let ((pair (or (assq key settings)
+                                               (assq alt-key settings))))
+                                 (if pair
+                                     (cdr pair) default-val)))))
+
+                   (configure-dock! #:config-path file-path
+                                    #:position (cfg 'dock-position
+                                                    'position
+                                                    'bottom)
+                                    #:icon-size (cfg 'dock-icon-size
+                                                     'icon-size 48)
+                                    #:items (cfg 'dock-items
+                                                 'items
+                                                 '())
+                                    #:theme (cfg 'dock-theme
+                                                 'theme
+                                                 'vanilla)
+                                    #:monitor (cfg 'dock-monitor
+                                                   'monitor
+                                                   'default)
+                                    #:auto-hide? (cfg 'dock-auto-hide?
+                                                      'auto-hide? #f)
+                                    #:show-when-clear? (cfg 'dock-show-when-clear?
+                                                            'show-when-clear?
+                                                            #t)
+                                    #:exclude-apps (cfg 'dock-exclude-apps
+                                                        'exclude-apps
+                                                        '())
+                                    #:enable-repl? (cfg 'dock-enable-repl?
+                                                        'enable-repl? #f)
+                                    #:repl-socket-path (cfg 'dock-repl-socket-path
+                                                        'repl-socket-path
+                                                        "/tmp/lambdock-repl.sock")
+                                    #:hover-animate? (cfg 'dock-hover-animate?
+                                                          'hover-animate? #t)
+                                    #:track-windows? (cfg 'dock-track-windows?
+                                                          'track-windows? #t))))
+               (lambda (key . args)
+                 (log-error "Core"
+                  "EXCEPTION while loading config [~a]: ~a | Details: ~s"
+                  file-path key args))))
+      (log-warn "Core" "No settings file found at path: ~a" file-path)))
+
 (define (init-dock!)
   "Entry point invoked after C runtime initialization."
   (let ((config-file (get-config-path)))
-    (if (and config-file
-             (file-exists? config-file))
-        (begin
-          (log-info "Core" "Loading user settings from: ~a" config-file)
-          (catch #t
-                 (lambda ()
-                   (load config-file)
-                   (let* ((settings (resolve-dock-configuration))
-                          (cfg (lambda (key)
-                                 (assq-ref settings key))))
-                     (configure-dock! #:position (cfg 'dock-position)
-                                      #:icon-size (cfg 'dock-icon-size)
-                                      #:items (cfg 'dock-items)
-                                      #:theme (cfg 'dock-theme)
-                                      #:monitor (cfg 'dock-monitor)
-                                      #:auto-hide? (cfg 'dock-auto-hide?)
-                                      #:show-when-clear? (cfg 'dock-show-when-clear?)
-                                      #:exclude-apps (cfg 'dock-exclude-apps)
-                                      #:enable-repl? (cfg 'dock-enable-repl?)
-                                      #:repl-socket-path (cfg 'dock-repl-socket-path)
-                                      #:hover-animate? (cfg 'dock-hover-animate?))))
-                 (lambda (key . args)
-                   (log-error "Core" "ERROR loading ~a: ~a ~a~%" config-file
-                              key args))))
-        (log-warn "Core" "No settings file found at: ~a~%" config-file)))
+    (when config-file
+      (load-dock-config! config-file)))
 
   ;; Load fallback default dock items if no items were registered
   (when (null? (get-dock-items))
@@ -124,10 +168,10 @@
 ;; REPL Management
 ;; =============================================================================
 
-(define *repl-started?*
-  #f)
+(define *active-repl-sockets*
+  '())
 
-(define (start-repl!)
+(define* (start-repl! . args)
   (define (mkdir-p path)
     (unless (or (string-null? path)
                 (file-exists? path))
@@ -143,21 +187,25 @@
                               (eq? 'directory
                                    (stat:type (stat path))))
                    (apply throw key args)))))))
-  (when (and (get-dock-enable-repl?)
-             (not *repl-started?*))
-    (set! *repl-started?* #t)
-    (let ((socket-path (get-dock-repl-socket-path)))
+
+  (let* ((config-key (if (pair? args)
+                         (car args)
+                         'default))
+         (socket-path (get-dock-repl-socket-path config-key))
+         (enabled? (get-dock-enable-repl? config-key)))
+    (when (and enabled?
+               (not (member socket-path *active-repl-sockets*)))
+      (set! *active-repl-sockets*
+            (cons socket-path *active-repl-sockets*))
       (log-info "Core" "Starting interactive Guile REPL Unix socket at ~a..."
                 socket-path)
       (call-with-new-thread (lambda ()
                               (catch #t
                                      (lambda ()
-                                       ;; Ensure target directory exists
                                        (let ((dir (dirname socket-path)))
                                          (when (and (not (string-null? dir))
                                                     (not (file-exists? dir)))
                                            (mkdir-p dir)))
-                                       ;; Clean up stale socket file if present
                                        (when (file-exists? socket-path)
                                          (delete-file socket-path))
                                        (let ((server-socket (make-unix-domain-server-socket

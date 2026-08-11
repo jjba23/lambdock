@@ -312,6 +312,11 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
                               #:icon "io.neovim.nvim"))
 
     ;; System & Utilities
+    (ram unquote (ram-item))
+    (clock unquote (clock-item))
+    (cpu unquote (cpu-item))
+    (battery unquote (battery-item))
+    (cpu-temp unquote (cpu-temp-item))
     (nautilus unquote
               (app-item #:name "Files"
                         #:exec "nautilus -w"

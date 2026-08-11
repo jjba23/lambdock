@@ -94,6 +94,10 @@ typedef struct AppWindow {
  * @windows: Pointer to GLib Doubly Linked List (GList*) storing active
  * AppWindow structs.
  * @state: Reference pointer back to the main LambdockState structure.
+ * @poll_fn: Guile procedure called periodically to fetch updated item text.
+ * @poll_timer_id: GLib timeout source ID managing polling intervals.
+ * @label: GtkLabel rendering text output for dynamic items.
+ * @hover_animate: TRUE if hover fisheye magnification applies to this item.
  */
 typedef struct DockItem {
   char *name;
@@ -105,6 +109,10 @@ typedef struct DockItem {
   GtkWidget *popover;
   GList *windows;
   LambdockState *state;
+  SCM poll_fn;
+  guint poll_timer_id;
+  GtkWidget *label;
+  gboolean hover_animate;
 } DockItem;
 
 /**
@@ -113,18 +121,23 @@ typedef struct DockItem {
  */
 struct LambdockState {
   GtkWidget *window;
-  GtkWidget *overlay;    /* Main overlay container */
-  GtkWidget *bg_capsule; /* Capsule background box */
-  GtkWidget *box;        /* Icon container box */
+  GtkWidget *overlay;         /* Main overlay container */
+  GtkWidget *bg_capsule;      /* Capsule background box */
+  GtkWidget *scrolled_window; /* Scroll viewport container for dock items */
+  GtkWidget *box;             /* Icon container box */
   GtkWidget *popover;
   GtkSizeGroup *size_group;
   gboolean auto_hide;
   gboolean show_when_clear;
+  gboolean track_windows; /* <-- Track open Wayland foreign windows */
   gboolean hover_animate;
   int icon_size;
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;
+  char *active_theme_class; /* Tracked CSS theme class e.g. "theme-unity" */
+  char *config_path; /* Absolute path to settings file for this dock instance */
+  gboolean is_destroying; /* Re-entrancy guard flag */
 
   GdkMonitor *monitor; /* NULL for default compositor placement */
 
@@ -143,6 +156,10 @@ struct LambdockState {
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;
   GList *window_trackers;
+
+  /* Per instance CSS providers */
+  GtkCssProvider *base_css_provider;
+  GtkCssProvider *user_css_provider;
 };
 
 #endif // LAMBDOCK_H

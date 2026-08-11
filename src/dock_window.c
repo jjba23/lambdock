@@ -18,6 +18,7 @@
 #include "dock_window.h"
 #include "guile_bridge.h"
 #include "logger.h"
+#include "toplevel_tracker.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
@@ -118,6 +119,37 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
  * ========================================================================= */
 
 /**
+ * get_item_image_widget:
+ * Helper to locate the GtkImage widget inside a DockItem.
+ * - For 'app items, the child of button is directly a GtkImage.
+ * - For 'dynamic items, the child of button is a GtkBox holding an image +
+ * label.
+ * - For 'separator items, button is a GtkSeparator, returning NULL.
+ */
+static GtkWidget *get_item_image_widget(DockItem *item) {
+  if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    return NULL; // Bypasses separators automatically (GtkSeparator !=
+                 // GtkButton)
+
+  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!child)
+    return NULL;
+
+  if (GTK_IS_IMAGE(child)) {
+    return child; // Standard 'app launcher item
+  } else if (GTK_IS_BOX(child)) {
+    // Dynamic item: iterate through container box children to find GtkImage
+    for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+         w = gtk_widget_get_next_sibling(w)) {
+      if (GTK_IS_IMAGE(w))
+        return w;
+    }
+  }
+
+  return NULL;
+}
+
+/**
  * reset_dock_items_scale:
  * Resets all dock item icons back to their default base pixel size and resets
  * widget size requests cleanly.
@@ -133,15 +165,17 @@ static void reset_dock_items_scale(LambdockState *state) {
     if (!item || !item->button)
       continue;
 
-    // Reset button size request back to default
-    gtk_widget_set_size_request(item->button, -1, -1);
+    // Preserve cross-axis base size for all buttons
+    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+      gtk_widget_set_size_request(item->button, -1, base_sz);
+    } else {
+      gtk_widget_set_size_request(item->button, base_sz, -1);
+    }
 
-    if (GTK_IS_BUTTON(item->button)) {
-      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-      if (child && GTK_IS_IMAGE(child)) {
-        gtk_image_set_pixel_size(GTK_IMAGE(child), base_sz);
-        gtk_widget_set_size_request(child, -1, -1);
-      }
+    GtkWidget *image = get_item_image_widget(item);
+    if (image) {
+      gtk_image_set_pixel_size(GTK_IMAGE(image), base_sz);
+      gtk_widget_set_size_request(image, -1, -1);
     }
   }
 }
@@ -165,7 +199,10 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+
+    // Guard: check that button is a GtkButton AND item allows hover animation
+    if (!item || !item->hover_animate || !item->button ||
+        !GTK_IS_BUTTON(item->button))
       continue;
 
     graphene_rect_t bounds;
@@ -186,17 +223,17 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
       }
 
       int target_size = (int)(base_size * scale);
-      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-      if (child && GTK_IS_IMAGE(child)) {
-        if (gtk_image_get_pixel_size(GTK_IMAGE(child)) != target_size) {
-          gtk_image_set_pixel_size(GTK_IMAGE(child), target_size);
+      GtkWidget *image = get_item_image_widget(item);
 
+      if (image) {
+        if (gtk_image_get_pixel_size(GTK_IMAGE(image)) != target_size) {
+          gtk_image_set_pixel_size(GTK_IMAGE(image), target_size);
           if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-            // Expand width along X axis; Y axis remains unconstrained
-            gtk_widget_set_size_request(item->button, target_size, -1);
+            // Expand width along X axis; preserve base_sz along Y axis
+            gtk_widget_set_size_request(item->button, target_size, base_sz);
           } else {
-            // Expand height along Y axis; X axis remains unconstrained
-            gtk_widget_set_size_request(item->button, -1, target_size);
+            // Expand height along Y axis; preserve base_sz along X axis
+            gtk_widget_set_size_request(item->button, base_sz, target_size);
           }
         }
       }
@@ -461,55 +498,6 @@ void schedule_initial_autohide(LambdockState *state) {
 }
 
 /* =========================================================================
- * MEMORY & DESTRUCTORS
- * ========================================================================= */
-
-/**
- * free_lambdock_state:
- * Destructor for LambdockState structure. Performs deep memory freeing
- * for window tracker lists, dock item lists, and theme strings.
- *
- * @param state Pointer to LambdockState instance.
- */
-void free_lambdock_state(LambdockState *state) {
-  if (!state)
-    return;
-
-  if (state->size_group) {
-    g_object_unref(state->size_group);
-    state->size_group = NULL;
-  }
-
-  // --- Free Wayland foreign-toplevel window tracker objects ---
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    void *tracker_ptr = l->data;
-    if (tracker_ptr) {
-      // Offset pointers to string struct members (title and app_id)
-      char **title_ptr = (char **)((char *)tracker_ptr + sizeof(void *) * 4);
-      char **app_id_ptr = (char **)((char *)tracker_ptr + sizeof(void *) * 5);
-
-      g_free(*title_ptr);
-      g_free(*app_id_ptr);
-      g_free(tracker_ptr);
-    }
-  }
-  g_list_free(state->window_trackers);
-  state->window_trackers = NULL;
-
-  // --- Free dock launcher items ---
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
-    free_dock_item(item);
-  }
-  g_list_free(state->dock_items);
-  state->dock_items = NULL;
-
-  // --- Free state strings & main struct pointer ---
-  g_free(state->theme);
-  g_free(state);
-}
-
-/* =========================================================================
  * GTK APPLICATION ACTIONS (ABOUT & QUIT)
  * ========================================================================= */
 
@@ -593,13 +581,77 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_window_present(GTK_WINDOW(about));
 }
 
+/* =========================================================================
+ * MONITOR VALIDATION & DIMENSION UPDATES
+ * ========================================================================= */
+
+gboolean is_monitor_valid(GdkMonitor *mon) {
+  if (!mon)
+    return FALSE;
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return FALSE;
+  GListModel *monitors = gdk_display_get_monitors(display);
+  if (!monitors)
+    return FALSE;
+  guint n = g_list_model_get_n_items(monitors);
+  for (guint i = 0; i < n; i++) {
+    gpointer item = g_list_model_get_item(monitors, i);
+    gboolean match = (item == mon);
+    if (item)
+      g_object_unref(item);
+    if (match)
+      return TRUE;
+  }
+  return FALSE;
+}
+
 void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX; // Capsule thickness
-  int max_cross_dim = (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) +
-                      CROSS_DIM_PADDING_PX; // Window headroom for magnification
+  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX;
+  int max_cross_dim =
+      (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
+
+  GdkMonitor *mon = state->monitor;
+  GdkDisplay *display = gdk_display_get_default();
+
+  // Safely verify if stored monitor is still valid; if not, fall back to
+  // default
+  if (!mon || !is_monitor_valid(mon)) {
+    mon = NULL;
+    if (display) {
+      GListModel *monitors = gdk_display_get_monitors(display);
+      if (monitors && g_list_model_get_n_items(monitors) > 0) {
+        gpointer item = g_list_model_get_item(monitors, 0);
+        if (item) {
+          mon = GDK_MONITOR(item); // Keep item ref until done
+        }
+      }
+    }
+  } else {
+    g_object_ref(mon);
+  }
+
+  int mon_width = 1920;
+  int mon_height = 1080;
+  if (mon) {
+    GdkRectangle geom;
+    gdk_monitor_get_geometry(mon, &geom);
+    if (geom.width > 0)
+      mon_width = geom.width;
+    if (geom.height > 0)
+      mon_height = geom.height;
+    g_object_unref(mon); // Clean up reference ONLY after reading geometry
+  }
+
+  int max_main_dim_h = mon_width - 32;
+  int max_main_dim_v = mon_height - 32;
+  if (max_main_dim_h < 100)
+    max_main_dim_h = 100;
+  if (max_main_dim_v < 100)
+    max_main_dim_v = 100;
 
   if (state->size_group) {
     GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
@@ -608,7 +660,22 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_size_group_set_mode(state->size_group, mode);
   }
 
-  // Main-axis capsule ends padding
+  if (state->scrolled_window) {
+    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+      gtk_scrolled_window_set_policy(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_EXTERNAL,
+          GTK_POLICY_NEVER);
+      gtk_scrolled_window_set_max_content_width(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_h);
+    } else {
+      gtk_scrolled_window_set_policy(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_NEVER,
+          GTK_POLICY_EXTERNAL);
+      gtk_scrolled_window_set_max_content_height(
+          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_v);
+    }
+  }
+
   int padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
@@ -619,6 +686,15 @@ void update_dock_dimensions(LambdockState *state) {
 
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
     gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
+
+    if (state->scrolled_window) {
+      gtk_widget_set_valign(state->scrolled_window,
+                            (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+                                ? GTK_ALIGN_START
+                                : GTK_ALIGN_END);
+      gtk_widget_set_halign(state->scrolled_window, GTK_ALIGN_CENTER);
+    }
+
     gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
     gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
 
@@ -637,6 +713,15 @@ void update_dock_dimensions(LambdockState *state) {
 
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
     gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
+
+    if (state->scrolled_window) {
+      gtk_widget_set_halign(state->scrolled_window,
+                            (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
+                                ? GTK_ALIGN_START
+                                : GTK_ALIGN_END);
+      gtk_widget_set_valign(state->scrolled_window, GTK_ALIGN_CENTER);
+    }
+
     gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
     gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
 
@@ -648,4 +733,103 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_widget_set_halign(state->box, GTK_ALIGN_END);
     }
   }
+}
+
+/* =========================================================================
+ * MEMORY & DESTRUCTORS
+ * ========================================================================= */
+
+void destroy_dock_instance(LambdockState *state) {
+  // Re-entrancy Guard: Prevent recursive re-entry during GTK signal emission
+  if (!state || state->is_destroying)
+    return;
+
+  state->is_destroying = TRUE;
+
+  GdkDisplay *display = gdk_display_get_default();
+  if (display) {
+    if (state->base_css_provider) {
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(state->base_css_provider));
+      g_clear_object(&state->base_css_provider);
+    }
+    if (state->user_css_provider) {
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(state->user_css_provider));
+      g_clear_object(&state->user_css_provider);
+    }
+  }
+
+  if (state->active_theme_class) {
+    g_free(state->active_theme_class);
+    state->active_theme_class = NULL;
+  }
+
+  // Unregister from active global state list
+  unregister_dock_state(state);
+
+  // Cancel pending GLib autohide timers immediately
+  if (state->hide_timer_id > 0) {
+    g_source_remove(state->hide_timer_id);
+    state->hide_timer_id = 0;
+  }
+
+  // Remove active GTK tick animation callbacks
+  if (state->tick_cb_id > 0 && state->window && GTK_IS_WIDGET(state->window)) {
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+    state->tick_cb_id = 0;
+  }
+
+  // Disconnect signal handlers from window to prevent "destroy" signal
+  // re-entrancy
+  if (state->window && GTK_IS_WIDGET(state->window)) {
+    g_signal_handlers_disconnect_by_data(state->window, state);
+  }
+
+  // Unparent the main background context menu popover
+  if (state->popover) {
+    if (GTK_IS_WIDGET(state->popover) &&
+        gtk_widget_get_parent(state->popover)) {
+      gtk_widget_unparent(state->popover);
+    }
+    state->popover = NULL;
+  }
+
+  // Clear and free dock items (and their individual polling timers/popovers)
+  GList *items = state->dock_items;
+  state->dock_items = NULL; // Clear pointer first to prevent dangling access
+  for (GList *l = items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    free_dock_item(item);
+  }
+  g_list_free(items);
+
+  // Clear and free Wayland window trackers
+  GList *trackers = state->window_trackers;
+  state->window_trackers = NULL; // Clear pointer first
+  for (GList *l = trackers; l != NULL; l = l->next) {
+    free_window_tracker(l->data);
+  }
+  g_list_free(trackers);
+
+  // Destroy the GTK Window widget safely
+  if (state->window && GTK_IS_WINDOW(state->window)) {
+    GtkWidget *win = state->window;
+    state->window = NULL; // Nullify reference prior to GTK destruction
+    gtk_window_destroy(GTK_WINDOW(win));
+  }
+
+  if (state->size_group) {
+    g_object_unref(state->size_group);
+    state->size_group = NULL;
+  }
+
+  if (state->monitor) {
+    g_object_unref(state->monitor);
+    state->monitor = NULL;
+  }
+
+  g_free(state->config_path);
+  g_free(state->theme);
+  g_free(state);
 }

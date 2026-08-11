@@ -37,19 +37,19 @@ window {
   /* Translucent warm cream gradient (#fdf6e3 -> #eee8d5) */
   background-image: linear-gradient(
     135deg,
-    rgba(253, 246, 227, 0.85) 0%,
-    rgba(238, 232, 213, 0.75) 100%
+    rgba(253, 246, 227, 0.90) 0%,
+    rgba(238, 232, 213, 0.82) 100%
   );
 
   /* Specular light border using solid base3 tint */
-  border: 1px solid rgba(253, 246, 227, 0.90);
+  border: 1px solid rgba(253, 246, 227, 0.95);
 
   /* Soft ambient drop shadows tinted with base00 (#657b83) */
   box-shadow:
-    0 16px 38px rgba(101, 123, 131, 0.09),
-    0 4px 12px rgba(101, 123, 131, 0.5),
-    inset 0 1px 1px rgba(255, 255, 255, 0.4),
-    inset 0 -1px 1px rgba(101, 123, 131, 0.04);
+    0 16px 38px rgba(101, 123, 131, 0.12),
+    0 4px 12px rgba(101, 123, 131, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.60),
+    inset 0 -1px 1px rgba(101, 123, 131, 0.06);
 }
 
 /* -------------------------------------------------------------------------
@@ -63,6 +63,7 @@ button.flat {
   padding: 6px;
   margin: 2px 3px;
   border-radius: 14px;
+  color: #073642;                     /* Solarized base02 for sharp contrast */
 
   /* Fluid physics curve for hover/active states */
   transition: transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -71,24 +72,37 @@ button.flat {
 }
 
 button.flat:hover {
-  background-color: rgba(101, 123, 131, 0.12);
-  /* transform: scale(1.15) translateY(-4px); */
-  box-shadow: 0 6px 16px rgba(101, 123, 131, 0.15);
+  background-color: rgba(101, 123, 131, 0.15);
+  color: #002b36;                     /* Solarized base03 */
+  box-shadow: 0 6px 16px rgba(101, 123, 131, 0.18);
 }
 
 button.flat:active {
-  /* transform: scale(0.94) translateY(0px); */
-  background-color: rgba(101, 123, 131, 0.20);
+  background-color: rgba(101, 123, 131, 0.25);
+  color: #002b36;
   box-shadow: none;
+}
+
+/* Dynamic Item Labels */
+.dynamic-item-label {
+  color: #073642;                     /* Solarized base02 (High contrast >10:1) */
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+button.flat:hover .dynamic-item-label {
+  color: #002b36;                     /* Solarized base03 */
 }
 
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR (Solarized Blue & Cyan Glow Pill)
  * ------------------------------------------------------------------------- */
+
 button.running-app {
   background-image: radial-gradient(
     circle at center,
-    #268bd2 0%,                   /* Solarized Blue */
+    #268bd2 0%,                       /* Solarized Blue */
     rgba(42, 161, 152, 0.85) 35%,     /* Solarized Cyan */
     rgba(42, 161, 152, 0.45) 65%,
     transparent 80%
@@ -116,7 +130,7 @@ button.running-app:hover {
 
 separator {
   margin: 6px 8px;
-  background-color: rgba(101, 123, 131, 0.18);
+  background-color: rgba(101, 123, 131, 0.28);
   min-width: 1px;
 }
 
@@ -125,22 +139,23 @@ separator {
  * ------------------------------------------------------------------------- */
 
 popover > contents {
-  background-color: rgba(253, 246, 227, 0.92);
-  color: #657b83;                 /* Solarized base00 */
+  background-color: rgba(253, 246, 227, 0.96);
+  color: #073642;                     /* Solarized base02 */
   border-radius: 16px;
-  border: 1px solid rgba(238, 232, 213, 0.90);
-  box-shadow: 0 12px 32px rgba(101, 123, 131, 0.20);
+  border: 1px solid rgba(211, 203, 178, 0.90);
+  box-shadow: 0 12px 32px rgba(101, 123, 131, 0.25);
   padding: 6px;
 }
 
 label.title {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 12px;
-  color: #93a1a1;                 /* Solarized base1 */
+  color: #002b36;                     /* Solarized base03 for WCAG AA compliance */
   padding: 4px 8px;
 }
 
 popover button.flat {
+  color: #073642;
   border-radius: 10px;
   padding: 6px 12px;
   margin: 2px 0;
@@ -148,16 +163,17 @@ popover button.flat {
 }
 
 popover button.flat:hover {
-  background-color: rgba(101, 123, 131, 0.12);
+  background-color: rgba(101, 123, 131, 0.15);
+  color: #002b36;
   transform: none;
   box-shadow: none;
 }
 
-window.about-dialog{
-  /* Translucent warm cream gradient (#fdf6e3 -> #eee8d5) */
+window.about-dialog {
   background-image: linear-gradient(
     135deg,
-    rgba(253, 246, 227, 0.85) 0%,
-    rgba(238, 232, 213, 0.75) 100%
+    rgba(253, 246, 227, 0.92) 0%,
+    rgba(238, 232, 213, 0.88) 100%
   );
+  color: #073642;
 }

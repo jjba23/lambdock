@@ -67,15 +67,6 @@ void hide_dock(LambdockState *state);
 void schedule_initial_autohide(LambdockState *state);
 
 /**
- * free_lambdock_state:
- * @state: Pointer to global application state structure to deallocate.
- *
- * Safely cleans up all allocated memory, iterating through linked lists and
- * freeing custom structs upon application shutdown.
- */
-void free_lambdock_state(LambdockState *state);
-
-/**
  * on_quit_action:
  * @action: Triggered GSimpleAction object.
  * @parameter: Action target variant parameter (unused).
@@ -127,5 +118,30 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
  * capsule based on the active icon size, orientation, and screen edge.
  */
 void update_dock_dimensions(LambdockState *state);
+
+/**
+ * unregister_dock_state:
+ * Unlinks an active LambdockState instance from the global state tracker list
+ * in main.c.
+ */
+void unregister_dock_state(LambdockState *state);
+
+/**
+ * destroy_dock_instance:
+ * @state: Pointer to LambdockState context.
+ *
+ * Unparents popovers and widgets, cleans up window trackers and dock items,
+ * and destroys the GTK window safely without disposal warnings.
+ */
+void destroy_dock_instance(LambdockState *state);
+
+/**
+ * is_monitor_valid:
+ * Checks if a given GdkMonitor pointer is currently present in the display's
+ * active monitor list.
+ */
+gboolean is_monitor_valid(GdkMonitor *mon);
+
+GList *get_active_dock_states(void);
 
 #endif // DOCK_WINDOW_H

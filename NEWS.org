@@ -1,0 +1,28 @@
+#+title: Changelog and News 📰
+#+author: Josep Bigorra
+#+email: jjbigorra@gmail.com
+#+options: toc:nil
+
+All notable changes to this project will be documented in this file. Changes are listed per project release (tag) and within each tag there are details about changes, additions, fixes and removals.
+
+This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
+
+*[Unreleased]*
+
+---------
+
+*[Released]*
+
+
+** v0.5.0 (2026-08-07)
+- Add dynamic apps and ~poll~ + ~poll_fn~
+- Add re-usable dynamic apps and  widget presets for RAM, CPU, TEMP, etc
+- Add multi-config support with hot-reload
+- Add dock scrolling when overflow occurs
+- Improve stability of the dock and animations are smoother
+- Add hover animate toggle per item
+- Improve CSS themes
+
+** v0.4.1 (2026-08-07)
+- Implement multi-monitor support and multi-instance
+- Improve stability and fix crashes

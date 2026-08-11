@@ -21,18 +21,35 @@
 #include "../lambdock.h"
 
 /**
+ * apply_dock_item_alignment:
+ * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
+ * ensuring non-animated items and separators remain anchored to the dock edge.
+ */
+void apply_dock_item_alignment(DockItem *item);
+
+/**
  * create_dock_item:
  * Constructs a DockItem, instantiates its GTK button/popover widgets,
  * and appends it to the dock container layout.
  */
 DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
-                           const char *app_id, gboolean is_favorite);
+                           const char *app_id, gboolean is_favorite,
+                           gboolean hover_animate);
+
+/**
+ * create_dynamic_dock_item:
+ * Constructs a dynamic polling DockItem with text label and interval timer.
+ */
+DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
+                                   const char *icon, const char *exec,
+                                   SCM poll_fn, guint interval_ms,
+                                   gboolean hover_animate);
 
 /**
  * free_dock_item:
- * Unparents widgets, cleans child window trackers, and deallocates DockItem
- * memory.
+ * Unparents widgets, cleans child window trackers, cancels timers,
+ * unprotects Scheme procedure objects, and deallocates DockItem memory.
  */
 void free_dock_item(DockItem *item);
 
