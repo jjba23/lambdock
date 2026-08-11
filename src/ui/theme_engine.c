@@ -20,6 +20,20 @@
 #include "../logger.h"
 #include <gtk/gtk.h>
 
+/* ============================================================================
+ * SELECTOR SCOPING UTILITIES
+ * ============================================================================
+ */
+
+/**
+ * scope_css_selectors:
+ * Transforms raw CSS rules to be scoped strictly under a target class wrapper.
+ *
+ * Examples with scope_class = "theme-unity":
+ * - ".lambdock-window"  =>  ".theme-unity .lambdock-window"
+ * - "window"            =>  "window.theme-unity"
+ * - "window.background" =>  "window.theme-unity.background"
+ */
 static char *scope_css_selectors(const char *css_text,
                                  const char *scope_class) {
   if (!css_text || *css_text == '\0')
@@ -33,7 +47,7 @@ static char *scope_css_selectors(const char *css_text,
     char *line = lines[i];
     char *trimmed = g_strstrip(g_strdup(line));
 
-    // Pass empty lines, comments, and @-rules through unchanged
+    // Pass empty lines, comments, and top-level @-rules through unchanged
     if (strlen(trimmed) == 0 || g_str_has_prefix(trimmed, "/*") ||
         g_str_has_prefix(trimmed, "@") || g_str_has_prefix(trimmed, "*")) {
       g_string_append_printf(result, "%s\n", line);
@@ -50,7 +64,13 @@ static char *scope_css_selectors(const char *css_text,
         if (strlen(sel) > 0) {
           if (j > 0)
             g_string_append(result, ", ");
-          g_string_append_printf(result, ".%s %s", scope_class, sel);
+
+          // Compound 'window' element selector directly with the scope class
+          if (g_str_has_prefix(sel, "window")) {
+            g_string_append_printf(result, "window.%s%s", scope_class, sel + 6);
+          } else {
+            g_string_append_printf(result, ".%s %s", scope_class, sel);
+          }
         }
       }
       g_string_append(result, " {\n");
@@ -77,6 +97,34 @@ static char *scope_css_selectors(const char *css_text,
   return g_string_free(result, FALSE);
 }
 
+/* ============================================================================
+ * HELPER: CSS PROVIDER GENERATOR
+ * ============================================================================
+ */
+
+static GtkCssProvider *create_scoped_provider(GdkDisplay *display,
+                                              const char *raw_css,
+                                              const char *scope_class,
+                                              guint priority) {
+  if (!raw_css || *raw_css == '\0')
+    return NULL;
+
+  char *scoped_css = scope_css_selectors(raw_css, scope_class);
+  GtkCssProvider *provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_string(provider, scoped_css);
+
+  gtk_style_context_add_provider_for_display(
+      display, GTK_STYLE_PROVIDER(provider), priority);
+
+  g_free(scoped_css);
+  return provider;
+}
+
+/* ============================================================================
+ * PUBLIC ENGINE INTERFACE
+ * ============================================================================
+ */
+
 void load_custom_css(LambdockState *state) {
   if (!state || !state->window)
     return;
@@ -85,8 +133,10 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
-  const char *raw_theme = state->theme ? state->theme : "vanilla";
-  const char *theme_name = (*raw_theme != '\0') ? raw_theme : "vanilla";
+  const char *raw_theme =
+      (state->theme && *state->theme != '\0') ? state->theme : "vanilla";
+  const char *theme_name =
+      (raw_theme && *raw_theme != '\0') ? raw_theme : "vanilla";
 
   // Formulate unique CSS class name for this theme (e.g. "theme-unity")
   char *theme_class = g_strdup_printf("theme-%s", theme_name);
@@ -111,13 +161,16 @@ void load_custom_css(LambdockState *state) {
     g_clear_object(&state->user_css_provider);
   }
 
+  // Early return if theme is set to 'none'
   if (g_ascii_strcasecmp(theme_name, "none") == 0) {
     LOG_C_INFO("UI", "Theme set to 'none' for [%s].",
                state->config_path ? state->config_path : "default");
     return;
   }
 
-  // Read raw CSS from GResource bundle
+  // --------------------------------------------------------------------------
+  // 1. BASE THEME (Loaded from GResource Bundle)
+  // --------------------------------------------------------------------------
   char *resource_path =
       g_strdup_printf("/org/jointhefreeworld/lambdock/css/%s.css", theme_name);
   GBytes *data = g_resources_lookup_data(resource_path,
@@ -135,24 +188,20 @@ void load_custom_css(LambdockState *state) {
   if (data) {
     gsize size = 0;
     const char *raw_css = g_bytes_get_data(data, &size);
-    char *scoped_css = scope_css_selectors(raw_css, theme_class);
 
-    state->base_css_provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(state->base_css_provider, scoped_css);
-
-    gtk_style_context_add_provider_for_display(
-        display, GTK_STYLE_PROVIDER(state->base_css_provider),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    state->base_css_provider = create_scoped_provider(
+        display, raw_css, theme_class, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
 
     LOG_C_INFO("UI", "Loaded & scoped CSS theme [%s] for [%s]", theme_name,
                state->config_path ? state->config_path : "default");
 
-    g_free(scoped_css);
     g_bytes_unref(data);
   }
   g_free(resource_path);
 
-  // USER OVERRIDE CSS (~/.config/lambdock/styles.css)
+  // --------------------------------------------------------------------------
+  // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
+  // --------------------------------------------------------------------------
   const char *config_dir = g_get_user_config_dir();
   char *user_css_path =
       g_build_filename(config_dir, "lambdock", "styles.css", NULL);
@@ -160,20 +209,12 @@ void load_custom_css(LambdockState *state) {
   if (g_file_test(user_css_path, G_FILE_TEST_EXISTS)) {
     char *user_raw = NULL;
     if (g_file_get_contents(user_css_path, &user_raw, NULL, NULL)) {
-      char *scoped_user_css = scope_css_selectors(user_raw, theme_class);
-
-      state->user_css_provider = gtk_css_provider_new();
-      gtk_css_provider_load_from_string(state->user_css_provider,
-                                        scoped_user_css);
-
-      gtk_style_context_add_provider_for_display(
-          display, GTK_STYLE_PROVIDER(state->user_css_provider),
-          GTK_STYLE_PROVIDER_PRIORITY_USER);
+      state->user_css_provider = create_scoped_provider(
+          display, user_raw, theme_class, GTK_STYLE_PROVIDER_PRIORITY_USER);
 
       LOG_C_INFO("UI", "Loaded & scoped user CSS override for [%s]",
                  state->config_path ? state->config_path : "default");
 
-      g_free(scoped_user_css);
       g_free(user_raw);
     }
   }
