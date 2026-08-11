@@ -122,9 +122,9 @@ void apply_dock_item_alignment(DockItem *item) {
  * Callback function triggered whenever the user left-clicks a dock icon.
  *
  * Behavior matrix:
- * 1. If 1 window is open  -> Focus/activate that window.
- * 2. If >1 window is open -> Open a popover menu listing all open windows.
- * 3. If 0 windows open    -> Execute the application launcher command
+ * If 1 window is open  -> Focus/activate that window.
+ * If >1 window is open -> Open a popover menu listing all open windows.
+ * If 0 windows open    -> Execute the application launcher command
  * (`item->exec`).
  */
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
@@ -390,20 +390,20 @@ void free_dock_item(DockItem *item) {
   if (!item)
     return;
 
-  // 1. Cancel dynamic polling timer before deallocating memory
+  // Cancel dynamic polling timer before deallocating memory
   if (item->poll_timer_id > 0) {
     g_source_remove(item->poll_timer_id);
     item->poll_timer_id = 0;
   }
 
-  // 2. Unprotect Scheme procedure thunk
+  // Unprotect Scheme procedure thunk
   if (item->poll_fn != SCM_BOOL_F &&
       scm_is_true(scm_procedure_p(item->poll_fn))) {
     scm_gc_unprotect_object(item->poll_fn);
     item->poll_fn = SCM_BOOL_F;
   }
 
-  // 3. Disconnect button & popover handlers and unparent
+  // Disconnect button & popover handlers and unparent
   if (item->popover && GTK_IS_WIDGET(item->popover)) {
     g_signal_handlers_disconnect_by_data(item->popover, item->state);
     g_signal_handlers_disconnect_by_data(item->popover, item);

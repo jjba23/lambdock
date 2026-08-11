@@ -720,34 +720,34 @@ void update_dock_dimensions(LambdockState *state) {
  * ========================================================================= */
 
 void destroy_dock_instance(LambdockState *state) {
-  // 1. Re-entrancy Guard: Prevent recursive re-entry during GTK signal emission
+  // Re-entrancy Guard: Prevent recursive re-entry during GTK signal emission
   if (!state || state->is_destroying)
     return;
 
   state->is_destroying = TRUE;
 
-  // 2. Unregister from active global state list
+  // Unregister from active global state list
   unregister_dock_state(state);
 
-  // 3. Cancel pending GLib autohide timers immediately
+  // Cancel pending GLib autohide timers immediately
   if (state->hide_timer_id > 0) {
     g_source_remove(state->hide_timer_id);
     state->hide_timer_id = 0;
   }
 
-  // 4. Remove active GTK tick animation callbacks
+  // Remove active GTK tick animation callbacks
   if (state->tick_cb_id > 0 && state->window && GTK_IS_WIDGET(state->window)) {
     gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
     state->tick_cb_id = 0;
   }
 
-  // 5. Disconnect signal handlers from window to prevent "destroy" signal
+  // Disconnect signal handlers from window to prevent "destroy" signal
   // re-entrancy
   if (state->window && GTK_IS_WIDGET(state->window)) {
     g_signal_handlers_disconnect_by_data(state->window, state);
   }
 
-  // 6. Unparent the main background context menu popover
+  // Unparent the main background context menu popover
   if (state->popover) {
     if (GTK_IS_WIDGET(state->popover) &&
         gtk_widget_get_parent(state->popover)) {
@@ -756,7 +756,7 @@ void destroy_dock_instance(LambdockState *state) {
     state->popover = NULL;
   }
 
-  // 7. Clear and free dock items (and their individual polling timers/popovers)
+  // Clear and free dock items (and their individual polling timers/popovers)
   GList *items = state->dock_items;
   state->dock_items = NULL; // Clear pointer first to prevent dangling access
   for (GList *l = items; l != NULL; l = l->next) {
@@ -765,7 +765,7 @@ void destroy_dock_instance(LambdockState *state) {
   }
   g_list_free(items);
 
-  // 8. Clear and free Wayland window trackers
+  // Clear and free Wayland window trackers
   GList *trackers = state->window_trackers;
   state->window_trackers = NULL; // Clear pointer first
   for (GList *l = trackers; l != NULL; l = l->next) {
@@ -773,7 +773,7 @@ void destroy_dock_instance(LambdockState *state) {
   }
   g_list_free(trackers);
 
-  // 9. Destroy the GTK Window widget safely
+  // Destroy the GTK Window widget safely
   if (state->window && GTK_IS_WINDOW(state->window)) {
     GtkWidget *win = state->window;
     state->window = NULL; // Nullify reference prior to GTK destruction
