@@ -73,12 +73,6 @@
 (define *dock-configs*
   (make-hash-table))
 
-(define (get-dock-config key)
-  (hash-ref *dock-configs* key
-            (lambda ()
-              (hash-ref *dock-configs*
-                        'default #f))))
-
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
@@ -108,6 +102,11 @@
                                repl-socket-path
                                hover-animate?)))
     (hash-set! *dock-configs* config-path cfg)
+    ;; Fall back 'default to the first configured dock if 'default is not set yet
+    (when (not (hash-ref *dock-configs*
+                         'default #f))
+      (hash-set! *dock-configs*
+                 'default cfg))
     (log-info "State"
      "Registered configuration for [~a]: ~a items, position: ~a, theme: ~a, repl?: ~a (~a)"
      config-path
@@ -117,6 +116,18 @@
      theme
      enable-repl?
      repl-socket-path)))
+
+(define (get-dock-config key)
+  (or (hash-ref *dock-configs* key #f)
+      (hash-ref *dock-configs*
+                'default #f)
+      ;; Fallback to the first available config in the hashtable
+      (let ((keys (hash-fold (lambda (k v acc)
+                               (cons k acc))
+                             '() *dock-configs*)))
+        (if (pair? keys)
+            (hash-ref *dock-configs*
+                      (car keys) #f) #f))))
 
 ;; =============================================================================
 ;; Getters
