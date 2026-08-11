@@ -25,7 +25,7 @@
             <dock-config>
             dock-config?
 
-            ;; Getters (accept optional config-path argument)
+            ;; Getters
             get-dock-items
             get-dock-position
             get-dock-theme
@@ -36,7 +36,15 @@
             get-dock-enable-repl?
             get-dock-repl-socket-path
             get-dock-show-when-clear?
-            get-dock-hover-animate?))
+            get-dock-hover-animate?
+            ;; High-Level Setters
+            set-dock-position!
+            set-dock-theme!
+            set-dock-icon-size!
+            set-dock-auto-hide!
+            set-dock-show-when-clear!
+            set-dock-monitor!
+            set-dock-hover-animate!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -214,3 +222,35 @@
                                   (car args)))))
     (if cfg
         (dock-config-hover-animate? cfg) #t)))
+
+;; =============================================================================
+;; Setters
+;; =============================================================================
+
+(define (set-dock-position! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-position! cfg val))))
+
+(define (set-dock-theme! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-theme! cfg val))))
+
+(define (set-dock-icon-size! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-icon-size! cfg val))))
+
+(define (set-dock-auto-hide?! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-auto-hide?! cfg val))))
+
+(define (set-dock-show-when-clear?! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-show-when-clear?! cfg val))))
+
+(define (set-dock-monitor! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-monitor! cfg val))))
+
+(define (set-dock-hover-animate?! val . args)
+  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
+    (when cfg (set-dock-config-hover-animate?! cfg val))))
