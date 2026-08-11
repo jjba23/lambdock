@@ -401,7 +401,7 @@ void free_dock_item(DockItem *item) {
     item->poll_fn = SCM_BOOL_F;
   }
 
-  // Safely unparent popover first if it is still attached to the button
+  // Safely unparent popover if attached
   if (item->popover) {
     if (GTK_IS_WIDGET(item->popover) && gtk_widget_get_parent(item->popover)) {
       gtk_widget_unparent(item->popover);

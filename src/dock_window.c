@@ -525,14 +525,14 @@ void free_lambdock_state(LambdockState *state) {
     state->size_group = NULL;
   }
 
-  // --- Safely destroy Wayland proxies & free tracker objects ---
+  // Safely destroy Wayland proxies & free tracker objects
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
     free_window_tracker(l->data);
   }
   g_list_free(state->window_trackers);
   state->window_trackers = NULL;
 
-  // --- Free dock launcher items ---
+  // Free dock launcher items
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
     free_dock_item(item);
@@ -540,7 +540,7 @@ void free_lambdock_state(LambdockState *state) {
   g_list_free(state->dock_items);
   state->dock_items = NULL;
 
-  // --- Free state strings & main struct pointer ---
+  // Free state strings & main struct pointer
   g_free(state->config_path);
   g_free(state->theme);
   g_free(state);
