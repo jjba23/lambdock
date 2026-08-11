@@ -128,4 +128,11 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
  */
 void update_dock_dimensions(LambdockState *state);
 
+/**
+ * unregister_dock_state:
+ * Unlinks an active LambdockState instance from the global state tracker list
+ * in main.c.
+ */
+void unregister_dock_state(LambdockState *state);
+
 #endif // DOCK_WINDOW_H

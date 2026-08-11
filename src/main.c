@@ -44,6 +44,68 @@ static GList *g_active_states = NULL;
  */
 static guint g_reload_timer_id = 0;
 
+/**
+ * unregister_dock_state:
+ * Removes an active LambdockState instance from g_active_states.
+ */
+void unregister_dock_state(LambdockState *state) {
+  g_active_states = g_list_remove(g_active_states, state);
+}
+
+/* =========================================================================
+ * HELPER ROUTINES FOR DIRECTORY DISCOVERY & FILE MATCHING
+ * ========================================================================= */
+
+/**
+ * is_settings_filename:
+ * Returns TRUE if filename is "settings.scm" or matches pattern
+ * "settings-*.scm".
+ */
+static gboolean is_settings_filename(const char *filename) {
+  if (!filename)
+    return FALSE;
+  if (g_strcmp0(filename, "settings.scm") == 0)
+    return TRUE;
+  if (g_str_has_prefix(filename, "settings-") &&
+      g_str_has_suffix(filename, ".scm"))
+    return TRUE;
+  return FALSE;
+}
+
+/**
+ * get_config_dir_c:
+ * Resolves the configuration directory (~/.config/lambdock).
+ */
+static char *get_config_dir_c(void) {
+  const char *config_dir = g_get_user_config_dir();
+  return g_build_filename(config_dir, "lambdock", NULL);
+}
+
+/**
+ * scan_settings_files:
+ * Scans ~/.config/lambdock/ for all matching settings files (settings.scm or
+ * settings-*.scm). Returns a GList of heap-allocated absolute file path
+ * strings.
+ */
+static GList *scan_settings_files(void) {
+  char *config_dir = get_config_dir_c();
+  GList *file_list = NULL;
+
+  GDir *dir = g_dir_open(config_dir, 0, NULL);
+  if (dir) {
+    const char *filename;
+    while ((filename = g_dir_read_name(dir)) != NULL) {
+      if (is_settings_filename(filename)) {
+        char *full_path = g_build_filename(config_dir, filename, NULL);
+        file_list = g_list_append(file_list, full_path);
+      }
+    }
+    g_dir_close(dir);
+  }
+  g_free(config_dir);
+  return file_list;
+}
+
 /* =========================================================================
  * GUILE SCHEME <-> C BRIDGE & HOT-RELOAD LOGIC
  * ========================================================================= */
@@ -95,28 +157,138 @@ static gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
 }
 
 /**
- * on_manual_reload_idle:
- * GTK Idle callback function executed on the main UI thread.
- * * WHY IS THIS NEEDED?
- * In GTK applications, UI updates MUST happen on the main event thread. If an
- * event comes from another thread (like Guile or a background process), we
- * schedule it on the main thread loop using `g_idle_add()`.
- *
- * @param user_data Unused pointer passed from GLib event loop.
- * @return G_SOURCE_REMOVE (false) to automatically unregister this idle handler
- * after 1 run.
+ * forward declaration of create_dock_instance.
  */
-static gboolean on_manual_reload_idle(gpointer user_data) {
-  (void)user_data; // Silence compiler warning regarding unused parameters
-  LOG_C_INFO("Main", "Triggering manual UI reload...");
+static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
+                                 const char *config_path);
 
-  // Iterate over every active dock window instance in our global list
-  for (GList *l = g_active_states; l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
-    reload_dock_instance(state); // Re-creates widgets according to new settings
+/**
+ * sync_docks_with_disk:
+ * Reconciles active dock windows with the current state of settings files on
+ * disk.
+ * - Handles creation of new dock instances when settings-*.scm files are added.
+ * - Handles destruction of dock instances when settings-*.scm files are
+ * deleted.
+ * - Spawns default fallback dock if and only if NO settings files exist on
+ * disk.
+ */
+static void sync_docks_with_disk(GtkApplication *app) {
+  GList *disk_files = scan_settings_files();
+
+  if (disk_files != NULL) {
+    // Step 1: Destroy fallback dock if active (fallback dock has
+    // state->config_path == NULL)
+    GList *curr = g_active_states;
+    while (curr != NULL) {
+      GList *next = curr->next;
+      LambdockState *state = (LambdockState *)curr->data;
+      if (state->config_path == NULL) {
+        LOG_C_INFO("Main",
+                   "Settings file(s) detected. Destroying fallback dock...");
+        gtk_window_destroy(GTK_WINDOW(state->window));
+      }
+      curr = next;
+    }
+
+    // Step 2: Destroy docks whose config files were deleted from disk
+    curr = g_active_states;
+    while (curr != NULL) {
+      GList *next = curr->next;
+      LambdockState *state = (LambdockState *)curr->data;
+      if (state->config_path != NULL) {
+        gboolean found = FALSE;
+        for (GList *df = disk_files; df != NULL; df = df->next) {
+          if (g_strcmp0((const char *)df->data, state->config_path) == 0) {
+            found = TRUE;
+            break;
+          }
+        }
+        if (!found) {
+          LOG_C_INFO("Main",
+                     "Config file deleted: %s. Destroying dock instance...",
+                     state->config_path);
+          gtk_window_destroy(GTK_WINDOW(state->window));
+        }
+      }
+      curr = next;
+    }
+
+    // Step 3: Spawn new docks or reload existing docks
+    for (GList *df = disk_files; df != NULL; df = df->next) {
+      const char *file_path = (const char *)df->data;
+      gboolean active = FALSE;
+
+      for (GList *l = g_active_states; l != NULL; l = l->next) {
+        LambdockState *state = (LambdockState *)l->data;
+        if (state->config_path &&
+            g_strcmp0(state->config_path, file_path) == 0) {
+          active = TRUE;
+          reload_dock_instance(state);
+        }
+      }
+
+      if (!active) {
+        LOG_C_INFO("Main",
+                   "New config file detected: %s. Spawning dock instance...",
+                   file_path);
+        load_dock_config_scm(file_path);
+
+        SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+        if (scm_is_true(start_repl_fn)) {
+          scm_call_1(start_repl_fn, scm_from_utf8_string(file_path));
+        }
+
+        char *monitor_target = get_monitor_config_for(file_path);
+        GdkDisplay *display = gdk_display_get_default();
+        GListModel *monitors = gdk_display_get_monitors(display);
+        guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
+
+        if (g_strcmp0(monitor_target, "all") == 0 && monitors) {
+          for (guint i = 0; i < n_monitors; i++) {
+            GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+            create_dock_instance(app, mon, file_path);
+            g_object_unref(mon);
+          }
+        } else {
+          create_dock_instance(app, NULL, file_path);
+        }
+        g_free(monitor_target);
+      }
+    }
+  } else {
+    // Step 4: No settings files exist on disk at all. Destroy file-backed
+    // docks.
+    GList *curr = g_active_states;
+    while (curr != NULL) {
+      GList *next = curr->next;
+      LambdockState *state = (LambdockState *)curr->data;
+      if (state->config_path != NULL) {
+        gtk_window_destroy(GTK_WINDOW(state->window));
+      }
+      curr = next;
+    }
+
+    // Spawn default fallback dock if no active docks remain
+    if (g_active_states == NULL) {
+      LOG_C_INFO("Main",
+                 "No settings files found. Spawning default fallback dock...");
+      reload_guile_config();
+      create_dock_instance(app, NULL, NULL);
+    }
   }
 
-  return G_SOURCE_REMOVE; // Don't repeat this function
+  g_list_free_full(disk_files, g_free);
+}
+
+/**
+ * on_manual_reload_idle:
+ * GTK Idle callback function executed on the main UI thread.
+ */
+static gboolean on_manual_reload_idle(gpointer user_data) {
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  LOG_C_INFO("Main", "Triggering manual UI sync...");
+  sync_docks_with_disk(app);
+  return G_SOURCE_REMOVE;
 }
 
 /**
@@ -130,9 +302,6 @@ static void trigger_dock_reload(void) {
 /**
  * scm_reload_dock:
  * C implementation of the `(reload-dock!)` Scheme function.
- * * `SCM` is the primitive C type used by GNU Guile to represent any Scheme
- * value (strings, numbers, functions, symbols, booleans).
- * * @return SCM_UNSPECIFIED equivalent to Scheme's `#<unspecified>`.
  */
 static SCM scm_reload_dock(void) {
   trigger_dock_reload();
@@ -142,115 +311,63 @@ static SCM scm_reload_dock(void) {
 /**
  * setup_guile_primitives:
  * Exposes C functions to the Guile Scheme runtime engine.
- * This allows Scheme scripts to call C functions directly!
  */
 static void setup_guile_primitives(void) {
-  // Enter the Scheme module domain "(lambdock core)"
   scm_c_use_module("lambdock core");
-
-  // Register `scm_reload_dock` as the Scheme function `reload-dock!`
-  // Arguments: Name, req_args, opt_args, rst_args, function_pointer
   scm_c_define_gsubr("reload-dock!", 0, 0, 0,
                      (scm_t_subr)(intptr_t)scm_reload_dock);
-
-  // Make `reload-dock!` available publicly to other Scheme files
   scm_c_export("reload-dock!", NULL);
 }
 
 /**
  * on_config_reload_timeout:
- * Callback executed after config file writes cease.
- * When saving a file in text editors (Emacs, Vim, VS Code), multiple file write
- * events trigger in milliseconds. Debouncing waits until editing stops before
- * reloading.
+ * Debounced callback executed after file changes cease in ~/.config/lambdock.
  */
 static gboolean on_config_reload_timeout(gpointer user_data) {
-  (void)user_data;
-
-  // Re-evaluate Scheme environment (re-reads settings.scm)
-  reload_guile_config();
-
-  // Refresh UI widgets across all active dock instances
-  for (GList *l = g_active_states; l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
-    reload_dock_instance(state);
-  }
-
-  g_reload_timer_id = 0;  // Reset timer ID back to 0
-  return G_SOURCE_REMOVE; // Remove timer source from GLib loop
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  sync_docks_with_disk(app);
+  g_reload_timer_id = 0;
+  return G_SOURCE_REMOVE;
 }
 
 /**
  * on_file_changed_cb:
- * Event handler triggered automatically by OS file-system monitors whenever
- * `settings.scm` or `styles.css` are modified, created, or saved.
+ * Event handler triggered whenever files/directories in ~/.config/lambdock are
+ * modified, created, or deleted.
  */
 static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
                                GFile *other_file, GFileMonitorEvent event_type,
                                gpointer user_data) {
-  // Silence unused variable warnings
   (void)monitor;
   (void)file;
   (void)other_file;
-  (void)user_data;
+  (void)event_type;
 
-  // Check if event corresponds to file edit/write events
-  if (event_type == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT ||
-      event_type == G_FILE_MONITOR_EVENT_CHANGED ||
-      event_type == G_FILE_MONITOR_EVENT_CREATED) {
-
-    // If a timer was already pending, cancel it (user is still typing/saving)
-    if (g_reload_timer_id > 0) {
-      g_source_remove(g_reload_timer_id);
-    }
-
-    // Schedule timeout callback to run after silence interval
-    g_reload_timer_id = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
-                                      on_config_reload_timeout, NULL);
+  if (g_reload_timer_id > 0) {
+    g_source_remove(g_reload_timer_id);
   }
+
+  g_reload_timer_id = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
+                                    on_config_reload_timeout, user_data);
 }
 
 /**
  * setup_config_file_monitors:
- * Sets up background OS watchers (`GFileMonitor`) on the user's configuration
- * files:
- * 1. Scheme Settings File (`settings.scm`)
- * 2. User Styling File (`~/.config/lambdock/styles.css`)
+ * Sets up directory-level watcher (`GFileMonitor`) on ~/.config/lambdock/
+ * to detect addition, deletion, and modification of configuration files.
  */
-static void setup_config_file_monitors(void) {
-  // --- Watch settings.scm ---
-  char *config_path = get_config_path_c();
-  if (config_path) {
-    GFile *scheme_file = g_file_new_for_path(config_path);
-    GFileMonitor *scheme_mon =
-        g_file_monitor_file(scheme_file, G_FILE_MONITOR_NONE, NULL, NULL);
+static void setup_config_file_monitors(GtkApplication *app) {
+  char *config_dir = get_config_dir_c();
+  GFile *dir_file = g_file_new_for_path(config_dir);
+  GFileMonitor *dir_mon =
+      g_file_monitor_directory(dir_file, G_FILE_MONITOR_NONE, NULL, NULL);
 
-    if (scheme_mon) {
-      // Connect file change signal to our handler
-      g_signal_connect(scheme_mon, "changed", G_CALLBACK(on_file_changed_cb),
-                       NULL);
-      LOG_C_INFO("Main", "Watching Scheme config for live hot-reload: %s",
-                 config_path);
-    }
-    g_object_unref(scheme_file); // Clean up GFile reference
-    g_free(config_path);         // Free allocated path string memory
+  if (dir_mon) {
+    g_signal_connect(dir_mon, "changed", G_CALLBACK(on_file_changed_cb), app);
+    LOG_C_INFO("Main", "Watching directory for config changes: %s", config_dir);
   }
-
-  // --- Watch styles.css ---
-  const char *config_dir = g_get_user_config_dir();
-  char *user_css_path =
-      g_build_filename(config_dir, "lambdock", "styles.css", NULL);
-  GFile *css_file = g_file_new_for_path(user_css_path);
-  GFileMonitor *css_mon =
-      g_file_monitor_file(css_file, G_FILE_MONITOR_NONE, NULL, NULL);
-
-  if (css_mon) {
-    g_signal_connect(css_mon, "changed", G_CALLBACK(on_file_changed_cb), NULL);
-    LOG_C_INFO("Main", "Watching user CSS for live hot-reload: %s",
-               user_css_path);
-  }
-  g_object_unref(css_file);
-  g_free(user_css_path);
+  g_object_unref(dir_file);
+  g_free(config_dir);
 }
 
 /* =========================================================================
@@ -267,61 +384,45 @@ static void setup_config_file_monitors(void) {
  */
 static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                                  const char *config_path) {
-  // Allocate zero-initialized memory for this dock instance's state context
   LambdockState *state = g_new0(LambdockState, 1);
   state->monitor = monitor;
-  state->config_path =
-      config_path ? g_strdup(config_path) : get_config_path_c();
+  state->config_path = config_path ? g_strdup(config_path) : NULL;
 
-  // Load global/theme styling configurations
   state->theme = get_theme_config_for(state->config_path);
   load_custom_css(state);
 
-  // Retrieve dock position preference (Top, Bottom, Left, Right)
   state->edge = get_position_config_for(state->config_path);
 
-  // Determine layout orientation based on screen edge attachment
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
                         state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  // Create the underlying top-level application window
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
-  // Load remaining user preferences into the state struct
   state->auto_hide = get_autohide_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
 
-  // Main Overlay Container
-  // Allows layering the icon box directly over the styled background capsule
   GtkWidget *overlay = gtk_overlay_new();
-  gtk_widget_set_overflow(overlay,
-                          GTK_OVERFLOW_VISIBLE); // Prevent icon zoom clipping
+  gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
   gtk_window_set_child(GTK_WINDOW(window), overlay);
   state->overlay = overlay;
 
-  // Serves as the rendered background shape for the dock
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
   state->bg_capsule = bg_capsule;
 
-  // Container holding individual application launcher items
   GtkWidget *box = gtk_box_new(state->orientation, DOCK_BOX_SPACING_PX);
-  gtk_widget_set_overflow(
-      box, GTK_OVERFLOW_VISIBLE); // Allow hover animations to bleed out
+  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   state->box = box;
 
-  // Wrap dock item box inside a GtkScrolledWindow to support scrolling
   GtkWidget *scrolled_window = gtk_scrolled_window_new();
   state->scrolled_window = scrolled_window;
   gtk_widget_set_overflow(scrolled_window, GTK_OVERFLOW_VISIBLE);
 
-  // Propagate natural size so the dock expands to fit content without
-  // collapsing
   gtk_scrolled_window_set_propagate_natural_width(
       GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
   gtk_scrolled_window_set_propagate_natural_height(
@@ -329,8 +430,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), box);
 
-  // Set scrollbar policy (GTK_POLICY_EXTERNAL allows wheel scroll while hiding
-  // scrollbars)
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
                                    GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
@@ -339,18 +438,13 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                                    GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
   }
 
-  // Attach scroll event controller for mouse wheel interaction
   GtkEventController *scroll_ctrl =
       gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
   g_signal_connect(scroll_ctrl, "scroll", G_CALLBACK(on_dock_scroll), state);
   gtk_widget_add_controller(scrolled_window, scroll_ctrl);
 
-  // Update dynamic sizing, margins, and alignments based on state settings
   update_dock_dimensions(state);
 
-  // Ensure the background capsule stretches to match the main-axis dimension
-  // of the icon viewport container (e.g., width for HORIZONTAL, height for
-  // VERTICAL)
   GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
@@ -358,36 +452,28 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   gtk_size_group_add_widget(state->size_group, bg_capsule);
   gtk_size_group_add_widget(state->size_group, scrolled_window);
 
-  // Layer sequence: bg_capsule sits at the bottom, scrolled_window sits
-  // directly on top
   gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
   gtk_overlay_add_overlay(GTK_OVERLAY(overlay), scrolled_window);
 
-  // Guarantee overflow visibility remains intact after overlay binding
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
 
-  // Populate the dock box with items for state->config_path
   populate_dock_items_for(state);
 
-  // Build declarative menu model
   GMenu *menu_model = g_menu_new();
   g_menu_append(menu_model, "About Lambdock", "app.about");
   g_menu_append(menu_model, "Quit", "app.quit");
 
-  // Construct context popover menu from model
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model); // Popover keeps its own internal reference
+  g_object_unref(menu_model);
 
   gtk_widget_set_parent(popover, window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
   state->popover = popover;
 
-  // Clean up or state updates when popover closes
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
 
-  // Attach Secondary (Right) Click Gesture Controller to the top-level window
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
@@ -395,96 +481,18 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                    state);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  // Apply Wayland Layer Shell surface constraints (anchors, exclusive zones)
   setup_layer_shell_window(state);
-
-  // Set up mouse motion trackings (detect enter/leave for autohide/zoom)
   setup_dock_motion_controller(state);
 
-  // Register this dock state instance into global active instances tracking
   g_active_states = g_list_append(g_active_states, state);
 
-  // Bind memory cleanup to window destruction
   g_signal_connect_swapped(window, "destroy", G_CALLBACK(free_lambdock_state),
                            state);
 
-  // Display the window on screen
   gtk_window_present(GTK_WINDOW(window));
 
-  // Initialize active window tracking and set initial autohide state
   init_toplevel_tracker(state);
   schedule_initial_autohide(state);
-}
-
-/**
- * load_additional_dock_configs:
- * Scans configuration directory for any `settings-*.scm` files beside
- * `settings.scm`, evaluates each file in GNU Guile, spawns additional dock
- * instances, and sets up file watchers.
- */
-static void load_additional_dock_configs(GtkApplication *app) {
-  char *config_path = get_config_path_c();
-  if (!config_path)
-    return;
-
-  char *config_dir = g_path_get_dirname(config_path);
-  g_free(config_path);
-
-  GDir *dir = g_dir_open(config_dir, 0, NULL);
-  if (dir) {
-    const char *filename;
-    while ((filename = g_dir_read_name(dir)) != NULL) {
-      if (g_str_has_prefix(filename, "settings-") &&
-          g_str_has_suffix(filename, ".scm")) {
-        char *full_path = g_build_filename(config_dir, filename, NULL);
-        LOG_C_INFO("Main", "Loading additional dock configuration from: %s",
-                   full_path);
-
-        // Load Scheme configuration record for this file path
-        load_dock_config_scm(full_path);
-
-        // Start REPL for this dock file if enabled (with unique socket path)
-        SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
-        if (scm_is_true(start_repl_fn)) {
-          scm_call_1(start_repl_fn, scm_from_utf8_string(full_path));
-        }
-
-        char *monitor_target = get_monitor_config_for(full_path);
-        GdkDisplay *display = gdk_display_get_default();
-        GListModel *monitors = gdk_display_get_monitors(display);
-        guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
-
-        if (g_strcmp0(monitor_target, "all") == 0 && monitors) {
-          for (guint i = 0; i < n_monitors; i++) {
-            GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-            create_dock_instance(app, mon, full_path);
-            g_object_unref(mon);
-          }
-        } else {
-          create_dock_instance(app, NULL, full_path);
-        }
-        g_free(monitor_target);
-
-        // Register GFileMonitor for hot-reloading on this file
-        GFile *extra_file = g_file_new_for_path(full_path);
-        GFileMonitor *extra_mon =
-            g_file_monitor_file(extra_file, G_FILE_MONITOR_NONE, NULL, NULL);
-        if (extra_mon) {
-          g_signal_connect(extra_mon, "changed", G_CALLBACK(on_file_changed_cb),
-                           NULL);
-          LOG_C_INFO(
-              "Main",
-              "Watching additional Scheme config for live hot-reload: %s",
-              full_path);
-        }
-        g_object_unref(extra_file);
-
-        g_free(full_path);
-      }
-    }
-    g_dir_close(dir);
-  }
-  g_free(config_dir);
 }
 
 /**
@@ -503,16 +511,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
   // Register custom C primitives into Scheme
   setup_guile_primitives();
 
-  // Call Scheme initialization entry point `(init-dock!)`
-  SCM init_fn = scm_c_public_ref("lambdock core", "init-dock!");
-  scm_call_0(init_fn);
-
-  // Start live REPL (Read-Eval-Print-Loop) if enabled in settings
-  SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
-  if (scm_is_true(start_repl_fn)) {
-    scm_call_0(start_repl_fn);
-  }
-
   // Initialize GTK desktop icon resolver
   setup_icon_theme();
 
@@ -525,35 +523,13 @@ static void activate(GtkApplication *app, gpointer user_data) {
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
 
-  // --- Multi-Monitor Resolution & Window Spawning ---
-  char *primary_config_path = get_config_path_c();
-  char *monitor_target = get_monitor_config_for(
-      primary_config_path); // Read 'all or specific display name
-  GdkDisplay *display = gdk_display_get_default();
-  GListModel *monitors = gdk_display_get_monitors(display);
-  guint n_monitors = g_list_model_get_n_items(monitors);
+  // Reconcile disk state to spawn docks for all matching settings*.scm files,
+  // or fallback if none
+  sync_docks_with_disk(app);
 
-  if (g_strcmp0(monitor_target, "all") == 0) {
-    // If setting is 'all, spawn a dock window on every connected monitor
-    for (guint i = 0; i < n_monitors; i++) {
-      GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-      create_dock_instance(app, mon, primary_config_path);
-      g_object_unref(mon); // Drop local reference owner
-    }
-  } else {
-    // Single-monitor configuration default
-    create_dock_instance(app, NULL, primary_config_path);
-  }
-
-  g_free(primary_config_path);
-  g_free(monitor_target);
-
-  // Load any additional settings-*.scm files beside settings.scm and spawn
-  // extra docks
-  load_additional_dock_configs(app);
-
-  // Initialize live file monitoring for dynamic hot-reloading
-  setup_config_file_monitors();
+  // Initialize live directory monitoring for dynamic hot-reloading
+  // (add/delete/modify)
+  setup_config_file_monitors(app);
 }
 
 /* =========================================================================

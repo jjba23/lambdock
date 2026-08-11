@@ -517,6 +517,8 @@ void free_lambdock_state(LambdockState *state) {
   if (!state)
     return;
 
+  unregister_dock_state(state);
+
   if (state->size_group) {
     g_object_unref(state->size_group);
     state->size_group = NULL;

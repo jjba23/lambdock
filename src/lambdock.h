@@ -134,7 +134,7 @@ struct LambdockState {
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;
-  char *config_path; /* Path to specific settings file for this dock instance */
+  char *config_path; /* Absolute path to settings file for this dock instance */
 
   GdkMonitor *monitor; /* NULL for default compositor placement */
 
