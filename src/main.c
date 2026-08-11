@@ -165,10 +165,10 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 /**
  * sync_docks_with_disk:
  * Reconciles active dock windows with the current state of settings files on
- * disk.
+ * disk and active monitor outputs.
  * - Handles creation of new dock instances when settings-*.scm files are added.
- * - Handles destruction of dock instances when settings-*.scm files are
- * deleted.
+ * - Handles destruction of dock instances when settings-*.scm files are deleted
+ * or when monitors are removed.
  * - Spawns default fallback dock if and only if NO settings files exist on
  * disk.
  */
@@ -219,44 +219,102 @@ static void sync_docks_with_disk(GtkApplication *app) {
     // Spawn new docks or reload existing docks
     for (GList *df = disk_files; df != NULL; df = df->next) {
       const char *file_path = (const char *)df->data;
-      gboolean active = FALSE;
+      load_dock_config_scm(file_path);
 
-      for (GList *l = g_active_states; l != NULL; l = l->next) {
-        LambdockState *state = (LambdockState *)l->data;
-        if (state->config_path &&
-            g_strcmp0(state->config_path, file_path) == 0) {
-          active = TRUE;
-          reload_dock_instance(state);
-        }
+      SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+      if (scm_is_true(start_repl_fn)) {
+        scm_call_1(start_repl_fn, scm_from_utf8_string(file_path));
       }
 
-      if (!active) {
-        LOG_C_INFO("Main",
-                   "New config file detected: %s. Spawning dock instance...",
-                   file_path);
-        load_dock_config_scm(file_path);
+      char *monitor_target = get_monitor_config_for(file_path);
+      GdkDisplay *display = gdk_display_get_default();
+      GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
+      guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
 
-        SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
-        if (scm_is_true(start_repl_fn)) {
-          scm_call_1(start_repl_fn, scm_from_utf8_string(file_path));
+      if (g_strcmp0(monitor_target, "all") == 0 && monitors && n_monitors > 0) {
+        // 1. Destroy docks for this config path whose monitor was
+        // unplugged/invalidated
+        to_destroy = NULL;
+        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
+          LambdockState *state = (LambdockState *)curr->data;
+          if (state->config_path &&
+              g_strcmp0(state->config_path, file_path) == 0) {
+            if (!state->monitor || !is_monitor_valid(state->monitor)) {
+              to_destroy = g_list_append(to_destroy, state);
+            }
+          }
+        }
+        for (GList *l = to_destroy; l != NULL; l = l->next) {
+          LambdockState *state = (LambdockState *)l->data;
+          LOG_C_INFO("Main",
+                     "Monitor removed for dock instance [%s]. Destroying...",
+                     file_path);
+          destroy_dock_instance(state);
+        }
+        g_list_free(to_destroy);
+
+        // 2. Ensure each active monitor has a dock instance
+        for (guint i = 0; i < n_monitors; i++) {
+          GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+          gboolean active = FALSE;
+
+          for (GList *l = g_active_states; l != NULL; l = l->next) {
+            LambdockState *state = (LambdockState *)l->data;
+            if (state->config_path &&
+                g_strcmp0(state->config_path, file_path) == 0 &&
+                state->monitor == mon) {
+              active = TRUE;
+              reload_dock_instance(state);
+              break;
+            }
+          }
+
+          if (!active) {
+            LOG_C_INFO("Main",
+                       "New monitor detected. Spawning dock instance for "
+                       "monitor %u (%s)...",
+                       i, file_path);
+            create_dock_instance(app, mon, file_path);
+          }
+          g_object_unref(mon);
+        }
+      } else {
+        // Destroy monitor-specific docks if target is no longer "all"
+        to_destroy = NULL;
+        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
+          LambdockState *state = (LambdockState *)curr->data;
+          if (state->config_path &&
+              g_strcmp0(state->config_path, file_path) == 0) {
+            if (state->monitor != NULL) {
+              to_destroy = g_list_append(to_destroy, state);
+            }
+          }
+        }
+        for (GList *l = to_destroy; l != NULL; l = l->next) {
+          destroy_dock_instance((LambdockState *)l->data);
+        }
+        g_list_free(to_destroy);
+
+        // Single default dock instance
+        gboolean active = FALSE;
+        for (GList *l = g_active_states; l != NULL; l = l->next) {
+          LambdockState *state = (LambdockState *)l->data;
+          if (state->config_path &&
+              g_strcmp0(state->config_path, file_path) == 0 &&
+              state->monitor == NULL) {
+            active = TRUE;
+            reload_dock_instance(state);
+            break;
+          }
         }
 
-        char *monitor_target = get_monitor_config_for(file_path);
-        GdkDisplay *display = gdk_display_get_default();
-        GListModel *monitors = gdk_display_get_monitors(display);
-        guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
-
-        if (g_strcmp0(monitor_target, "all") == 0 && monitors) {
-          for (guint i = 0; i < n_monitors; i++) {
-            GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-            create_dock_instance(app, mon, file_path);
-            g_object_unref(mon);
-          }
-        } else {
+        if (!active) {
+          LOG_C_INFO("Main", "Spawning single dock instance (%s)...",
+                     file_path);
           create_dock_instance(app, NULL, file_path);
         }
-        g_free(monitor_target);
       }
+      g_free(monitor_target);
     }
   } else {
     // No settings files exist on disk: destroy all file-backed docks
@@ -374,6 +432,45 @@ static void setup_config_file_monitors(GtkApplication *app) {
 }
 
 /* =========================================================================
+ * MONITOR HOTPLUG LISTENER SETUP
+ * ========================================================================= */
+
+/**
+ * on_monitors_changed_cb:
+ * Triggered whenever the Wayland compositor adds or removes display monitor
+ * outputs.
+ */
+static void on_monitors_changed_cb(GListModel *monitors, guint position,
+                                   guint removed, guint added,
+                                   gpointer user_data) {
+  (void)monitors;
+  (void)position;
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  LOG_C_INFO(
+      "Main",
+      "Display monitors changed (removed: %u, added: %u). Reconciling docks...",
+      removed, added);
+  sync_docks_with_disk(app);
+}
+
+/**
+ * setup_monitor_listeners:
+ * Hooks into GdkDisplay monitor model signals to detect monitor hotplug events.
+ */
+static void setup_monitor_listeners(GtkApplication *app) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (display) {
+    GListModel *monitors = gdk_display_get_monitors(display);
+    if (monitors) {
+      g_signal_connect(monitors, "items-changed",
+                       G_CALLBACK(on_monitors_changed_cb), app);
+      LOG_C_INFO("Main",
+                 "Registered listener for display monitor hotplug events.");
+    }
+  }
+}
+
+/* =========================================================================
  * GTK APPLICATION ACTIVATION (UI CONSTRUCTION & SETUP)
  * ========================================================================= */
 
@@ -381,14 +478,14 @@ static void setup_config_file_monitors(GtkApplication *app) {
  * create_dock_instance:
  * Constructs and displays a single dock window on a specific monitor output for
  * a config_path.
- * * @param app Pointer to active GtkApplication instance.
+ * @param app Pointer to active GtkApplication instance.
  * @param monitor GdkMonitor target (or NULL for default monitor).
  * @param config_path Absolute path to the settings file for this dock instance.
  */
 static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                                  const char *config_path) {
   LambdockState *state = g_new0(LambdockState, 1);
-  state->monitor = monitor;
+  state->monitor = monitor ? g_object_ref(monitor) : NULL;
   state->config_path = config_path ? g_strdup(config_path) : NULL;
 
   state->theme = get_theme_config_for(state->config_path);
@@ -533,6 +630,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
   // Initialize live directory monitoring for dynamic hot-reloading
   // (add/delete/modify)
   setup_config_file_monitors(app);
+
+  // Attach display monitor hotplug listener
+  setup_monitor_listeners(app);
 }
 
 /* =========================================================================

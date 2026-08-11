@@ -581,33 +581,61 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_window_present(GTK_WINDOW(about));
 }
 
+/* =========================================================================
+ * MONITOR VALIDATION & DIMENSION UPDATES
+ * ========================================================================= */
+
+gboolean is_monitor_valid(GdkMonitor *mon) {
+  if (!mon)
+    return FALSE;
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return FALSE;
+  GListModel *monitors = gdk_display_get_monitors(display);
+  if (!monitors)
+    return FALSE;
+  guint n = g_list_model_get_n_items(monitors);
+  for (guint i = 0; i < n; i++) {
+    gpointer item = g_list_model_get_item(monitors, i);
+    gboolean match = (item == mon);
+    if (item)
+      g_object_unref(item);
+    if (match)
+      return TRUE;
+  }
+  return FALSE;
+}
+
 void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX; // Capsule thickness
-  int max_cross_dim = (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) +
-                      CROSS_DIM_PADDING_PX; // Window headroom for magnification
+  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX;
+  int max_cross_dim =
+      (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
 
-  // Query active monitor geometry to cap maximum dock viewport content
-  // dimensions
   GdkMonitor *mon = state->monitor;
-  if (!mon) {
-    GdkDisplay *display = gdk_display_get_default();
+  GdkDisplay *display = gdk_display_get_default();
+
+  // Safely verify if stored monitor is still valid; if not, fall back to
+  // default
+  if (!mon || !is_monitor_valid(mon)) {
+    mon = NULL;
     if (display) {
       GListModel *monitors = gdk_display_get_monitors(display);
       if (monitors && g_list_model_get_n_items(monitors) > 0) {
         gpointer item = g_list_model_get_item(monitors, 0);
         if (item) {
-          mon = GDK_MONITOR(item);
-          g_object_unref(item);
+          mon = GDK_MONITOR(item); // Keep item ref until done
         }
       }
     }
+  } else {
+    g_object_ref(mon);
   }
 
-  int mon_width = 1920;  // Default fallback dimension
-  int mon_height = 1080; // Default fallback dimension
+  int mon_width = 1920;
+  int mon_height = 1080;
   if (mon) {
     GdkRectangle geom;
     gdk_monitor_get_geometry(mon, &geom);
@@ -615,10 +643,9 @@ void update_dock_dimensions(LambdockState *state) {
       mon_width = geom.width;
     if (geom.height > 0)
       mon_height = geom.height;
+    g_object_unref(mon); // Clean up reference ONLY after reading geometry
   }
 
-  // Set maximum viewport dimension inside screen bounds (leaving 32px screen
-  // edge margin)
   int max_main_dim_h = mon_width - 32;
   int max_main_dim_v = mon_height - 32;
   if (max_main_dim_h < 100)
@@ -649,7 +676,6 @@ void update_dock_dimensions(LambdockState *state) {
     }
   }
 
-  // Main-axis capsule ends padding
   int padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
@@ -777,6 +803,11 @@ void destroy_dock_instance(LambdockState *state) {
   if (state->size_group) {
     g_object_unref(state->size_group);
     state->size_group = NULL;
+  }
+
+  if (state->monitor) {
+    g_object_unref(state->monitor);
+    state->monitor = NULL;
   }
 
   g_free(state->config_path);

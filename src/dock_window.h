@@ -135,4 +135,11 @@ void unregister_dock_state(LambdockState *state);
  */
 void destroy_dock_instance(LambdockState *state);
 
+/**
+ * is_monitor_valid:
+ * Checks if a given GdkMonitor pointer is currently present in the display's
+ * active monitor list.
+ */
+gboolean is_monitor_valid(GdkMonitor *mon);
+
 #endif // DOCK_WINDOW_H
