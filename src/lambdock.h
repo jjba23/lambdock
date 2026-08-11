@@ -154,6 +154,10 @@ struct LambdockState {
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;
   GList *window_trackers;
+
+  /* Per instance CSS providers */
+  GtkCssProvider *base_css_provider;
+  GtkCssProvider *user_css_provider;
 };
 
 #endif // LAMBDOCK_H

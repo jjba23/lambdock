@@ -746,6 +746,27 @@ void destroy_dock_instance(LambdockState *state) {
 
   state->is_destroying = TRUE;
 
+  G_GNUC_BEGIN_IGNORE_DEPRECATIONS
+  /* Clean up CSS providers */
+  if (state->base_css_provider) {
+    if (state->window && GTK_IS_WIDGET(state->window)) {
+      gtk_style_context_remove_provider(
+          gtk_widget_get_style_context(state->window),
+          GTK_STYLE_PROVIDER(state->base_css_provider));
+    }
+    g_clear_object(&state->base_css_provider);
+  }
+
+  if (state->user_css_provider) {
+    if (state->window && GTK_IS_WIDGET(state->window)) {
+      gtk_style_context_remove_provider(
+          gtk_widget_get_style_context(state->window),
+          GTK_STYLE_PROVIDER(state->user_css_provider));
+    }
+    g_clear_object(&state->user_css_provider);
+  }
+  G_GNUC_END_IGNORE_DEPRECATIONS
+
   // Unregister from active global state list
   unregister_dock_state(state);
 

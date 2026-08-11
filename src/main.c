@@ -488,9 +488,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->monitor = monitor ? g_object_ref(monitor) : NULL;
   state->config_path = config_path ? g_strdup(config_path) : NULL;
 
-  state->theme = get_theme_config_for(state->config_path);
-  load_custom_css(state);
-
   state->edge = get_position_config_for(state->config_path);
 
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
@@ -500,6 +497,10 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
+
+  /* Load CSS theme AFTER window context is created */
+  state->theme = get_theme_config_for(state->config_path);
+  load_custom_css(state);
 
   state->auto_hide = get_autohide_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
