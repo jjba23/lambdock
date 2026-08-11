@@ -11,7 +11,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 ** v0.5.0 (TBD)
 - Add dynamic apps and ~poll~ + ~poll_fn~
-- Add multi-config support
+- Add re-usable dynamic apps and  widget presets for RAM, CPU, TEMP, etc
+- Add multi-config support with hot-reload
+- Add dock scrolling when overflow occurs
+- Improve stability of the dock and animations are smoother
 
 ---------
 

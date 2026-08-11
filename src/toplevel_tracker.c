@@ -524,3 +524,20 @@ void clear_window_tracker_dock_references(LambdockState *state) {
     }
   }
 }
+
+void free_window_tracker(void *tracker_ptr) {
+  WindowTracker *tracker = (WindowTracker *)tracker_ptr;
+  if (!tracker)
+    return;
+
+  // Crucial: Destroy the Wayland proxy handle so the compositor unbinds
+  // callbacks
+  if (tracker->handle) {
+    zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
+    tracker->handle = NULL;
+  }
+
+  g_free(tracker->title);
+  g_free(tracker->app_id);
+  g_free(tracker);
+}

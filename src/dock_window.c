@@ -18,6 +18,7 @@
 #include "dock_window.h"
 #include "guile_bridge.h"
 #include "logger.h"
+#include "toplevel_tracker.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
@@ -524,18 +525,9 @@ void free_lambdock_state(LambdockState *state) {
     state->size_group = NULL;
   }
 
-  // --- Free Wayland foreign-toplevel window tracker objects ---
+  // --- Safely destroy Wayland proxies & free tracker objects ---
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
-    void *tracker_ptr = l->data;
-    if (tracker_ptr) {
-      // Offset pointers to string struct members (title and app_id)
-      char **title_ptr = (char **)((char *)tracker_ptr + sizeof(void *) * 4);
-      char **app_id_ptr = (char **)((char *)tracker_ptr + sizeof(void *) * 5);
-
-      g_free(*title_ptr);
-      g_free(*app_id_ptr);
-      g_free(tracker_ptr);
-    }
+    free_window_tracker(l->data);
   }
   g_list_free(state->window_trackers);
   state->window_trackers = NULL;

@@ -56,4 +56,13 @@ void sync_window_trackers(LambdockState *state);
 
 void clear_window_tracker_dock_references(LambdockState *state);
 
+/**
+ * free_window_tracker:
+ * @tracker_ptr: Pointer to WindowTracker structure.
+ *
+ * Safely destroys the foreign toplevel Wayland handle proxy and frees
+ * allocated tracker memory.
+ */
+void free_window_tracker(void *tracker_ptr);
+
 #endif // TOPLEVEL_TRACKER_H
