@@ -259,21 +259,26 @@ static void setup_config_file_monitors(void) {
 
 /**
  * create_dock_instance:
- * Constructs and displays a single dock window on a specific monitor output.
+ * Constructs and displays a single dock window on a specific monitor output for
+ * a config_path.
  * * @param app Pointer to active GtkApplication instance.
  * @param monitor GdkMonitor target (or NULL for default monitor).
+ * @param config_path Absolute path to the settings file for this dock instance.
  */
-static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
+static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
+                                 const char *config_path) {
   // Allocate zero-initialized memory for this dock instance's state context
   LambdockState *state = g_new0(LambdockState, 1);
   state->monitor = monitor;
+  state->config_path =
+      config_path ? g_strdup(config_path) : get_config_path_c();
 
   // Load global/theme styling configurations
-  state->theme = get_theme_config();
+  state->theme = get_theme_config_for(state->config_path);
   load_custom_css(state);
 
   // Retrieve dock position preference (Top, Bottom, Left, Right)
-  state->edge = get_position_config();
+  state->edge = get_position_config_for(state->config_path);
 
   // Determine layout orientation based on screen edge attachment
   state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
@@ -286,10 +291,10 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   state->window = window;
 
   // Load remaining user preferences into the state struct
-  state->auto_hide = get_autohide_config();
-  state->show_when_clear = get_show_when_clear_config();
-  state->hover_animate = get_hover_animate_config();
-  state->icon_size = get_icon_size_config();
+  state->auto_hide = get_autohide_config_for(state->config_path);
+  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
+  state->hover_animate = get_hover_animate_config_for(state->config_path);
+  state->icon_size = get_icon_size_config_for(state->config_path);
 
   // Main Overlay Container
   // Allows layering the icon box directly over the styled background capsule
@@ -362,8 +367,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
 
-  // Populate the dock box with items (launchers, running apps, separators)
-  populate_dock_items(state);
+  // Populate the dock box with items for state->config_path
+  populate_dock_items_for(state);
 
   // Build declarative menu model
   GMenu *menu_model = g_menu_new();
@@ -412,6 +417,77 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor) {
 }
 
 /**
+ * load_additional_dock_configs:
+ * Scans configuration directory for any `settings-*.scm` files beside
+ * `settings.scm`, evaluates each file in GNU Guile, spawns additional dock
+ * instances, and sets up file watchers.
+ */
+static void load_additional_dock_configs(GtkApplication *app) {
+  char *config_path = get_config_path_c();
+  if (!config_path)
+    return;
+
+  char *config_dir = g_path_get_dirname(config_path);
+  g_free(config_path);
+
+  GDir *dir = g_dir_open(config_dir, 0, NULL);
+  if (dir) {
+    const char *filename;
+    while ((filename = g_dir_read_name(dir)) != NULL) {
+      if (g_str_has_prefix(filename, "settings-") &&
+          g_str_has_suffix(filename, ".scm")) {
+        char *full_path = g_build_filename(config_dir, filename, NULL);
+        LOG_C_INFO("Main", "Loading additional dock configuration from: %s",
+                   full_path);
+
+        // Load Scheme configuration record for this file path
+        load_dock_config_scm(full_path);
+
+        // Start REPL for this dock file if enabled (with unique socket path)
+        SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+        if (scm_is_true(start_repl_fn)) {
+          scm_call_1(start_repl_fn, scm_from_utf8_string(full_path));
+        }
+
+        char *monitor_target = get_monitor_config_for(full_path);
+        GdkDisplay *display = gdk_display_get_default();
+        GListModel *monitors = gdk_display_get_monitors(display);
+        guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
+
+        if (g_strcmp0(monitor_target, "all") == 0 && monitors) {
+          for (guint i = 0; i < n_monitors; i++) {
+            GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+            create_dock_instance(app, mon, full_path);
+            g_object_unref(mon);
+          }
+        } else {
+          create_dock_instance(app, NULL, full_path);
+        }
+        g_free(monitor_target);
+
+        // Register GFileMonitor for hot-reloading on this file
+        GFile *extra_file = g_file_new_for_path(full_path);
+        GFileMonitor *extra_mon =
+            g_file_monitor_file(extra_file, G_FILE_MONITOR_NONE, NULL, NULL);
+        if (extra_mon) {
+          g_signal_connect(extra_mon, "changed", G_CALLBACK(on_file_changed_cb),
+                           NULL);
+          LOG_C_INFO(
+              "Main",
+              "Watching additional Scheme config for live hot-reload: %s",
+              full_path);
+        }
+        g_object_unref(extra_file);
+
+        g_free(full_path);
+      }
+    }
+    g_dir_close(dir);
+  }
+  g_free(config_dir);
+}
+
+/**
  * activate:
  * Core setup callback triggered when `GtkApplication` starts up.
  */
@@ -450,8 +526,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
 
   // --- Multi-Monitor Resolution & Window Spawning ---
-  char *monitor_target =
-      get_monitor_config(); // Read 'all or specific display name
+  char *primary_config_path = get_config_path_c();
+  char *monitor_target = get_monitor_config_for(
+      primary_config_path); // Read 'all or specific display name
   GdkDisplay *display = gdk_display_get_default();
   GListModel *monitors = gdk_display_get_monitors(display);
   guint n_monitors = g_list_model_get_n_items(monitors);
@@ -460,15 +537,20 @@ static void activate(GtkApplication *app, gpointer user_data) {
     // If setting is 'all, spawn a dock window on every connected monitor
     for (guint i = 0; i < n_monitors; i++) {
       GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-      create_dock_instance(app, mon);
+      create_dock_instance(app, mon, primary_config_path);
       g_object_unref(mon); // Drop local reference owner
     }
   } else {
     // Single-monitor configuration default
-    create_dock_instance(app, NULL);
+    create_dock_instance(app, NULL, primary_config_path);
   }
 
+  g_free(primary_config_path);
   g_free(monitor_target);
+
+  // Load any additional settings-*.scm files beside settings.scm and spawn
+  // extra docks
+  load_additional_dock_configs(app);
 
   // Initialize live file monitoring for dynamic hot-reloading
   setup_config_file_monitors();

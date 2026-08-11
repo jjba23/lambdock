@@ -29,66 +29,45 @@
 void setup_guile_load_path(void);
 
 /**
- * get_autohide_config:
- *
- * Calls Guile Scheme function 'get-dock-auto-hide?' to read user auto-hide
- * preferences.
- *
- * Returns: TRUE if auto-hide is enabled in Scheme configuration; FALSE
- * otherwise.
+ * Path-Aware Configuration Getters:
+ * Inspect Scheme configuration records mapped to specific file paths.
  */
 gboolean get_autohide_config_for(const char *config_path);
-
-/**
- * get_position_config:
- *
- * Calls Guile Scheme function 'get-dock-position' to retrieve screen attachment
- * edge.
- *
- * Returns: GtkLayerShellEdge enum representing screen edge placement.
- */
 GtkLayerShellEdge get_position_config_for(const char *config_path);
-
-/**
- * get_theme_config:
- *
- * Calls Guile Scheme function 'get-dock-theme' to retrieve dock theme.
- *
- * Returns: char* containing the theme name.
- */
 char *get_theme_config_for(const char *config_path);
+char *get_monitor_config_for(const char *config_path);
+gboolean get_repl_config_for(const char *config_path);
+gboolean get_show_when_clear_config_for(const char *config_path);
+gboolean get_hover_animate_config_for(const char *config_path);
+int get_icon_size_config_for(const char *config_path);
 
 /**
- * populate_dock_items:
+ * populate_dock_items_for:
  * @state: Pointer to main LambdockState structure.
  *
- * Evaluates configured dock launchers from embedded Guile Scheme engine and
- * populates dock items into the GTK box container and tracking lists.
+ * Evaluates configured dock launchers from Scheme for state->config_path
+ * and populates dock items into the GTK box container and tracking lists.
  */
-void populate_dock_items(LambdockState *state);
-
-/**
- * get_monitor_config:
- *
- * Reads 'get-dock-monitor' from Scheme.
- * Returns: Heap allocated string ("default", "all", or specific monitor like
- * "DP-1").
- */
-char *get_monitor_config_for(const char *config_path);
+void populate_dock_items_for(LambdockState *state);
 
 /**
  * get_config_path_c:
  *
  * Calls Guile Scheme function 'get-config-path' to resolve XDG config path.
- * Returns: Heap allocated string containing path to settings.scm.
+ * Returns: Heap allocated string containing path to default settings.scm.
  */
 char *get_config_path_c(void);
 
 /**
+ * load_dock_config_scm:
+ * Loads and registers a specific Scheme configuration file.
+ */
+void load_dock_config_scm(const char *file_path);
+
+/**
  * reload_guile_config:
  *
- * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse user settings
- * file.
+ * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse primary settings.
  */
 void reload_guile_config(void);
 
@@ -102,47 +81,5 @@ void reload_guile_config(void);
  * Returns: TRUE if app is in exclusion list; FALSE otherwise.
  */
 gboolean is_app_excluded(const char *app_id);
-
-/**
- * get_repl_config:
- *
- * Calls Guile Scheme function 'get-dock-enable-repl?' to read user REPL
- * preferences.
- *
- * Returns: TRUE if REPL is enabled in Scheme configuration; FALSE otherwise.
- */
-gboolean get_repl_config_for(const char *config_path);
-
-/**
- * get_show_when_clear_config:
- *
- * Calls Guile Scheme function 'get-dock-show-when-clear?' to read user show
- * when clear preference.
- *
- * Returns: TRUE if show when clear is enabled in Scheme configuration; FALSE
- * otherwise.
- */
-gboolean get_show_when_clear_config_for(const char *config_path);
-
-/**
- * get_hover_animate_config:
- *
- * Calls Guile Scheme function 'get-dock-hover-animate?' to read user hover
- * animation preference.
- *
- * Returns: TRUE if hover animation is enabled in Scheme configuration; FALSE
- * otherwise.
- */
-gboolean get_hover_animate_config_for(const char *config_path);
-
-/**
- * get_icon_size_config:
- *
- * Calls Guile Scheme function 'get-dock-icon-size' to read user base icon size
- * configuration.
- *
- * Returns: Integer icon pixel size (default 48).
- */
-int get_icon_size_config_for(const char *config_path);
 
 #endif // GUILE_BRIDGE_H

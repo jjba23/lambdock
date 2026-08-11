@@ -509,7 +509,7 @@ void schedule_initial_autohide(LambdockState *state) {
 /**
  * free_lambdock_state:
  * Destructor for LambdockState structure. Performs deep memory freeing
- * for window tracker lists, dock item lists, and theme strings.
+ * for window tracker lists, dock item lists, theme strings, and config path.
  *
  * @param state Pointer to LambdockState instance.
  */
@@ -547,6 +547,7 @@ void free_lambdock_state(LambdockState *state) {
   state->dock_items = NULL;
 
   // --- Free state strings & main struct pointer ---
+  g_free(state->config_path);
   g_free(state->theme);
   g_free(state);
 }
