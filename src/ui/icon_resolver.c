@@ -19,6 +19,53 @@
 #include "../logger.h"
 
 /* ============================================================================
+ * HELPER FUNCTIONS
+ * ============================================================================
+ */
+
+/**
+ * get_gsettings_icon_theme:
+ *
+ * Fallback helper to query the GNOME GSettings / dconf backend for the desktop
+ * interface icon theme name ('org.gnome.desktop.interface icon-theme').
+ *
+ * Returns: An allocated string containing the theme name, or NULL if
+ * unavailable/empty. caller must free returned string with g_free().
+ */
+static char *get_gsettings_icon_theme(void) {
+  GSettingsSchemaSource *schema_source = g_settings_schema_source_get_default();
+  if (!schema_source) {
+    LOG_C_WARN(
+        "UI",
+        "GSettingsSchemaSource default source is NULL. Cannot read gsettings.");
+    return NULL;
+  }
+
+  GSettingsSchema *schema = g_settings_schema_source_lookup(
+      schema_source, "org.gnome.desktop.interface", TRUE);
+
+  if (!schema) {
+    LOG_C_WARN(
+        "UI",
+        "GSettings schema 'org.gnome.desktop.interface' not found on system.");
+    return NULL;
+  }
+
+  GSettings *settings = g_settings_new("org.gnome.desktop.interface");
+  char *theme_name = g_settings_get_string(settings, "icon-theme");
+
+  g_object_unref(settings);
+  g_settings_schema_unref(schema);
+
+  if (theme_name && *theme_name == '\0') {
+    g_free(theme_name);
+    return NULL;
+  }
+
+  return theme_name;
+}
+
+/* ============================================================================
  * ICON CREATION & RESOLUTION
  * ============================================================================
  */
@@ -31,15 +78,6 @@
  * 32).
  *
  * Attempts to locate and build a GTK image widget for a given icon identifier.
- * Step: Null/Empty string guard -> Fallback
- * Step: Check embedded GLib resource bundles (`resource://`)
- * Step: Check absolute file paths on disk
- * Step: Lookup in active GTK icon theme
- * Step: Search system XDG pixmap folders (`/usr/share/pixmaps/`)
- * Step: Search for a `-symbolic` icon variant in theme
- * Step: Fallback to generic `application-x-executable` icon
- *
- * Returns: A newly created `GtkWidget` pointer containing the GTK image.
  */
 GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
                                  int icon_size) {
@@ -47,30 +85,25 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // Defensive Guard Check for NULL or Empty Icon String
   // --------------------------------------------------------------------------
   if (!icon || *icon == '\0') {
-    // Return NULL so no icon image widget is generated
+    LOG_C_DEBUG("UI", "create_image_for_icon: Passed NULL or empty icon name.");
     return NULL;
   }
 
-  // --------------------------------------------------------------------------
-  // Step: GLib Resource Bundle Check
-  // --------------------------------------------------------------------------
-  // GLib allows embedding static binary assets (like SVG/PNG icons) inside
-  // the executable itself using GResource.
+  LOG_C_DEBUG("UI", "Resolving icon: '%s' (target size: %dpx)", icon,
+              icon_size);
 
-  // Case A: Explicit `resource://` URI scheme prefix
+  // --------------------------------------------------------------------------
+  // Step 1: GLib Resource Bundle Check
+  // --------------------------------------------------------------------------
   if (g_str_has_prefix(icon, "resource://")) {
-    // `icon + 11` skips the 11 characters of "resource://" to pass the raw path
+    LOG_C_DEBUG("UI", "  -> Attempting load from resource scheme: %s", icon);
     GtkWidget *img = gtk_image_new_from_resource(icon + 11);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
-  }
-  // Case B: Internal Lambdock resource path (e.g.
-  // `/org/jointhefreeworld/lambdock/...`)
-  else if (g_str_has_prefix(icon, "/org/jointhefreeworld/lambdock/")) {
-    // Verify the resource actually exists inside the registered bundle before
-    // loading
+  } else if (g_str_has_prefix(icon, "/org/jointhefreeworld/lambdock/")) {
     if (g_resources_get_info(icon, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL, NULL,
                              NULL)) {
+      LOG_C_DEBUG("UI", "  -> Found embedded internal resource: %s", icon);
       GtkWidget *img = gtk_image_new_from_resource(icon);
       gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
       return img;
@@ -78,66 +111,73 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   }
 
   // --------------------------------------------------------------------------
-  // Step: Absolute File Path Check
+  // Step 2: Absolute File Path Check
   // --------------------------------------------------------------------------
-  // If the user specified a full path (e.g., `/usr/share/icons/custom.png`),
-  // check if that file exists on the filesystem.
   if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
+    LOG_C_DEBUG("UI", "  -> Found direct file path on disk: %s", icon);
     GtkWidget *img = gtk_image_new_from_file(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
   // --------------------------------------------------------------------------
-  // Step: Standard Icon Theme Lookup
+  // Step 3: Standard Icon Theme Lookup
   // --------------------------------------------------------------------------
-  // Query the system GTK icon theme engine (e.g. Papirus, Adwaita) for the icon
-  // name.
-  if (gtk_icon_theme_has_icon(theme, icon)) {
+  gboolean has_icon = gtk_icon_theme_has_icon(theme, icon);
+  LOG_C_DEBUG("UI", "  -> gtk_icon_theme_has_icon(theme, '%s'): %s", icon,
+              has_icon ? "YES" : "NO");
+
+  if (has_icon) {
+    LOG_C_DEBUG("UI", "  -> Resolved '%s' successfully via GTK Icon Theme!",
+                icon);
     GtkWidget *img = gtk_image_new_from_icon_name(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   }
 
   // --------------------------------------------------------------------------
-  // Step: System XDG Pixmap Directory Search
+  // Step 4: System XDG Pixmap Directory Search
   // --------------------------------------------------------------------------
-  // Older Linux apps place PNG icons directly in `/usr/share/pixmaps/` or
-  // `/usr/local/share/pixmaps/`. We query all active system data directories.
   const char *const *sys_dirs = g_get_system_data_dirs();
   for (int i = 0; sys_dirs[i] != NULL; i++) {
-    // Allocate formatted path string: e.g. "/usr/share" + "/pixmaps/" + "app" +
-    // ".png"
     char *pixmap_png = g_strdup_printf("%s/pixmaps/%s.png", sys_dirs[i], icon);
 
     if (g_file_test(pixmap_png, G_FILE_TEST_EXISTS)) {
+      LOG_C_DEBUG("UI", "  -> Resolved '%s' in pixmaps folder: %s", icon,
+                  pixmap_png);
       GtkWidget *img = gtk_image_new_from_file(pixmap_png);
       gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
-      g_free(pixmap_png); // Clean up dynamic string allocation
+      g_free(pixmap_png);
       return img;
     }
-    g_free(pixmap_png); // Free allocated string before moving to next directory
+    g_free(pixmap_png);
   }
 
   // --------------------------------------------------------------------------
-  // Step: Symbolic Icon Variant Fallback
+  // Step 5: Symbolic Icon Variant Fallback
   // --------------------------------------------------------------------------
-  // GNOME/GTK icons often have monochrome variants suffixed with `-symbolic`
-  // (e.g., `utilities-terminal-symbolic`).
   char *symbolic_name = g_strdup_printf("%s-symbolic", icon);
-  if (gtk_icon_theme_has_icon(theme, symbolic_name)) {
+  gboolean has_symbolic = gtk_icon_theme_has_icon(theme, symbolic_name);
+  LOG_C_DEBUG("UI", "  -> gtk_icon_theme_has_icon(theme, '%s'): %s",
+              symbolic_name, has_symbolic ? "YES" : "NO");
+
+  if (has_symbolic) {
+    LOG_C_DEBUG("UI", "  -> Resolved '%s' using symbolic fallback: %s", icon,
+                symbolic_name);
     GtkWidget *img = gtk_image_new_from_icon_name(symbolic_name);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
-    g_free(symbolic_name); // Free string buffer
+    g_free(symbolic_name);
     return img;
   }
-  g_free(symbolic_name); // Free string buffer
+  g_free(symbolic_name);
 
   // --------------------------------------------------------------------------
-  // Step: Fallback (Generic Binary Executable Icon)
+  // Step 6: Fallback (Generic Binary Executable Icon)
   // --------------------------------------------------------------------------
-  // If all search methods failed to locate the specified icon, return a
-  // standard generic application icon so the dock button isn't blank.
+  LOG_C_WARN(
+      "UI",
+      "Failed to resolve icon '%s'. Falling back to 'application-x-executable'",
+      icon);
   GtkWidget *img = gtk_image_new_from_icon_name("application-x-executable");
   gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
   return img;
@@ -152,76 +192,95 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
  * setup_icon_theme:
  *
  * Discovers and registers icon directories into the GTK icon search path, and
- * syncs GTK's icon theme setting with the user's desktop environment setting
- * (retrieved via GNOME GSettings).
+ * ensures a valid GTK icon theme name is configured (falling back to
+ * GSettings/dconf only if necessary).
  */
 void setup_icon_theme(void) {
-  // Retrieve the default graphical display instance
   GdkDisplay *display = gdk_display_get_default();
-  if (!display)
-    return; // Exit early if running headless or display connection fails
+  if (!display) {
+    LOG_C_ERROR("UI", "setup_icon_theme: No default GdkDisplay detected!");
+    return;
+  }
 
-  // Get GTK's icon theme engine instance bound to this graphical display
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
+  LOG_C_INFO("UI", "Initializing Icon Theme system for display context %p...",
+             (void *)display);
 
   // --------------------------------------------------------------------------
-  // Add System-wide Icon Search Paths (`/usr/share/icons`, etc.)
+  // Step 1: Add System-wide Icon Search Paths (`/usr/share/icons`, etc.)
   // --------------------------------------------------------------------------
   const char *const *sys_dirs = g_get_system_data_dirs();
   for (int i = 0; sys_dirs[i] != NULL; i++) {
-    // Safely construct multi-platform path: `<sys_dir>/icons`
     char *icons_dir = g_build_filename(sys_dirs[i], "icons", NULL);
 
-    // If the directory exists, add it to GTK's icon theme search paths
     if (g_file_test(icons_dir, G_FILE_TEST_IS_DIR)) {
+      LOG_C_DEBUG("UI", "Adding system icon search path: %s", icons_dir);
       gtk_icon_theme_add_search_path(icon_theme, icons_dir);
+    } else {
+      LOG_C_DEBUG("UI", "System icon search path does not exist (skipping): %s",
+                  icons_dir);
     }
-    g_free(icons_dir); // Free allocated string buffer
+    g_free(icons_dir);
   }
 
   // --------------------------------------------------------------------------
-  // Add User-Specific Local Icon Search Path (`~/.local/share/icons`)
+  // Step 2: Add User-Specific Local Icon Search Paths (`~/.local/share/icons` &
+  // `~/.icons`)
   // --------------------------------------------------------------------------
   const char *home = g_get_home_dir();
   if (home) {
-    // Build path: `$HOME/.local/share/icons`
+    // 1. Check $HOME/.local/share/icons
     char *user_icons = g_build_filename(home, ".local", "share", "icons", NULL);
-    if (g_file_test(user_icons, G_FILE_TEST_IS_DIR))
+    if (g_file_test(user_icons, G_FILE_TEST_IS_DIR)) {
+      LOG_C_DEBUG("UI", "Adding user XDG icon search path: %s", user_icons);
       gtk_icon_theme_add_search_path(icon_theme, user_icons);
-    g_free(user_icons); // Free path buffer
+    } else {
+      LOG_C_DEBUG("UI", "User XDG icon directory not found: %s", user_icons);
+    }
+    g_free(user_icons);
+
+    // 2. Check legacy $HOME/.icons
+    char *legacy_icons = g_build_filename(home, ".icons", NULL);
+    if (g_file_test(legacy_icons, G_FILE_TEST_IS_DIR)) {
+      LOG_C_DEBUG("UI", "Adding legacy user icon search path (~/.icons): %s",
+                  legacy_icons);
+      gtk_icon_theme_add_search_path(icon_theme, legacy_icons);
+    } else {
+      LOG_C_DEBUG("UI", "Legacy user icon directory (~/.icons) not found: %s",
+                  legacy_icons);
+    }
+    g_free(legacy_icons);
   }
 
   // --------------------------------------------------------------------------
-  // Query GNOME Desktop GSettings for System Icon Theme Name
+  // Step 3: Resolve Icon Theme Name
+  // Primary: Native GTK settings (`gtk-icon-theme-name`)
+  // Fallback: GSettings / dconf (`org.gnome.desktop.interface icon-theme`)
   // --------------------------------------------------------------------------
-  // Read the active system icon theme setting (e.g. "Adwaita" or "Yaru") from
-  // the `org.gnome.desktop.interface` configuration schema.
+  GtkSettings *gtk_settings = gtk_settings_get_for_display(display);
+  char *current_gtk_theme = NULL;
+  g_object_get(gtk_settings, "gtk-icon-theme-name", &current_gtk_theme, NULL);
 
-  GSettingsSchemaSource *schema_source = g_settings_schema_source_get_default();
-  if (schema_source) {
-    // Look up the schema for desktop interface settings
-    GSettingsSchema *schema = g_settings_schema_source_lookup(
-        schema_source, "org.gnome.desktop.interface", TRUE);
+  if (current_gtk_theme && *current_gtk_theme != '\0') {
+    LOG_C_INFO("UI", "GTK already has an active icon theme set: '%s'",
+               current_gtk_theme);
+    g_free(current_gtk_theme);
+  } else {
+    g_free(current_gtk_theme);
+    LOG_C_INFO("UI", "No active GTK icon theme name detected. Falling back to "
+                     "GSettings / dconf...");
 
-    if (schema) {
-      // Create GSettings object to access schema keys
-      GSettings *settings = g_settings_new("org.gnome.desktop.interface");
-
-      // Read the string value from key `icon-theme`
-      char *theme_name = g_settings_get_string(settings, "icon-theme");
-
-      if (theme_name && *theme_name != '\0') {
-        // Apply the detected theme name directly into GTK Display Settings
-        GtkSettings *gtk_settings = gtk_settings_get_for_display(display);
-        g_object_set(gtk_settings, "gtk-icon-theme-name", theme_name, NULL);
-
-        LOG_C_INFO("UI", "Applied icon theme: %s", theme_name);
-      }
-
-      // Memory cleanup for GLib references and string buffer
-      g_free(theme_name);
-      g_object_unref(settings);
-      g_settings_schema_unref(schema);
+    char *gsettings_theme = get_gsettings_icon_theme();
+    if (gsettings_theme) {
+      LOG_C_INFO("UI",
+                 "Found GSettings icon theme: '%s'. Applying to GtkSettings...",
+                 gsettings_theme);
+      g_object_set(gtk_settings, "gtk-icon-theme-name", gsettings_theme, NULL);
+      g_free(gsettings_theme);
+    } else {
+      LOG_C_WARN(
+          "UI",
+          "Fallback GSettings lookup failed or returned an empty string!");
     }
   }
 }

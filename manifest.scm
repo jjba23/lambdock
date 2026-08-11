@@ -42,12 +42,15 @@
              ((guix licenses)
               #:prefix license:))
 
-(packages->manifest (list guile-next ;; for production Guile 3.0 is used
+(packages->manifest (list guile-3.0
+                          ;; for production Guile 3.0 is used
+                          ;; for dev Arei REPL use Guile Next
                           gcc-toolchain
                           pkg-config
                           meson
                           ccls
-                          gtk gtk4-layer-shell
+                          gtk
+                          gtk4-layer-shell
                           texinfo
                           watchexec
                           guile-documenta
