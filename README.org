@@ -149,6 +149,28 @@ Configurations are written in GNU Guile Scheme, and user style overrides are wri
                                 'onepassword)))
 #+end_src
 
+Since lambdock configuration files are evaluated directly as standard GNU Guile Scheme, you can run any arbitrary Guile code right inside =~/.config/lambdock/settings*.scm=. You can import modules, define helper functions, query system state (like time, hostnames, or installed packages), do API calls, and dynamically build your configuration.
+
+An example =~/.config/lambdock/settings.scm=  could look like:
+
+#+begin_src scheme
+(use-modules (ice-9 popen)
+             (ice-9 rdelim)
+             (srfi srfi-19)
+             (srfi srfi-1))
+
+;; Helper to run a shell command and return its output as a clean string
+(define (sh-output cmd)
+  (let* ((port (open-input-pipe cmd))
+         (output (read-line port)))
+    (close-pipe port)
+    (if (eof-object? output) "" output)))
+
+;; Enable auto-hide only on a specific hostname (e.g., laptop setup)
+(define dock-auto-hide?
+  (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
+#+end_src
+
 *** Available Item Constructors
 
 | Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
