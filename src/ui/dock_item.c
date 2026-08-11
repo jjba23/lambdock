@@ -58,7 +58,8 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_valign(item->button, GTK_ALIGN_END);
     gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      gtk_widget_set_valign(child, GTK_ALIGN_END);
+      /* CENTER the child vertically within the button container */
+      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
@@ -71,7 +72,8 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_valign(item->button, GTK_ALIGN_START);
     gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      gtk_widget_set_valign(child, GTK_ALIGN_START);
+      /* CENTER the child vertically within the button container */
+      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
@@ -84,7 +86,8 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_halign(item->button, GTK_ALIGN_START);
     gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      gtk_widget_set_halign(child, GTK_ALIGN_START);
+      /* CENTER the child horizontally within the button container */
+      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
@@ -97,7 +100,8 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_halign(item->button, GTK_ALIGN_END);
     gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      gtk_widget_set_halign(child, GTK_ALIGN_END);
+      /* CENTER the child horizontally within the button container */
+      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
         for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
