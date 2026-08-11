@@ -723,10 +723,22 @@ void destroy_dock_instance(LambdockState *state) {
   if (!state)
     return;
 
-  // 1. Unregister from active states list first
+  // 1. Unregister state from global tracker list
   unregister_dock_state(state);
 
-  // 2. Unparent the state's main background context popover if present
+  // 2. Disconnect window destroy signal handlers bound to state to prevent
+  // re-entrancy
+  if (state->window && GTK_IS_WIDGET(state->window)) {
+    GtkWidget *win = state->window;
+    state->window = NULL; // Clear pointer before destruction
+
+    // Use disconnect_by_data to avoid ISO C function-pointer-to-void* cast
+    // warnings
+    g_signal_handlers_disconnect_by_data(win, state);
+    gtk_window_destroy(GTK_WINDOW(win));
+  }
+
+  // 3. Unparent state popover if still attached
   if (state->popover) {
     if (GTK_IS_WIDGET(state->popover) &&
         gtk_widget_get_parent(state->popover)) {
@@ -735,7 +747,7 @@ void destroy_dock_instance(LambdockState *state) {
     state->popover = NULL;
   }
 
-  // 3. Unparent popovers & free dock items BEFORE destroying the GTK window
+  // 4. Clean up dock items and unparent child popovers
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
     free_dock_item(item);
@@ -743,22 +755,12 @@ void destroy_dock_instance(LambdockState *state) {
   g_list_free(state->dock_items);
   state->dock_items = NULL;
 
-  // 4. Destroy Wayland window trackers and proxy handles
+  // 5. Clean up Wayland window trackers and foreign handles
   for (GList *l = state->window_trackers; l != NULL; l = l->next) {
     free_window_tracker(l->data);
   }
   g_list_free(state->window_trackers);
   state->window_trackers = NULL;
-
-  // 5. Destroy the GTK window now that buttons have no remaining popover
-  // children
-  if (state->window && GTK_IS_WINDOW(state->window)) {
-    GtkWidget *win = state->window;
-    state->window = NULL; // Prevent double execution
-    g_signal_handlers_disconnect_by_func(win, G_CALLBACK(destroy_dock_instance),
-                                         state);
-    gtk_window_destroy(GTK_WINDOW(win));
-  }
 
   if (state->size_group) {
     g_object_unref(state->size_group);
