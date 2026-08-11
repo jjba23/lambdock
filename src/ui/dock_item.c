@@ -334,6 +334,8 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   item->button = gtk_button_new();
 
   GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_widget_set_valign(content_box,
+                        GTK_ALIGN_CENTER); // Add explicit vertical centering
 
   if (icon && *icon != '\0') {
     GdkDisplay *display = gdk_display_get_default();
