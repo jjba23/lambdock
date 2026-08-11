@@ -92,7 +92,7 @@
 ;; =============================================================================
 
 (define* (load-dock-config! file-path)
-  "Loads a specific settings file in isolation and registers its configuration record under its file-path."
+  "Loads a specific settings file in isolation and registers its configuration record."
   (if (and file-path
            (file-exists? file-path))
       (begin
@@ -100,34 +100,48 @@
         (catch #t
                (lambda ()
                  (let* ((settings (resolve-dock-configuration file-path))
-                        (cfg (lambda (key default-val)
-                               (let ((pair (assq key settings)))
+                        ;; Helper to lookup both 'dock-foo and 'foo
+                        (cfg (lambda (key alt-key default-val)
+                               (let ((pair (or (assq key settings)
+                                               (assq alt-key settings))))
                                  (if pair
                                      (cdr pair) default-val)))))
+                   
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
+                                                    'position
                                                     'bottom)
-                                    #:icon-size (cfg 'dock-icon-size 48)
+                                    #:icon-size (cfg 'dock-icon-size
+                                                     'icon-size 48)
                                     #:items (cfg 'dock-items
+                                                 'items
                                                  '())
                                     #:theme (cfg 'dock-theme
+                                                 'theme
                                                  'vanilla)
                                     #:monitor (cfg 'dock-monitor
+                                                   'monitor
                                                    'default)
-                                    #:auto-hide? (cfg 'dock-auto-hide? #f)
+                                    #:auto-hide? (cfg 'dock-auto-hide?
+                                                      'auto-hide? #f)
                                     #:show-when-clear? (cfg 'dock-show-when-clear?
+                                                            'show-when-clear?
                                                             #t)
                                     #:exclude-apps (cfg 'dock-exclude-apps
+                                                        'exclude-apps
                                                         '())
-                                    #:enable-repl? (cfg 'dock-enable-repl? #f)
+                                    #:enable-repl? (cfg 'dock-enable-repl?
+                                                        'enable-repl? #f)
                                     #:repl-socket-path (cfg 'dock-repl-socket-path
+                                                        'repl-socket-path
                                                         "/tmp/lambdock-repl.sock")
                                     #:hover-animate? (cfg 'dock-hover-animate?
-                                                          #t))))
+                                                          'hover-animate? #t))))
                (lambda (key . args)
-                 (log-error "Core" "ERROR loading ~a: ~a ~a~%" file-path key
-                            args))))
-      (log-warn "Core" "No settings file found at: ~a~%" file-path)))
+                 (log-error "Core"
+                  "EXCEPTION while loading config [~a]: ~a | Details: ~s"
+                  file-path key args))))
+      (log-warn "Core" "No settings file found at path: ~a" file-path)))
 
 (define (init-dock!)
   "Entry point invoked after C runtime initialization."

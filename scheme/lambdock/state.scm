@@ -100,6 +100,7 @@
 ;; Configuration Interface
 ;; =============================================================================
 
+;; === FILE: state.scm (Excerpt: configure-dock!) ===
 (define* (configure-dock! #:key (config-path 'default)
                           (position 'bottom)
                           (icon-size 48)
@@ -124,13 +125,19 @@
                                enable-repl?
                                repl-socket-path
                                hover-animate?)))
+    ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
-    (when (not (hash-ref *dock-configs*
-                         'default #f))
+
+    ;; ALWAYS update 'default key if this is the primary settings file or initial load
+    (when (or (eq? config-path
+                   'default)
+              (string-suffix? "settings.scm"
+                              (format #f "~a" config-path)))
       (hash-set! *dock-configs*
                  'default cfg))
+
     (log-info "State"
-     "Registered configuration for [~a]: ~a items, position: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a) (~a)"
      config-path
      (if (list? items)
          (length items) 0)
@@ -138,7 +145,8 @@
      theme
      auto-hide?
      enable-repl?
-     repl-socket-path)))
+     repl-socket-path
+     cfg)))
 
 (define (get-dock-config key)
   (or (hash-ref *dock-configs* key #f)
