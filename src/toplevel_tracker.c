@@ -530,7 +530,11 @@ void free_window_tracker(void *tracker_ptr) {
   if (!tracker)
     return;
 
-  // Destroy Wayland proxy so compositor callbacks aren't sent to freed memory
+  // Nullify pointers so any late asynchronous Wayland callbacks ignore it
+  tracker->state = NULL;
+  tracker->dock_item = NULL;
+  tracker->app_win = NULL;
+
   if (tracker->handle) {
     zwlr_foreign_toplevel_handle_v1_destroy(tracker->handle);
     tracker->handle = NULL;

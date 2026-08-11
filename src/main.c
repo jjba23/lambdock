@@ -176,23 +176,24 @@ static void sync_docks_with_disk(GtkApplication *app) {
   GList *disk_files = scan_settings_files();
 
   if (disk_files != NULL) {
-    // Step 1: Destroy fallback dock if active
-    GList *curr = g_active_states;
-    while (curr != NULL) {
-      GList *next = curr->next;
+    // Collect fallback docks to destroy
+    GList *to_destroy = NULL;
+    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
       LambdockState *state = (LambdockState *)curr->data;
       if (state->config_path == NULL) {
-        LOG_C_INFO("Main",
-                   "Settings file(s) detected. Destroying fallback dock...");
-        destroy_dock_instance(state);
+        to_destroy = g_list_append(to_destroy, state);
       }
-      curr = next;
     }
+    for (GList *l = to_destroy; l != NULL; l = l->next) {
+      LOG_C_INFO("Main",
+                 "Settings file(s) detected. Destroying fallback dock...");
+      destroy_dock_instance((LambdockState *)l->data);
+    }
+    g_list_free(to_destroy);
+    to_destroy = NULL;
 
-    // Step 2: Destroy docks whose config files were deleted from disk
-    curr = g_active_states;
-    while (curr != NULL) {
-      GList *next = curr->next;
+    // Collect docks whose config files were deleted from disk
+    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
       LambdockState *state = (LambdockState *)curr->data;
       if (state->config_path != NULL) {
         gboolean found = FALSE;
@@ -203,16 +204,19 @@ static void sync_docks_with_disk(GtkApplication *app) {
           }
         }
         if (!found) {
-          LOG_C_INFO("Main",
-                     "Config file deleted: %s. Destroying dock instance...",
-                     state->config_path);
-          destroy_dock_instance(state);
+          to_destroy = g_list_append(to_destroy, state);
         }
       }
-      curr = next;
     }
+    for (GList *l = to_destroy; l != NULL; l = l->next) {
+      LambdockState *state = (LambdockState *)l->data;
+      LOG_C_INFO("Main", "Config file deleted: %s. Destroying dock instance...",
+                 state->config_path);
+      destroy_dock_instance(state);
+    }
+    g_list_free(to_destroy);
 
-    // Step 3: Spawn new docks or reload existing docks
+    // Spawn new docks or reload existing docks
     for (GList *df = disk_files; df != NULL; df = df->next) {
       const char *file_path = (const char *)df->data;
       gboolean active = FALSE;
@@ -255,19 +259,19 @@ static void sync_docks_with_disk(GtkApplication *app) {
       }
     }
   } else {
-    // Step 4: No settings files exist on disk at all. Destroy file-backed
-    // docks.
-    GList *curr = g_active_states;
-    while (curr != NULL) {
-      GList *next = curr->next;
+    // No settings files exist on disk: destroy all file-backed docks
+    GList *to_destroy = NULL;
+    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
       LambdockState *state = (LambdockState *)curr->data;
       if (state->config_path != NULL) {
-        destroy_dock_instance(state);
+        to_destroy = g_list_append(to_destroy, state);
       }
-      curr = next;
     }
+    for (GList *l = to_destroy; l != NULL; l = l->next) {
+      destroy_dock_instance((LambdockState *)l->data);
+    }
+    g_list_free(to_destroy);
 
-    // Spawn default fallback dock if no active docks remain
     if (g_active_states == NULL) {
       LOG_C_INFO("Main",
                  "No settings files found. Spawning default fallback dock...");

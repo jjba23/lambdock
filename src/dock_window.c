@@ -720,25 +720,34 @@ void update_dock_dimensions(LambdockState *state) {
  * ========================================================================= */
 
 void destroy_dock_instance(LambdockState *state) {
-  if (!state)
+  // 1. Re-entrancy Guard: Prevent recursive re-entry during GTK signal emission
+  if (!state || state->is_destroying)
     return;
 
-  // 1. Unregister state from global tracker list
+  state->is_destroying = TRUE;
+
+  // 2. Unregister from active global state list
   unregister_dock_state(state);
 
-  // 2. Disconnect window destroy signal handlers bound to state to prevent
-  // re-entrancy
-  if (state->window && GTK_IS_WIDGET(state->window)) {
-    GtkWidget *win = state->window;
-    state->window = NULL; // Clear pointer before destruction
-
-    // Use disconnect_by_data to avoid ISO C function-pointer-to-void* cast
-    // warnings
-    g_signal_handlers_disconnect_by_data(win, state);
-    gtk_window_destroy(GTK_WINDOW(win));
+  // 3. Cancel pending GLib autohide timers immediately
+  if (state->hide_timer_id > 0) {
+    g_source_remove(state->hide_timer_id);
+    state->hide_timer_id = 0;
   }
 
-  // 3. Unparent state popover if still attached
+  // 4. Remove active GTK tick animation callbacks
+  if (state->tick_cb_id > 0 && state->window && GTK_IS_WIDGET(state->window)) {
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+    state->tick_cb_id = 0;
+  }
+
+  // 5. Disconnect signal handlers from window to prevent "destroy" signal
+  // re-entrancy
+  if (state->window && GTK_IS_WIDGET(state->window)) {
+    g_signal_handlers_disconnect_by_data(state->window, state);
+  }
+
+  // 6. Unparent the main background context menu popover
   if (state->popover) {
     if (GTK_IS_WIDGET(state->popover) &&
         gtk_widget_get_parent(state->popover)) {
@@ -747,20 +756,29 @@ void destroy_dock_instance(LambdockState *state) {
     state->popover = NULL;
   }
 
-  // 4. Clean up dock items and unparent child popovers
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+  // 7. Clear and free dock items (and their individual polling timers/popovers)
+  GList *items = state->dock_items;
+  state->dock_items = NULL; // Clear pointer first to prevent dangling access
+  for (GList *l = items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
     free_dock_item(item);
   }
-  g_list_free(state->dock_items);
-  state->dock_items = NULL;
+  g_list_free(items);
 
-  // 5. Clean up Wayland window trackers and foreign handles
-  for (GList *l = state->window_trackers; l != NULL; l = l->next) {
+  // 8. Clear and free Wayland window trackers
+  GList *trackers = state->window_trackers;
+  state->window_trackers = NULL; // Clear pointer first
+  for (GList *l = trackers; l != NULL; l = l->next) {
     free_window_tracker(l->data);
   }
-  g_list_free(state->window_trackers);
-  state->window_trackers = NULL;
+  g_list_free(trackers);
+
+  // 9. Destroy the GTK Window widget safely
+  if (state->window && GTK_IS_WINDOW(state->window)) {
+    GtkWidget *win = state->window;
+    state->window = NULL; // Nullify reference prior to GTK destruction
+    gtk_window_destroy(GTK_WINDOW(win));
+  }
 
   if (state->size_group) {
     g_object_unref(state->size_group);

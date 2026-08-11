@@ -390,26 +390,31 @@ void free_dock_item(DockItem *item) {
   if (!item)
     return;
 
+  // 1. Cancel dynamic polling timer before deallocating memory
   if (item->poll_timer_id > 0) {
     g_source_remove(item->poll_timer_id);
     item->poll_timer_id = 0;
   }
 
+  // 2. Unprotect Scheme procedure thunk
   if (item->poll_fn != SCM_BOOL_F &&
       scm_is_true(scm_procedure_p(item->poll_fn))) {
     scm_gc_unprotect_object(item->poll_fn);
     item->poll_fn = SCM_BOOL_F;
   }
 
-  // Safely unparent popover if attached
-  if (item->popover) {
-    if (GTK_IS_WIDGET(item->popover) && gtk_widget_get_parent(item->popover)) {
+  // 3. Disconnect button & popover handlers and unparent
+  if (item->popover && GTK_IS_WIDGET(item->popover)) {
+    g_signal_handlers_disconnect_by_data(item->popover, item->state);
+    g_signal_handlers_disconnect_by_data(item->popover, item);
+    if (gtk_widget_get_parent(item->popover)) {
       gtk_widget_unparent(item->popover);
     }
     item->popover = NULL;
   }
 
-  if (item->button) {
+  if (item->button && GTK_IS_WIDGET(item->button)) {
+    g_signal_handlers_disconnect_by_data(item->button, item);
     GtkWidget *parent = gtk_widget_get_parent(item->button);
     if (parent && GTK_IS_BOX(parent))
       gtk_box_remove(GTK_BOX(parent), item->button);
@@ -422,6 +427,7 @@ void free_dock_item(DockItem *item) {
     g_free(win);
   }
   g_list_free(item->windows);
+  item->windows = NULL;
 
   g_free(item->name);
   g_free(item->icon);

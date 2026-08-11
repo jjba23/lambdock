@@ -135,6 +135,7 @@ struct LambdockState {
   gboolean is_hidden;
   char *theme;
   char *config_path; /* Absolute path to settings file for this dock instance */
+  gboolean is_destroying; /* Re-entrancy guard flag */
 
   GdkMonitor *monitor; /* NULL for default compositor placement */
 
