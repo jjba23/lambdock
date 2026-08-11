@@ -25,7 +25,7 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 - *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
 - *Multi-Monitor Flexibility* 🖥️: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
 - *Smooth Auto-Hide*: Keeps the dock out of your way with configurable reveal thresholds and fluid sliding animations.
-- *Declarative Lisp Configuration* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options.
+- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options. Multiple config files and multiple docks are supported.
 - *Smart and Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
 - *Live Interactive Socket REPL* 📡: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
 - *Theme Engine* 🎨: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
@@ -63,7 +63,7 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 
 Configurations are written in GNU Guile Scheme, and user style overrides are written in CSS/GTK4.
 
-The configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=).
+~lambdock~ will scan your  configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=) for ~settings*.scm~ files, effectively supporting multi-dock multi-config.
 
 - Single Configuration File: =~/.config/lambdock/settings.scm=
 - Multi-Instance Configuration Files: =~/.config/lambdock/settings-1.scm=, =~/.config/lambdock/settings-2.scm=, etc.
@@ -80,7 +80,7 @@ The configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/la
   #:use-module (lambdock core)
   #:export (dock-position dock-icon-size dock-items dock-auto-hide? dock-theme
                           dock-monitor dock-exclude-apps dock-enable-repl?
-                          dock-repl-socket-path dock-hover-animate?))
+                          dock-repl-socket-path dock-hover-animate? dock-track-windows?))
 
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
@@ -116,6 +116,9 @@ The configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/la
 
 ;; Whether to animate dock items when hovering on them with the mouse
 (define dock-hover-animate? #t)
+
+;; Whether to keep track of open apps and windows and show indicators and popovers
+(define dock-track-windows? #t)
 
 ;; Application launchers list
 (define dock-items

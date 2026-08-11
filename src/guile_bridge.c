@@ -150,6 +150,10 @@ char *get_theme_config_for(const char *config_path) {
   return get_guile_string_for("get-dock-theme", NULL, config_path, "vanilla");
 }
 
+gboolean get_track_windows_config_for(const char *config_path) {
+  return get_guile_bool_for("get-dock-track-windows?", config_path);
+}
+
 /** Retrieves target monitor screen configuration string for a specific config
  * path. */
 char *get_monitor_config_for(const char *config_path) {

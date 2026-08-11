@@ -505,6 +505,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   load_custom_css(state);
 
   state->auto_hide = get_autohide_config_for(state->config_path);
+  state->track_windows = get_track_windows_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);

@@ -82,4 +82,6 @@ void reload_guile_config(void);
  */
 gboolean is_app_excluded(const char *app_id, const char *config_path);
 
+gboolean get_track_windows_config_for(const char *config_path);
+
 #endif // GUILE_BRIDGE_H

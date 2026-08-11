@@ -37,15 +37,17 @@
             get-dock-repl-socket-path
             get-dock-show-when-clear?
             get-dock-hover-animate?
+            get-dock-track-windows?
 
-            ;; High-Level Setters
+            ;; Setters
             set-dock-position!
             set-dock-theme!
             set-dock-icon-size!
             set-dock-auto-hide!
             set-dock-show-when-clear!
             set-dock-monitor!
-            set-dock-hover-animate!))
+            set-dock-hover-animate!
+            set-dock-track-windows!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -62,7 +64,8 @@
                     exclude-apps
                     enable-repl?
                     repl-socket-path
-                    hover-animate?)
+                    hover-animate?
+                    track-windows?)
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
@@ -76,7 +79,8 @@
   (enable-repl? dock-config-enable-repl? set-dock-config-enable-repl?!)
   (repl-socket-path dock-config-repl-socket-path
                     set-dock-config-repl-socket-path!)
-  (hover-animate? dock-config-hover-animate? set-dock-config-hover-animate?!))
+  (hover-animate? dock-config-hover-animate? set-dock-config-hover-animate?!)
+  (track-windows? dock-config-track-windows? set-dock-config-track-windows?!))
 
 ;; Global hashtable storing isolated <dock-config> records keyed by config path / symbol
 (define *dock-configs*
@@ -94,6 +98,7 @@
                     '()
                     #f
                     "/tmp/lambdock-repl.sock"
+                    #t
                     #t))
 
 ;; =============================================================================
@@ -112,7 +117,8 @@
                           (exclude-apps '())
                           (enable-repl? #f)
                           (repl-socket-path "/tmp/lambdock-repl.sock")
-                          (hover-animate? #t))
+                          (hover-animate? #t)
+                          (track-windows? #t))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -124,7 +130,8 @@
                                exclude-apps
                                enable-repl?
                                repl-socket-path
-                               hover-animate?)))
+                               hover-animate?
+                               track-windows?)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
 
@@ -137,7 +144,7 @@
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a) (~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a"
      config-path
      (if (list? items)
          (length items) 0)
@@ -146,7 +153,7 @@
      auto-hide?
      enable-repl?
      repl-socket-path
-     cfg)))
+     track-windows?)))
 
 (define (get-dock-config key)
   (or (hash-ref *dock-configs* key #f)
@@ -223,6 +230,12 @@
                                   (car args)))))
     (dock-config-hover-animate? cfg)))
 
+(define (get-dock-track-windows? . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-track-windows? cfg)))
+
 ;; =============================================================================
 ;; Setters
 ;; =============================================================================
@@ -278,3 +291,7 @@
 (define (set-dock-hover-animate! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-hover-animate?! cfg val)) args))
+
+(define (set-dock-track-windows! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-track-windows?! cfg val)) args))

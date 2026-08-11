@@ -150,7 +150,7 @@ toplevel_handle_closed(void *data,
   // Broadcast window close across all active docks
   for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
     LambdockState *state = (LambdockState *)l->data;
-    if (!state)
+    if (!state || !state->track_windows)
       continue;
 
     if (top->app_id) {
@@ -298,7 +298,7 @@ void init_toplevel_tracker(LambdockState *state) {
 }
 
 void sync_window_trackers(LambdockState *state) {
-  if (!state)
+  if (!state || !state->track_windows)
     return;
 
   for (GList *l = g_master_toplevels; l != NULL; l = l->next) {

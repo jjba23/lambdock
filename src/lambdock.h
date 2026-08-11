@@ -129,6 +129,7 @@ struct LambdockState {
   GtkSizeGroup *size_group;
   gboolean auto_hide;
   gboolean show_when_clear;
+  gboolean track_windows; /* <-- Track open Wayland foreign windows */
   gboolean hover_animate;
   int icon_size;
   guint hide_timer_id;

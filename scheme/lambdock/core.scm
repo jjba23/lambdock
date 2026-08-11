@@ -65,6 +65,7 @@
                get-dock-enable-repl?
                get-dock-repl-socket-path
                get-dock-hover-animate?
+               get-dock-track-windows?
 
                ;; Setters
                set-dock-position!
@@ -74,6 +75,7 @@
                set-dock-show-when-clear!
                set-dock-monitor!
                set-dock-hover-animate!
+                             set-dock-track-windows!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -106,7 +108,7 @@
                                                (assq alt-key settings))))
                                  (if pair
                                      (cdr pair) default-val)))))
-                   
+
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
                                                     'position
@@ -136,7 +138,9 @@
                                                         'repl-socket-path
                                                         "/tmp/lambdock-repl.sock")
                                     #:hover-animate? (cfg 'dock-hover-animate?
-                                                          'hover-animate? #t))))
+                                                          'hover-animate? #t)
+                                    #:track-windows? (cfg 'dock-track-windows?
+                                                          'track-windows? #t))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"
