@@ -33,6 +33,11 @@
  * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
  * ensuring non-animated items and separators remain anchored to the dock edge.
  */
+/**
+ * apply_dock_item_alignment:
+ * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
+ * ensuring non-animated items and separators remain anchored to the dock edge.
+ */
 void apply_dock_item_alignment(DockItem *item) {
   if (!item || !item->button || !item->state)
     return;
@@ -40,13 +45,12 @@ void apply_dock_item_alignment(DockItem *item) {
   LambdockState *state = item->state;
   int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
 
-  // Set fixed base dimension on separators to prevent stretching
-  if (GTK_IS_SEPARATOR(item->button)) {
-    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-      gtk_widget_set_size_request(item->button, -1, base_sz);
-    } else {
-      gtk_widget_set_size_request(item->button, base_sz, -1);
-    }
+  // Ensure ALL buttons (icons, text-only, separators) request full base_sz
+  // cross-axis headroom
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_widget_set_size_request(item->button, -1, base_sz);
+  } else {
+    gtk_widget_set_size_request(item->button, base_sz, -1);
   }
 
   GtkWidget *child = NULL;
@@ -58,7 +62,7 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_valign(item->button, GTK_ALIGN_END);
     gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      /* CENTER the child vertically within the button container */
+      /* CENTER the child vertically within the 48px button container */
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
@@ -72,7 +76,7 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_valign(item->button, GTK_ALIGN_START);
     gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      /* CENTER the child vertically within the button container */
+      /* CENTER the child vertically within the 48px button container */
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
@@ -86,7 +90,7 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_halign(item->button, GTK_ALIGN_START);
     gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      /* CENTER the child horizontally within the button container */
+      /* CENTER the child horizontally within the 48px button container */
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
@@ -100,7 +104,7 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_halign(item->button, GTK_ALIGN_END);
     gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
     if (child) {
-      /* CENTER the child horizontally within the button container */
+      /* CENTER the child horizontally within the 48px button container */
       gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
       gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
       if (GTK_IS_BOX(child)) {
