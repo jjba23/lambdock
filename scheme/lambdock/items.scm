@@ -151,8 +151,8 @@
                       (if (>= (length nums) 2)
                           (let ((kb (string->number (list-ref nums 1))))
                             (if kb
-                                (format #f "~a MB free"
-                                        (round (/ kb 1024))) "RAM N/A"))
+                                (format #f "~a GB free"
+                                        (round (/ (/ kb 1024) 1024))) "RAM N/A"))
                           "RAM N/A")))
                    (else (loop (read-line port))))))))
          (lambda _
