@@ -130,12 +130,13 @@
       (hash-set! *dock-configs*
                  'default cfg))
     (log-info "State"
-     "Registered configuration for [~a]: ~a items, position: ~a, theme: ~a, repl?: ~a (~a)"
+     "Registered configuration for [~a]: ~a items, position: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a)"
      config-path
      (if (list? items)
          (length items) 0)
      position
      theme
+     auto-hide?
      enable-repl?
      repl-socket-path)))
 
