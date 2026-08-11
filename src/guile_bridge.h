@@ -37,7 +37,7 @@ void setup_guile_load_path(void);
  * Returns: TRUE if auto-hide is enabled in Scheme configuration; FALSE
  * otherwise.
  */
-gboolean get_autohide_config(void);
+gboolean get_autohide_config_for(const char *config_path);
 
 /**
  * get_position_config:
@@ -47,7 +47,7 @@ gboolean get_autohide_config(void);
  *
  * Returns: GtkLayerShellEdge enum representing screen edge placement.
  */
-GtkLayerShellEdge get_position_config(void);
+GtkLayerShellEdge get_position_config_for(const char *config_path);
 
 /**
  * get_theme_config:
@@ -56,7 +56,7 @@ GtkLayerShellEdge get_position_config(void);
  *
  * Returns: char* containing the theme name.
  */
-char *get_theme_config(void);
+char *get_theme_config_for(const char *config_path);
 
 /**
  * populate_dock_items:
@@ -74,7 +74,7 @@ void populate_dock_items(LambdockState *state);
  * Returns: Heap allocated string ("default", "all", or specific monitor like
  * "DP-1").
  */
-char *get_monitor_config(void);
+char *get_monitor_config_for(const char *config_path);
 
 /**
  * get_config_path_c:
@@ -87,7 +87,8 @@ char *get_config_path_c(void);
 /**
  * reload_guile_config:
  *
- * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse user settings.scm.
+ * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse user settings
+ * file.
  */
 void reload_guile_config(void);
 
@@ -110,7 +111,7 @@ gboolean is_app_excluded(const char *app_id);
  *
  * Returns: TRUE if REPL is enabled in Scheme configuration; FALSE otherwise.
  */
-gboolean get_repl_config(void);
+gboolean get_repl_config_for(const char *config_path);
 
 /**
  * get_show_when_clear_config:
@@ -121,7 +122,7 @@ gboolean get_repl_config(void);
  * Returns: TRUE if show when clear is enabled in Scheme configuration; FALSE
  * otherwise.
  */
-gboolean get_show_when_clear_config(void);
+gboolean get_show_when_clear_config_for(const char *config_path);
 
 /**
  * get_hover_animate_config:
@@ -132,7 +133,7 @@ gboolean get_show_when_clear_config(void);
  * Returns: TRUE if hover animation is enabled in Scheme configuration; FALSE
  * otherwise.
  */
-gboolean get_hover_animate_config(void);
+gboolean get_hover_animate_config_for(const char *config_path);
 
 /**
  * get_icon_size_config:
@@ -142,6 +143,6 @@ gboolean get_hover_animate_config(void);
  *
  * Returns: Integer icon pixel size (default 48).
  */
-int get_icon_size_config(void);
+int get_icon_size_config_for(const char *config_path);
 
 #endif // GUILE_BRIDGE_H
