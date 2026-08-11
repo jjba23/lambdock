@@ -609,3 +609,5 @@ Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~
 *** TODO: Finish Arch package and publish it
 
 -------
+
+You can find the [[file:NEWS.org][NEWS file with the Changelog here]]
