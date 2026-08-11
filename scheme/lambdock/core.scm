@@ -92,30 +92,38 @@
 ;; =============================================================================
 
 (define* (load-dock-config! file-path)
-  "Loads a specific settings file and registers its configuration record under its file-path."
+  "Loads a specific settings file in isolation and registers its configuration record under its file-path."
   (if (and file-path
            (file-exists? file-path))
       (begin
         (log-info "Core" "Loading user settings from: ~a" file-path)
         (catch #t
                (lambda ()
-                 (load file-path)
-                 (let* ((settings (resolve-dock-configuration))
-                        (cfg (lambda (key)
-                               (assq-ref settings key))))
+                 (let* ((settings (resolve-dock-configuration file-path))
+                        (cfg (lambda (key default-val)
+                               (let ((pair (assq key settings)))
+                                 (if pair
+                                     (cdr pair) default-val)))))
                    (configure-dock! #:config-path file-path
-                                    #:position (cfg 'dock-position)
-                                    #:icon-size (cfg 'dock-icon-size)
-                                    #:items (cfg 'dock-items)
-                                    #:theme (cfg 'dock-theme)
-                                    #:monitor (cfg 'dock-monitor)
-                                    #:auto-hide? (cfg 'dock-auto-hide?)
-                                    #:show-when-clear? (cfg 'dock-show-when-clear?)
-                                    #:exclude-apps (cfg 'dock-exclude-apps)
-                                    #:enable-repl? (cfg 'dock-enable-repl?)
-                                    #:repl-socket-path (or (cfg 'dock-repl-socket-path)
+                                    #:position (cfg 'dock-position
+                                                    'bottom)
+                                    #:icon-size (cfg 'dock-icon-size 48)
+                                    #:items (cfg 'dock-items
+                                                 '())
+                                    #:theme (cfg 'dock-theme
+                                                 'vanilla)
+                                    #:monitor (cfg 'dock-monitor
+                                                   'default)
+                                    #:auto-hide? (cfg 'dock-auto-hide? #f)
+                                    #:show-when-clear? (cfg 'dock-show-when-clear?
+                                                            #t)
+                                    #:exclude-apps (cfg 'dock-exclude-apps
+                                                        '())
+                                    #:enable-repl? (cfg 'dock-enable-repl? #f)
+                                    #:repl-socket-path (cfg 'dock-repl-socket-path
                                                         "/tmp/lambdock-repl.sock")
-                                    #:hover-animate? (cfg 'dock-hover-animate?))))
+                                    #:hover-animate? (cfg 'dock-hover-animate?
+                                                          #t))))
                (lambda (key . args)
                  (log-error "Core" "ERROR loading ~a: ~a ~a~%" file-path key
                             args))))

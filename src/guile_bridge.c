@@ -200,12 +200,12 @@ void reload_guile_config(void) {
     scm_call_0(init_fn);
 }
 
-/** Checks app exclusion list. */
-gboolean is_app_excluded(const char *app_id) {
+/** Checks app exclusion list for a specific configuration path context. */
+gboolean is_app_excluded(const char *app_id, const char *config_path) {
   if (!app_id || *app_id == '\0')
     return FALSE;
 
-  SCM list = call_core_proc_with_path("get-dock-exclude-apps", NULL);
+  SCM list = call_core_proc_with_path("get-dock-exclude-apps", config_path);
   while (scm_is_pair(list)) {
     SCM elem = scm_car(list);
     SCM str_scm = scm_is_symbol(elem) ? scm_symbol_to_string(elem) : elem;
@@ -270,8 +270,9 @@ void populate_dock_items_for(LambdockState *state) {
       char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
       char *exec = scm_to_c_string_or_null(scm_call_1(get_exec_fn, item));
 
-      if (!is_app_excluded(name) && !is_app_excluded(icon) &&
-          !is_app_excluded(exec)) {
+      if (!is_app_excluded(name, state->config_path) &&
+          !is_app_excluded(icon, state->config_path) &&
+          !is_app_excluded(exec, state->config_path)) {
         create_dock_item(state, name, icon, exec, name, TRUE, hover_anim);
         LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)",
                    name ? name : "unnamed", exec ? exec : "no-exec");
@@ -294,7 +295,8 @@ void populate_dock_items_for(LambdockState *state) {
               ? scm_to_uint(interval_scm)
               : 1000;
 
-      if (!is_app_excluded(name) && !is_app_excluded(exec)) {
+      if (!is_app_excluded(name, state->config_path) &&
+          !is_app_excluded(exec, state->config_path)) {
         create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms,
                                  hover_anim);
         LOG_C_INFO(

@@ -21,7 +21,7 @@
   #:use-module (ice-9 format)
   #:use-module (lambdock logger)
   #:export ( ;Configuration Entry Point
-            configure-dock!
+             configure-dock!
             <dock-config>
             dock-config?
 
@@ -82,6 +82,20 @@
 (define *dock-configs*
   (make-hash-table))
 
+;; Fallback default record when key is missing or unregistered
+(define %default-fallback-config%
+  (make-dock-config 'bottom
+                    48
+                    '()
+                    #f
+                    #t
+                    'vanilla
+                    'default
+                    '()
+                    #f
+                    "/tmp/lambdock-repl.sock"
+                    #t))
+
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
@@ -111,7 +125,6 @@
                                repl-socket-path
                                hover-animate?)))
     (hash-set! *dock-configs* config-path cfg)
-    ;; Fall back 'default to the first configured dock if 'default is not set yet
     (when (not (hash-ref *dock-configs*
                          'default #f))
       (hash-set! *dock-configs*
@@ -129,14 +142,7 @@
 (define (get-dock-config key)
   (or (hash-ref *dock-configs* key #f)
       (hash-ref *dock-configs*
-                'default #f)
-      ;; Fallback to the first available config in the hashtable
-      (let ((keys (hash-fold (lambda (k v acc)
-                               (cons k acc))
-                             '() *dock-configs*)))
-        (if (pair? keys)
-            (hash-ref *dock-configs*
-                      (car keys) #f) #f))))
+                'default #f) %default-fallback-config%))
 
 ;; =============================================================================
 ;; Getters
@@ -146,83 +152,67 @@
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-items cfg)
-        '())))
+    (dock-config-items cfg)))
 
 (define (get-dock-position . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-position cfg)
-        'bottom)))
+    (dock-config-position cfg)))
 
 (define (get-dock-theme . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-theme cfg)
-        'vanilla)))
+    (dock-config-theme cfg)))
 
 (define (get-dock-icon-size . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-icon-size cfg) 48)))
+    (dock-config-icon-size cfg)))
 
 (define (get-dock-auto-hide? . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-auto-hide? cfg) #f)))
+    (dock-config-auto-hide? cfg)))
 
 (define (get-dock-show-when-clear? . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-show-when-clear? cfg) #t)))
+    (dock-config-show-when-clear? cfg)))
 
 (define (get-dock-monitor . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-monitor cfg)
-        'default)))
+    (dock-config-monitor cfg)))
 
 (define (get-dock-exclude-apps . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-exclude-apps cfg)
-        '())))
+    (dock-config-exclude-apps cfg)))
 
 (define (get-dock-enable-repl? . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-enable-repl? cfg) #f)))
+    (dock-config-enable-repl? cfg)))
 
 (define (get-dock-repl-socket-path . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-repl-socket-path cfg) "/tmp/lambdock-repl.sock")))
+    (dock-config-repl-socket-path cfg)))
 
 (define (get-dock-hover-animate? . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (if cfg
-        (dock-config-hover-animate? cfg) #t)))
+    (dock-config-hover-animate? cfg)))
 
 ;; =============================================================================
 ;; Setters
@@ -231,52 +221,51 @@
 (define (trigger-ui-reload!)
   "Helper to invoke C reload-dock! procedure if available."
   (catch #t
-    (lambda ()
-      (let ((mod (resolve-module '(lambdock core) #:ensure #f)))
-        (when mod
-          (let ((proc (module-ref mod 'reload-dock! #f)))
-            (when (and proc (procedure? proc))
-              (proc))))))
-    (lambda _ #f)))
+         (lambda ()
+           (let ((mod (resolve-module '(lambdock core)
+                                      #:ensure #f)))
+             (when mod
+               (let ((proc (module-ref mod
+                                       'reload-dock! #f)))
+                 (when (and proc
+                            (procedure? proc))
+                   (proc))))))
+         (lambda _
+           #f)))
+
+(define (apply-to-targets proc args)
+  (if (null? args)
+      (hash-for-each (lambda (k cfg)
+                       (proc cfg)) *dock-configs*)
+      (let ((cfg (get-dock-config (car args))))
+        (when cfg
+          (proc cfg))))
+  (trigger-ui-reload!))
 
 (define (set-dock-position! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-position! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-position! cfg val)) args))
 
 (define (set-dock-theme! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-theme! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-theme! cfg val)) args))
 
 (define (set-dock-icon-size! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-icon-size! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-icon-size! cfg val)) args))
 
 (define (set-dock-auto-hide! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-auto-hide?! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-auto-hide?! cfg val)) args))
 
 (define (set-dock-show-when-clear! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-show-when-clear?! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-show-when-clear?! cfg val)) args))
 
 (define (set-dock-monitor! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-monitor! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-monitor! cfg val)) args))
 
 (define (set-dock-hover-animate! val . args)
-  (let ((cfg (get-dock-config (if (null? args) 'default (car args)))))
-    (when cfg
-      (set-dock-config-hover-animate?! cfg val)
-      (trigger-ui-reload!))))
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-hover-animate?! cfg val)) args))

@@ -9,36 +9,54 @@
 
 ;; lambdock is distributed in the hope that it will be useful,
 ;; but WITHOUT ANY WARRANTY; without even the implied warranty of
-;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.See the
+;; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
+;; along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (lambdock loader)
-  #:declarative? #t
+  #:declarative? #f
+  #:use-module (srfi srfi-1)
   #:export (get-config-path resolve-dock-configuration))
 
 ;; =============================================================================
-;; Config File Resolution & Dynamic Module Inspection
+;; Config File Resolution & Isolated Module Inspection
 ;; =============================================================================
 
-(define* (resolve-dock-configuration #:key (module-name '(lambdock settings)))
-  (let* ((mod (resolve-module module-name))
-         (public-mod (module-public-interface mod))
-         ;; Check if a public interface exists AND contains at least one export.
-         (has-exports? (and public-mod
-                            (not (null? (module-map (lambda (name var)
-                                                      name) public-mod)))))
-         ;; If it has exports, search only those. Otherwise, fall back to the whole module.
-         (target-mod (if has-exports? public-mod mod))
-         (settings (filter (lambda (x)
-                             (not (equal? #f x)))
-                           (module-map (lambda (name var)
-                                         (cons name
-                                               (module-ref mod name)))
-                                       target-mod))))
-    settings))
+(define (resolve-dock-configuration file-path)
+  "Evaluates FILE-PATH inside a fresh, isolated module to prevent state pollution."
+  (if (and file-path
+           (string? file-path)
+           (file-exists? file-path))
+      (let ((anon-mod (make-fresh-user-module)))
+        (save-module-excursion (lambda ()
+                                 (set-current-module anon-mod)
+                                 ;; Shadow define-module so settings files don't switch away from anon-mod
+                                 (eval '(define-syntax define-module
+                                          (syntax-rules ()
+                                                        ((_ . rest) #f)))
+                                       anon-mod)
+                                 (module-use! anon-mod
+                                              (resolve-module '(lambdock core)))
+                                 (module-use! anon-mod
+                                              (resolve-module '(lambdock items)))
+                                 (module-use! anon-mod
+                                              (resolve-module '(lambdock
+                                                                presets)))
+                                 (primitive-load file-path)))
+        ;; Map strictly over variables defined locally in anon-mod
+        (filter-map (lambda (sym)
+                      (let ((var (module-local-variable anon-mod sym)))
+                        (if (and var
+                                 (variable-bound? var)
+                                 (not (eq? sym
+                                           'define-module)))
+                            (cons sym
+                                  (variable-ref var)) #f)))
+                    (module-map (lambda (sym var)
+                                  sym) anon-mod)))
+      '()))
 
 (define (get-config-path)
   "Resolves the user configuration path based on XDG guidelines."
