@@ -606,11 +606,6 @@ void reload_dock_instance(LambdockState *state) {
   LOG_C_INFO("UI", "Hot-reloading UI layout for config: %s",
              state->config_path ? state->config_path : "default");
 
-  // Re-evaluates Scheme settings file for this specific dock instance
-  if (state->config_path) {
-    load_dock_config_scm(state->config_path);
-  }
-
   // Reload active theme config and custom CSS for this specific dock instance
   g_free(state->theme);
   state->theme = get_theme_config_for(state->config_path);
