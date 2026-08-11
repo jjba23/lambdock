@@ -223,6 +223,20 @@ gboolean is_app_excluded(const char *app_id) {
   return FALSE;
 }
 
+/* Helper function to safely convert Guile SCM string/symbol/#f to C char* */
+static char *scm_to_c_string_or_null(SCM val) {
+  if (!scm_is_true(val))
+    return NULL;
+  SCM str_scm = scm_is_symbol(val) ? scm_symbol_to_string(val) : val;
+  if (scm_is_string(str_scm)) {
+    char *str = scm_to_utf8_string(str_scm);
+    if (str && *str != '\0')
+      return str;
+    free(str);
+  }
+  return NULL;
+}
+
 /** Reads launcher items for state->config_path and populates dock. */
 void populate_dock_items_for(LambdockState *state) {
   if (!state || !state->box)
@@ -252,25 +266,27 @@ void populate_dock_items_for(LambdockState *state) {
     gboolean hover_anim = scm_is_true(scm_call_1(get_hover_animate_fn, item));
 
     if (g_strcmp0(type_str, "app") == 0) {
-      char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
-      char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
+      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
+      char *exec = scm_to_c_string_or_null(scm_call_1(get_exec_fn, item));
 
       if (!is_app_excluded(name) && !is_app_excluded(icon) &&
           !is_app_excluded(exec)) {
         create_dock_item(state, name, icon, exec, name, TRUE, hover_anim);
-        LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)", name, exec);
+        LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)",
+                   name ? name : "unnamed", exec ? exec : "no-exec");
       } else {
-        LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s", name);
+        LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s",
+                   name ? name : "");
       }
 
       free(name);
       free(icon);
       free(exec);
     } else if (g_strcmp0(type_str, "dynamic") == 0) {
-      char *name = scm_to_utf8_string(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_utf8_string(scm_call_1(get_icon_fn, item));
-      char *exec = scm_to_utf8_string(scm_call_1(get_exec_fn, item));
+      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
+      char *exec = scm_to_c_string_or_null(scm_call_1(get_exec_fn, item));
       SCM poll_fn = scm_call_1(get_poll_fn, item);
       SCM interval_scm = scm_call_1(get_poll_interval_fn, item);
       guint interval_ms =
@@ -281,9 +297,9 @@ void populate_dock_items_for(LambdockState *state) {
       if (!is_app_excluded(name) && !is_app_excluded(exec)) {
         create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms,
                                  hover_anim);
-        LOG_C_INFO("GuileBridge",
-                   "Created dynamic item: %s (%s, poll interval: %dms)", name,
-                   exec, interval_ms);
+        LOG_C_INFO(
+            "GuileBridge", "Created dynamic item: %s (%s, poll interval: %dms)",
+            name ? name : "unnamed", exec ? exec : "no-exec", interval_ms);
       }
 
       free(name);

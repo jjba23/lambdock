@@ -158,13 +158,12 @@
          (lambda _
            "RAM N/A")))
 
-(define* (ram-item #:key (icon "btop")
-                   (exec "alacritty -e 'btop'")
+(define* (ram-item #:key (exec "alacritty -e 'btop'")
                    (poll-interval 2000)
                    (hover-animate? #f))
   "Preset builder for dynamic RAM monitoring item."
   (dynamic-item #:name "Free RAM"
-                #:icon icon
+                #:icon #f
                 #:exec exec
                 #:poll-fn get-free-ram-mb
                 #:poll-interval poll-interval
@@ -176,7 +175,7 @@
 
 (define* (clock-item #:key (hover-animate? #f))
   (dynamic-item #:name "Clock"
-                #:icon "org.gnome.Calendar"
+                #:icon #f
                 #:exec "gnome-calendar"
                 #:poll-fn get-clock-text
                 #:poll-interval 1000
@@ -196,7 +195,7 @@
 
 (define* (cpu-item #:key (hover-animate? #f))
   (dynamic-item #:name "CPU Load"
-                #:icon "utilities-system-monitor"
+                #:icon #f
                 #:exec "alacritty -e 'btop'"
                 #:poll-fn get-cpu-loadavg
                 #:poll-interval 2000
@@ -239,7 +238,7 @@
 
 (define* (cpu-temp-item #:key (hover-animate? #f))
   (dynamic-item #:name "CPU Temp"
-                #:icon "sensors-applet"
+                #:icon #f
                 #:exec "alacritty -e 'btop'"
                 #:poll-fn get-cpu-temp
                 #:poll-interval 3000

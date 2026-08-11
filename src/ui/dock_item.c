@@ -260,7 +260,12 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
 
   item->button = gtk_button_new();
-  gtk_button_set_child(GTK_BUTTON(item->button), image);
+
+  if (image) {
+    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+    gtk_button_set_child(GTK_BUTTON(item->button), image);
+  }
+
   gtk_widget_add_css_class(item->button, "flat");
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 

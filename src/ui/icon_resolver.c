@@ -47,10 +47,8 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // Defensive Guard Check for NULL or Empty Icon String
   // --------------------------------------------------------------------------
   if (!icon || *icon == '\0') {
-    // If no icon name was provided, create a generic fallback icon
-    GtkWidget *img = gtk_image_new_from_icon_name("application-x-executable");
-    gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
-    return img;
+    // Return NULL so no icon image widget is generated
+    return NULL;
   }
 
   // --------------------------------------------------------------------------
