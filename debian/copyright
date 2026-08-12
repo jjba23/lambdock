@@ -1,8 +1,13 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: lambdock
+Upstream-Contact: Josep Bigorra <jjbigorra@gmail.com>
 Source: https://codeberg.org/jjba23/lambdock
 
 Files: *
+Copyright: 2026 Josep Bigorra <jjbigorra@gmail.com>
+License: GPL-3.0-or-later
+
+Files: debian/*
 Copyright: 2026 Josep Bigorra <jjbigorra@gmail.com>
 License: GPL-3.0-or-later
 

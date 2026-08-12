@@ -1,5 +1,5 @@
-lambdock (0.1.0-1) unstable; urgency=medium
+lambdock (0.5.4-1) unstable; urgency=medium
 
-  * Initial release as a Debian package.
+  * Initial release. (Closes: #1143781)
 
- -- Josep Bigorra <jjbigorra@gmail.com>  Tue, 04 Aug 2026 10:00:00 +0200
+ -- Josep Bigorra <jjbigorra@gmail.com>  Wed, 12 Aug 2026 10:00:00 +0200
