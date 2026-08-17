@@ -84,6 +84,13 @@ guile_dep = dependency('guile-3.0', include_type: 'system')         # GNU Guile 
 layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system') # GTK4 Wayland desktop layer integration
 wayland_client_dep = dependency('wayland-client', include_type: 'system')   # Core Wayland client C API
 
+# Shared dependency array for the main executable and multi-dependency tests
+lambdock_deps = [
+    gtk_dep,
+    guile_dep,
+    layer_shell_dep,
+    wayland_client_dep,
+]
 
 # ------------------------------------------------------------------------------
 # Wayland Code Generation (XML Protocol Scanner)
@@ -120,6 +127,8 @@ wl_proto_h = custom_target(
   output: 'wlr-foreign-toplevel-management-unstable-v1-protocol.h',
   command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
 )
+
+wl_proto_sources = [wl_proto_src, wl_proto_h]
 
 
 # ------------------------------------------------------------------------------
@@ -183,12 +192,7 @@ executable('lambdock',
   wl_proto_src,             # Generated Wayland C source code
   wl_proto_h,               # Generated Wayland C header code
   include_directories: inc, # Include path (`-I src`)
-  dependencies: [           # External system dependencies linked via pkg-config
-    gtk_dep,
-    guile_dep,
-    layer_shell_dep,
-    wayland_client_dep,
-  ],
+  dependencies: lambdock_deps,
   gnu_symbol_visibility: 'hidden', # Keep non-exported internal functions hidden from the executable's symbol table
   install: true                    # Instructs `meson install` to copy binary to binary path (e.g. `/usr/bin/lambdock`)
 )
@@ -198,66 +202,57 @@ executable('lambdock',
 # ------------------------------------------------------------------------------
 test_env = environment()
 
-test_dock_item = executable('test_dock_item',
-  'tests/test_dock_item.c',
-  'tests/test_stubs.c',
-  'src/ui/dock_item.c',
-  'src/ui/icon_resolver.c',
-  'src/ui/popover_menu.c',
-  'src/toplevel_tracker.c',
+test_stubs = files('tests/test_stubs.c')
+
+# Shared non-main sources for tests requiring full application context
+full_app_sources = files(
   'src/dock_window.c',
   'src/guile_bridge.c',
+  'src/toplevel_tracker.c',
   'src/ui/theme_engine.c',
-  wl_proto_src,
-  wl_proto_h,
-  include_directories: inc,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep]
-)
-
-test_icon_resolver = executable('test_icon_resolver',
-  'tests/test_icon_resolver.c',
   'src/ui/icon_resolver.c',
-  include_directories: inc,
-  dependencies: [gtk_dep]
-)
-
-test_guile_bridge = executable('test_guile_bridge',
-  'tests/test_guile_bridge.c',
-  'tests/test_stubs.c',
-  'src/guile_bridge.c',
+  'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
-  'src/ui/icon_resolver.c',
-  'src/ui/popover_menu.c',
-  'src/toplevel_tracker.c',
-  'src/dock_window.c',
-  'src/ui/theme_engine.c',
-  wl_proto_src,
-  wl_proto_h,
-  include_directories: inc,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep]
 )
+full_test_sources = [test_stubs, full_app_sources, wl_proto_sources]
 
-test_theme_engine = executable('test_theme_engine',
-  'tests/test_theme_engine.c',
-  'tests/test_stubs.c',
-  'src/ui/theme_engine.c',
-  include_directories: inc,
-  dependencies: [gtk_dep, guile_dep, layer_shell_dep]
-)
+unit_tests = [
+  {
+    'id': 'theme_engine',
+    'extra_sources': [test_stubs, 'src/ui/theme_engine.c'],
+    'deps': [gtk_dep, guile_dep, layer_shell_dep],
+  },
+  {
+    'id': 'popover_menu',
+    'extra_sources': [test_stubs, 'src/ui/popover_menu.c', 'src/toplevel_tracker.c', wl_proto_sources],
+  },
+  {
+    'id': 'dock_item',
+    'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'icon_resolver',
+    'extra_sources': ['src/ui/icon_resolver.c'],
+    'deps': [gtk_dep],
+  },
+  {
+    'id': 'guile_bridge',
+    'name': 'guile_bridge_integration_tests',
+    'extra_sources': full_test_sources,
+  },
+]
 
-test_popover_menu = executable('test_popover_menu',
-  'tests/test_popover_menu.c',
-  'tests/test_stubs.c',
-  'src/ui/popover_menu.c',
-  'src/toplevel_tracker.c',
-  wl_proto_src,
-  wl_proto_h,
-  include_directories: inc,
-  dependencies: [gtk_dep, wayland_client_dep, guile_dep, layer_shell_dep,]
-)
+foreach t : unit_tests
+  test_id = t['id']
+  test_name = t.get('name', test_id + '_unit_tests')
+  test_deps = t.get('deps', lambdock_deps)
 
-test('theme_engine_unit_tests', test_theme_engine, env: test_env)
-test('popover_menu_unit_tests', test_popover_menu, env: test_env)
-test('dock_item_unit_tests', test_dock_item, env: test_env)
-test('icon_resolver_unit_tests', test_icon_resolver, env: test_env)
-test('guile_bridge_integration_tests', test_guile_bridge, env: test_env)
+  exe = executable(
+    'test_' + test_id,
+    'tests/test_' + test_id + '.c',
+    t['extra_sources'],
+    include_directories: inc,
+    dependencies: test_deps,
+  )
+  test(test_name, exe, env: test_env)
+endforeach
