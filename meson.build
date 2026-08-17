@@ -192,3 +192,51 @@ executable('lambdock',
   gnu_symbol_visibility: 'hidden', # Keep non-exported internal functions hidden from the executable's symbol table
   install: true                    # Instructs `meson install` to copy binary to binary path (e.g. `/usr/bin/lambdock`)
 )
+
+# ------------------------------------------------------------------------------
+# Test Suite Configuration
+# ------------------------------------------------------------------------------
+test_env = environment()
+
+test_dock_item = executable('test_dock_item',
+  'tests/test_dock_item.c',
+  'tests/test_stubs.c',
+  'src/ui/dock_item.c',
+  'src/ui/icon_resolver.c',
+  'src/ui/popover_menu.c',
+  'src/toplevel_tracker.c',
+  'src/dock_window.c',
+  'src/guile_bridge.c',
+  'src/ui/theme_engine.c',
+  wl_proto_src,
+  wl_proto_h,
+  include_directories: inc,
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep]
+)
+
+test_icon_resolver = executable('test_icon_resolver',
+  'tests/test_icon_resolver.c',
+  'src/ui/icon_resolver.c',
+  include_directories: inc,
+  dependencies: [gtk_dep]
+)
+
+test_guile_bridge = executable('test_guile_bridge',
+  'tests/test_guile_bridge.c',
+  'tests/test_stubs.c',
+  'src/guile_bridge.c',
+  'src/ui/dock_item.c',
+  'src/ui/icon_resolver.c',
+  'src/ui/popover_menu.c',
+  'src/toplevel_tracker.c',
+  'src/dock_window.c',
+  'src/ui/theme_engine.c',
+  wl_proto_src,
+  wl_proto_h,
+  include_directories: inc,
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep]
+)
+
+test('dock_item_unit_tests', test_dock_item, env: test_env)
+test('icon_resolver_unit_tests', test_icon_resolver, env: test_env)
+test('guile_bridge_integration_tests', test_guile_bridge, env: test_env)
