@@ -24,6 +24,7 @@
              (gnu packages nss)
              (gnu packages admin)
              (gnu packages web)
+             (gnu packages ninja)
              (gnu packages gnupg)
              (gnu packages guile-xyz)
              (gnu packages pkg-config)
