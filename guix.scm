@@ -39,6 +39,8 @@
                  #:recursive? #t
                  #:select? (git-predicate %source-dir)))
     (build-system meson-build-system)
+    (arguments (list #:parallel-build? #t
+                     #:parallel-tests? #t))
     (native-inputs (list (list glib "bin")
                          pkg-config))
     (inputs (list gtk
