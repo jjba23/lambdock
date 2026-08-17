@@ -237,6 +237,27 @@ test_guile_bridge = executable('test_guile_bridge',
   dependencies: [gtk_dep, guile_dep, layer_shell_dep, wayland_client_dep]
 )
 
+test_theme_engine = executable('test_theme_engine',
+  'tests/test_theme_engine.c',
+  'tests/test_stubs.c',
+  'src/ui/theme_engine.c',
+  include_directories: inc,
+  dependencies: [gtk_dep]
+)
+
+test_popover_menu = executable('test_popover_menu',
+  'tests/test_popover_menu.c',
+  'tests/test_stubs.c',
+  'src/ui/popover_menu.c',
+  'src/toplevel_tracker.c',
+  wl_proto_src,
+  wl_proto_h,
+  include_directories: inc,
+  dependencies: [gtk_dep, wayland_client_dep]
+)
+
+test('theme_engine_unit_tests', test_theme_engine, env: test_env)
+test('popover_menu_unit_tests', test_popover_menu, env: test_env)
 test('dock_item_unit_tests', test_dock_item, env: test_env)
 test('icon_resolver_unit_tests', test_icon_resolver, env: test_env)
 test('guile_bridge_integration_tests', test_guile_bridge, env: test_env)
