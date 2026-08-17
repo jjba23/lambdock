@@ -96,14 +96,14 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // Step 1: GLib Resource Bundle Check
   // --------------------------------------------------------------------------
   if (g_str_has_prefix(icon, "resource://")) {
-    LOG_C_DEBUG("UI", "  -> Attempting load from resource scheme: %s", icon);
+    LOG_C_DEBUG("UI", "Attempting load from resource scheme: %s", icon);
     GtkWidget *img = gtk_image_new_from_resource(icon + 11);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
   } else if (g_str_has_prefix(icon, "/org/jointhefreeworld/lambdock/")) {
     if (g_resources_get_info(icon, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL, NULL,
                              NULL)) {
-      LOG_C_DEBUG("UI", "  -> Found embedded internal resource: %s", icon);
+      LOG_C_DEBUG("UI", "Found embedded internal resource: %s", icon);
       GtkWidget *img = gtk_image_new_from_resource(icon);
       gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
       return img;
@@ -114,7 +114,7 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // Step 2: Absolute File Path Check
   // --------------------------------------------------------------------------
   if (g_file_test(icon, G_FILE_TEST_EXISTS)) {
-    LOG_C_DEBUG("UI", "  -> Found direct file path on disk: %s", icon);
+    LOG_C_DEBUG("UI", "Found direct file path on disk: %s", icon);
     GtkWidget *img = gtk_image_new_from_file(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
@@ -124,12 +124,11 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // Step 3: Standard Icon Theme Lookup
   // --------------------------------------------------------------------------
   gboolean has_icon = gtk_icon_theme_has_icon(theme, icon);
-  LOG_C_DEBUG("UI", "  -> gtk_icon_theme_has_icon(theme, '%s'): %s", icon,
+  LOG_C_DEBUG("UI", "gtk_icon_theme_has_icon(theme, '%s'): %s", icon,
               has_icon ? "YES" : "NO");
 
   if (has_icon) {
-    LOG_C_DEBUG("UI", "  -> Resolved '%s' successfully via GTK Icon Theme!",
-                icon);
+    LOG_C_DEBUG("UI", "Resolved '%s' successfully via GTK Icon Theme!", icon);
     GtkWidget *img = gtk_image_new_from_icon_name(icon);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
     return img;
@@ -143,7 +142,7 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
     char *pixmap_png = g_strdup_printf("%s/pixmaps/%s.png", sys_dirs[i], icon);
 
     if (g_file_test(pixmap_png, G_FILE_TEST_EXISTS)) {
-      LOG_C_DEBUG("UI", "  -> Resolved '%s' in pixmaps folder: %s", icon,
+      LOG_C_DEBUG("UI", "Resolved '%s' in pixmaps folder: %s", icon,
                   pixmap_png);
       GtkWidget *img = gtk_image_new_from_file(pixmap_png);
       gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);
@@ -158,11 +157,11 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
   // --------------------------------------------------------------------------
   char *symbolic_name = g_strdup_printf("%s-symbolic", icon);
   gboolean has_symbolic = gtk_icon_theme_has_icon(theme, symbolic_name);
-  LOG_C_DEBUG("UI", "  -> gtk_icon_theme_has_icon(theme, '%s'): %s",
-              symbolic_name, has_symbolic ? "YES" : "NO");
+  LOG_C_DEBUG("UI", "gtk_icon_theme_has_icon(theme, '%s'): %s", symbolic_name,
+              has_symbolic ? "YES" : "NO");
 
   if (has_symbolic) {
-    LOG_C_DEBUG("UI", "  -> Resolved '%s' using symbolic fallback: %s", icon,
+    LOG_C_DEBUG("UI", "Resolved '%s' using symbolic fallback: %s", icon,
                 symbolic_name);
     GtkWidget *img = gtk_image_new_from_icon_name(symbolic_name);
     gtk_image_set_pixel_size(GTK_IMAGE(img), icon_size);

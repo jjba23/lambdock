@@ -242,7 +242,7 @@ test_theme_engine = executable('test_theme_engine',
   'tests/test_stubs.c',
   'src/ui/theme_engine.c',
   include_directories: inc,
-  dependencies: [gtk_dep]
+  dependencies: [gtk_dep, guile_dep, layer_shell_dep]
 )
 
 test_popover_menu = executable('test_popover_menu',
@@ -253,7 +253,7 @@ test_popover_menu = executable('test_popover_menu',
   wl_proto_src,
   wl_proto_h,
   include_directories: inc,
-  dependencies: [gtk_dep, wayland_client_dep]
+  dependencies: [gtk_dep, wayland_client_dep, guile_dep, layer_shell_dep,]
 )
 
 test('theme_engine_unit_tests', test_theme_engine, env: test_env)
