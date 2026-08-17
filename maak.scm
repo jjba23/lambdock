@@ -110,3 +110,8 @@
 (define (nix-run)
   "Run Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
+
+(define (test)
+  "Development REPL."
+  (delete-file-recursively "build")
+  (time-machine-manifest-shell '("meson setup build && meson test -C build")))

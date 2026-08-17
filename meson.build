@@ -201,6 +201,7 @@ test_env.set('GDK_BACKEND', 'headless')
 
 test_dock_item = executable('test_dock_item',
   'tests/test_dock_item.c',
+  'tests/test_stubs.c',
   'src/ui/dock_item.c',
   'src/ui/icon_resolver.c',
   'src/ui/popover_menu.c',
@@ -223,6 +224,7 @@ test_icon_resolver = executable('test_icon_resolver',
 
 test_guile_bridge = executable('test_guile_bridge',
   'tests/test_guile_bridge.c',
+  'tests/test_stubs.c',
   'src/guile_bridge.c',
   'src/ui/dock_item.c',
   'src/ui/icon_resolver.c',
