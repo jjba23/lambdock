@@ -1,3 +1,4 @@
+#include "../src/dock_window.h"
 #include "../src/lambdock.h"
 #include <glib.h>
 

@@ -5,7 +5,6 @@ static void test_icon_resolver_null_and_empty(void) {
   GtkIconTheme *theme =
       gtk_icon_theme_get_for_display(gdk_display_get_default());
 
-  // Test NULL and empty strings
   GtkWidget *img_null = create_image_for_icon(theme, NULL, 48);
   g_assert_null(img_null);
 
@@ -17,8 +16,6 @@ static void test_icon_resolver_fallback_executable(void) {
   GtkIconTheme *theme =
       gtk_icon_theme_get_for_display(gdk_display_get_default());
 
-  // Non-existent icon should fall back to 'application-x-executable' icon
-  // widget
   GtkWidget *img =
       create_image_for_icon(theme, "this-icon-does-not-exist-xyz", 32);
   g_assert_nonnull(img);
@@ -30,8 +27,12 @@ static void test_icon_resolver_fallback_executable(void) {
 }
 
 int main(int argc, char **argv) {
-  gtk_init();
   g_test_init(&argc, &argv, NULL);
+
+  if (!gtk_init_check()) {
+    g_print("Skipping icon resolver tests: No display server available\n");
+    return 77; // GLib/Meson standard exit code for SKIPPED
+  }
 
   g_test_add_func("/ui/icon_resolver/null_empty",
                   test_icon_resolver_null_and_empty);

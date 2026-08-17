@@ -197,7 +197,6 @@ executable('lambdock',
 # Test Suite Configuration
 # ------------------------------------------------------------------------------
 test_env = environment()
-test_env.set('GDK_BACKEND', 'headless')
 
 test_dock_item = executable('test_dock_item',
   'tests/test_dock_item.c',
