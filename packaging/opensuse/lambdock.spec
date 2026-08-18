@@ -32,9 +32,9 @@ Requires:       wayland
 Lambdock is a Wayland-native desktop dock built with GTK4,
 gtk4-layer-shell, and GNU Guile Scheme.
 
-It provides dynamic Wayland foreign-toplevel window tracking,
+It provides dynamic Wayland top-level window tracking,
 multi-monitor support, configurable application launchers,
-smooth auto-hide animations, GTK CSS theming, hot-reloading,
+smooth auto-hide animations, GTK CSS themes, hot-reloading,
 multiple dock instances, and an embedded Guile Scheme runtime
 with an optional interactive REPL.
 
@@ -56,6 +56,8 @@ Wayfire, Niri, and other compatible compositors.
 %license COPYING
 %doc README.org NEWS.org
 %{_bindir}/lambdock
+%dir %{_datadir}/guile/site/3.0/lambdock
+%{_datadir}/guile/site/3.0/lambdock/*.scm
 
 %changelog
 * Tue Aug 18 2026 Josep Bigorra <jjbigorra@gmail.com>
