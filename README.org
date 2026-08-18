@@ -460,7 +460,9 @@ The project requires the following C and Scheme dependencies:
 - *Meson* & *Ninja*
 - *pkg-config*
 
-* Environment Setup with GNU Guix
+* GNU Guix
+
+~lambdock~ is officially distributed via the Guix package manager. You can also use Guix locally and to develop on this project.
 
 Enter a development container with all required dependencies:
 
@@ -504,15 +506,89 @@ debuild -b -uc -us
 
 --------------------
 
-* Building for Fedora/openSUSE
+* Building for openSUSE
 
-Work in progress 🚧 see ~lambdock.spec~
+Work in progress 🚧 see ~packaging/opensuse/lambdock.spec~
+
+Build the RPM locally. On Tumbleweed, install the packaging tools:
+
+#+begin_src shell
+sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
+#+end_src
+
+Then:
+
+#+begin_src shell
+rpmdev-setuptree
+#+end_src
+
+This creates:
+
+#+begin_example
+~/rpmbuild/
+├── BUILD/
+├── BUILDROOT/
+├── RPMS/
+├── SOURCES/
+├── SPECS/
+└── SRPMS/
+#+end_example
+
+Create the source tarball. If your Git tag is v0.6.0 then:
+
+#+begin_src shell
+git archive \
+    --format=tar.gz \
+    --prefix=lambdock-0.6.0/ \
+    -o ~/rpmbuild/SOURCES/lambdock-0.6.0.tar.gz \
+    v0.6.0
+#+end_src
+
+Copy the spec:
+
+#+begin_src shell
+cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
+#+end_src
+
+Then:
+
+#+begin_src shell
+rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
+#+end_src
+
+If successful:
+
+#+begin_src shell
+~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
+~/rpmbuild/SRPMS/lambdock-0.6.0-0.src.rpm
+#+end_src
+
+Test the resulting package. Install it:
+
+#+begin_src shell
+sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
+#+end_src
+
+Then you can run ~lambdock~.
+
+Also important to run rpmlint. This is important for openSUSE packaging:
+
+#+begin_src shell
+rpmlint ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
+#+end_src
+
+and:
+
+#+begin_src shell
+rpmlint ~/rpmbuild/SRPMS/lambdock-0.6.0-0.src.rpm
+#+end_src
+
 
 --------------------
 
 * Building for Arch
 
-Work in progress 🚧 see ~PKGBUILD~
+Work in progress 🚧 see ~packaging/arch/PKGBUILD~
 
 --------------
 
@@ -638,10 +714,9 @@ A build should never fail because "it worked on my machine." Reliable software d
 ~find_dock_item_by_app_id~ relies on string matching heuristics between ~app_id~, ~icon~, ~name~, and ~exec~. This can occasionally fail when Wayland compositors emit generic or reverse-DNS names (e.g., ~org.gnome.Nautilus~ vs ~nautilus~).
 Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~x
 *** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
-*** WIP Finish Guix package and upstream it
 *** WIP Finish Nix package and upstream it
 *** TODO: Finish Debian package and publish it
-*** TODO: Finish Fedora package and publish it
+*** WIP: Finish openSUSE package and publish it
 *** TODO: Finish Arch package and publish it
 
 -------

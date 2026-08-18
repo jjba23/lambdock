@@ -68,7 +68,7 @@
   ($ (cons "sudo apt install -y"
            (deb-packages))
      #:verbose? #t)
-  ($ '("sudo mk-build-deps -i -r debian/control")
+  ($ '("sudo mk-build-deps -i -r packaging/debian/control")
      #:verbose? #t)
   ($ '("debuild -b -uc -us")
      #:verbose? #t))
@@ -77,7 +77,7 @@
   "Build Arch Linux package (.pkg.tar.zst)"
   ($ '("makepkg -si")
      #:verbose? #t)
-  ($ '("namcap PKGBUILD")
+  ($ '("namcap packaging/arch/PKGBUILD")
      #:verbose? #t))
 
 (define rpm-packages
