@@ -1,19 +1,19 @@
-# lambdock
+#
+# spec file for package lambdock
+#
+# Copyright (c) 2026 SUSE LLC and contributors
+#
+# All modifications and additions to the file contributed by third parties
+# remain the property of their copyright owners, unless otherwise agreed
+# upon. The license for this file, and modifications and additions to the
+# file, is the same license as for the pristine package itself (unless the
+# license for the pristine package is not an Open Source License, in which
+# case the license is the MIT License). An "Open Source License" is a
+# license that conforms to the Open Source Definition (Version 1.9)
+# published by the Open Source Initiative.
 
-# Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-# lambdock is free software : you can redistribute it and / or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-
-# lambdock is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-
-# You should have received a copy of the GNU General Public License
-# along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+# Please submit bugfixes or comments via http://bugs.opensuse.org/
+#
 
 Name:           lambdock
 Version:        0.6.0
