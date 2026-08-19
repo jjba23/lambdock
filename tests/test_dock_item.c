@@ -100,11 +100,13 @@ static void test_clear_favorite_dock_items(void) {
   DockItem *fav_item = g_new0(DockItem, 1);
   fav_item->is_favorite = TRUE;
   fav_item->state = &state;
+  fav_item->button = gtk_button_new(); // Provide valid widget for cleanup
 
   // Item 2: Dynamic running app (has active windows, not favorite)
   DockItem *running_item = g_new0(DockItem, 1);
   running_item->is_favorite = FALSE;
   running_item->state = &state;
+  running_item->button = gtk_button_new(); // Provide valid widget for cleanup
   running_item->windows = g_list_append(NULL, g_new0(AppWindow, 1));
 
   state.dock_items = g_list_append(state.dock_items, fav_item);
@@ -119,9 +121,11 @@ static void test_clear_favorite_dock_items(void) {
   g_assert_cmpint(g_list_length(state.dock_items), ==, 1);
   g_assert_true(state.dock_items->data == running_item);
 
-  // Cleanup
+  // Cleanup remaining running item safely
   g_free(running_item->windows->data);
   g_list_free(running_item->windows);
+  g_object_ref_sink(running_item->button);
+  g_object_unref(running_item->button);
   g_free(running_item);
   g_list_free(state.dock_items);
 }

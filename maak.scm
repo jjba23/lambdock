@@ -37,6 +37,11 @@
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
+(define (test)
+  "Test the project"
+  (time-machine-program-shell (list "meson setup build && ninja -C build test")
+                              #:verbose? #t))
+
 (define (repl)
   "Development REPL."
   (time-machine-manifest-shell '("guile -L ./src"

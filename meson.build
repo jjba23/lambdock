@@ -214,17 +214,17 @@ full_app_sources = files(
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
 )
-full_test_sources = [test_stubs, full_app_sources, wl_proto_sources]
+full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
 unit_tests = [
   {
     'id': 'theme_engine',
-    'extra_sources': [test_stubs, 'src/ui/theme_engine.c'],
+    'extra_sources': [test_stubs, 'src/ui/theme_engine.c', lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep],
   },
   {
     'id': 'popover_menu',
-    'extra_sources': [test_stubs, 'src/ui/popover_menu.c', 'src/toplevel_tracker.c', wl_proto_sources],
+    'extra_sources': full_test_sources,
   },
   {
     'id': 'dock_item',
@@ -232,7 +232,7 @@ unit_tests = [
   },
   {
     'id': 'icon_resolver',
-    'extra_sources': ['src/ui/icon_resolver.c'],
+    'extra_sources': ['src/ui/icon_resolver.c', lambdock_resources],
     'deps': [gtk_dep],
   },
   {
