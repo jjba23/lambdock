@@ -23,8 +23,7 @@ License:        GPL-3.0-or-later
 Group:          System/GUI/Other
 URL:            https://codeberg.org/jjba23/lambdock
 
-Source0:        %{name}-%{version}.tar.gz
-Source1:        %{name}-rpmlintrc
+Source0:        %{url}/archive/v%{version}.tar.gz#/%{name}-%{version}.tar.gz
 
 BuildRequires:  gcc
 BuildRequires:  meson

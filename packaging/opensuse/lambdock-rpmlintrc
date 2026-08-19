@@ -1,3 +1,2 @@
-# Silence spellcheck errors for technical terms
-addFilter("E: spelling-error.*Wayland")
-addFilter("E: spelling-error.*wlr")
+addFilter("spelling-error .*Wayland")
+addFilter("spelling-error .*wlr")

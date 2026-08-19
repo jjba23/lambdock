@@ -122,7 +122,11 @@
                         "ls -t ~/rpmbuild/RPMS/x86_64/lambdock-[0-9]*.rpm | head -n 1"))
            (latest-src-rpm (syscall-with-output
                             "ls -t ~/rpmbuild/SRPMS/lambdock-[0-9]*.rpm | head -n 1")))
+      ($ '("cp packaging/opensuse/lambdock-rpmlintrc ~/rpmbuild/RPMS/x86_64/")
+         #:verbose? #t)
       ($ (list (~ "rpmlint ~a" latest-rpm))
+         #:verbose? #t)
+      ($ '("cp packaging/opensuse/lambdock-rpmlintrc ~/rpmbuild/SRPMS/")
          #:verbose? #t)
       ($ (list (~ "rpmlint ~a" latest-src-rpm))
          #:verbose? #t))))
