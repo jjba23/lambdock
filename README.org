@@ -460,9 +460,11 @@ The project requires the following C and Scheme dependencies:
 - *Meson* & *Ninja*
 - *pkg-config*
 
+----------
+
 * GNU Guix
 
-~lambdock~ is officially distributed via the Guix package manager. You can also use Guix locally and to develop on this project.
+~lambdock~ is officially distributed via the Guix package manager. You can also use Guix locally and to develop on this project. See also the ~run~ maak task.
 
 Enter a development container with all required dependencies:
 
@@ -475,6 +477,8 @@ Also, a ~guix.scm~ is provided to run lambdock fully with Guix.
 #+begin_src sh
 guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
 #+end_src
+
+-------
 
 * Building with Meson
 
@@ -494,7 +498,7 @@ meson compile -C build
 
 * Building for openSUSE (RPM distros)
 
-Build the RPM locally. On Tumbleweed, install the packaging tools and setup the developer directories.
+Build the RPM locally. On Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
 
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
@@ -537,7 +541,7 @@ Then you can run ~lambdock~.
 
 * Building for Debian (APT distros)
 
-Install the required build tools and compile the package:
+Install the required build tools and compile the package. See also the ~deb-build~ maak task.
 
 #+begin_src shell
 # Install build dependencies on your Debian/Ubuntu system
@@ -560,7 +564,7 @@ Work in progress 🚧 see ~packaging/arch/PKGBUILD~
 
 * Building with Nix
 
-lambdock can easily be used with Nix (flakes) too:
+lambdock can easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
 
 #+begin_src shell
 nix --extra-experimental-features 'nix-command flakes' build
