@@ -27,12 +27,12 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 
 - *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
 - *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
-- *Multi-Monitor Flexibility* 🖥️: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
+- *Multi-Monitor Flexibility*: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
 - *Smooth Auto-Hide*: Keeps the dock out of your way with configurable reveal thresholds and fluid sliding animations.
 - *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options. Multiple config files and multiple docks are supported.
 - *Smart and Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
-- *Live Interactive Socket REPL* 📡: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
-- *Theme Engine* 🎨: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
+- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
+- *Theme Engine*: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
 - *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme icons, absolute paths, system pixmaps, and symbolic variants.
 - *Async Command Launching*: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
 - *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
@@ -398,7 +398,7 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 ------------------
 
-* Bi-Directionality of C and Guile Scheme 🔄
+* Bi-Directionality of C and Guile Scheme
 
 ~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
 
@@ -639,22 +639,22 @@ In summary, we foster an inclusive, respectful, and cooperative environment for 
 
 --------
 
-* Why Lisp (GNU Guile Scheme) ? 🔮
+* Why Lisp (GNU Guile Scheme) ?
 
 Desktop docks traditionally rely on static configuration formats like JSON, INI, or YAML. While straightforward, these formats force a compromise: adding dynamic behavior or custom logic requires writing C plugins or re-compiling the binary.
 
 ~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be limited to static key-value pairs. It should be an active, extensible programming environment.
 
-*** ⚡ Live Interactive REPL & Inspectability
+*** Live Interactive REPL & Inspectability
 Lisp is built around live interactive development. With Guile embedded directly inside the C graphics core, you can connect a Unix domain socket REPL (via Emacs/Geiser or terminal tools like ~socat~) directly into the running dock process.
 With ~lambdock~ you can inspect state variables, swap themes, dynamically insert launchers, or execute arbitrary Scheme functions on the fly, all without restarting the application or dropping Wayland frames.
 
-*** 🔮 Power of Lisp
+*** Power of Lisp
 - Clean and powerful  abstractions to batch-generate config dynamically and without boilerplate.
 - *S-Expression Templating:* Use meta-programming and quasiquoting and macro expansion for Lisp super powers
 Code that manipulates and emits other code, write Lisp from Lisp, for my use-case in a deep system integration with my OS, (as demonstrated in my [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]] ).
 
-*** 🔄 Bi-Directional C / Guile Interop
+*** Bi-Directional C / Guile Interop
 Guile is engineered from the ground up as the official GNU extension language. Through the ~libguile~ API, execution flows seamlessly in both directions. This gives many interesting advantages.
 
 --------------
