@@ -103,7 +103,7 @@
                                    libwayland-client-devel))))
 
 (define (rpm-build)
-  "Build RPM package for Fedora/RHEL"
+  "Build RPM package for openSUSE and Fedora/RHEL"
   (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0"))
          (latest-tag-num (string-trim-both (string-drop latest-tag 1))))
     ($ '("rpmdev-setuptree")
@@ -116,7 +116,16 @@
     ($ '("cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/")
        #:verbose? #t)
     ($ '("rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec")
-       #:verbose? #t)))
+       #:verbose? #t)
+    ($ '("ls ~/rpmbuild/RPMS/x86_64/lambdock-[0-9]*.rpm"))
+    (let* ((latest-rpm (syscall-with-output
+                        "ls -t ~/rpmbuild/RPMS/x86_64/lambdock-[0-9]*.rpm | head -n 1"))
+           (latest-src-rpm (syscall-with-output
+                            "ls -t ~/rpmbuild/SRPMS/lambdock-[0-9]*.rpm | head -n 1")))
+      ($ (list (~ "rpmlint ~a" latest-rpm))
+         #:verbose? #t)
+      ($ (list (~ "rpmlint ~a" latest-src-rpm))
+         #:verbose? #t))))
 
 (define (nix-build)
   "Build Nix package"

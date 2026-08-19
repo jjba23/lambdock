@@ -489,7 +489,9 @@ meson compile -C build
 ./build/lambdock
 #+end_src
 
-* Building for Debian
+-------
+
+* Building for Debian (APT distros)
 
 Install the required build tools and compile the package:
 
@@ -506,11 +508,9 @@ debuild -b -uc -us
 
 --------------------
 
-* Building for openSUSE
+* Building for openSUSE (RPM distros)
 
-Work in progress 🚧 see ~packaging/opensuse/lambdock.spec~
-
-Build the RPM locally. On Tumbleweed, install the packaging tools:
+Build the RPM locally. On Tumbleweed, install the packaging tools and setup the developer directories.
 
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
@@ -527,15 +527,10 @@ git archive \
     v0.6.0
 #+end_src
 
-Copy the spec:
+Copy the spec and build the RPM:
 
 #+begin_src shell
 cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
-#+end_src
-
-Then:
-
-#+begin_src shell
 rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
 #+end_src
 
