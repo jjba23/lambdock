@@ -24,6 +24,7 @@ Group:          System/GUI/Other
 URL:            https://codeberg.org/jjba23/lambdock
 
 Source0:        %{name}-%{version}.tar.gz
+Source1:        %{name}-rpmlintrc
 
 BuildRequires:  gcc
 BuildRequires:  meson

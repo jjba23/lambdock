@@ -491,22 +491,6 @@ meson compile -C build
 
 -------
 
-* Building for Debian (APT distros)
-
-Install the required build tools and compile the package:
-
-#+begin_src shell
-# Install build dependencies on your Debian/Ubuntu system
-sudo apt update
-sudo apt install build-essential debhelper devscripts meson ninja-build \
-                 pkg-config libgtk-4-dev libgtk4-layer-shell-dev \
-                 guile-3.0-dev libwayland-dev wayland-protocols
-
-# Build the package (unsigned binary build)
-debuild -b -uc -us
-#+end_src
-
---------------------
 
 * Building for openSUSE (RPM distros)
 
@@ -549,18 +533,22 @@ sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
 
 Then you can run ~lambdock~.
 
-Also important to run rpmlint. This is important for openSUSE packaging:
+-----------------
+
+* Building for Debian (APT distros)
+
+Install the required build tools and compile the package:
 
 #+begin_src shell
-rpmlint ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
+# Install build dependencies on your Debian/Ubuntu system
+sudo apt update
+sudo apt install build-essential debhelper devscripts meson ninja-build \
+                 pkg-config libgtk-4-dev libgtk4-layer-shell-dev \
+                 guile-3.0-dev libwayland-dev wayland-protocols
+
+# Build the package (unsigned binary build)
+debuild -b -uc -us
 #+end_src
-
-and:
-
-#+begin_src shell
-rpmlint ~/rpmbuild/SRPMS/lambdock-0.6.0-0.src.rpm
-#+end_src
-
 
 --------------------
 
