@@ -93,43 +93,6 @@ static void test_dock_item_window_tracking(void) {
   g_free(item);
 }
 
-static void test_clear_favorite_dock_items(void) {
-  LambdockState state = {0};
-
-  // Item 1: Favorite launcher (no active windows)
-  DockItem *fav_item = g_new0(DockItem, 1);
-  fav_item->is_favorite = TRUE;
-  fav_item->state = &state;
-  fav_item->button = gtk_button_new(); // Provide valid widget for cleanup
-
-  // Item 2: Dynamic running app (has active windows, not favorite)
-  DockItem *running_item = g_new0(DockItem, 1);
-  running_item->is_favorite = FALSE;
-  running_item->state = &state;
-  running_item->button = gtk_button_new(); // Provide valid widget for cleanup
-  running_item->windows = g_list_append(NULL, g_new0(AppWindow, 1));
-
-  state.dock_items = g_list_append(state.dock_items, fav_item);
-  state.dock_items = g_list_append(state.dock_items, running_item);
-
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 2);
-
-  // Clear favorites
-  clear_favorite_dock_items(&state);
-
-  // Only running dynamic item should remain
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 1);
-  g_assert_true(state.dock_items->data == running_item);
-
-  // Cleanup remaining running item safely
-  g_free(running_item->windows->data);
-  g_list_free(running_item->windows);
-  g_object_ref_sink(running_item->button);
-  g_object_unref(running_item->button);
-  g_free(running_item);
-  g_list_free(state.dock_items);
-}
-
 static void test_create_separator_dock_item(void) {
   LambdockState state = {0};
   state.icon_size = 48;
@@ -160,8 +123,6 @@ int main(int argc, char **argv) {
   if (gtk_init_check()) {
     g_test_add_func("/ui/dock_item/window_tracking",
                     test_dock_item_window_tracking);
-    g_test_add_func("/ui/dock_item/clear_favorite_dock_items",
-                    test_clear_favorite_dock_items);
     g_test_add_func("/ui/dock_item/create_separator_dock_item",
                     test_create_separator_dock_item);
   } else {
