@@ -16,10 +16,20 @@
 ;; along with lambdock.If not, see <https://www.gnu.org/licenses/>.
 
 (define-module (maak)
-  #:use-module (maak maak)
+  #:declarative? #t
+  #:use-module (ice-9 string-fun)
   #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 popen)
-  #:declarative? #t)
+  #:use-module (maak maak))
+
+;; ===== Maak abstractions =====
+
+(define (syscall-with-output cmd)
+  (let* ((process (open-input-pipe cmd))
+         (process-output (get-string-all process)))
+    (close-pipe process) process-output))
+
+;; ===== Maak tasks =======
 
 (define (run)
   "Run lambdock with Guix"
@@ -94,14 +104,19 @@
 
 (define (rpm-build)
   "Build RPM package for Fedora/RHEL"
-  ($ '("rpmdev-setuptree")
-     #:verbose? #t)
-  ($ '("tar -czvf ~/rpmbuild/SOURCES/lambdock-0.1.0.tar.gz --transform 's/^\\./lambdock-0.1.0/' --exclude='.git' --exclude='build' .")
-     #:verbose? #t)
-  ($ '("rpmbuild -ba lambdock.spec")
-     #:verbose? #t)
-  ($ '("cp ~/rpmbuild/RPMS/*/*.rpm .")
-     #:verbose? #t))
+  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0"))
+         (latest-tag-num (string-trim-both (string-drop latest-tag 1))))
+    ($ '("rpmdev-setuptree")
+       #:verbose? #t)
+    ($ (list "git archive --format=tar.gz"
+             (~ "--prefix=lambdock-~a/" latest-tag-num)
+             (~ "-o ~~/rpmbuild/SOURCES/lambdock-~a.tar.gz" latest-tag-num)
+             latest-tag)
+       #:verbose? #t)
+    ($ '("cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/")
+       #:verbose? #t)
+    ($ '("rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec")
+       #:verbose? #t)))
 
 (define (nix-build)
   "Build Nix package"

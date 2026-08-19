@@ -514,25 +514,8 @@ Build the RPM locally. On Tumbleweed, install the packaging tools:
 
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
-#+end_src
-
-Then:
-
-#+begin_src shell
 rpmdev-setuptree
 #+end_src
-
-This creates:
-
-#+begin_example
-~/rpmbuild/
-├── BUILD/
-├── BUILDROOT/
-├── RPMS/
-├── SOURCES/
-├── SPECS/
-└── SRPMS/
-#+end_example
 
 Create the source tarball. If your Git tag is v0.6.0 then:
 
