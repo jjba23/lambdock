@@ -136,6 +136,11 @@
       ($ (list (~ "rpmlint ~a" latest-src-rpm))
          #:verbose? #t))))
 
+(define (nix-test)
+  "Run Nix flake checks and test phase"
+  ($ '("nix --extra-experimental-features 'nix-command flakes' flake check")
+     #:verbose? #t))
+
 (define (nix-build)
   "Build Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' build")))

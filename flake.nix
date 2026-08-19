@@ -30,6 +30,7 @@
             packages = with pkgs; [
               ccls
               watchexec
+              xvfb-run
             ];
           };
         });
