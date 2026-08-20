@@ -93,7 +93,7 @@ Configurations are written in GNU Guile Scheme, and user style overrides are wri
 (define dock-theme 'vanilla)
 
 ;; 'all         -> Render dock on every connected monitor
-;; "DP-1"       -> Target specific monitor output connector
+;; "DP-1"        -> Target specific monitor output connector
 ;; 'default     -> Default compositor monitor assignment
 (define dock-monitor 'all)
 
@@ -151,7 +151,11 @@ Configurations are written in GNU Guile Scheme, and user style overrides are wri
 
 Since lambdock configuration files are evaluated directly as standard GNU Guile Scheme, you can run any arbitrary Guile code right inside =~/.config/lambdock/settings*.scm=. You can import modules, define helper functions, query system state (like time, hostnames, or installed packages), do API calls, and dynamically build your configuration.
 
-An example =~/.config/lambdock/settings.scm=  could look like:
+
+#+begin_export html
+<details>
+  <summary>$HOME/.config/lambdock/settings.scm</summary>
+#+end_export
 
 #+begin_src scheme
 (use-modules (ice-9 popen)
@@ -170,6 +174,10 @@ An example =~/.config/lambdock/settings.scm=  could look like:
 (define dock-auto-hide?
   (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
 #+end_src
+
+#+begin_export html
+</details>
+#+end_export
 
 *** Available Item Constructors
 
@@ -221,17 +229,17 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 | Multi-Dock Instances (Files)      | ✅ Dynamic (~settings-*.scm~)      | ⚠️ Limited         | ⚠️ Multi-bar config| ⚠️ Multi-bar config   | ❌ Single dock    |
 | Live Interactive Socket REPL      | ✅ (Emacs/Geiser, ~socat~)         | ❌                 | ❌                 | ❌                    | ❌                 |
 | Hot-Reloading                     | ✅ Runtime Code, Docks & CSS  | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
-| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~                | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
+| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~               | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
 |-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
 | Wayland Window Tracking           | ✅ ~zwlr_foreign_toplevel_v1~      | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)    |
-| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu     |
+| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu      |
 | Dynamic Polling Widgets           | ✅ Scheme Thunks (RAM/CPU/Clock)   | ⚠️ C Plugins       | ✅ Custom modules  | ✅ Yuck pollers       | ❌ Static         |
 | Hover Magnification (Fish-eye)    | ✅ Cosine-Bell (Per-Item Toggle)   | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
 | Dock Viewport Scrolling           | ✅ Mouse Wheel / Touchpad          | ❌                 | ❌                 | ❌                    | ❌                 |
 | Smooth Auto-Hide Animations       | ✅ Frame-Clock Eased Slide         | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
 |-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
 | Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                 |
-| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages    | ❌ Proprietary OS |
+| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
 | Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
 
@@ -406,23 +414,23 @@ Popover Capabilities: Select individual windows by title, close specific window 
   ┌────────────────────────────────────────────────────────────────────────┐
   │                           C RUNTIME (GTK4)                             │
   │                                                                        │
-  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()           │
-  │                                           │ (Exports C Subrs)          │
-  │                                           ▼                            │
+  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()            │
+  │                                             │ (Exports C Subrs)          │
+  │                                             ▼                            │
   │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
-  │           │                               │                            │
-  │           ▼                               │ Thread-safe                │
+  │            │                                │                            │
+  │            ▼                                │ Thread-safe                │
   │   reload_dock_instance() ◄────────────────┘ g_idle_add()                │
-  │           │                                                            │
+  │            │                                                           │
   └───────────┼────────────────────────────────────────────────────────────┘
-              │                               ▲
-              │ Calls Scheme Procedures       │ Invokes C Primitives
-              ▼                               │
+              │                                ▲
+              │ Calls Scheme Procedures        │ Invokes C Primitives
+              ▼                                │
   ┌───────────────────────────────────────────┴────────────────────────────┐
-  │                         GUILE SCHEME ENGINE                            │
+  │                          GUILE SCHEME ENGINE                           │
   │                                                                        │
   │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                   │
-  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread        │
+  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread         │
   └────────────────────────────────────────────────────────────────────────┘
 #+end_src
 
@@ -482,6 +490,7 @@ guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
 
 * Building with Meson
 
+#+begin_details
 #+begin_src sh
 # Setup build directory
 meson setup build
@@ -492,23 +501,27 @@ meson compile -C build
 # Run locally
 ./build/lambdock
 #+end_src
+#+end_details
 
 -------
 
 
 * Building for openSUSE (RPM distros)
 
-~lambdock~ is packaged at OBS: https://build.opensuse.org/package/show/home:jjba23/lambdock
+~lambdock~ is packaged at OBS: https://build.opensuse.org/package/show/home:jjba23/lambdock and you can download it from there, or add the Zypper repo.
 
 To build the RPM locally on Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
 
+#+begin_details
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
 rpmdev-setuptree
 #+end_src
+#+end_details
 
-Create the source tarball. If your Git tag is v0.6.0 then:
+Create the source tarball. You can do this with Git (or also simply copying the directory and manually ~tar -cvzf~). If your Git tag is v0.6.0 then:
 
+#+begin_details
 #+begin_src shell
 git archive \
     --format=tar.gz \
@@ -516,26 +529,33 @@ git archive \
     -o ~/rpmbuild/SOURCES/lambdock-0.6.0.tar.gz \
     v0.6.0
 #+end_src
+#+end_details
 
 Copy the spec and build the RPM:
 
+#+begin_details
 #+begin_src shell
 cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
 rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
 #+end_src
+#+end_details
 
-If successful:
+Then you should get the RPM files successfully generated:
 
+#+begin_details
 #+begin_src shell
 ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
 ~/rpmbuild/SRPMS/lambdock-0.6.0-0.src.rpm
 #+end_src
+#+end_details
 
 Test the resulting package. Install it:
 
+#+begin_details
 #+begin_src shell
 sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
 #+end_src
+#+end_details
 
 Then you can run ~lambdock~.
 
@@ -545,6 +565,7 @@ Then you can run ~lambdock~.
 
 Install the required build tools and compile the package. See also the ~deb-build~ maak task.
 
+#+begin_details
 #+begin_src shell
 # Install build dependencies on your Debian/Ubuntu system
 sudo apt update
@@ -555,6 +576,7 @@ sudo apt install build-essential debhelper devscripts meson ninja-build \
 # Build the package (unsigned binary build)
 debuild -b -uc -us
 #+end_src
+#+end_details
 
 --------------------
 
@@ -568,10 +590,12 @@ Work in progress 🚧 see ~packaging/arch/PKGBUILD~
 
 lambdock can easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
 
+#+begin_details
 #+begin_src shell
 nix --extra-experimental-features 'nix-command flakes' build
 nix --extra-experimental-features 'nix-command flakes' run .#
 #+end_src
+#+end_details
 
 ----------------------
 
@@ -643,53 +667,4 @@ In summary, we foster an inclusive, respectful, and cooperative environment for 
 
 * Why Lisp (GNU Guile Scheme) ?
 
-Desktop docks traditionally rely on static configuration formats like JSON, INI, or YAML. While straightforward, these formats force a compromise: adding dynamic behavior or custom logic requires writing C plugins or re-compiling the binary.
-
-~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be limited to static key-value pairs. It should be an active, extensible programming environment.
-
-*** Live Interactive REPL & Inspectability
-Lisp is built around live interactive development. With Guile embedded directly inside the C graphics core, you can connect a Unix domain socket REPL (via Emacs/Geiser or terminal tools like ~socat~) directly into the running dock process.
-With ~lambdock~ you can inspect state variables, swap themes, dynamically insert launchers, or execute arbitrary Scheme functions on the fly, all without restarting the application or dropping Wayland frames.
-
-*** Power of Lisp
-- Clean and powerful  abstractions to batch-generate config dynamically and without boilerplate.
-- *S-Expression Templating:* Use meta-programming and quasiquoting and macro expansion for Lisp super powers
-Code that manipulates and emits other code, write Lisp from Lisp, for my use-case in a deep system integration with my OS, (as demonstrated in my [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]] ).
-
-*** Bi-Directional C / Guile Interop
-Guile is engineered from the ground up as the official GNU extension language. Through the ~libguile~ API, execution flows seamlessly in both directions. This gives many interesting advantages.
-
---------------
-
-* On Reproducibility: Why GNU Guix?
-
-A build should never fail because "it worked on my machine." Reliable software development requires explicit, bit-for-bit reproducibility and a functional approach to package management and system deployment.
-
-#+BEGIN_EXPORT html
-<a href="https://guix.gnu.org/">
-  <img src="https://jointhefreeworld.org/ggg/dist/gnu-guix.svg" alt="GNU Guix logo" style="max-width: 250px; width: 100%; height: auto;" />
-</a>
-#+END_EXPORT
-
-- *Declarative Build Graphs:* Packages are pure functions of their inputs with no implicit system state.
-- *Programmable with Guile:* Full system and package configurations written in [[https://www.gnu.org/software/guile/][Guile Scheme]] rather than rigid DSLs or static files.
-- *Time Travel:* Rebuild the exact system state from any point in git history using ~guix time-machine~.
-- *Atomic Operations:* Instantly upgrade or roll back environments without leaving orphaned dependencies or broken states.
-- *Unified Tooling:* One tool manages development shells, isolated containers, package builds, and full system configurations.
-
-
-----------
-
-* Backlog and Ideas
-*** TODO: Add some name mapping (e.g. org.gnome.SystemMonitor -> System Monitor) and localized?
-*** TODO: Implement XDG desktop entry cache reader to inspect ~/usr/share/applications/*.desktop~ and ~~/.local/share/applications/*.desktop~ and flatpaks for  Flawless ~app_id~ Matching
-~find_dock_item_by_app_id~ relies on string matching heuristics between ~app_id~, ~icon~, ~name~, and ~exec~. This can occasionally fail when Wayland compositors emit generic or reverse-DNS names (e.g., ~org.gnome.Nautilus~ vs ~nautilus~).
-Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~x
-*** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
-*** WIP Finish Nix package and upstream it
-*** TODO: Finish Debian package and publish it
-*** TODO: Finish Arch package and publish it
-
--------
-
-You can find the [[file:NEWS.org][NEWS file with the Changelog here]]
+Desktop do
