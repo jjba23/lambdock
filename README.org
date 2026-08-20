@@ -391,7 +391,16 @@ If you use Emacs with Geiser:
 2. Select ~guile~ as the Scheme implementation.
 3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
 
+#+begin_export html
+<details>
+  <summary>see Emacs + Geiser GIF</summary>
+#+end_export
+
 [[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_13-13-17.gif]]
+
+#+begin_export html
+</details>
+#+end_export
 
 
 *** Other options
