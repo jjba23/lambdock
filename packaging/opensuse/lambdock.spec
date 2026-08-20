@@ -37,9 +37,7 @@ BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-protocols)
 
 Requires:       gtk4
-Requires:       gtk4-layer-shell
 Requires:       guile
-Requires:       wayland
 
 %description
 Lambdock is a Wayland-native desktop dock built with GTK4,
