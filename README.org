@@ -179,6 +179,17 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
 </details>
 #+end_export
 
+#+begin_export html
+Also, see here a small demo of hot-reload
+<details>
+  <summary>GIF</summary>
+#+end_export
+
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
+
+#+begin_export html
+</details>
+#+end_export
 *** Available Item Constructors
 
 | Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
@@ -242,10 +253,6 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 | Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
 | Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
-
-Here a small demo of hot-reload config feature:
-
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
 
 --------------
 
