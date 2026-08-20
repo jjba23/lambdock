@@ -72,6 +72,9 @@ Wayfire, Niri, and other compatible compositors.
 %license COPYING
 %doc README.org NEWS.org
 %{_bindir}/lambdock
+%dir %{_datadir}/guile
+%dir %{_datadir}/guile/site
+%{_datadir}/guile/site/3.0/
 %dir %{_datadir}/guile/site/3.0/lambdock
 %{_datadir}/guile/site/3.0/lambdock/*.scm
 
