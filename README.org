@@ -498,7 +498,9 @@ meson compile -C build
 
 * Building for openSUSE (RPM distros)
 
-Build the RPM locally. On Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
+~lambdock~ is packaged at OBS: https://build.opensuse.org/package/show/home:jjba23/lambdock
+
+To build the RPM locally on Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
 
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
@@ -686,7 +688,6 @@ Read ~StartupWMClass=~, ~Exec=~, and ~Icon=~ keys to map compositor ~app_id~x
 *** TODO: Add more themes (CairoDock inspiration, Plank, other macOS inspired etc.)
 *** WIP Finish Nix package and upstream it
 *** TODO: Finish Debian package and publish it
-*** WIP: Finish openSUSE package and publish it
 *** TODO: Finish Arch package and publish it
 
 -------
