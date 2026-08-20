@@ -190,7 +190,12 @@ Also, here a small demo of hot-reload
 #+begin_export html
 </details>
 #+end_export
-*** Available Item Constructors
+
+#+begin_export html
+lambdock provides a beautiful Lisp DSL for defining your dock, based on items and presets
+<details>
+  <summary>see reference and available item constructors</summary>
+#+end_export
 
 | Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
 |--------------------------------+-------------+-------------+-------------------|
@@ -201,6 +206,9 @@ Also, here a small demo of hot-reload
 | ~(separator-item)~ | Record | Layout divider line | None |
 | ~(preset-icon 'symbol)~ | String | Resolves default icon name string for a given preset | Symbol |
 
+#+begin_export html
+</details>
+#+end_export
 -----------
 
 *** Multi-Config & Multi-Dock Instance
