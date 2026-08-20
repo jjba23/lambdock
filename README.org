@@ -133,7 +133,7 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
 
 #+begin_export html
 <details>
-  <summary>See examples of configs (e.g. $HOME/.config/lambdock/settings-joe.scm) </summary>
+  <summary>See <strong>examples of configs</strong> (e.g. $HOME/.config/lambdock/settings-joe.scm) </summary>
 #+end_export
 
 
@@ -193,7 +193,7 @@ Also, here a small demo of hot-reload
 lambdock provides a beautiful Lisp DSL for defining your dock, based on items and presets
 #+begin_export html
 <details>
-  <summary>see reference and available item constructors</summary>
+  <summary>see <strong>reference</strong> and available item <strong>constructors</strong></summary>
 #+end_export
 
 | Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
