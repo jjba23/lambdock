@@ -178,9 +178,8 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
 #+end_export
 
 
-
-#+begin_export html
 Also, here a small demo of hot-reload
+#+begin_export html
 <details>
   <summary>see GIF</summary>
 #+end_export
@@ -191,8 +190,8 @@ Also, here a small demo of hot-reload
 </details>
 #+end_export
 
-#+begin_export html
 lambdock provides a beautiful Lisp DSL for defining your dock, based on items and presets
+#+begin_export html
 <details>
   <summary>see reference and available item constructors</summary>
 #+end_export
