@@ -2,12 +2,20 @@
   <service name="obs_scm">
     <param name="scm">git</param>
     <param name="url">https://codeberg.org/jjba23/lambdock.git</param>
-    <param name="scm-branch">trunk</param>
+    <param name="revision">@PARENT_TAG@</param>
     <param name="versionformat">@PARENT_TAG@</param>
     <param name="versionrewrite-pattern">v(.*)</param>
     <param name="versionrewrite-replacement">\1</param>
-    <param name="versionprefix"></param>
-    <param name="filename">lambdock</param>
+    <param name="extract">packaging/opensuse/lambdock.spec</param>
     <param name="changesgenerate">enable</param>
   </service>
+
+  <service name="tar" mode="buildtime"/>
+
+  <service name="recompress" mode="buildtime">
+    <param name="compression">xz</param>
+    <param name="file">*.tar</param>
+  </service>
+
+  <service name="set_version" mode="buildtime"/>
 </services>
