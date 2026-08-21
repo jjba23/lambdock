@@ -20,7 +20,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "0.6.0";
+  version = "0.6.2";
 
   src = ./.;
 

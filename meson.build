@@ -21,7 +21,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '0.6.0',
+  version: '0.6.2',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -29,6 +29,8 @@ project('lambdock', 'c',
     'werror=true',            # Treat compiler warnings as fatal errors
     'b_lto=true',             # Link-Time Optimization (LTO) for smaller, faster binaries
     'b_pie=true',             # Position-Independent Executable (PIE) for security/ASLR
+    'buildtype=release',      # Optimized and stripped binaries
+    'strip=true'
   ]
 )
 

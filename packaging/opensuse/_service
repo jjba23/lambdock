@@ -1,11 +1,13 @@
 <services>
-  <service name="tar_scmsync" mode="manual">
-    <param name="url">https://codeberg.org/jjba23/lambdock.git</param>
+  <service name="obs_scm">
     <param name="scm">git</param>
-    <param name="revision">v0.6.0</param>
-  </service>
-  <service name="recompress" mode="manual">
-    <param name="file">*.tar</param>
-    <param name="compression">gz</param>
+    <param name="url">https://codeberg.org/jjba23/lambdock.git</param>
+    <param name="scm-branch">trunk</param>
+    <param name="versionformat">@PARENT_TAG@</param>
+    <param name="versionrewrite-pattern">v(.*)</param>
+    <param name="versionrewrite-replacement">\1</param>
+    <param name="versionprefix"></param>
+    <param name="filename">lambdock</param>
+    <param name="changesgenerate">enable</param>
   </service>
 </services>
