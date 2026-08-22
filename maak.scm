@@ -148,3 +148,16 @@
 (define (nix-run)
   "Run Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
+
+(define (container-build)
+  "Build Container image"
+  ($ '("podman build .")))
+
+(define (container-run)
+  "Run Container image"
+  ($ '("podman run --rm --name lambdock" "--network host"
+       "--user \"$(id -u):$(id -g)\""
+       "-e XDG_RUNTIME_DIR=/run/user/$(id -u)"
+       "-e WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\""
+       "-v /run/user/$(id -u):/run/user/$(id -u)"
+       "lambdock:latest")))
