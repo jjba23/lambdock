@@ -81,15 +81,22 @@
 
 (define (deb-build)
   "Build .deb package (unsigned)"
-  ($ '("sudo apt update")
-     #:verbose? #t)
-  ($ (cons "sudo apt install -y"
-           (deb-packages))
-     #:verbose? #t)
-  ($ '("sudo mk-build-deps -i -r packaging/debian/control")
-     #:verbose? #t)
-  ($ '("debuild -b -uc -us")
-     #:verbose? #t))
+  ($ '("sudo apt update") #:verbose? #t)
+  ($ (cons "sudo apt install -y" (deb-packages)) #:verbose? #t)
+
+  (dynamic-wind
+    ;; Setup: create temporary symlink at project root
+    (lambda ()
+      ($ '("ln -s packaging/debian debian") #:verbose? #t))
+
+    ;; Execution: run debian build commands against ./debian
+    (lambda ()
+      ($ '("sudo mk-build-deps -i -r debian/control") #:verbose? #t)
+      ($ '("debuild -b -uc -us") #:verbose? #t))
+
+    ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
+    (lambda ()
+      ($ '("rm -rf debian") #:verbose? #t))))
 
 (define (arch-build)
   "Build Arch Linux package (.pkg.tar.zst)"
