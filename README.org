@@ -482,9 +482,6 @@ For example, when ~(reload-dock!)~ is called over the socket REPL, C safely sche
 
 ---------
 
-
-----------
-
 * Building and Installing
 ** Dependencies
 
@@ -605,7 +602,19 @@ nix --extra-experimental-features 'nix-command flakes' run .#
 In a nutshell, you can run lambdock easily this way, provided you mount necessary devices and files.
 
 #+begin_src shell
-podman run -d --rm --name lambdock --network host --userns=keep-id --ipc=host --device /dev/dri -e XDG_RUNTIME_DIR=/run/user/$(id -u) -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" -e HOME="$HOME" -v /run/user/$(id -u):/run/user/$(id -u):z -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro" -v "$HOME:$HOME" -v /usr/share/icons:/usr/share/icons:ro -v /usr/share/applications:/usr/share/applications:ro lambdock:latest
+podman run -d --rm --name lambdock \
+       --network host \
+       --userns=keep-id --ipc=host \
+       --device /dev/dri \
+       -e XDG_RUNTIME_DIR=/run/user/$(id -u) \
+       -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+       -e HOME="$HOME" \
+       -v /run/user/$(id -u):/run/user/$(id -u):z \
+       -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro" \
+       -v "$HOME:$HOME" \
+       -v /usr/share/icons:/usr/share/icons:ro \
+       -v /usr/share/applications:/usr/share/applications:ro \
+       lambdock:latest
 #+end_src
 
 ----------
