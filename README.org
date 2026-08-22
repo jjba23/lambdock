@@ -437,13 +437,13 @@ Popover Capabilities: Select individual windows by title, close specific window 
   ┌────────────────────────────────────────────────────────────────────────┐
   │                           C RUNTIME (GTK4)                             │
   │                                                                        │
-  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()            │
-  │                                             │ (Exports C Subrs)          │
-  │                                             ▼                            │
+  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()         │
+  │                                             │ (Exports C Subrs)        │
+  │                                             ▼                          │
   │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
-  │            │                                │                            │
-  │            ▼                                │ Thread-safe                │
-  │   reload_dock_instance() ◄────────────────┘ g_idle_add()                │
+  │            │                                │                          │
+  │            ▼                                │ Thread-safe              │
+  │   reload_dock_instance() ◄────────────────┘ g_idle_add()               │
   │            │                                                           │
   └───────────┼────────────────────────────────────────────────────────────┘
               │                                ▲
@@ -452,8 +452,8 @@ Popover Capabilities: Select individual windows by title, close specific window 
   ┌───────────────────────────────────────────┴────────────────────────────┐
   │                          GUILE SCHEME ENGINE                           │
   │                                                                        │
-  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                   │
-  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread         │
+  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                  │
+  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread       │
   └────────────────────────────────────────────────────────────────────────┘
 #+end_src
 
@@ -482,7 +482,11 @@ For example, when ~(reload-dock!)~ is called over the socket REPL, C safely sche
 
 ---------
 
-* Development & Building
+
+----------
+
+* Building and Installing
+** Dependencies
 
 The project requires the following C and Scheme dependencies:
 - *GTK 4* (~gtk4~)
@@ -491,9 +495,7 @@ The project requires the following C and Scheme dependencies:
 - *Meson* & *Ninja*
 - *pkg-config*
 
-----------
-
-* GNU Guix
+** GNU Guix
 
 ~lambdock~ is officially distributed via the Guix package manager. You can also use Guix locally and to develop on this project. See also the ~run~ maak task.
 
@@ -511,9 +513,8 @@ guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
 
 -------
 
-* Building with Meson
+** Meson
 
-#+begin_details
 #+begin_src sh
 # Setup build directory
 meson setup build
@@ -524,71 +525,49 @@ meson compile -C build
 # Run locally
 ./build/lambdock
 #+end_src
-#+end_details
 
 -------
 
 
-* Building for openSUSE (RPM distros)
+** openSUSE (RPM distros)
 
 ~lambdock~ is packaged at OBS: https://build.opensuse.org/package/show/home:jjba23/lambdock and you can download it from there, or add the Zypper repo.
 
 To build the RPM locally on Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
 
-#+begin_details
 #+begin_src shell
 sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
 rpmdev-setuptree
 #+end_src
-#+end_details
 
-Create the source tarball. You can do this with Git (or also simply copying the directory and manually ~tar -cvzf~). If your Git tag is v0.6.0 then:
-
-#+begin_details
-#+begin_src shell
-git archive \
-    --format=tar.gz \
-    --prefix=lambdock-0.6.0/ \
-    -o ~/rpmbuild/SOURCES/lambdock-0.6.0.tar.gz \
-    v0.6.0
-#+end_src
-#+end_details
+Create the source tarball. You can do this with ~git archive~ (or also simply copying the directory and manually ~tar -cvzf~). This tarball should be placed in =~/rpmbuild/SOURCES/=
 
 Copy the spec and build the RPM:
-
-#+begin_details
 #+begin_src shell
 cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
 rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
 #+end_src
-#+end_details
 
 Then you should get the RPM files successfully generated:
-
-#+begin_details
 #+begin_src shell
-~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
-~/rpmbuild/SRPMS/lambdock-0.6.0-0.src.rpm
+~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
+~/rpmbuild/SRPMS/lambdock-0.1.0-0.src.rpm
 #+end_src
-#+end_details
 
 Test the resulting package. Install it:
 
-#+begin_details
 #+begin_src shell
-sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.6.0-0.x86_64.rpm
+sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
 #+end_src
-#+end_details
 
 Then you can run ~lambdock~.
 
 -----------------
 
-* Building for Debian (APT distros)
+** Debian (APT distros)
 
 Install the required build tools and compile the package. See also the ~deb-build~ maak task.
 
-#+begin_details
 #+begin_src shell
 # Install build dependencies on your Debian/Ubuntu system
 sudo apt update
@@ -599,30 +578,27 @@ sudo apt install build-essential debhelper devscripts meson ninja-build \
 # Build the package (unsigned binary build)
 debuild -b -uc -us
 #+end_src
-#+end_details
 
 --------------------
 
-* Building for Arch
+** Arch Linux
 
 Work in progress 🚧 see ~packaging/arch/PKGBUILD~
 
 --------------
 
-* Building with Nix
+** Nix
 
 lambdock can easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
 
-#+begin_details
 #+begin_src shell
 nix --extra-experimental-features 'nix-command flakes' build
 nix --extra-experimental-features 'nix-command flakes' run .#
 #+end_src
-#+end_details
 
 ----------------------
 
-* Building with Podman/Docker
+** Podman/Docker
 
 ~lambdock~ is also available as a container. You can pull its images from [[https://hub.docker.com/repository/docker/jjba23/lambdock/general][DockerHub]] or build it yourself. It's also recommended to see ~maak.scm~ for more details on how to use it that way.
 
