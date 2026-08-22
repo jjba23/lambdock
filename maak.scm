@@ -166,10 +166,10 @@
 (define (container-run)
   "Run Container image"
   ($ '("podman run --rm --name lambdock" "--network host"
-       "--user \"$(id -u):$(id -g)\""
+       "--userns=keep-id --ipc=host"
        "-e XDG_RUNTIME_DIR=/run/user/$(id -u)"
        "-e WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\""
-       "-v /run/user/$(id -u):/run/user/$(id -u)"
+       "-v /run/user/$(id -u):/run/user/$(id -u):z"
        "lambdock:latest")))
 
 (define (push-docker-latest)
