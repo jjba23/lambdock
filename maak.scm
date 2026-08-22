@@ -31,6 +31,9 @@
 
 ;; ===== Maak tasks =======
 
+(define project-name
+  'lambdock)
+
 (define (run)
   "Run lambdock with Guix"
   ($ '("pkill lambdock || true"))
@@ -151,7 +154,7 @@
 
 (define (container-build)
   "Build Container image"
-  ($ '("podman build .")))
+  ($ '("podman build -t lambdock .")))
 
 (define (container-run)
   "Run Container image"
@@ -161,3 +164,17 @@
        "-e WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\""
        "-v /run/user/$(id -u):/run/user/$(id -u)"
        "lambdock:latest")))
+
+(define (push-docker-latest)
+  "Push the latest locally generated Docker image to Dockerhub."
+  ($ (list (~ "podman push localhost/~a:latest" project-name)
+           (~ "docker.io/jjba23/~a:latest" project-name))
+     #:verbose? #t))
+
+(define (push-docker-tag)
+  "Push the locally generated Docker image to Dockerhub."
+  ($ '("git fetch --all"))
+  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
+    ($ (list (~ "podman push localhost/~a:latest" project-name)
+             (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
+       #:verbose? #t)))

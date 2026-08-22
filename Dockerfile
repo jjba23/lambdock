@@ -1,77 +1,170 @@
 # lambdock
-
+#
 # Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
+#
 # lambdock is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
-
+#
 # lambdock is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-
+#
 # You should have received a copy of the GNU General Public License
 # along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
 
-# === Build time ===
+# syntax=docker/dockerfile:1.7
+
+# ==============================================================================
+# Build stage
+# ==============================================================================
+
 FROM opensuse/tumbleweed:latest AS builder
 
 ARG VERSION=dev
 
-RUN zypper --non-interactive refresh && \
-    zypper --non-interactive install -t pattern devel_basis devel_C_C++ && \
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8
+
+WORKDIR /src
+
+# ------------------------------------------------------------------------------
+# System dependencies
+# ------------------------------------------------------------------------------
+
+RUN --mount=type=cache,target=/var/cache/zypp \
+    set -eu; \
+    echo "==> Refreshing openSUSE repositories"; \
+    zypper --non-interactive refresh; \
+    echo "==> Installing build dependencies"; \
     zypper --non-interactive install --no-recommends \
-        meson \
-        ninja \
+        gcc \
+        gcc-c++ \
         glib2-devel \
         gtk4-devel \
         gtk4-layer-shell-devel \
         guile-devel \
+        meson \
+        ninja \
+        pkg-config \
         wayland-devel \
         wayland-protocols-devel \
-        wlroots-devel \
-        && \
+        wlroots-devel; \
+    echo "==> Cleaning package metadata"; \
     zypper clean --all
 
-WORKDIR /src
+# ------------------------------------------------------------------------------
+# Source
+#
+# ------------------------------------------------------------------------------
 
-COPY . .
+COPY meson.build ./
+COPY protocols/ ./protocols/
+COPY resources/ ./resources/
+COPY scheme/ ./scheme/
+COPY src/ ./src/
+COPY tests/ ./tests/
 
-RUN  meson setup --reconfigure build \
-        --buildtype=release \
-        -Dstrip=true \
-        -Db_lto=true \
-        -Db_pie=true \
-    && \
-    meson compile -C build \
-    && \
-    DESTDIR=/tmp/lambdock-root meson install -C build
+# ------------------------------------------------------------------------------
+# Configure
+# ------------------------------------------------------------------------------
+
+RUN --mount=type=cache,target=/root/.cache \
+    set -eu; \
+    echo "==> Configuring Lambdock ${VERSION}"; \
+    meson setup build; \
+    echo "==> Meson configuration"; \
+    meson configure build
+
+# ------------------------------------------------------------------------------
+# Build
+# ------------------------------------------------------------------------------
+
+RUN --mount=type=cache,target=/root/.cache \
+    set -eu; \
+    echo "==> Building Lambdock"; \
+    meson compile -C build --verbose; \
+    echo "==> Build completed successfully"
+
+# ------------------------------------------------------------------------------
+# Tests
+# ------------------------------------------------------------------------------
+
+RUN --mount=type=cache,target=/root/.cache \
+    set -eu; \
+    echo "==> Running Lambdock tests"; \
+    meson test \
+        -C build \
+        --print-errorlogs \
+        --verbose; \
+    echo "==> Tests completed successfully"
+
+# ------------------------------------------------------------------------------
+# Install into staging directory
+# ------------------------------------------------------------------------------
+
+RUN set -eu; \
+    echo "==> Installing Lambdock into staging directory"; \
+    rm -rf /tmp/lambdock-root; \
+    DESTDIR=/tmp/lambdock-root meson install -C build; \
+    echo "==> Installed files:"; \
+    find /tmp/lambdock-root -type f -o -type l | sort
 
 
-# === Runtime ===
-FROM opensuse/tumbleweed:latest
+# ==============================================================================
+# Runtime stage
+# ==============================================================================
+
+FROM opensuse/tumbleweed:latest AS runtime
 
 ARG VERSION=dev
 
-LABEL org.opencontainers.image.title="Lambdock"
-LABEL org.opencontainers.image.description="Wayland desktop dock customizable with GNU Guile Scheme"
-LABEL org.opencontainers.image.url="https://codeberg.org/jjba23/lambdock"
-LABEL org.opencontainers.image.licenses="GPL-3.0-or-later"
-LABEL org.opencontainers.image.version="${VERSION}"
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    GDK_BACKEND=wayland \
+    GTK_A11Y=none
 
-RUN zypper --non-interactive refresh && \
+LABEL org.opencontainers.image.title="Lambdock" \
+      org.opencontainers.image.description="Wayland desktop dock customizable with GNU Guile Scheme" \
+      org.opencontainers.image.url="https://codeberg.org/jjba23/lambdock" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      org.opencontainers.image.version="${VERSION}"
+
+# ------------------------------------------------------------------------------
+# Runtime dependencies
+# ------------------------------------------------------------------------------
+
+RUN --mount=type=cache,target=/var/cache/zypp \
+    set -eu; \
+    echo "==> Refreshing openSUSE repositories"; \
+    zypper --non-interactive refresh; \
+    echo "==> Installing runtime dependencies"; \
     zypper --non-interactive install --no-recommends \
-        # gtk4 \
-        # gtk4-layer-shell \
-        guile \
-        && \
+        libgtk-4-1 \
+        libgtk4-layer-shell0 \
+        guile; \
+    echo "==> Cleaning package metadata"; \
     zypper clean --all
+
+# ------------------------------------------------------------------------------
+# Application
+# ------------------------------------------------------------------------------
 
 COPY --from=builder /tmp/lambdock-root/ /
 
-ENV GDK_BACKEND=wayland
-ENV GTK_A11Y=none
+# ------------------------------------------------------------------------------
+# Runtime diagnostics
+# ------------------------------------------------------------------------------
 
-ENTRYPOINT ["/usr/bin/lambdock"]
+RUN set -eu; \
+    echo "==> Lambdock installation"; \
+    command -v lambdock; \
+    ls -lh /usr/local/bin/lambdock; \
+    echo "==> Lambdock version"; \
+    /usr/local/bin/lambdock --version || true; \
+    echo "==> Runtime libraries"; \
+    ldd /usr/local/bin/lambdock || true
+
+ENTRYPOINT ["/usr/local/bin/lambdock"]
