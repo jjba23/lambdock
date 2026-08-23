@@ -1,5 +1,5 @@
 <services>
-  <service name="obs_scm">
+  <service name="obs_scm" mode="manual">
     <param name="scm">git</param>
     <param name="url">https://codeberg.org/jjba23/lambdock.git</param>
     <param name="revision">trunk</param>
