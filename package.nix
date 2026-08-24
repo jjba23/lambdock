@@ -39,6 +39,9 @@ stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
   version = "0.6.7";
 
+  strictDeps = true;
+  __structuredAttrs = true;
+
   src = ./.;
 
   nativeBuildInputs = [
@@ -46,7 +49,7 @@ stdenv.mkDerivation (finalAttrs: {
     ninja
     pkg-config
     wayland-scanner
-    glib # provides glib-compile-resources
+    glib
     wrapGAppsHook4
   ];
 
