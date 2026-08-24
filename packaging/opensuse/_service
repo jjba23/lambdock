@@ -9,7 +9,6 @@
     <param name="versionrewrite-replacement">\1</param>
     <param name="extract">packaging/opensuse/lambdock.spec</param>
     <param name="changesgenerate">enable</param>
-    <param name="changesauthor">Josep Bigorra &lt;jjbigorra@gmail.com&gt;</param>
   </service>
 
   <service name="tar" mode="buildtime"/>

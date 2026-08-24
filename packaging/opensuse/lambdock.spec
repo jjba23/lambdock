@@ -16,7 +16,7 @@
 #
 
 Name:           lambdock
-Version:        0.6.5
+Version:        0.6.6
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        GPL-3.0-or-later
