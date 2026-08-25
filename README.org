@@ -573,6 +573,7 @@ sudo apt install build-essential debhelper devscripts meson ninja-build \
                  guile-3.0-dev libwayland-dev wayland-protocols
 
 # Build the package (unsigned binary build)
+# you will need to copy the packaging/debian/* to root of repo or equivalent approach
 debuild -b -uc -us
 #+end_src
 
