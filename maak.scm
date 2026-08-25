@@ -31,6 +31,9 @@
 
 ;; ===== Maak tasks =======
 
+(define project-name
+  'lambdock)
+
 (define (run)
   "Run lambdock with Guix"
   ($ '("pkill lambdock || true"))
@@ -78,22 +81,29 @@
 
 (define (deb-build)
   "Build .deb package (unsigned)"
-  ($ '("sudo apt update") #:verbose? #t)
-  ($ (cons "sudo apt install -y" (deb-packages)) #:verbose? #t)
+  ($ '("sudo apt update")
+     #:verbose? #t)
+  ($ (cons "sudo apt install -y"
+           (deb-packages))
+     #:verbose? #t)
 
   (dynamic-wind
-    ;; Setup: create temporary symlink at project root
-    (lambda ()
-      ($ '("ln -s packaging/debian debian") #:verbose? #t))
+   ;; Setup: create temporary symlink at project root
+   (lambda ()
+     ($ '("ln -s packaging/debian debian")
+        #:verbose? #t))
 
-    ;; Execution: run debian build commands against ./debian
-    (lambda ()
-      ($ '("sudo mk-build-deps -i -r debian/control") #:verbose? #t)
-      ($ '("debuild -b -uc -us") #:verbose? #t))
+   ;; Execution: run debian build commands against ./debian
+   (lambda ()
+     ($ '("sudo mk-build-deps -i -r debian/control")
+        #:verbose? #t)
+     ($ '("debuild -b -uc -us")
+        #:verbose? #t))
 
-    ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
-    (lambda ()
-      ($ '("rm -rf debian") #:verbose? #t))))
+   ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
+   (lambda ()
+     ($ '("rm -rf debian")
+        #:verbose? #t))))
 
 (define (arch-build)
   "Build Arch Linux package (.pkg.tar.zst)"
@@ -155,3 +165,37 @@
 (define (nix-run)
   "Run Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
+
+(define (container-build)
+  "Build Container image"
+  ($ '("podman build -t lambdock .")))
+
+(define (container-run)
+  "Run Container image"
+  ($ '("podman run -d --rm --name lambdock" "--network host"
+       "--userns=keep-id --ipc=host"
+       "--device /dev/dri"
+       "-e XDG_RUNTIME_DIR=/run/user/$(id -u)"
+       "-e WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\""
+       "-e HOME=\"$HOME\""
+       "-v /run/user/$(id -u):/run/user/$(id -u):z"
+       "-v \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro\""
+       "-v \"$HOME:$HOME\""
+       "-v /usr/share/icons:/usr/share/icons:ro"
+       "-v /usr/share/applications:/usr/share/applications:ro"
+       "lambdock:latest")
+     #:verbose? #t))
+
+(define (push-docker-latest)
+  "Push the latest locally generated Docker image to Dockerhub."
+  ($ (list (~ "podman push localhost/~a:latest" project-name)
+           (~ "docker.io/jjba23/~a:latest" project-name))
+     #:verbose? #t))
+
+(define (push-docker-tag)
+  "Push the locally generated Docker image to Dockerhub."
+  ($ '("git fetch --all"))
+  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
+    ($ (list (~ "podman push localhost/~a:latest" project-name)
+             (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
+       #:verbose? #t)))

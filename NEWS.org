@@ -13,6 +13,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.6.3 (2026-08-22)
+- Added Podman/Docker build and run
+- Improved APT packaging
+- Developed and improved RPM packaging
+
+
 ** v0.5.1 (2026-08-11)
 - Fix REPL
 

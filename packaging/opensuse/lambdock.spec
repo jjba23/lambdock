@@ -16,26 +16,22 @@
 #
 
 Name:           lambdock
-Version:        0.6.2
+Version:        0.6.7
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        GPL-3.0-or-later
-Group:          System/GUI/Other
 URL:            https://codeberg.org/jjba23/lambdock
-
 Source0:        %{name}-%{version}.tar.gz
-
 BuildRequires:  gcc
 BuildRequires:  meson
 BuildRequires:  ninja
-BuildRequires:  pkg-config
+BuildRequires:  pkgconfig
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(gtk4)
 BuildRequires:  pkgconfig(gtk4-layer-shell-0)
 BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-protocols)
-
 Requires:       gtk4
 Requires:       guile
 
@@ -77,5 +73,3 @@ Wayfire, Niri, and other compatible compositors.
 %{_datadir}/guile/site/3.0/lambdock/*.scm
 
 %changelog
-* Tue Aug 18 2026 Josep Bigorra <jjbigorra@gmail.com>
-- Initial openSUSE Tumbleweed package
