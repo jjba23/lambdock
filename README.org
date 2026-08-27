@@ -579,7 +579,7 @@ debuild -b -uc -us
 
 --------------------
 
-** Arch Linux 🧪
+** Arch Linux
 
 Ensure dev build tools are installed: =sudo pacman -S --needed base-devel=
 
