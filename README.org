@@ -581,7 +581,9 @@ debuild -b -uc -us
 
 ** Arch Linux 🧪
 
-Work in progress 🚧 see ~packaging/arch/PKGBUILD~
+Ensure dev build tools are installed: =sudo pacman -S --needed base-devel=
+
+Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
 
 --------------
 

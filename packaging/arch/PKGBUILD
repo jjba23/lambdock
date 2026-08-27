@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
 
+# Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 pkgname=lambdock
 pkgver=0.6.7
 pkgrel=1
@@ -23,7 +24,6 @@ arch=('x86_64' 'aarch64')
 url="https://codeberg.org/jjba23/lambdock"
 license=('GPL-3.0-or-later')
 
-# Runtime dependencies (matched from spec file pkgconfig links)
 depends=(
   'glib2'
   'gtk4'
@@ -32,7 +32,6 @@ depends=(
   'wayland'
 )
 
-# Build-time dependencies
 makedepends=(
   'meson'
   'ninja'
@@ -41,20 +40,23 @@ makedepends=(
 )
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP') # Replace with actual SHA256 checksum for tagged releases
+sha256sums=('SKIP')
 
 build() {
-  arch-meson "$pkgname-$pkgver" build
+  cd "$srcdir/${pkgname}"*
+
+  arch-meson . build
   meson compile -C build
 }
 
 check() {
+  cd "$srcdir/${pkgname}"*
   meson test -C build --print-errorlogs
 }
 
 package() {
-  DESTDIR="$pkgdir" meson install -C build
+  cd "$srcdir/${pkgname}"*
 
-  # Arch Policy: Install license to /usr/share/licenses/$pkgname/
-  install -Dm644 "$srcdir/$pkgname-$pkgver/COPYING" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  DESTDIR="$pkgdir" meson install -C build
+  install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
