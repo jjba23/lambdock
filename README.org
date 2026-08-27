@@ -561,7 +561,7 @@ Then you can run ~lambdock~.
 
 -----------------
 
-** Debian (APT distros) 🧪
+** Debian (APT distros)
 
 Install the required build tools and compile the package. See also the ~deb-build~ maak task.
 
