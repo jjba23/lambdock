@@ -1,16 +1,35 @@
-# Maintainer: Josep Bigorra <jjbigorra@gmail.com>
+# lambdock
+
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# lambdock is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# lambdock is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
+
 pkgname=lambdock
 pkgver=0.6.7
 pkgrel=1
-pkgdesc="Wayland-native GTK4 dock extensible in Guile Scheme"
+pkgdesc="Wayland-native GTK4 dock customizable in Guile Scheme"
 arch=('x86_64' 'aarch64')
 url="https://codeberg.org/jjba23/lambdock"
 license=('GPL-3.0-or-later')
 
-# Runtime dependencies on Arch Linux
+# Runtime dependencies (matched from spec file pkgconfig links)
 depends=(
+  'glib2'
   'gtk4'
+  'gtk4-layer-shell'
   'guile'
+  'wayland'
 )
 
 # Build-time dependencies
@@ -19,23 +38,23 @@ makedepends=(
   'ninja'
   'pkgconf'
   'wayland-protocols'
-  'glib2'
 )
 
-# Optional dependencies
-optdepends=()
-
-# If building from a local release tarball or git repo:
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP') # Replace with actual SHA256 checksum for release builds
+sha256sums=('SKIP') # Replace with actual SHA256 checksum for tagged releases
 
 build() {
-  # arch-meson configures Meson with standard Arch build flags
   arch-meson "$pkgname-$pkgver" build
   meson compile -C build
 }
 
+check() {
+  meson test -C build --print-errorlogs
+}
+
 package() {
-  # Install build artifacts directly into the Arch package root directory
   DESTDIR="$pkgdir" meson install -C build
+
+  # Arch Policy: Install license to /usr/share/licenses/$pkgname/
+  install -Dm644 "$srcdir/$pkgname-$pkgver/COPYING" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
