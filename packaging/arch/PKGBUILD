@@ -43,7 +43,7 @@ source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
-  cd "$srcdir/${pkgname}"*
+  cd "$srcdir/${pkgname}*"
 
   arch-meson . build
   meson compile -C build
