@@ -477,7 +477,7 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 #+begin_src mermaid
 flowchart TD
-    subgraph C_RUNTIME["C RUNTIME (GTK4)"]
+    subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
         main["main()"] --> scm_boot_guile["scm_boot_guile()"]
         scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
         setup_primitives -- "Exports C Subrs" --> reload_dock["(reload-dock!)"]
@@ -492,6 +492,8 @@ flowchart TD
         state --> start_repl["(start-repl!)"]
         state --> getters_setters["Getters / Setters"]
         getters_setters --> repl_thread["Socket REPL Thread"]
+        repl_thread --> getters_setters
+        repl_thread --> reload_instance
     end
 
     reload_instance == "Calls Scheme Procedures" ==> GUILE_ENGINE
