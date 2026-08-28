@@ -479,11 +479,6 @@ The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_
 
 Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine.
 
-#+begin_export html
-<details>
-  <summary>See <strong>a detailed explanation and diagrams here</strong></summary>
-#+end_export
-
 #+begin_src mermaid
 flowchart LR
     subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
@@ -527,6 +522,12 @@ flowchart LR
     class main,scm_boot_guile,setup_primitives,reload_dock,file_monitor,reload_instance cNode
     class core,init_dock,state,start_repl,getters_setters,repl_thread guileNode
 #+end_src
+
+#+begin_export html
+<details>
+  <summary>See <strong>a more detailed explanation here</strong></summary>
+#+end_export
+
 
 *** C → Guile (Embedding & Inspection)
 
