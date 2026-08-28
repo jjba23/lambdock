@@ -136,7 +136,7 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
   <summary>See <strong>examples of configs</strong> (e.g. $HOME/.config/lambdock/settings-joe.scm) </summary>
 #+end_export
 
-
+Here an example of separators being used along with presets.
 #+begin_src scheme
 ;; Alternatively, construct dock-items procedurally using list operations:
 (define dock-items
@@ -155,6 +155,7 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
                                 'onepassword)))
 #+end_src
 
+Here an example of a dynamic setting, where we only do auto-hide if the host name is ~thinkpad~. For example can be useful to have dock auto-hide on laptop but not on other machines.
 #+begin_src scheme
 (use-modules (ice-9 popen)
              (ice-9 rdelim)
@@ -171,6 +172,47 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
 ;; Enable auto-hide only on a specific hostname (e.g., laptop setup)
 (define dock-auto-hide?
   (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
+#+end_src
+
+Here a snapshot of my own (@jjba23) configuration
+#+begin_src scheme
+(define dock-auto-hide? #t)
+
+(define dock-show-when-clear? #t)
+
+(define dock-position 'bottom)
+
+(define dock-icon-size 48)
+
+(define dock-theme 'vanilla-light)
+
+(define dock-monitor 'all)
+
+(define dock-exclude-apps '("warp-taskbar"))
+
+(define dock-enable-repl? #t)
+
+(define dock-hover-animate? #t)
+
+(define dock-track-windows? #t)
+
+(define dock-items
+  (append
+   (preset-launchers-for
+    'alacritty
+    'google-chrome
+    'spotify-flatpak
+    'nautilus
+    'nyxt-flatpak
+    'gnome-calendar
+    'gnome-calculator
+    'zapzap-flatpak)
+   (list (separator-item))
+   (preset-launchers-for 'emacs 'intellij 'bruno-flatpak)
+   (list (separator-item))
+   (preset-launchers-for 'btop 'pavucontrol 'onepassword)
+   (list (separator-item))
+   (preset-launchers-for 'ram 'cpu 'cpu-temp 'battery)))
 #+end_src
 
 #+begin_export html
@@ -265,7 +307,12 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 
 * Styling & Theming 🎨
 
-~lambdock~ ships with pre-baked themes embedded via build defines:
+~lambdock~ ships with pre-baked themes embedded via build defines.
+
+#+begin_export html
+<details>
+  <summary>See <strong>some screenshots of the themes here</strong></summary>
+#+end_export
 
 - Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
@@ -281,6 +328,12 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
 - None (~'none~): no styling applied, using default GTK appearance.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
+
+#+begin_export html
+</details>
+#+end_export
+
+---------
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 
@@ -431,43 +484,69 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 * Bi-Directionality of C and Guile Scheme
 
-~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
+~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
 
-#+begin_src
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │                           C RUNTIME (GTK4)                             │
-  │                                                                        │
-  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()         │
-  │                                             │ (Exports C Subrs)        │
-  │                                             ▼                          │
-  │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
-  │            │                                │                          │
-  │            ▼                                │ Thread-safe              │
-  │   reload_dock_instance() ◄────────────────┘ g_idle_add()               │
-  │            │                                                           │
-  └───────────┼────────────────────────────────────────────────────────────┘
-              │                                ▲
-              │ Calls Scheme Procedures        │ Invokes C Primitives
-              ▼                                │
-  ┌───────────────────────────────────────────┴────────────────────────────┐
-  │                          GUILE SCHEME ENGINE                           │
-  │                                                                        │
-  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                  │
-  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread       │
-  └────────────────────────────────────────────────────────────────────────┘
+The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings.
+
+Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine.
+
+#+begin_src mermaid
+flowchart LR
+    subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
+        direction TB
+        main["main()"] --> scm_boot_guile["scm_boot_guile()"]
+        scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
+        setup_primitives -- "Exports C Subrs" --> reload_dock["(reload-dock!)"]
+        reload_dock --> file_monitor["GFileMonitor / REPL Event"]
+        file_monitor --> reload_instance["reload_dock_instance()"]
+        reload_dock -- "Thread-safe<br/>g_idle_add()" --> reload_instance
+    end
+
+    subgraph GUILE_ENGINE["GUILE SCHEME ENGINE"]
+        direction TB
+        core["(lambdock core)"] --> init_dock["(init-dock!)"]
+        init_dock --> state["(lambdock state)"]
+        state --> start_repl["(start-repl!)"]
+        state --> getters_setters["Getters / Setters"]
+        getters_setters <--> repl_thread["Socket REPL Thread"]
+        repl_thread --> reload_dock
+    end
+
+    subgraph LIBGUILE["libguile.h"]
+    end
+
+    %% Cross-Boundary Inter-Runtime Connections
+    C_RUNTIME --> LIBGUILE
+    LIBGUILE -- "Calls Scheme<br/>Procedures" --> GUILE_ENGINE
+    GUILE_ENGINE --> LIBGUILE
+    LIBGUILE -- "Invokes C<br/>Primitives" --> C_RUNTIME
+
+    %% Subgraph Styles
+    style C_RUNTIME fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
+    style GUILE_ENGINE fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#c2410c,font-weight:bold
+
+    %% Class Definitions for Nodes
+    classDef cNode fill:#ffffff,stroke:#0284c7,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+    classDef guileNode fill:#ffffff,stroke:#ea580c,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+
+    %% Apply Classes
+    class main,scm_boot_guile,setup_primitives,reload_dock,file_monitor,reload_instance cNode
+    class core,init_dock,state,start_repl,getters_setters,repl_thread guileNode
 #+end_src
 
-*** C → Guile (Embedding & Inspection)
+#+begin_export html
+<details>
+  <summary>See <strong>a more detailed explanation here</strong></summary>
+#+end_export
 
-The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings:
+
+*** C → Guile (Embedding & Inspection)
 
 - *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
 - *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
 - *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
 
 *** Guile → C (Extending & Primitives)
-
-Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine:
 
 - *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
 - *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
@@ -479,6 +558,10 @@ Because the socket REPL server runs on a background Guile thread while GTK4 requ
 To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
 
 For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
+
+#+begin_export html
+</details>
+#+end_export
 
 ---------
 
@@ -573,6 +656,7 @@ sudo apt install build-essential debhelper devscripts meson ninja-build \
                  guile-3.0-dev libwayland-dev wayland-protocols
 
 # Build the package (unsigned binary build)
+# you will need to copy the packaging/debian/* to root of repo or equivalent approach
 debuild -b -uc -us
 #+end_src
 
@@ -580,13 +664,16 @@ debuild -b -uc -us
 
 ** Arch Linux
 
-Work in progress 🚧 see ~packaging/arch/PKGBUILD~
+Ensure dev build tools are installed: =sudo pacman -S --needed base-devel=
+
+Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
 
 --------------
 
 ** Nix
 
-lambdock can easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+~lambdock~ is officially part of [[https://search.nixos.org/packages][NixPkgs]], and can also easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+
 
 #+begin_src shell
 nix --extra-experimental-features 'nix-command flakes' build

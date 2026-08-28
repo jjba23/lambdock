@@ -31,13 +31,13 @@ compile_commands.json
 *.tar.xz
 
 # Temporary Debian staging directories & stamps
-/debian/.debhelper/
-/debian/debhelper-build-stamp
-/debian/files
-/debian/lambdock/
-/debian/lambdock-build-deps/
-/debian/*.log
-/debian/*.substvars
+/packaging/debian/.debhelper/
+/packaging/debian/debhelper-build-stamp
+/packaging/debian/files
+/packaging/debian/lambdock/
+/packaging/debian/lambdock-build-deps/
+/packaging/debian/*.log
+/packaging/debian/*.substvars
 
 # ==============================================================================
 # Language Server, Tooling & Editors
