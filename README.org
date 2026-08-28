@@ -476,8 +476,9 @@ Popover Capabilities: Select individual windows by title, close specific window 
 ~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
 
 #+begin_src mermaid
-flowchart TD
+flowchart TB
     subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
+        direction TB
         main["main()"] --> scm_boot_guile["scm_boot_guile()"]
         scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
         setup_primitives -- "Exports C Subrs" --> reload_dock["(reload-dock!)"]
@@ -487,17 +488,23 @@ flowchart TD
     end
 
     subgraph GUILE_ENGINE["GUILE SCHEME ENGINE"]
+        direction TB
         core["(lambdock core)"] --> init_dock["(init-dock!)"]
         init_dock --> state["(lambdock state)"]
         state --> start_repl["(start-repl!)"]
         state --> getters_setters["Getters / Setters"]
-        getters_setters --> repl_thread["Socket REPL Thread"]
-        repl_thread --> getters_setters
-        repl_thread --> reload_instance
+        getters_setters <--> repl_thread["Socket REPL Thread"]
+        repl_thread --> reload_dock
     end
 
-    reload_instance == "Calls Scheme Procedures" ==> GUILE_ENGINE
-    GUILE_ENGINE == "Invokes C Primitives" ==> C_RUNTIME
+    subgraph LIBGUILE["libguile.h"]
+    end
+
+    %% Cross-Boundary Inter-Runtime Connections
+    C_RUNTIME --> LIBGUILE
+    LIBGUILE -- "Calls Scheme<br/>Procedures" --> GUILE_ENGINE
+    GUILE_ENGINE --> LIBGUILE
+    LIBGUILE -- "Invokes C<br/>Primitives" --> C_RUNTIME
 
     %% Subgraph Styles
     style C_RUNTIME fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
