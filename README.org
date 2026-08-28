@@ -727,3 +727,11 @@ A build should never fail because "it worked on my machine." Reliable software d
 * News and Changelog
 
 You can find the [[file:NEWS.org][NEWS file with the Changelog here]]
+
+-------------
+
+* What people are saying
+
+See what people are saying about the ~lambdock~ project:
+- https://jointhefreeworld.org/blog/articles/gnu-linux/quest-for-eternal-dock/index.html
+- https://dev.to/jjba23/quest-for-eternal-dock-on-wayland-lambdock-c-gtk4-lisp-gnu-guile-scheme-1mm9
