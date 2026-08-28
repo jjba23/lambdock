@@ -136,7 +136,7 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
   <summary>See <strong>examples of configs</strong> (e.g. $HOME/.config/lambdock/settings-joe.scm) </summary>
 #+end_export
 
-
+Here an example of separators being used along with presets.
 #+begin_src scheme
 ;; Alternatively, construct dock-items procedurally using list operations:
 (define dock-items
@@ -155,6 +155,7 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
                                 'onepassword)))
 #+end_src
 
+Here an example of a dynamic setting, where we only do auto-hide if the host name is ~thinkpad~. For example can be useful to have dock auto-hide on laptop but not on other machines.
 #+begin_src scheme
 (use-modules (ice-9 popen)
              (ice-9 rdelim)
@@ -171,6 +172,47 @@ Since lambdock configuration files are evaluated directly as standard GNU Guile 
 ;; Enable auto-hide only on a specific hostname (e.g., laptop setup)
 (define dock-auto-hide?
   (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
+#+end_src
+
+Here a snapshot of my own (@jjba23) configuration
+#+begin_src scheme
+(define dock-auto-hide? #t)
+
+(define dock-show-when-clear? #t)
+
+(define dock-position 'bottom)
+
+(define dock-icon-size 48)
+
+(define dock-theme 'vanilla-light)
+
+(define dock-monitor 'all)
+
+(define dock-exclude-apps '("warp-taskbar"))
+
+(define dock-enable-repl? #t)
+
+(define dock-hover-animate? #t)
+
+(define dock-track-windows? #t)
+
+(define dock-items
+  (append
+   (preset-launchers-for
+    'alacritty
+    'google-chrome
+    'spotify-flatpak
+    'nautilus
+    'nyxt-flatpak
+    'gnome-calendar
+    'gnome-calculator
+    'zapzap-flatpak)
+   (list (separator-item))
+   (preset-launchers-for 'emacs 'intellij 'bruno-flatpak)
+   (list (separator-item))
+   (preset-launchers-for 'btop 'pavucontrol 'onepassword)
+   (list (separator-item))
+   (preset-launchers-for 'ram 'cpu 'cpu-temp 'battery)))
 #+end_src
 
 #+begin_export html
@@ -589,7 +631,8 @@ Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
 
 ** Nix
 
-lambdock can easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+~lambdock~ is officially part of Nixpkgs, and can also easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+
 
 #+begin_src shell
 nix --extra-experimental-features 'nix-command flakes' build
