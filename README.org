@@ -475,28 +475,39 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 ~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
 
-#+begin_src
-  ┌────────────────────────────────────────────────────────────────────────┐
-  │                           C RUNTIME (GTK4)                             │
-  │                                                                        │
-  │   main() ────► scm_boot_guile() ───► setup_guile_primitives()         │
-  │                                             │ (Exports C Subrs)        │
-  │                                             ▼                          │
-  │   GFileMonitor / REPL Event  ◄─── (reload-dock!)                       │
-  │            │                                │                          │
-  │            ▼                                │ Thread-safe              │
-  │   reload_dock_instance() ◄────────────────┘ g_idle_add()               │
-  │            │                                                           │
-  └───────────┼────────────────────────────────────────────────────────────┘
-              │                                ▲
-              │ Calls Scheme Procedures        │ Invokes C Primitives
-              ▼                                │
-  ┌───────────────────────────────────────────┴────────────────────────────┐
-  │                          GUILE SCHEME ENGINE                           │
-  │                                                                        │
-  │   (lambdock core) ──► (init-dock!) ──► (start-repl!)                  │
-  │   (lambdock state) ──► Getters / Setters ──► Socket REPL Thread       │
-  └────────────────────────────────────────────────────────────────────────┘
+#+begin_src mermaid
+flowchart TD
+    subgraph C_RUNTIME["C RUNTIME (GTK4)"]
+        main["main()"] --> scm_boot_guile["scm_boot_guile()"]
+        scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
+        setup_primitives -- "Exports C Subrs" --> reload_dock["(reload-dock!)"]
+        reload_dock --> file_monitor["GFileMonitor / REPL Event"]
+        file_monitor --> reload_instance["reload_dock_instance()"]
+        reload_dock -- "Thread-safe<br/>g_idle_add()" --> reload_instance
+    end
+
+    subgraph GUILE_ENGINE["GUILE SCHEME ENGINE"]
+        core["(lambdock core)"] --> init_dock["(init-dock!)"]
+        init_dock --> state["(lambdock state)"]
+        state --> start_repl["(start-repl!)"]
+        state --> getters_setters["Getters / Setters"]
+        getters_setters --> repl_thread["Socket REPL Thread"]
+    end
+
+    reload_instance == "Calls Scheme Procedures" ==> GUILE_ENGINE
+    GUILE_ENGINE == "Invokes C Primitives" ==> C_RUNTIME
+
+    %% Subgraph Styles
+    style C_RUNTIME fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
+    style GUILE_ENGINE fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#c2410c,font-weight:bold
+
+    %% Class Definitions for Nodes
+    classDef cNode fill:#ffffff,stroke:#0284c7,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+    classDef guileNode fill:#ffffff,stroke:#ea580c,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+
+    %% Apply Classes
+    class main,scm_boot_guile,setup_primitives,reload_dock,file_monitor,reload_instance cNode
+    class core,init_dock,state,start_repl,getters_setters,repl_thread guileNode
 #+end_src
 
 *** C → Guile (Embedding & Inspection)
