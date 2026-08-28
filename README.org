@@ -307,7 +307,12 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 
 * Styling & Theming 🎨
 
-~lambdock~ ships with pre-baked themes embedded via build defines:
+~lambdock~ ships with pre-baked themes embedded via build defines.
+
+#+begin_export html
+<details>
+  <summary>See <strong>some screenshots of the themes here</strong></summary>
+#+end_export
 
 - Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
@@ -323,6 +328,12 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
 - None (~'none~): no styling applied, using default GTK appearance.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
+
+#+begin_export html
+</details>
+#+end_export
+
+---------
 
 You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
 
