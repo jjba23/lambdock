@@ -473,7 +473,7 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 * Bi-Directionality of C and Guile Scheme
 
-~lambdock~ is not merely configured by Scheme—it is an embedded, extensible Lisp runtime environment wrapped around a high-performance C graphics engine. Execution flows bi-directionally between C and Guile.
+~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
 
 #+begin_src mermaid
 flowchart TD
