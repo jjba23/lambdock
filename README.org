@@ -631,7 +631,7 @@ Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
 
 ** Nix
 
-~lambdock~ is officially part of Nixpkgs, and can also easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+~lambdock~ is officially part of [[https://search.nixos.org/packages][NixPkgs]], and can also easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
 
 
 #+begin_src shell
