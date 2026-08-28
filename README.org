@@ -475,6 +475,10 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 ~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
 
+The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings.
+
+Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine.
+
 #+begin_export html
 <details>
   <summary>See <strong>a detailed explanation and diagrams here</strong></summary>
@@ -526,15 +530,11 @@ flowchart LR
 
 *** C → Guile (Embedding & Inspection)
 
-The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings:
-
 - *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
 - *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
 - *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
 
 *** Guile → C (Extending & Primitives)
-
-Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine:
 
 - *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
 - *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
