@@ -822,3 +822,5 @@ You can find the [[file:NEWS.org][NEWS file with the Changelog here]]
 See what people are saying about the ~lambdock~ project:
 - https://jointhefreeworld.org/blog/articles/gnu-linux/quest-for-eternal-dock/index.html
 - https://dev.to/jjba23/quest-for-eternal-dock-on-wayland-lambdock-c-gtk4-lisp-gnu-guile-scheme-1mm9
+- https://lobste.rs/s/lvspri/quest_for_eternal_dock_on_wayland
+- https://news.ycombinator.com/item?id=49476653
