@@ -475,8 +475,13 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 ~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
 
+#+begin_export html
+<details>
+  <summary>See <strong>a detailed explanation and diagrams here</strong></summary>
+#+end_export
+
 #+begin_src mermaid
-flowchart TB
+flowchart LR
     subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
         direction TB
         main["main()"] --> scm_boot_guile["scm_boot_guile()"]
@@ -541,6 +546,10 @@ Because the socket REPL server runs on a background Guile thread while GTK4 requ
 To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
 
 For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
+
+#+begin_export html
+</details>
+#+end_export
 
 ---------
 
