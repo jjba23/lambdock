@@ -8,6 +8,7 @@ build
 # ==============================================================================
 /build/
 /build-dir/
+.flatpak-builder
 /obj-*/
 /subprojects/packagecache/
 .ninja_*
