@@ -23,6 +23,8 @@
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
+#include <glib/gi18n.h>
+#include <locale.h>
 
 /* =========================================================================
  * ANIMATION ENGINE & EASING FUNCTIONS
@@ -536,13 +538,11 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 
   gtk_about_dialog_set_comments(
       GTK_ABOUT_DIALOG(about),
-      "A modern Wayland-native hackable desktop dock bar.\n\n"
-      "Engineered with the performance of C and GTK4 Layer Shell for smooth "
-      "auto-hide and animations, featuring dynamic Wayland foreign-toplevel "
-      "window "
-      "tracking, live CSS hot-reloading, and dynamic configuration powered by "
-      "GNU "
-      "Guile Scheme.");
+      _("A modern Wayland-native hackable desktop dock bar.\n\n"
+        "Engineered with the performance of C and GTK4 Layer Shell for smooth "
+        "auto-hide and animations, featuring dynamic Wayland toplevel window "
+        "tracking, live CSS hot-reloading, and dynamic configuration powered "
+        "by GNU Guile Scheme."));
 
   // Authors & Copyright
   const char *authors[] = {"Josep Bigorra (jjbigorra@gmail.com)", NULL};
@@ -560,7 +560,7 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
   gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
                                "https://codeberg.org/jjba23/lambdock");
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
-                                     "Find the project's source code here");
+                                     _("Find the project's source code here"));
 
   // Logo Loading Logic from compiled GResource bundle
   const char *logo_resource =

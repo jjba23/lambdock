@@ -1,0 +1,67 @@
+# Portuguese translations for lambdock package.
+# Copyright (C) 2026 THE lambdock'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the lambdock package.
+# Josep Bigorra <jjbigorra@gmail.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: lambdock\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-31 08:48+0200\n"
+"PO-Revision-Date: 2026-08-31 08:56+0200\n"
+"Last-Translator: Josep Bigorra <jjbigorra@gmail.com>\n"
+"Language-Team: Portuguese\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/main.c:576
+msgid "About Lambdock"
+msgstr "Sobre o Lambdock"
+
+#: src/main.c:577
+msgid "Quit"
+msgstr "Sair"
+
+#: src/dock_window.c:541
+msgid ""
+"A modern Wayland-native hackable desktop dock bar.\n"
+"\n"
+"Engineered with the performance of C and GTK4 Layer Shell for smooth auto-"
+"hide and animations, featuring dynamic Wayland toplevel window tracking, "
+"live CSS hot-reloading, and dynamic configuration powered by GNU Guile "
+"Scheme."
+msgstr ""
+"Uma barra de dock de ambiente de trabalho moderna, editável e nativa para "
+"Wayland.\n"
+"\n"
+"Desenvolvida com o desempenho do C e GTK4 Layer Shell para ocultação "
+"automática e animações suaves, contando com rastreamento dinâmico de janelas "
+"toplevel do Wayland, recarregamento de CSS em tempo real e configuração "
+"dinâmica alimentada por GNU Guile Scheme."
+
+#: src/dock_window.c:563
+msgid "Find the project's source code here"
+msgstr "Consulte o código-fonte do projeto aqui"
+
+#: src/ui/popover_menu.c:218
+msgid "Application"
+msgstr "Aplicação"
+
+#: src/ui/popover_menu.c:240
+msgid "Window"
+msgstr "Janela"
+
+#: src/ui/popover_menu.c:294
+msgid "New Instance"
+msgstr "Nova instância"
+
+#: src/ui/popover_menu.c:310
+msgid "Close All Windows"
+msgstr "Fechar todas as janelas"
+
+#: src/ui/popover_menu.c:321
+msgid "Launch Application"
+msgstr "Iniciar aplicação"

@@ -37,6 +37,7 @@
              (gnu packages cpp)
              (gnu packages gtk)
              (gnu packages freedesktop)
+             (gnu packages gettext)
              (gnu packages build-tools)
              (gnu packages commencement)
              (gnu packages rust-apps)
@@ -47,6 +48,7 @@
                           ;; for production Guile 3.0 is used
                           ;; for dev Arei REPL use Guile Next
                           gcc-toolchain
+                          gettext-minimal
                           pkg-config
                           meson
                           ccls

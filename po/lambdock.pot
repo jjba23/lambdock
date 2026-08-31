@@ -1,0 +1,60 @@
+# SOME DESCRIPTIVE TITLE.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the lambdock package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: lambdock\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-31 08:48+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=CHARSET\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/main.c:576
+msgid "About Lambdock"
+msgstr ""
+
+#: src/main.c:577
+msgid "Quit"
+msgstr ""
+
+#: src/dock_window.c:541
+msgid ""
+"A modern Wayland-native hackable desktop dock bar.\n"
+"\n"
+"Engineered with the performance of C and GTK4 Layer Shell for smooth auto-"
+"hide and animations, featuring dynamic Wayland toplevel window tracking, "
+"live CSS hot-reloading, and dynamic configuration powered by GNU Guile "
+"Scheme."
+msgstr ""
+
+#: src/dock_window.c:563
+msgid "Find the project's source code here"
+msgstr ""
+
+#: src/ui/popover_menu.c:218
+msgid "Application"
+msgstr ""
+
+#: src/ui/popover_menu.c:240
+msgid "Window"
+msgstr ""
+
+#: src/ui/popover_menu.c:294
+msgid "New Instance"
+msgstr ""
+
+#: src/ui/popover_menu.c:310
+msgid "Close All Windows"
+msgstr ""
+
+#: src/ui/popover_menu.c:321
+msgid "Launch Application"
+msgstr ""

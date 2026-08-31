@@ -23,6 +23,7 @@ License:        GPL-3.0-or-later
 URL:            https://codeberg.org/jjba23/lambdock
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  gcc
+BuildRequires:  gettext
 BuildRequires:  meson
 BuildRequires:  ninja
 BuildRequires:  pkgconfig

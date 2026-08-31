@@ -24,6 +24,8 @@
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
+#include <glib/gi18n.h>
+#include <locale.h>
 
 /* =========================================================================
  * GLOBAL STATE VARIABLES
@@ -188,7 +190,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
     }
     for (GList *l = to_destroy; l != NULL; l = l->next) {
       LOG_C_INFO("Main",
-                 "Settings file(s) detected. Destroying fallback dock...");
+                 "Settings file(s) detected. Destroying fallback dock.");
       destroy_dock_instance((LambdockState *)l->data);
     }
     g_list_free(to_destroy);
@@ -571,8 +573,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   populate_dock_items_for(state);
 
   GMenu *menu_model = g_menu_new();
-  g_menu_append(menu_model, "About Lambdock", "app.about");
-  g_menu_append(menu_model, "Quit", "app.quit");
+  g_menu_append(menu_model, _("About Lambdock"), "app.about");
+  g_menu_append(menu_model, _("Quit"), "app.quit");
 
   GtkWidget *popover =
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
@@ -680,6 +682,15 @@ int main(int argc, char **argv) {
 #ifdef DEFAULT_GSK_RENDERER
   g_setenv("GSK_RENDERER", DEFAULT_GSK_RENDERER, FALSE);
 #endif
+
+  // Initialize i18n & gettext routing
+  setlocale(LC_ALL, "");
+#ifdef LOCALEDIR
+  bindtextdomain("lambdock", LOCALEDIR);
+#endif
+  bind_textdomain_codeset("lambdock", "UTF-8");
+  textdomain("lambdock");
+
   // Initializes the GNU Guile Scheme engine runtime, initializes garbage
   // collection, and hands control over to `inner_main`.
   scm_boot_guile(argc, argv, inner_main, NULL);

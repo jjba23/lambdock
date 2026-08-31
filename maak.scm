@@ -72,6 +72,7 @@
                                          meson
                                          ninja-build
                                          pkg-config
+                                         gettext
                                          libgtk-4-dev
                                          libgtk4-layer-shell-dev
                                          guile-3.0-dev
@@ -119,6 +120,7 @@
                                    meson
                                    ninja-build
                                    pkgconfig
+                                   gettext
                                    gtk4-devel
                                    gtk4-layer-shell-devel
                                    guile30-devel
@@ -199,3 +201,9 @@
     ($ (list (~ "podman push localhost/~a:latest" project-name)
              (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
        #:verbose? #t)))
+
+(define (i18n-update)
+  "Update .pot and .po files based on the source code."
+  (time-machine-manifest-shell (list "meson setup build &&"
+                                     "ninja -C build lambdock-pot &&"
+                                     "ninja -C build lambdock-update-po")))

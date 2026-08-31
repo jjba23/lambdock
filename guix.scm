@@ -24,6 +24,7 @@
              (gnu packages gtk)
              (gnu packages glib)
              (gnu packages guile)
+             (gnu packages gettext)
              (gnu packages freedesktop)
              (gnu packages pkg-config))
 
@@ -42,7 +43,8 @@
     (arguments (list #:parallel-build? #t
                      #:parallel-tests? #t))
     (native-inputs (list (list glib "bin")
-                         pkg-config))
+                         pkg-config
+                         gettext-minimal))
     (inputs (list gtk
                   gtk4-layer-shell
                   guile-3.0
