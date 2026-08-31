@@ -212,9 +212,10 @@ void populate_popover_menu(DockItem *item) {
   // --------------------------------------------------------------------------
   // App Header Title & Separator Line
   // --------------------------------------------------------------------------
-  const char *title = (item->name && *item->name != '\0')       ? item->name
-                      : (item->app_id && *item->app_id != '\0') ? item->app_id
-                                                                : "Application";
+  const char *title = (item->name && *item->name != '\0') ? item->name
+                      : (item->app_id && *item->app_id != '\0')
+                          ? item->app_id
+                          : _("Application");
   GtkWidget *label = gtk_label_new(title);
   gtk_widget_add_css_class(label,
                            "title"); // Apply CSS class `.title` for styling
@@ -236,7 +237,7 @@ void populate_popover_menu(DockItem *item) {
           gtk_box_new(GTK_ORIENTATION_HORIZONTAL, POPOVER_ROW_SPACING);
 
       const char *win_title =
-          (win->title && *win->title != '\0') ? win->title : "Window";
+          (win->title && *win->title != '\0') ? win->title : _("Window");
 
       // Create focus/activate button with window title label
       GtkWidget *btn_focus = gtk_button_new_with_label(win_title);
@@ -305,7 +306,8 @@ void populate_popover_menu(DockItem *item) {
     // Option: "Close All Windows" (Only shown if > 1 window open)
     // ------------------------------------------------------------------------
     if (win_count > 1) {
-      GtkWidget *btn_close_all = gtk_button_new_with_label("Close All Windows");
+      GtkWidget *btn_close_all =
+          gtk_button_new_with_label(_("Close All Windows"));
       gtk_widget_add_css_class(btn_close_all, "flat");
       g_signal_connect(btn_close_all, "clicked",
                        G_CALLBACK(on_popover_close_all_windows), item);

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lambdock\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 08:45+0200\n"
+"POT-Creation-Date: 2026-08-31 08:48+0200\n"
 "PO-Revision-Date: 2026-08-31 08:02+0200\n"
 "Last-Translator: Josep Bigorra <jjbigorra@gmail.com>\n"
 "Language-Team: Dutch <vertaling@vrijschrift.org>\n"
@@ -44,10 +44,22 @@ msgstr ""
 msgid "Find the project's source code here"
 msgstr "Vind hier de broncode voor dit project"
 
-#: src/ui/popover_menu.c:293
+#: src/ui/popover_menu.c:218
+msgid "Application"
+msgstr "Appplicatie"
+
+#: src/ui/popover_menu.c:240
+msgid "Window"
+msgstr "Venster"
+
+#: src/ui/popover_menu.c:294
 msgid "New Instance"
 msgstr "Nieuwe instantie"
 
-#: src/ui/popover_menu.c:319
+#: src/ui/popover_menu.c:310
+msgid "Close All Windows"
+msgstr "Alle vensters sluiten"
+
+#: src/ui/popover_menu.c:321
 msgid "Launch Application"
 msgstr "Appplicatie draaien"
