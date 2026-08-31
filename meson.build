@@ -168,6 +168,18 @@ add_project_arguments(
 # Instructs `meson install` to copy local Scheme source code into the Guile system module path
 install_subdir('scheme/lambdock', install_dir: scheme_install_path)
 
+# ------------------------------------------------------------------------------
+# i18n, localization and internationalization
+# ------------------------------------------------------------------------------
+
+i18n = import('i18n')
+
+# Define and pass the locale directory to the C compiler
+localedir = join_paths(get_option('prefix'), get_option('localedir'))
+add_project_arguments('-DLOCALEDIR="' + localedir + '"', language: 'c')
+
+# Include the po directory for translations
+subdir('po')
 
 # ------------------------------------------------------------------------------
 # Source Code Definitions & Executable Build
