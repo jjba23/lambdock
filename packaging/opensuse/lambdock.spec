@@ -16,7 +16,7 @@
 #
 
 Name:           lambdock
-Version:        0.6.7
+Version:        0.7.2
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        GPL-3.0-or-later
@@ -59,33 +59,18 @@ Wayfire, Niri, and other compatible compositors.
 
 %install
 %meson_install
+%find_lang %{name}
 
 %check
 %meson_test
 
-%files
+%files -f %{name}.lang
 %license COPYING
 %doc README.org NEWS.org
 %{_bindir}/lambdock
-%dir %{_datadir}/locale
-%dir %{_datadir}/locale/ca
-%dir %{_datadir}/locale/ca/LC_MESSAGES
-%dir %{_datadir}/locale/es
-%dir %{_datadir}/locale/es/LC_MESSAGES
-%dir %{_datadir}/locale/pt
-%dir %{_datadir}/locale/pt/LC_MESSAGES
-%dir %{_datadir}/locale/fr
-%dir %{_datadir}/locale/fr/LC_MESSAGES
-%dir %{_datadir}/locale/it
-%dir %{_datadir}/locale/it/LC_MESSAGES
-%dir %{_datadir}/locale/nl
-%dir %{_datadir}/locale/nl/LC_MESSAGES
-%dir %{_datadir}/locale/de
-%dir %{_datadir}/locale/de/LC_MESSAGES
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
-%{_datadir}/guile/site/3.0/
-%dir %{_datadir}/guile/site/3.0/lambdock
-%{_datadir}/guile/site/3.0/lambdock/*.scm
+%dir %{_datadir}/guile/site/3.0
+%{_datadir}/guile/site/3.0/lambdock
 
 %changelog

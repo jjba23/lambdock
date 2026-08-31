@@ -38,7 +38,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "0.6.7";
+  version = "0.7.2";
 
   strictDeps = true;
   __structuredAttrs = true;
