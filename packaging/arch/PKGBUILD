@@ -33,6 +33,7 @@ depends=(
 )
 
 makedepends=(
+  'gettext'
   'meson'
   'ninja'
   'pkgconf'

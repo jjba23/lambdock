@@ -30,6 +30,7 @@
   gtk4,
   gtk4-layer-shell,
   guile,
+  gettext,
   wayland,
   wayland-protocols,
   wlr-protocols,
@@ -51,6 +52,7 @@ stdenv.mkDerivation (finalAttrs: {
     wayland-scanner
     glib
     wrapGAppsHook4
+    gettext
   ];
 
   buildInputs = [
