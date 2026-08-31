@@ -67,6 +67,21 @@ Wayfire, Niri, and other compatible compositors.
 %license COPYING
 %doc README.org NEWS.org
 %{_bindir}/lambdock
+%dir %{_datadir}/locale
+%dir %{_datadir}/locale/ca
+%dir %{_datadir}/locale/ca/LC_MESSAGES
+%dir %{_datadir}/locale/es
+%dir %{_datadir}/locale/es/LC_MESSAGES
+%dir %{_datadir}/locale/pt
+%dir %{_datadir}/locale/pt/LC_MESSAGES
+%dir %{_datadir}/locale/fr
+%dir %{_datadir}/locale/fr/LC_MESSAGES
+%dir %{_datadir}/locale/it
+%dir %{_datadir}/locale/it/LC_MESSAGES
+%dir %{_datadir}/locale/nl
+%dir %{_datadir}/locale/nl/LC_MESSAGES
+%dir %{_datadir}/locale/de
+%dir %{_datadir}/locale/de/LC_MESSAGES
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
 %{_datadir}/guile/site/3.0/
