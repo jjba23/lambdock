@@ -48,7 +48,7 @@
                           ;; for production Guile 3.0 is used
                           ;; for dev Arei REPL use Guile Next
                           gcc-toolchain
-                          gettext
+                          gettext-minimal
                           pkg-config
                           meson
                           ccls

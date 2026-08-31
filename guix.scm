@@ -44,7 +44,7 @@
                      #:parallel-tests? #t))
     (native-inputs (list (list glib "bin")
                          pkg-config
-                         gettext))
+                         gettext-minimal))
     (inputs (list gtk
                   gtk4-layer-shell
                   guile-3.0

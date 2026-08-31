@@ -1,0 +1,26 @@
+# Dutch translations for lambdock package.
+# Copyright (C) 2026 THE lambdock'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the lambdock package.
+# Josep Bigorra <jjbigorra@gmail.com>, 2026.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: lambdock\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-31 07:57+0200\n"
+"PO-Revision-Date: 2026-08-31 08:02+0200\n"
+"Last-Translator: Josep Bigorra <jjbigorra@gmail.com>\n"
+"Language-Team: Dutch <vertaling@vrijschrift.org>\n"
+"Language: nl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=ASCII\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/main.c:576
+msgid "About Lambdock"
+msgstr "Over Lambdock"
+
+#: src/main.c:577
+msgid "Quit"
+msgstr "Afsluiten"
