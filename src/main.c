@@ -685,7 +685,7 @@ int main(int argc, char **argv) {
 
   // Initialize i18n & gettext routing
   setlocale(LC_ALL, "");
-#ifdef LOCALE_DIR
+#ifdef LOCALEDIR
   bindtextdomain("lambdock", LOCALEDIR);
 #endif
   bind_textdomain_codeset("lambdock", "UTF-8");
