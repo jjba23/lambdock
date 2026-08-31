@@ -706,6 +706,17 @@ podman run -d --rm --name lambdock \
 
 ----------
 
+** Flatpak
+
+You can also use lambdock as a Flatpak (experimental). Ensure to give it the correct permissions (using something like Flatseal).
+
+#+begin_src shell
+flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50
+flatpak-builder build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml
+#+end_src
+
+-----------
+
 * Hacking with ~maak~ & CCLS
 
 If you use  ~ccls~ or another LSP client, generate your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the solution.
