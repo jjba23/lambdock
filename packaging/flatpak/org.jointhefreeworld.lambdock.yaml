@@ -21,6 +21,9 @@ modules:
   # GNU Guile 3.0
   - name: guile
     buildsystem: autotools
+    build-options:
+      env:
+        LDFLAGS: "-L/app/lib -Wl,-rpath=/app/lib"
     config-opts:
       - --disable-static
     sources:

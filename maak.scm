@@ -210,5 +210,7 @@
 
 (define (flatpak-build)
   "Build Flatpak package."
-  ($ '("flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50"))
-  ($ '("flatpak-builder build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml")))
+  ($ '("flatpak install --user flathub org.gnome.Platform//50"
+       "org.gnome.Sdk//50"))
+  ($ '("flatpak-builder build-dir"
+       "packaging/flatpak/org.jointhefreeworld.lambdock.yaml" "--force-clean")))
