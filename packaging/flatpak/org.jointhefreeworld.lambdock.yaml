@@ -1,0 +1,56 @@
+app-id: org.jointhefreeworld.lambdock
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+command: lambdock
+finish-args:
+  - --socket=wayland
+  - --share=ipc
+  - --filesystem=host
+  # --talk-name=org.freedesktop.DBus
+
+modules:
+  # Boehm Garbage Collector (required by Guile)
+  - name: bdwgc
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/ivmai/bdwgc/releases/download/v8.2.8/gc-8.2.8.tar.gz
+        sha256: 7649020621cb26325e1fb5c8742590d92fb48ce5c259b502faf7d9fb5dabb160
+
+  # GNU Guile 3.0
+  - name: guile
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+      - --without-threads # Simplifies Flatpak build, remove if Lambdock needs Guile threads
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/guile/guile-3.0.9.tar.xz
+        sha256: 1a2625ac72b2366e95792f3fe758fd2df775b4044a90a4a9787326e66c0d750d
+
+  # wlr-protocols (Your meson.build falls back to local XMLs, but adding it is cleaner)
+  - name: wlr-protocols
+    buildsystem: meson
+    sources:
+       - type: git
+         url: https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
+         branch: master
+
+  # gtk4-layer-shell
+  - name: gtk4-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dexamples=false
+    sources:
+      - type: archive
+        url: https://github.com/wmww/gtk4-layer-shell/archive/refs/tags/v1.3.0.zip
+        sha256: 854da55ef2a621bbf28984b394ce356d8820c3b2b9d35f3a8b9fa9e0614c859c
+
+  # Lambdock
+  - name: lambdock
+    buildsystem: meson
+    sources:
+      - type: dir
+        path: .
