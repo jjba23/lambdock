@@ -712,8 +712,8 @@ You can also use lambdock as a Flatpak (experimental). Ensure to give it the cor
 
 #+begin_src shell
 flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50
-flatpak-builder build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml --force-clean
-flatpak-builder --run build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml lambdock
+flatpak-builder --install --user build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml --force-clean
+flatpak run org.jointhefreeworld.lambdock
 #+end_src
 
 -----------

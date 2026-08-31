@@ -8,6 +8,7 @@ finish-args:
   - --share=ipc
   - --filesystem=host
   - --device=dri
+  - --env=GDK_BACKEND=wayland
 
 modules:
   # Boehm Garbage Collector (required by Guile)
