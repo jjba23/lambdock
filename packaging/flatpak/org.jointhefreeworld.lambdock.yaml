@@ -10,6 +10,17 @@ finish-args:
   # --talk-name=org.freedesktop.DBus
 
 modules:
+  # gtk4-layer-shell
+  - name: gtk4-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dtests=false
+      - -Dexamples=false
+    sources:
+      - type: archive
+        url: https://github.com/wmww/gtk4-layer-shell/archive/refs/tags/v1.3.0.zip
+        sha256: 854da55ef2a621bbf28984b394ce356d8820c3b2b9d35f3a8b9fa9e0614c859c
+
   # Boehm Garbage Collector (required by Guile)
   - name: bdwgc
     buildsystem: autotools
@@ -28,25 +39,6 @@ modules:
       - type: archive
         url: https://ftp.gnu.org/gnu/guile/guile-3.0.9.tar.xz
         sha256: 1a2625ac72b2366e95792f3fe758fd2df775b4044a90a4a9787326e66c0d750d
-
-  # wlr-protocols (Your meson.build falls back to local XMLs, but adding it is cleaner)
-  - name: wlr-protocols
-    buildsystem: meson
-    sources:
-       - type: git
-         url: https://gitlab.freedesktop.org/wlroots/wlr-protocols.git
-         branch: master
-
-  # gtk4-layer-shell
-  - name: gtk4-layer-shell
-    buildsystem: meson
-    config-opts:
-      - -Dtests=false
-      - -Dexamples=false
-    sources:
-      - type: archive
-        url: https://github.com/wmww/gtk4-layer-shell/archive/refs/tags/v1.3.0.zip
-        sha256: 854da55ef2a621bbf28984b394ce356d8820c3b2b9d35f3a8b9fa9e0614c859c
 
   # Lambdock
   - name: lambdock
