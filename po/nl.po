@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lambdock\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 07:57+0200\n"
+"POT-Creation-Date: 2026-08-31 08:21+0200\n"
 "PO-Revision-Date: 2026-08-31 08:02+0200\n"
 "Last-Translator: Josep Bigorra <jjbigorra@gmail.com>\n"
 "Language-Team: Dutch <vertaling@vrijschrift.org>\n"
@@ -24,3 +24,7 @@ msgstr "Over Lambdock"
 #: src/main.c:577
 msgid "Quit"
 msgstr "Afsluiten"
+
+#: src/dock_window.c:565
+msgid "Find the project's source code here"
+msgstr "Vind hier de broncode voor dit project"

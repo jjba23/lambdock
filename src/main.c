@@ -24,8 +24,8 @@
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
-#include <locale.h>
 #include <glib/gi18n.h>
+#include <locale.h>
 
 /* =========================================================================
  * GLOBAL STATE VARIABLES
@@ -190,7 +190,7 @@ static void sync_docks_with_disk(GtkApplication *app) {
     }
     for (GList *l = to_destroy; l != NULL; l = l->next) {
       LOG_C_INFO("Main",
-                 "Settings file(s) detected. Destroying fallback dock...");
+                 "Settings file(s) detected. Destroying fallback dock.");
       destroy_dock_instance((LambdockState *)l->data);
     }
     g_list_free(to_destroy);
@@ -685,7 +685,9 @@ int main(int argc, char **argv) {
 
   // Initialize i18n & gettext routing
   setlocale(LC_ALL, "");
-  bindtextdomain("lambdock", LOCALEDIR); // LOCALEDIR is passed by Meson
+#ifdef LOCALE_DIR
+  bindtextdomain("lambdock", LOCALEDIR);
+#endif
   bind_textdomain_codeset("lambdock", "UTF-8");
   textdomain("lambdock");
 
