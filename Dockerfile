@@ -46,6 +46,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
         gtk4-devel \
         gtk4-layer-shell-devel \
         guile-devel \
+        gettext \
         meson \
         ninja \
         pkg-config \
@@ -61,6 +62,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
 # ------------------------------------------------------------------------------
 
 COPY meson.build ./
+COPY po/ ./po/
 COPY protocols/ ./protocols/
 COPY resources/ ./resources/
 COPY scheme/ ./scheme/
