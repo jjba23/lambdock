@@ -17,6 +17,8 @@
 
 #include "popover_menu.h"
 #include "../toplevel_tracker.h"
+#include <glib/gi18n.h>
+#include <locale.h>
 
 /* ============================================================================
  * INTERNAL DATA STRUCTURES
@@ -288,7 +290,7 @@ void populate_popover_menu(DockItem *item) {
     // Option: "New Instance" (When app is already running)
     // ------------------------------------------------------------------------
     if (item->exec && *item->exec != '\0') {
-      GtkWidget *btn_launch = gtk_button_new_with_label("New Instance");
+      GtkWidget *btn_launch = gtk_button_new_with_label(_("New Instance"));
       gtk_widget_add_css_class(btn_launch, "flat");
 
       // `g_signal_connect_swapped` automatically passes `item` as the primary
@@ -314,7 +316,7 @@ void populate_popover_menu(DockItem *item) {
   // Option: "Launch Application" (When no windows are open yet)
   // --------------------------------------------------------------------------
   else if (item->exec && *item->exec != '\0') {
-    GtkWidget *btn_launch = gtk_button_new_with_label("Launch Application");
+    GtkWidget *btn_launch = gtk_button_new_with_label(_("Launch Application"));
     gtk_widget_add_css_class(btn_launch, "flat");
     g_signal_connect_swapped(btn_launch, "clicked",
                              G_CALLBACK(on_popover_launch_clicked), item);

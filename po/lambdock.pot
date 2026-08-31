@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lambdock\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-31 08:23+0200\n"
+"POT-Creation-Date: 2026-08-31 08:45+0200\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -25,6 +25,24 @@ msgstr ""
 msgid "Quit"
 msgstr ""
 
-#: src/dock_window.c:565
+#: src/dock_window.c:541
+msgid ""
+"A modern Wayland-native hackable desktop dock bar.\n"
+"\n"
+"Engineered with the performance of C and GTK4 Layer Shell for smooth auto-"
+"hide and animations, featuring dynamic Wayland toplevel window tracking, "
+"live CSS hot-reloading, and dynamic configuration powered by GNU Guile "
+"Scheme."
+msgstr ""
+
+#: src/dock_window.c:563
 msgid "Find the project's source code here"
+msgstr ""
+
+#: src/ui/popover_menu.c:293
+msgid "New Instance"
+msgstr ""
+
+#: src/ui/popover_menu.c:319
+msgid "Launch Application"
 msgstr ""
