@@ -773,6 +773,20 @@ In summary, we foster an inclusive, respectful, and cooperative environment for 
 
 --------
 
+* Translation status
+
+This project aims for accessibility and ease-of-use for users. For this purpose, we try to translate lambdock to all languages we can maintain. See below the status of translations for this project:
+
+- English 🇬🇧 :: 100%
+- Dutch 🇳🇱 :: 100%
+- French 🇫🇷  :: 100%
+- Italian 🇮🇹 :: 100%
+- Spanish 🇪🇸 :: 100%
+- Catalan 🇪🇸 :: 100%
+- Portuguese 🇵🇹 :: 100%
+
+--------
+
 * Why Lisp (GNU Guile Scheme) ?
 
 Desktop docks traditionally rely on static configuration formats like JSON, INI, or YAML. While straightforward, these formats force a compromise: adding dynamic behavior or custom logic requires writing C plugins or re-compiling the binary.
