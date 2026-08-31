@@ -7,7 +7,7 @@ finish-args:
   - --socket=wayland
   - --share=ipc
   - --filesystem=host
-  # --talk-name=org.freedesktop.DBus
+  - --device=dri
 
 modules:
   # Boehm Garbage Collector (required by Guile)
@@ -47,4 +47,4 @@ modules:
     buildsystem: meson
     sources:
       - type: dir
-        path: .
+        path: ../../
