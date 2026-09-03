@@ -1,0 +1,186 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - SNOW LEOPARD 3D GLASS EDITION (DARK MODE)
+ * ========================================================================= */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* Iconic 3D Frosted Smoked Glass Shelf Floor */
+.lambdock-window {
+  border-radius: 6px 6px 16px 16px;
+  padding: 4px 14px 8px 14px;
+  margin: 0px 4px 2px 4px;
+
+  /* Multi-stage reflection gradient for dark frosted glass */
+  background-image: linear-gradient(
+    180deg,
+    rgba(75, 80, 85, 0.85) 0%,
+    rgba(45, 50, 55, 0.75) 12%,
+    rgba(25, 30, 35, 0.65) 50%,
+    rgba(15, 18, 22, 0.85) 85%,
+    rgba(5, 8, 12, 0.96) 100%
+  );
+
+  /* Darkened edges with subtle highlighting */
+  border-top: 2px solid rgba(120, 125, 130, 0.70);
+  border-left: 1px solid rgba(100, 105, 110, 0.40);
+  border-right: 1px solid rgba(100, 105, 110, 0.40);
+  border-bottom: 2px solid rgba(0, 0, 0, 0.90);
+
+  /* Deepened depth drop shadow and upper reflective sheen */
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.60),
+    0 2px 4px rgba(0, 0, 0, 0.40),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.50);
+}
+
+/* -------------------------------------------------------------------------
+ * BUTTONS & SPRING MAGNIFICATION
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  margin: 2px 4px;
+  border-radius: 8px;
+  color: #ffffff;
+
+  /* Bouncy spring curve for icon magnification above shelf floor */
+  transition: transform 200ms cubic-bezier(0.175, 0.885, 0.32, 1.275),
+              background-color 150ms ease-out;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.15); /* Subtler highlight for dark glass */
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.50);
+}
+
+button.flat:active {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+/* Dynamic Item Labels */
+.dynamic-item-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); /* Darker shadow for legibility */
+}
+
+button.flat:hover .dynamic-item-label {
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 1.0);
+}
+
+/* -------------------------------------------------------------------------
+ * RUNNING APP INDICATOR (Ice-Blue Glowing Light Dot)
+ * ------------------------------------------------------------------------- */
+
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    rgba(170, 225, 255, 1.0) 25%,
+    rgba(45, 140, 255, 0.85) 60%,
+    transparent 80%
+  );
+  background-size: 20px 6px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    rgba(200, 240, 255, 1.0) 30%,
+    rgba(70, 175, 255, 0.95) 65%,
+    transparent 85%
+  );
+  background-size: 26px 8px;
+  background-position: center bottom;
+}
+
+/* -------------------------------------------------------------------------
+ * GLASS SEPARATOR GROOVE
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 6px 8px;
+  background-color: rgba(0, 0, 0, 0.50); /* Dark recessed groove */
+  border-right: 1px solid rgba(255, 255, 255, 0.15); /* Catching ambient light */
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * HUD POPOVER MENUS
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(20, 24, 28, 0.96); /* Deep dark mode popover */
+  color: #f4f8fc;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  color: #90b4d6; /* Muted ice blue for dark mode titles */
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #ffffff;
+  border-radius: 5px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(180deg, #5297f6 0%, #1a66d2 100%);
+  color: #ffffff;
+}
+
+window.about-dialog {
+  /* Matched to the smoked glass main dock gradient */
+  background-image: linear-gradient(
+    180deg,
+    rgba(75, 80, 85, 0.95) 0%,
+    rgba(45, 50, 55, 0.85) 12%,
+    rgba(25, 30, 35, 0.75) 50%,
+    rgba(15, 18, 22, 0.85) 85%,
+    rgba(5, 8, 12, 0.96) 100%
+  );
+  color: #ffffff; /* Reverted to white text for dark background */
+}
