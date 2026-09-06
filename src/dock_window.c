@@ -452,6 +452,7 @@ void setup_layer_shell_window(LambdockState *state) {
 
   // Initialize GTK Layer Shell integration for window
   gtk_layer_init_for_window(window);
+  gtk_layer_set_namespace(window, "lambdock");
 
   // Assign window to specific GdkMonitor output if specified
   if (state->monitor != NULL) {

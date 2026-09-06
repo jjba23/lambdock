@@ -37,9 +37,9 @@ window {
   /* Translucent botanical dark pine to forest floor gradient */
   background-image: linear-gradient(
     135deg,
-    rgba(24, 46, 31, 0.88) 0%,
-    rgba(15, 30, 20, 0.92) 50%,
-    rgba(8, 18, 12, 0.96) 100%
+    rgba(24, 46, 31, 0.84) 0%,
+    rgba(15, 30, 20, 0.88) 50%,
+    rgba(8, 18, 12, 0.92) 100%
   );
 
   /* Leaf-green specular highlight border */

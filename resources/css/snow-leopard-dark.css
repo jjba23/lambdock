@@ -37,11 +37,11 @@ window {
   /* Multi-stage reflection gradient for dark frosted glass */
   background-image: linear-gradient(
     180deg,
-    rgba(75, 80, 85, 0.85) 0%,
-    rgba(45, 50, 55, 0.75) 12%,
-    rgba(25, 30, 35, 0.65) 50%,
-    rgba(15, 18, 22, 0.85) 85%,
-    rgba(5, 8, 12, 0.96) 100%
+    rgba(75, 80, 85, 0.81) 0%,
+    rgba(45, 50, 55, 0.71) 12%,
+    rgba(25, 30, 35, 0.61) 50%,
+    rgba(15, 18, 22, 0.81) 85%,
+    rgba(5, 8, 12, 0.92) 100%
   );
 
   /* Darkened edges with subtle highlighting */

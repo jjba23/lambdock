@@ -37,8 +37,8 @@ window {
   /* Deep translucent glass background */
   background-image: linear-gradient(
     135deg,
-    rgba(40, 40, 45, 0.82) 0%,
-    rgba(20, 20, 24, 0.88) 100%
+    rgba(40, 40, 45, 0.80) 0%,
+    rgba(20, 20, 24, 0.82) 100%
   );
 
   /* Subtle highlight border (light leak on upper edge) */

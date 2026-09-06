@@ -37,8 +37,8 @@ window {
   /* Translucent warm cream gradient (#fdf6e3 -> #eee8d5) */
   background-image: linear-gradient(
     135deg,
-    rgba(253, 246, 227, 0.90) 0%,
-    rgba(238, 232, 213, 0.82) 100%
+    rgba(253, 246, 227, 0.86) 0%,
+    rgba(238, 232, 213, 0.78) 100%
   );
 
   /* Specular light border using solid base3 tint */
