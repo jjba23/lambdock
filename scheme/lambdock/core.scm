@@ -39,11 +39,11 @@
                separator-item
                dynamic-item
                ;; Dynamic items
-               get-free-ram-mb
+               get-used-ram-percent
                ram-item
                get-clock-text
                clock-item
-               get-cpu-loadavg
+               get-cpu-percent
                cpu-item
                get-battery-status
                battery-item
@@ -109,7 +109,7 @@
                                                (assq alt-key settings))))
                                  (if pair
                                      (cdr pair) default-val)))))
-                   
+
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
                                                     'position

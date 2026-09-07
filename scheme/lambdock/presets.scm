@@ -279,13 +279,29 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
                               #:icon "com.visualstudio.code"))
     (intellij unquote
               (app-item #:name "IntelliJ IDEA"
-                        #:exec "intellij-idea"
-                        #:icon "jetbrains-idea"))
+                        #:exec "idea"
+                        #:icon "idea"))
     (intellij-flatpak unquote
                       (app-item #:name "IntelliJ IDEA"
                        #:exec
                        "flatpak run com.jetbrains.IntelliJ-IDEA-Community"
                        #:icon "com.jetbrains.IntelliJ-IDEA-Community"))
+    (webstorm unquote
+              (app-item #:name "WebStorm"
+                        #:exec "webstorm"
+                        #:icon "webstorm"))
+    (webstorm-flatpak unquote
+                      (app-item #:name "WebStorm"
+                                #:exec "flatpak run com.jetbrains.WebStorm"
+                                #:icon "com.jetbrains.WebStorm"))
+    (datagrip unquote
+              (app-item #:name "DataGrip"
+                        #:exec "datagrip"
+                        #:icon "datagrip"))
+    (datagrip-flatpak unquote
+                      (app-item #:name "DataGrip"
+                                #:exec "flatpak run com.jetbrains.DataGrip"
+                                #:icon "com.jetbrains.DataGrip"))
     (bruno unquote
            (app-item #:name "Bruno"
                      #:exec "bruno"
@@ -312,11 +328,16 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
                               #:icon "io.neovim.nvim"))
 
     ;; System & Utilities
-    (ram unquote (ram-item))
-    (clock unquote (clock-item))
-    (cpu unquote (cpu-item))
-    (battery unquote (battery-item))
-    (cpu-temp unquote (cpu-temp-item))
+    (ram unquote
+         (ram-item))
+    (clock unquote
+           (clock-item))
+    (cpu unquote
+         (cpu-item))
+    (battery unquote
+             (battery-item))
+    (cpu-temp unquote
+              (cpu-temp-item))
     (nautilus unquote
               (app-item #:name "Files"
                         #:exec "nautilus -w"

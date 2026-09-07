@@ -36,11 +36,11 @@
                         dynamic-item
 
                         ;; Dynamic Item Helpers & Presets
-                        get-free-ram-mb
+                        get-used-ram-percent
                         ram-item
                         get-clock-text
                         clock-item
-                        get-cpu-loadavg
+                        get-cpu-percent
                         cpu-item
                         get-battery-status
                         battery-item
@@ -133,28 +133,37 @@
 ;; Dynamic Helper Procedures & Presets
 ;; =============================================================================
 
-(define (get-free-ram-mb)
-  "Parses /proc/meminfo and returns available system RAM in MB."
+(define (get-used-ram-percent)
+  "Parses /proc/meminfo and returns used system RAM as a percentage."
   (catch #t
          (lambda ()
            (call-with-input-file "/proc/meminfo"
              (lambda (port)
+               (define (parse-kb line)
+                 (let* ((parts (string-split line #\space))
+                        (nums (filter (lambda (s)
+                                        (not (string-null? s))) parts)))
+                   (and (>= (length nums) 2)
+                        (string->number (list-ref nums 1)))))
                (let loop
-                 ((line (read-line port)))
+                 ((line (read-line port))
+                  (mem-total #f)
+                  (mem-available #f))
                  (cond
+                   ((and mem-total mem-available)
+                    (let* ((used (- mem-total mem-available))
+                           (pct (inexact->exact (round (* (/ used mem-total)
+                                                          100)))))
+                      (format #f "RAM ~a%" pct)))
                    ((eof-object? line)
                     "RAM N/A")
+                   ((string-prefix? "MemTotal:" line)
+                    (loop (read-line port)
+                          (parse-kb line) mem-available))
                    ((string-prefix? "MemAvailable:" line)
-                    (let* ((parts (string-split line #\space))
-                           (nums (filter (lambda (s)
-                                           (not (string-null? s))) parts)))
-                      (if (>= (length nums) 2)
-                          (let ((kb (string->number (list-ref nums 1))))
-                            (if kb
-                                (format #f "~a GB free"
-                                        (round (/ (/ kb 1024) 1024))) "RAM N/A"))
-                          "RAM N/A")))
-                   (else (loop (read-line port))))))))
+                    (loop (read-line port) mem-total
+                          (parse-kb line)))
+                   (else (loop (read-line port) mem-total mem-available)))))))
          (lambda _
            "RAM N/A")))
 
@@ -162,10 +171,10 @@
                    (poll-interval 2000)
                    (hover-animate? #f))
   "Preset builder for dynamic RAM monitoring item."
-  (dynamic-item #:name "Free RAM"
+  (dynamic-item #:name "RAM Usage"
                 #:icon #f
                 #:exec exec
-                #:poll-fn get-free-ram-mb
+                #:poll-fn get-used-ram-percent
                 #:poll-interval poll-interval
                 #:hover-animate? hover-animate?))
 
@@ -181,23 +190,52 @@
                 #:poll-interval 1000
                 #:hover-animate? hover-animate?))
 
-(define (get-cpu-loadavg)
+(define (get-cpu-percent)
+  "Parses /proc/stat over a 100ms window and returns CPU usage percentage."
   (catch #t
-         (lambda ()
-           (call-with-input-file "/proc/loadavg"
-             (lambda (port)
-               (let* ((line (read-line port))
-                      (parts (string-split line #\space)))
-                 (format #f "CPU ~a"
-                         (car parts))))))
-         (lambda _
-           "CPU N/A")))
+    (lambda ()
+      (define (read-cpu-counters)
+        (call-with-input-file "/proc/stat"
+          (lambda (port)
+            (let loop ((line (read-line port)))
+              (cond
+                ((eof-object? line) #f)
+                ((string-prefix? "cpu " line)
+                 (let* ((parts (string-split line #\space))
+                        (nums (map string->number
+                                   (filter (lambda (s) (not (string-null? s)))
+                                           (cdr parts)))))
+                   (if (>= (length nums) 4)
+                       (let ((idle (list-ref nums 3))
+                             (iowait (if (>= (length nums) 5) (list-ref nums 4) 0))
+                             (total (apply + nums)))
+                         (cons (+ idle iowait) total))
+                       #f)))
+                (else (loop (read-line port))))))))
+
+      (let ((sample1 (read-cpu-counters)))
+        (usleep 100000) ; Sleep for 100ms to measure CPU delta
+        (let ((sample2 (read-cpu-counters)))
+          (if (and sample1 sample2)
+              (let* ((idle1 (car sample1))
+                     (total1 (cdr sample1))
+                     (idle2 (car sample2))
+                     (total2 (cdr sample2))
+                     (diff-idle (- idle2 idle1))
+                     (diff-total (- total2 total1)))
+                (if (> diff-total 0)
+                    (let ((pct (inexact->exact (round (* 100 (- 1 (/ diff-idle diff-total)))))))
+                      (format #f "CPU ~a%" pct))
+                    "CPU N/A"))
+              "CPU N/A"))))
+    (lambda _
+      "CPU N/A")))
 
 (define* (cpu-item #:key (hover-animate? #f))
-  (dynamic-item #:name "CPU Load"
+  (dynamic-item #:name "CPU Usage"
                 #:icon #f
                 #:exec "alacritty -e 'btop'"
-                #:poll-fn get-cpu-loadavg
+                #:poll-fn get-cpu-percent
                 #:poll-interval 2000
                 #:hover-animate? hover-animate?))
 
