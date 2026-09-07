@@ -246,6 +246,14 @@ manager_handle_finished(void *data,
   (void)manager;
 }
 
+static void registry_handle_global_remove(void *data,
+                                          struct wl_registry *registry,
+                                          uint32_t name) {
+  (void)data;
+  (void)registry;
+  (void)name;
+}
+
 static const struct zwlr_foreign_toplevel_manager_v1_listener manager_listener =
     {
         .toplevel = manager_handle_toplevel,
@@ -288,7 +296,7 @@ void init_toplevel_tracker(LambdockState *state) {
 
     static const struct wl_registry_listener registry_listener = {
         .global = registry_handle_global,
-        .global_remove = NULL,
+        .global_remove = registry_handle_global_remove,
     };
 
     wl_registry_add_listener(registry, &registry_listener, NULL);

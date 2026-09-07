@@ -817,6 +817,7 @@ void destroy_dock_instance(LambdockState *state) {
   if (state->window && GTK_IS_WINDOW(state->window)) {
     GtkWidget *win = state->window;
     state->window = NULL; // Nullify reference prior to GTK destruction
+    gtk_layer_set_monitor(GTK_WINDOW(win), NULL);
     gtk_window_destroy(GTK_WINDOW(win));
   }
 
@@ -826,6 +827,7 @@ void destroy_dock_instance(LambdockState *state) {
   }
 
   if (state->monitor) {
+    g_signal_handlers_disconnect_by_data(state->monitor, state);
     g_object_unref(state->monitor);
     state->monitor = NULL;
   }

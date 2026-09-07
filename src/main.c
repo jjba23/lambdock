@@ -446,6 +446,30 @@ static void setup_config_file_monitors(GtkApplication *app) {
  * ========================================================================= */
 
 /**
+ * on_monitor_invalidated:
+ * Called synchronously by GDK when a monitor is disconnected.
+ * Unbinds gtk-layer-shell from the output immediately to prevent a Wayland
+ * protocol abort.
+ */
+static void on_monitor_invalidated(GdkMonitor *monitor, gpointer user_data) {
+  LambdockState *state = (LambdockState *)user_data;
+  (void)monitor;
+  if (!state || state->is_destroying)
+    return;
+
+  LOG_C_INFO("Main",
+             "Monitor invalidated for dock instance [%s]. Unbinding layer "
+             "shell output...",
+             state->config_path ? state->config_path : "default");
+
+  if (state->window && GTK_IS_WINDOW(state->window)) {
+    // Unbind layer shell surface from the dead output before dispatch cycle
+    // fails
+    gtk_layer_set_monitor(GTK_WINDOW(state->window), NULL);
+  }
+}
+
+/**
  * on_monitors_changed_cb:
  * Triggered whenever the Wayland compositor adds or removes display monitor
  * outputs.
@@ -498,6 +522,12 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   LambdockState *state = g_new0(LambdockState, 1);
   state->monitor = monitor ? g_object_ref(monitor) : NULL;
   state->config_path = config_path ? g_strdup(config_path) : NULL;
+
+  // Listen for monitor disconnects immediately
+  if (state->monitor) {
+    g_signal_connect(state->monitor, "invalidate",
+                     G_CALLBACK(on_monitor_invalidated), state);
+  }
 
   state->edge = get_position_config_for(state->config_path);
 
