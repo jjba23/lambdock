@@ -456,11 +456,12 @@ static void on_monitors_changed_cb(GListModel *monitors, guint position,
   (void)monitors;
   (void)position;
   GtkApplication *app = GTK_APPLICATION(user_data);
-  LOG_C_INFO(
-      "Main",
-      "Display monitors changed (removed: %u, added: %u). Reconciling docks...",
-      removed, added);
+  LOG_C_INFO("Main", "MONITORS CHANGED: position=%u removed=%u added=%u",
+             position, removed, added);
+
+  LOG_C_INFO("Main", "MONITORS CHANGED: before sync");
   sync_docks_with_disk(app);
+  LOG_C_INFO("Main", "MONITORS CHANGED: after sync");
 }
 
 /**

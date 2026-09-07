@@ -208,6 +208,16 @@
                                      "ninja -C build lambdock-pot &&"
                                      "ninja -C build lambdock-update-po")))
 
+(define (meson-build)
+  "Meson build."
+  ;;(delete-file-recursively "./build")
+  (time-machine-program-shell (list "meson setup build &&" "ninja -C build")))
+
+(define (debug-run)
+  "Debug run lambdock."
+  (meson-build)
+  ($ '("gdb --args ./build/lambdock")))
+
 (define (flatpak-build)
   "Build Flatpak package."
   ($ '("flatpak install --user flathub org.gnome.Platform//50"
