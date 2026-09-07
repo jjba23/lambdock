@@ -23,6 +23,8 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 
 [[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
 
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif]]
+
 -------
 
 - *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
