@@ -635,7 +635,14 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   gtk_window_present(GTK_WINDOW(window));
 
   init_toplevel_tracker(state);
-  schedule_initial_autohide(state);
+  sync_window_trackers(state);
+
+  if (state->auto_hide && state->show_when_clear &&
+      state->window_trackers != NULL) {
+    hide_dock(state);
+  } else {
+    schedule_initial_autohide(state);
+  }
 }
 
 /**
