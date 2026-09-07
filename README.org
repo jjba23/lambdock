@@ -19,13 +19,28 @@ Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer S
 
 ~lambdock~ is a lightweight, Wayland-native desktop dock built with a high-performance C core, *GTK4 Layer-Shell*, and dynamic configuration powered by *GNU Guile Scheme*.
 
--------
+#+begin_export html
+<img alt="lambdock showcase" src="https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif">
 
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
+<img alt="lambdock showcase whitesur icons"
+src="https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif">
+#+end_export
 
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif]]
+On the 30th of July 2026, I had a revelation and set out to build *lambdock*: a Wayland-native desktop dock that wouldn't just replicate the macOS or Cairo-Dock experience, but would transcend it with full runtime inspectability, hackability, and Lisp enlightenment.
 
--------
+I find GTK to be the very best UI toolkit for GNU/Linux and other platforms, anno 2026. So for me that choice was pretty clear, even if I also toyed with Qt and others, but GTK always came  on top. After the wreckage of many PoCs and while reading some HackerNews in bed, a thought crossed my mind, and suddenly, *absolute clarity*!
+
+Why not use idiomatic modern GTK4, in the language that it's written in. Oh wait, that language, C, has ~libguile.h~, a great library inter-operability with Lisp (GNU Guile Scheme), allowing bi-directional bindings and communication. Why not go down this rabbit hole, which might at the same time teach me more about my favourite language (GNU Guile) and allow me a frictionless setup with GTK and native super performance.
+
+#+BEGIN_EXPORT html
+<img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
+#+END_EXPORT
+
+#+begin_quote
+I therefore designed lambdock in my mind, in bed, much inspired by Emacs. A powerful, small C core that powers the program, rendering, graphics and low level details, and an embedded GNU Guile Scheme engine that at runtime is the heart and brain of the whole thing. This architecture uniquely delivers interactive socket REPL control, Lisp metaprogramming macros, dynamic multi-dock spawning, native Wayland foreign-toplevel window tracking, and frame-clock-driven hover animations.
+#+end_quote
+
+--------------------
 
 - *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
 - *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
@@ -401,10 +416,6 @@ The name /lambdock/ is a play on words combining:
 - ~lambda λ~ expressions from functional programming & Lisp enlightenment.
 - *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
 - *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
-
-#+BEGIN_EXPORT html
-<img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
-#+END_EXPORT
 
 ~lambdock~ adopts as  its project logo a modified version of the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]], but without attaching itself to any religious meaning or belief.
 
@@ -854,3 +865,10 @@ See what people are saying about the ~lambdock~ project:
 - https://lobste.rs/s/lvspri/quest_for_eternal_dock_on_wayland
 - https://dev.to/jjba23/quest-for-eternal-dock-on-wayland-lambdock-c-gtk4-lisp-gnu-guile-scheme-1mm9
 - https://news.ycombinator.com/item?id=49476653
+
+
+------------
+
+#+begin_quote
+~lambdock~'s  is a story of resilience in many ways, as I cannot even remember how many attempts I made at building a dock (in different ways). Little did I know how many paradigms, ideas and PoCs would collapse before my vision became tangible reality.
+#+end_quote
