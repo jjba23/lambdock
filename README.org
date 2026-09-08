@@ -97,7 +97,7 @@ If you're unsure where to start, Zulip is recommended. Codeberg issues is also a
 
 Configurations are written in GNU Guile Scheme, and user style overrides are written in CSS/GTK4.
 
-~lambdock~ will scan your  configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=) for ~settings*.scm~ files, effectively supporting multi-dock multi-config.
+~lambdock~ will scan your  configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=) for ~settings*.scm~ files, effectively supporting multi-dock multi-config. It might be useful sometimes to clean the Guile cache, specially when upgrading to newer ~lambdock~ versions. You can do this with ~rm -rf ~/.cache/guile~
 
 - Single Configuration File: =~/.config/lambdock/settings.scm=
 - Multi-Instance Configuration Files: =~/.config/lambdock/settings-1.scm=, =~/.config/lambdock/settings-2.scm=, etc.
