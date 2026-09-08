@@ -80,6 +80,19 @@ Note: GNOME (Mutter) currently not supported due to not implementing the protoco
 
 --------
 
+
+* Community & Support
+
+Join the ~lambdock~ community to ask questions, discuss development, share configurations, screenshots, report issues, or just hang out:
+
+Issues & development: [[https://codeberg.org/jjba23/lambdock][Codeberg repository]]
+
+Chat, support, discussion, announcements (Zulip): [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][Join the lambdock Zulip community]]
+
+If you're unsure where to start, Zulip is recommended. Codeberg issues is also a good place to add ideas, report bugs or improvements.
+
+---------
+
 * Configuring lambdock
 
 Configurations are written in GNU Guile Scheme, and user style overrides are written in CSS/GTK4.
