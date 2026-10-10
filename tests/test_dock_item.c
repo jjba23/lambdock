@@ -80,6 +80,13 @@ static void test_dock_item_window_tracking(void) {
   dock_item_add_window(item, dummy_handle_2);
   g_assert_cmpint(g_list_length(item->windows), ==, 2);
 
+  /* Idempotency: re-adding an already-tracked handle must not duplicate it
+   * (sync_window_trackers and repeated app_id events do exactly this). */
+  AppWindow *again = dock_item_add_window(item, dummy_handle_1);
+  g_assert_nonnull(again);
+  g_assert_true(again->handle == dummy_handle_1);
+  g_assert_cmpint(g_list_length(item->windows), ==, 2);
+
   dock_item_remove_window(item, dummy_handle_1);
   g_assert_cmpint(g_list_length(item->windows), ==, 1);
   g_assert_true(gtk_widget_has_css_class(item->button, "running-app"));
@@ -91,6 +98,46 @@ static void test_dock_item_window_tracking(void) {
   g_object_ref_sink(item->button);
   g_object_unref(item->button);
   g_free(item);
+}
+
+static void test_clear_tracked_windows(void) {
+  LambdockState state = {0};
+  state.show_when_clear = FALSE; /* avoid reveal_dock touching a NULL window */
+
+  DockItem *fav = g_new0(DockItem, 1);
+  fav->state = &state;
+  fav->is_favorite = TRUE;
+  fav->button = gtk_button_new();
+  fav->name = g_strdup("Fav");
+  fav->app_id = g_strdup("fav");
+  dock_item_add_window(fav, (void *)0x1);
+  state.dock_items = g_list_append(state.dock_items, fav);
+
+  DockItem *tracked = g_new0(DockItem, 1);
+  tracked->state = &state;
+  tracked->is_favorite = FALSE;
+  tracked->button = gtk_button_new();
+  tracked->app_id = g_strdup("tracked");
+  tracked->poll_fn = SCM_BOOL_F; /* free_dock_item expects a valid SCM here */
+  dock_item_add_window(tracked, (void *)0x2);
+  state.dock_items = g_list_append(state.dock_items, tracked);
+  state.window_trackers = g_list_append(state.window_trackers, (void *)0x2);
+
+  clear_tracked_windows(&state);
+
+  /* The non-favorite item is gone, the favorite survives with no windows, and
+   * the tracker list is emptied. */
+  g_assert_cmpint(g_list_length(state.dock_items), ==, 1);
+  g_assert_true(state.dock_items->data == fav);
+  g_assert_null(fav->windows);
+  g_assert_null(state.window_trackers);
+
+  g_object_ref_sink(fav->button);
+  g_object_unref(fav->button);
+  g_free(fav->name);
+  g_free(fav->app_id);
+  g_free(fav);
+  g_list_free(state.dock_items);
 }
 
 static void test_create_separator_dock_item(void) {
@@ -123,6 +170,8 @@ int main(int argc, char **argv) {
   if (gtk_init_check()) {
     g_test_add_func("/ui/dock_item/window_tracking",
                     test_dock_item_window_tracking);
+    g_test_add_func("/ui/dock_item/clear_tracked_windows",
+                    test_clear_tracked_windows);
     g_test_add_func("/ui/dock_item/create_separator_dock_item",
                     test_create_separator_dock_item);
   } else {

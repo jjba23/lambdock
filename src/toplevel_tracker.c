@@ -36,6 +36,11 @@ static struct wl_seat *default_seat = NULL;
 static gboolean tracker_initialized = FALSE;
 static GList *g_master_toplevels = NULL;
 
+/* Registry global names of the bound manager/seat, needed to recognise their
+ * removal in registry_handle_global_remove(). 0 means "not bound". */
+static uint32_t toplevel_manager_global = 0;
+static uint32_t default_seat_global = 0;
+
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (handle && default_seat) {
     zwlr_foreign_toplevel_handle_v1_activate(handle, default_seat);
@@ -95,6 +100,26 @@ toplevel_handle_app_id(void *data,
   if (g_ascii_strcasecmp(app_id, "lambdock") == 0 ||
       g_ascii_strcasecmp(app_id, "org.jointhefreeworld.lambdock") == 0) {
     return;
+  }
+
+  /* If the app_id changed, detach this handle from any item that was tracking
+   * it under the previous id. Otherwise that item keeps a stale AppWindow and a
+   * permanent running indicator (and leaks the AppWindow). */
+  if (top->app_id && g_strcmp0(top->app_id, app_id) != 0) {
+    for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+      LambdockState *state = (LambdockState *)l->data;
+      if (!state)
+        continue;
+
+      DockItem *old_item = find_dock_item_by_app_id(state, top->app_id);
+      if (old_item) {
+        dock_item_remove_window(old_item, handle);
+        if (old_item->windows == NULL && !old_item->is_favorite) {
+          state->dock_items = g_list_remove(state->dock_items, old_item);
+          free_dock_item(old_item);
+        }
+      }
+    }
   }
 
   g_free(top->app_id);
@@ -239,11 +264,52 @@ manager_handle_toplevel(void *data,
                                                top);
 }
 
+/* Free all MasterToplevel bookkeeping, destroying the handle proxies first. */
+static void master_toplevels_free(void) {
+  for (GList *l = g_master_toplevels; l != NULL; l = l->next) {
+    MasterToplevel *top = (MasterToplevel *)l->data;
+    if (!top)
+      continue;
+
+    if (top->handle)
+      zwlr_foreign_toplevel_handle_v1_destroy(top->handle);
+    g_free(top->title);
+    g_free(top->app_id);
+    g_free(top);
+  }
+  g_list_free(g_master_toplevels);
+  g_master_toplevels = NULL;
+}
+
+/*
+ * tracker_teardown:
+ * Called when the compositor withdraws the foreign-toplevel manager (either an
+ * explicit "finished" event or removal of the registry global). Every handle we
+ * held is now invalid, so drop the bookkeeping, destroy the manager proxy and
+ * make each dock forget its tracked windows/handles. Keeping tracker_initialized
+ * FALSE lets a future global re-bind via registry_handle_global. */
+static void tracker_teardown(void) {
+  master_toplevels_free();
+
+  if (toplevel_manager) {
+    zwlr_foreign_toplevel_manager_v1_destroy(toplevel_manager);
+    toplevel_manager = NULL;
+  }
+  toplevel_manager_global = 0;
+  tracker_initialized = FALSE;
+
+  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
+    clear_tracked_windows((LambdockState *)l->data);
+  }
+}
+
 static void
 manager_handle_finished(void *data,
                         struct zwlr_foreign_toplevel_manager_v1 *manager) {
   (void)data;
   (void)manager;
+  LOG_C_INFO("Tracker", "Foreign toplevel manager finished; tearing down.");
+  tracker_teardown();
 }
 
 static void registry_handle_global_remove(void *data,
@@ -251,7 +317,16 @@ static void registry_handle_global_remove(void *data,
                                           uint32_t name) {
   (void)data;
   (void)registry;
-  (void)name;
+
+  if (toplevel_manager && name == toplevel_manager_global) {
+    LOG_C_INFO("Tracker",
+               "Foreign toplevel manager global removed; tearing down.");
+    tracker_teardown();
+  } else if (default_seat && name == default_seat_global) {
+    wl_proxy_destroy((struct wl_proxy *)default_seat);
+    default_seat = NULL;
+    default_seat_global = 0;
+  }
 }
 
 static const struct zwlr_foreign_toplevel_manager_v1_listener manager_listener =
@@ -273,6 +348,7 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
           registry, name, &zwlr_foreign_toplevel_manager_v1_interface, 1);
 
       if (toplevel_manager) {
+        toplevel_manager_global = name;
         zwlr_foreign_toplevel_manager_v1_add_listener(toplevel_manager,
                                                       &manager_listener, NULL);
         LOG_C_INFO("Tracker", "Bound foreign toplevel manager successfully.");
@@ -281,7 +357,10 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
   } else if (g_strcmp0(interface, wl_seat_interface.name) == 0) {
     if (!default_seat) {
       default_seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
-      LOG_C_INFO("Tracker", "Bound default Wayland seat successfully.");
+      if (default_seat) {
+        default_seat_global = name;
+        LOG_C_INFO("Tracker", "Bound default Wayland seat successfully.");
+      }
     }
   }
 }

@@ -65,8 +65,14 @@ static char *scope_css_selectors(const char *css_text,
           if (j > 0)
             g_string_append(result, ", ");
 
-          // Compound 'window' element selector directly with the scope class
-          if (g_str_has_prefix(sel, "window")) {
+          // Compound the 'window' element selector directly with the scope
+          // class, but only when 'window' is a whole element (e.g. "window",
+          // "window.background"), never a different element whose name merely
+          // starts with it (e.g. "windowcontrols").
+          char after = sel[6];
+          if (g_str_has_prefix(sel, "window") &&
+              (after == '\0' || after == '.' || after == ':' ||
+               after == '[' || g_ascii_isspace(after))) {
             g_string_append_printf(result, "window.%s%s", scope_class, sel + 6);
           } else {
             g_string_append_printf(result, ".%s %s", scope_class, sel);

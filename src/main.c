@@ -26,6 +26,7 @@
 #include "ui/theme_engine.h"
 #include <glib/gi18n.h>
 #include <locale.h>
+#include <stdlib.h>
 
 /* =========================================================================
  * GLOBAL STATE VARIABLES
@@ -108,6 +109,38 @@ static GList *scan_settings_files(void) {
   }
   g_free(config_dir);
   return file_list;
+}
+
+/**
+ * find_monitor_by_connector:
+ * Resolves a monitor connector name (e.g. "DP-1") to the matching GdkMonitor.
+ * Returns a new reference (caller must g_object_unref it) or NULL if none match.
+ */
+static GdkMonitor *find_monitor_by_connector(const char *connector) {
+  if (!connector || *connector == '\0')
+    return NULL;
+
+#if GTK_CHECK_VERSION(4, 10, 0)
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return NULL;
+
+  GListModel *monitors = gdk_display_get_monitors(display);
+  if (!monitors)
+    return NULL;
+
+  guint n = g_list_model_get_n_items(monitors);
+  for (guint i = 0; i < n; i++) {
+    GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+    const char *name = gdk_monitor_get_connector(mon);
+    if (name && g_strcmp0(name, connector) == 0)
+      return mon; /* transfer reference to the caller */
+    g_object_unref(mon);
+  }
+#else
+  (void)connector;
+#endif
+  return NULL;
 }
 
 /* =========================================================================
@@ -235,7 +268,20 @@ static void sync_docks_with_disk(GtkApplication *app) {
       GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
       guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
 
-      if (g_strcmp0(monitor_target, "all") == 0 && monitors && n_monitors > 0) {
+      gboolean monitor_all = (g_strcmp0(monitor_target, "all") == 0);
+      GdkMonitor *target_monitor = NULL;
+      if (!monitor_all && monitor_target && *monitor_target != '\0' &&
+          g_strcmp0(monitor_target, "default") != 0) {
+        target_monitor = find_monitor_by_connector(monitor_target);
+        if (!target_monitor) {
+          LOG_C_WARN("Main",
+                     "Monitor connector '%s' not found for [%s]; falling back "
+                     "to the default monitor.",
+                     monitor_target, file_path);
+        }
+      }
+
+      if (monitor_all && monitors && n_monitors > 0) {
         // 1. Destroy docks for this config path whose monitor was
         // unplugged/invalidated
         to_destroy = NULL;
@@ -282,6 +328,42 @@ static void sync_docks_with_disk(GtkApplication *app) {
           }
           g_object_unref(mon);
         }
+      } else if (target_monitor != NULL) {
+        // Destroy docks for this config that are not bound to the target monitor
+        to_destroy = NULL;
+        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
+          LambdockState *state = (LambdockState *)curr->data;
+          if (state->config_path &&
+              g_strcmp0(state->config_path, file_path) == 0 &&
+              state->monitor != target_monitor) {
+            to_destroy = g_list_append(to_destroy, state);
+          }
+        }
+        for (GList *l = to_destroy; l != NULL; l = l->next) {
+          destroy_dock_instance((LambdockState *)l->data);
+        }
+        g_list_free(to_destroy);
+        to_destroy = NULL;
+
+        // Ensure a single dock is bound to the target monitor
+        gboolean active = FALSE;
+        for (GList *l = g_active_states; l != NULL; l = l->next) {
+          LambdockState *state = (LambdockState *)l->data;
+          if (state->config_path &&
+              g_strcmp0(state->config_path, file_path) == 0 &&
+              state->monitor == target_monitor) {
+            active = TRUE;
+            reload_dock_instance(state);
+            break;
+          }
+        }
+
+        if (!active) {
+          LOG_C_INFO("Main",
+                     "Spawning dock instance on monitor connector '%s' (%s)...",
+                     monitor_target, file_path);
+          create_dock_instance(app, target_monitor, file_path);
+        }
       } else {
         // Destroy monitor-specific docks if target is no longer "all"
         to_destroy = NULL;
@@ -318,7 +400,9 @@ static void sync_docks_with_disk(GtkApplication *app) {
           create_dock_instance(app, NULL, file_path);
         }
       }
-      g_free(monitor_target);
+      if (target_monitor)
+        g_object_unref(target_monitor);
+      free(monitor_target); /* get_monitor_config_for may return scm_to_utf8_string() */
     }
   } else {
     // No settings files exist on disk: destroy all file-backed docks
@@ -474,18 +558,33 @@ static void on_monitor_invalidated(GdkMonitor *monitor, gpointer user_data) {
  * Triggered whenever the Wayland compositor adds or removes display monitor
  * outputs.
  */
+/*
+ * Monitor reconciliation is deferred to an idle callback: creating/destroying
+ * layer-shell surfaces (and iterating the monitor model in is_monitor_valid)
+ * while the GListModel is still emitting items-changed is reentrancy-prone.
+ */
+static gboolean g_monitor_sync_pending = FALSE;
+
+static gboolean on_monitors_changed_idle(gpointer user_data) {
+  g_monitor_sync_pending = FALSE;
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  LOG_C_INFO("Main", "MONITORS CHANGED: reconciling docks");
+  sync_docks_with_disk(app);
+  LOG_C_INFO("Main", "MONITORS CHANGED: reconciliation done");
+  return G_SOURCE_REMOVE;
+}
+
 static void on_monitors_changed_cb(GListModel *monitors, guint position,
                                    guint removed, guint added,
                                    gpointer user_data) {
   (void)monitors;
-  (void)position;
-  GtkApplication *app = GTK_APPLICATION(user_data);
   LOG_C_INFO("Main", "MONITORS CHANGED: position=%u removed=%u added=%u",
              position, removed, added);
 
-  LOG_C_INFO("Main", "MONITORS CHANGED: before sync");
-  sync_docks_with_disk(app);
-  LOG_C_INFO("Main", "MONITORS CHANGED: after sync");
+  if (!g_monitor_sync_pending) {
+    g_monitor_sync_pending = TRUE;
+    g_idle_add(on_monitors_changed_idle, user_data);
+  }
 }
 
 /**
@@ -668,10 +767,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
   GSimpleAction *about_action = g_simple_action_new("about", NULL);
   g_signal_connect(about_action, "activate", G_CALLBACK(on_about_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(about_action));
+  g_object_unref(about_action); /* the action map holds its own reference */
 
   GSimpleAction *quit_action = g_simple_action_new("quit", NULL);
   g_signal_connect(quit_action, "activate", G_CALLBACK(on_quit_action), app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
+  g_object_unref(quit_action); /* the action map holds its own reference */
 
   // Reconcile disk state to spawn docks for all matching settings*.scm files,
   // or fallback if none

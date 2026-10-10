@@ -61,6 +61,13 @@ void free_dock_item(DockItem *item);
 void clear_favorite_dock_items(LambdockState *state);
 
 /**
+ * clear_tracked_windows:
+ * Drops all tracked AppWindows/handles and removes non-favorite (window-tracked)
+ * items. Used when the Wayland foreign-toplevel manager is withdrawn.
+ */
+void clear_tracked_windows(LambdockState *state);
+
+/**
  * dock_item_add_window / dock_item_remove_window:
  * Manages active Wayland window handle attachments on a DockItem.
  */

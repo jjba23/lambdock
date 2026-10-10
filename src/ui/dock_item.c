@@ -422,6 +422,14 @@ void free_dock_item(DockItem *item) {
   if (item->popover && GTK_IS_WIDGET(item->popover)) {
     g_signal_handlers_disconnect_by_data(item->popover, item->state);
     g_signal_handlers_disconnect_by_data(item->popover, item);
+    /* If this item is torn down while its popover is still open, the "closed"
+     * handler that normally decrements the counter is now disconnected, so
+     * release the popover slot here. Otherwise active_popovers stays > 0 and
+     * the dock can never auto-hide again. */
+    if (item->state && gtk_widget_get_visible(item->popover) &&
+        item->state->active_popovers > 0) {
+      item->state->active_popovers--;
+    }
     if (gtk_widget_get_parent(item->popover)) {
       gtk_widget_unparent(item->popover);
     }
@@ -452,6 +460,49 @@ void free_dock_item(DockItem *item) {
   g_free(item);
 }
 
+void clear_tracked_windows(LambdockState *state) {
+  if (!state)
+    return;
+
+  /* Drop every AppWindow and all tracked handles, then remove the non-favorite
+   * items that existed only because a window was tracked. Used when the Wayland
+   * foreign-toplevel manager goes away and its handles become invalid, so no
+   * dock keeps dangling pointers. */
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item)
+      continue;
+
+    for (GList *w = item->windows; w != NULL; w = w->next) {
+      AppWindow *win = (AppWindow *)w->data;
+      if (win) {
+        g_free(win->title);
+        g_free(win);
+      }
+    }
+    g_list_free(item->windows);
+    item->windows = NULL;
+    update_dock_item_status(item);
+  }
+
+  GList *curr = state->dock_items;
+  while (curr != NULL) {
+    GList *next = curr->next;
+    DockItem *item = (DockItem *)curr->data;
+    if (item && !item->is_favorite) {
+      state->dock_items = g_list_delete_link(state->dock_items, curr);
+      free_dock_item(item);
+    }
+    curr = next;
+  }
+
+  g_list_free(state->window_trackers);
+  state->window_trackers = NULL;
+
+  if (state->show_when_clear)
+    reveal_dock(state);
+}
+
 void clear_favorite_dock_items(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
@@ -480,6 +531,16 @@ dock_item_add_window(DockItem *item,
                      struct zwlr_foreign_toplevel_handle_v1 *handle) {
   if (!item || !handle)
     return NULL;
+
+  /* Idempotency guard: a handle must map to exactly one AppWindow. Callers
+   * such as sync_window_trackers() (invoked on every reload) and repeated
+   * toplevel app_id events can re-add the same handle; without this check they
+   * would duplicate entries, leak AppWindow structs and inflate window counts. */
+  for (GList *l = item->windows; l != NULL; l = l->next) {
+    AppWindow *existing = (AppWindow *)l->data;
+    if (existing && existing->handle == handle)
+      return existing;
+  }
 
   AppWindow *win = g_new0(AppWindow, 1);
   win->handle = handle;
@@ -522,6 +583,36 @@ void update_dock_item_status(DockItem *item) {
   }
 }
 
+/**
+ * exec_matches_app_id:
+ * Allocation-free, case-insensitive token match of APP_ID inside EXEC, used as
+ * a last-resort heuristic when the exact app_id/icon/name comparisons fail.
+ * Requires whole-token (word boundary) matches and a minimum length so short
+ * ids cannot match unrelated executables, and it no longer tests the reverse
+ * direction (exec contained in app_id), which produced false positives.
+ */
+static gboolean exec_matches_app_id(const char *exec, const char *app_id) {
+  if (!exec || *exec == '\0' || !app_id)
+    return FALSE;
+
+  size_t idlen = strlen(app_id);
+  if (idlen < 3)
+    return FALSE;
+
+  for (const char *p = exec; *p != '\0'; p++) {
+    if (p != exec && g_ascii_isalnum((guchar)p[-1]))
+      continue; /* not at a token boundary */
+
+    if (g_ascii_strncasecmp(p, app_id, idlen) != 0)
+      continue;
+
+    char right = p[idlen];
+    if (right == '\0' || !g_ascii_isalnum((guchar)right))
+      return TRUE;
+  }
+  return FALSE;
+}
+
 DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
   if (!state || !app_id || *app_id == '\0')
     return NULL;
@@ -538,19 +629,8 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
     if (item->name && g_ascii_strcasecmp(item->name, app_id) == 0)
       return item;
 
-    if (item->exec && *item->exec != '\0') {
-      char *lower_exec = g_ascii_strdown(item->exec, -1);
-      char *lower_id = g_ascii_strdown(app_id, -1);
-
-      gboolean match = (strstr(lower_exec, lower_id) != NULL) ||
-                       (strstr(lower_id, lower_exec) != NULL);
-
-      g_free(lower_exec);
-      g_free(lower_id);
-
-      if (match)
-        return item;
-    }
+    if (exec_matches_app_id(item->exec, app_id))
+      return item;
   }
   return NULL;
 }
@@ -607,7 +687,7 @@ void reload_dock_instance(LambdockState *state) {
              state->config_path ? state->config_path : "default");
 
   // Reload active theme config and custom CSS for this specific dock instance
-  g_free(state->theme);
+  free(state->theme); /* get_theme_config_for may return a scm_to_utf8_string result */
   state->theme = get_theme_config_for(state->config_path);
   load_custom_css(state);
 

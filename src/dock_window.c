@@ -25,6 +25,7 @@
 #include "ui/theme_engine.h"
 #include <glib/gi18n.h>
 #include <locale.h>
+#include <stdlib.h>
 
 /* =========================================================================
  * ANIMATION ENGINE & EASING FUNCTIONS
@@ -521,13 +522,32 @@ void on_quit_action(GSimpleAction *action, GVariant *parameter,
  * Action handler for menu 'About Lambdock' option. Constructs and displays
  * modal `GtkAboutDialog` with metadata, license, and logo assets.
  */
+/* Single About dialog instance: repeatedly invoking the action must reuse it
+ * rather than accumulate windows. */
+static GtkWidget *g_about_dialog = NULL;
+
+static gboolean on_about_close_request(GtkWindow *window, gpointer user_data) {
+  (void)user_data;
+  g_about_dialog = NULL;
+  gtk_window_destroy(window);
+  return TRUE; /* handled: do not fall back to the default close behaviour */
+}
+
 void on_about_action(GSimpleAction *action, GVariant *parameter,
                      gpointer user_data) {
   (void)action;
   (void)parameter;
   (void)user_data;
 
+  if (g_about_dialog != NULL && GTK_IS_WINDOW(g_about_dialog)) {
+    gtk_window_present(GTK_WINDOW(g_about_dialog));
+    return;
+  }
+
   GtkWidget *about = gtk_about_dialog_new();
+  g_signal_connect(about, "close-request",
+                   G_CALLBACK(on_about_close_request), NULL);
+  g_about_dialog = about;
   gtk_widget_add_css_class(about, "about-dialog");
 
   // Basic Details
@@ -789,9 +809,14 @@ void destroy_dock_instance(LambdockState *state) {
 
   // Unparent the main background context menu popover
   if (state->popover) {
-    if (GTK_IS_WIDGET(state->popover) &&
-        gtk_widget_get_parent(state->popover)) {
-      gtk_widget_unparent(state->popover);
+    if (GTK_IS_WIDGET(state->popover)) {
+      /* The popover "closed" handler is connected with `state` as data and would
+       * schedule a hide timer on this soon-to-be-freed state; disconnect it
+       * before unparenting so no callback runs against freed memory. */
+      g_signal_handlers_disconnect_by_data(state->popover, state);
+      if (gtk_widget_get_parent(state->popover)) {
+        gtk_widget_unparent(state->popover);
+      }
     }
     state->popover = NULL;
   }
@@ -833,6 +858,6 @@ void destroy_dock_instance(LambdockState *state) {
   }
 
   g_free(state->config_path);
-  g_free(state->theme);
+  free(state->theme); /* get_theme_config_for may return a scm_to_utf8_string result */
   g_free(state);
 }
