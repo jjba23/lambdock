@@ -511,6 +511,12 @@ Popover Capabilities: Select individual windows by title, close specific window 
 
 ------------------
 
+* Developer Onboarding 📚
+
+New to the codebase? Start with the [[file:HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C core, the embedded GNU Guile Scheme engine, the bi-directional data flow, the full dock/item/window lifecycles, the build and test workflow, and the common pitfalls to watch out for.
+
+-------------------------------------------------------------------------------
+
 * Bi-Directionality of C and Guile Scheme
 
 ~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
