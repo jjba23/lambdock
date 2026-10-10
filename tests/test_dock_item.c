@@ -452,36 +452,56 @@ static void test_create_dynamic_dock_item_no_poller(void) {
   g_object_unref(state.box);
 }
 
-static void test_free_dock_item_releases_popover_slot(void) {
+/* Builds a DockItem whose popover slot is an arbitrary widget. free_dock_item
+ * only treats item->popover as an opaque GtkWidget, so a plain GtkBox stands in
+ * for a real GtkPopover: a popover cannot be shown/realized headlessly (and
+ * doing so triggers GPU/compositor warnings that are fatal under g_test), while
+ * a generic widget's `visible` flag exercises exactly the counter logic. */
+static void check_popover_slot_release(guint active_popovers,
+                                       gboolean popover_open,
+                                       guint expected) {
   LambdockState state = {0};
-  state.active_popovers = 1;
+  state.active_popovers = active_popovers;
 
-  DockItem *item = make_plain_item(&state, "app", "App", FALSE);
-  gtk_widget_set_parent(item->popover, item->button);
-  /* A popover can only be shown from inside a realized toplevel. */
-  GtkWidget *win = gtk_window_new();
-  gtk_window_set_child(GTK_WINDOW(win), item->button);
-  gtk_window_present(GTK_WINDOW(win));
-  gtk_widget_set_visible(item->popover, TRUE);
-  g_assert_true(gtk_widget_get_visible(item->popover));
+  GtkWidget *stub = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  /* Own a reference first: gtk_widget_unparent() in free_dock_item drops the
+   * parent's reference and would otherwise finalize it out from under us. */
+  g_object_ref_sink(stub);
+  gtk_widget_set_visible(stub, popover_open);
+  g_assert_cmpint(gtk_widget_get_visible(stub), ==, popover_open);
 
+  DockItem *item = g_new0(DockItem, 1);
+  item->state = &state;
+  item->app_id = g_strdup("app");
+  item->poll_fn = SCM_BOOL_F;
+  item->button = gtk_button_new();
+  item->popover = stub;
+  gtk_widget_set_parent(stub, item->button);
+  GtkWidget *button = item->button;
+
+  free_dock_item(item);
+
+  g_assert_cmpint(state.active_popovers, ==, expected);
+
+  g_object_unref(stub);
+  g_object_ref_sink(button);
+  g_object_unref(button);
+  g_free(state.dock_items);
+}
+
+static void test_free_dock_item_releases_popover_slot(void) {
   /* Tearing the item down while its popover is open must release the slot,
    * otherwise the dock can never auto-hide again. */
-  free_dock_item(item);
-  g_assert_cmpint(state.active_popovers, ==, 0);
-  g_list_free(state.dock_items);
-  gtk_window_destroy(GTK_WINDOW(win));
+  check_popover_slot_release(1, TRUE, 0);
+
+  /* A closed popover must not touch the counter. */
+  check_popover_slot_release(1, FALSE, 1);
+
+  /* An open popover with no recorded slot must not go negative. */
+  check_popover_slot_release(0, TRUE, 0);
 
   /* NULL is tolerated. */
   free_dock_item(NULL);
-
-  /* A closed popover must not drive the counter below zero. */
-  LambdockState state2 = {0};
-  DockItem *item2 = make_plain_item(&state2, "app", "App", FALSE);
-  gtk_widget_set_visible(item2->popover, FALSE);
-  free_dock_item(item2);
-  g_assert_cmpint(state2.active_popovers, ==, 0);
-  g_list_free(state2.dock_items);
 }
 
 /* ============================================================================
