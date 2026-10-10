@@ -250,6 +250,10 @@ unit_tests = [
     'deps': [gtk_dep],
   },
   {
+    'id': 'dock_window',
+    'extra_sources': full_test_sources,
+  },
+  {
     'id': 'guile_bridge',
     'name': 'guile_bridge_integration_tests',
     'extra_sources': full_test_sources,
@@ -270,3 +274,19 @@ foreach t : unit_tests
   )
   test(test_name, exe, env: test_env)
 endforeach
+
+# ------------------------------------------------------------------------------
+# Pure-Scheme (Guile) Test Suite
+# ------------------------------------------------------------------------------
+# Exercises the embedded configuration engine (state/items/presets/loader/core)
+# directly under Guile -- no display server or C runtime required. The driver
+# script locates a Guile interpreter and exits 77 when none is available, which
+# Meson reports as "skipped".
+guile_prog = find_program('guile', required: false)
+scheme_test_driver = find_program('tests/run_scheme_tests.sh', required: false)
+
+if guile_prog.found() and scheme_test_driver.found()
+  test('scheme_unit_tests', scheme_test_driver, env: test_env)
+else
+  message('Guile interpreter not found: skipping pure-Scheme unit tests')
+endif

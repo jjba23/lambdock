@@ -72,7 +72,7 @@ lambdock/
 │   ├── css/*.css            # Built-in themes
 │   └── img/agnus-dei.*      # Logo
 ├── protocols/              # Bundled Wayland XML (fallback when wlr-protocols absent)
-├── tests/                  # C unit tests + shared stubs
+├── tests/                  # C unit tests, Scheme test suite + shared stubs
 ├── po/                     # gettext translations
 ├── packaging/              # arch / debian / opensuse / flatpak
 ├── meson.build             # Build definition
@@ -126,21 +126,44 @@ maak deb-build arch-build rpm-build nix-build flatpak-build container-build
 
 ** Tests
 
-The suite is plain GLib/GTK test binaries, one per unit:
+~meson test~ drives two kinds of suites: GLib/GTK C binaries (one per unit) and
+a pure-Guile suite for the Scheme engine.
 
 #+begin_src sh
-meson test -C build
-# or a single binary
+meson test -C build                 # everything
+meson test -C build --list          # list suite names
+meson test -C build scheme_unit_tests
+# or a single binary directly
 ./build/test_dock_item
+# or the Scheme suite standalone
+./tests/run_scheme_tests.sh
 #+end_src
 
-Two important caveats:
+C unit binaries (in ~tests/~):
+
+- =test_dock_item= — item lifecycle, window tracking, alignment, exec matching
+- =test_guile_bridge= — every C↔Scheme config getter, exclusions, populate
+- =test_dock_window= — monitor validation, dimension maths, auto-hide, teardown
+- =test_popover_menu= — menu layouts for every window-count branch
+- =test_theme_engine= — CSS selector scoping + provider lifecycle
+- =test_icon_resolver= — resource/file/theme icon resolution
+
+The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
+~tests/run_scheme_tests.sh=) loads the real ~scheme/lambdock~ modules under Guile
+and needs neither a display server nor the C runtime. It is skipped (exit 77)
+when no Guile interpreter is available.
+
+Three important caveats:
 
 - The tests use ~gtk_init_check()~ and *skip* the GTK-dependent cases when no
   display server is available (they will still run the pure-logic cases).
 - A build directory is pinned to the Meson version that created it. If you get
   ~"Build directory has been generated with Meson version X, incompatible with Y"~,
   recreate it (~meson setup --reconfigure~ or a fresh dir) / use the Guix shell.
+- ~detect_leaks=1~ exits non-zero on the third-party EGL/fontconfig/GLib leaks
+  described under *Sanitizers* below. To run the whole suite green use
+  ~ASAN_OPTIONS=detect_leaks=0 meson test -C build-asan~ and check leak stacks
+  separately for frames in ~src/~.
 
 ** Sanitizers
 
@@ -570,10 +593,15 @@ non-blocking.
 
 ** Add tests
 
-The suite is one binary per unit driven by ~tests/test_<unit>.c~. Shared sources
-are listed in =meson.build= (~unit_tests~). Add your file there. Use
+C suites are one binary per unit driven by ~tests/test_<unit>.c~. Shared sources
+are listed in =meson.build= (~unit_tests~); add your file there. Use
 ~gtk_init_check()~ to skip display-dependent cases. Extend =tests/test_stubs.c=
 if the unit needs ~get_active_dock_states~ / ~unregister_dock_state~.
+
+Scheme suites belong in ~tests/scheme/lambdock_tests.scm~ and are registered
+through ~tests/run_scheme_tests.sh~. Assertions run against the real modules
+(no C), so they are the cheapest place to lock down ~state.scm=, =items.scm=,
+=presets.scm=, =loader.scm= and =core.scm= behaviour.
 
 * Pitfalls & things to be careful about
 
@@ -630,6 +658,10 @@ They are kept here as guard-rails because each is easy to reintroduce.
 - *Exec matching is bounded.* ~find_dock_item_by_app_id~ only matches ~exec~
   tokens on word boundaries with a minimum length, avoiding substring false
   positives and per-item allocations.
+- *CSS scoping reads selectors safely.* ~theme_scope_css_selectors~ tests the
+  ~window~ prefix before touching ~sel[6]~. Reading a selector's 7th byte
+  unconditionally overflowed the buffer for short selectors such as ~.foo~.
+  Keep the prefix check first.
 
 ** C ↔ Guile interop hazards
 

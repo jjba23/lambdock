@@ -30,4 +30,20 @@
  */
 void load_custom_css(LambdockState *state);
 
+/**
+ * theme_scope_css_selectors:
+ * @css_text: Raw, unscoped CSS source text.
+ * @scope_class: CSS class the selectors should be scoped under (e.g.
+ * "theme-vanilla").
+ *
+ * Rewrites every rule selector so it only applies inside a scope wrapper:
+ * element selectors like `window` are compounded (`window.theme-vanilla`),
+ * everything else is nested (`.theme-vanilla .foo`). Comments and top-level
+ * @-rules pass through untouched.
+ *
+ * Returns: (transfer full): a newly allocated CSS string. Free with
+ * g_free().
+ */
+char *theme_scope_css_selectors(const char *css_text, const char *scope_class);
+
 #endif // THEME_ENGINE_H

@@ -34,8 +34,8 @@
  * - "window"            =>  "window.theme-unity"
  * - "window.background" =>  "window.theme-unity.background"
  */
-static char *scope_css_selectors(const char *css_text,
-                                 const char *scope_class) {
+char *theme_scope_css_selectors(const char *css_text,
+                                const char *scope_class) {
   if (!css_text || *css_text == '\0')
     return g_strdup("");
 
@@ -68,12 +68,17 @@ static char *scope_css_selectors(const char *css_text,
           // Compound the 'window' element selector directly with the scope
           // class, but only when 'window' is a whole element (e.g. "window",
           // "window.background"), never a different element whose name merely
-          // starts with it (e.g. "windowcontrols").
-          char after = sel[6];
-          if (g_str_has_prefix(sel, "window") &&
-              (after == '\0' || after == '.' || after == ':' ||
-               after == '[' || g_ascii_isspace(after))) {
-            g_string_append_printf(result, "window.%s%s", scope_class, sel + 6);
+          // starts with it (e.g. "windowcontrols"). The prefix check must come
+          // first: reading sel[6] unconditionally overflows short selectors.
+          if (g_str_has_prefix(sel, "window")) {
+            char after = sel[6];
+            if (after == '\0' || after == '.' || after == ':' ||
+                after == '[' || g_ascii_isspace(after)) {
+              g_string_append_printf(result, "window.%s%s", scope_class,
+                                     sel + 6);
+            } else {
+              g_string_append_printf(result, ".%s %s", scope_class, sel);
+            }
           } else {
             g_string_append_printf(result, ".%s %s", scope_class, sel);
           }
@@ -115,7 +120,7 @@ static GtkCssProvider *create_scoped_provider(GdkDisplay *display,
   if (!raw_css || *raw_css == '\0')
     return NULL;
 
-  char *scoped_css = scope_css_selectors(raw_css, scope_class);
+  char *scoped_css = theme_scope_css_selectors(raw_css, scope_class);
   GtkCssProvider *provider = gtk_css_provider_new();
   gtk_css_provider_load_from_string(provider, scoped_css);
 
