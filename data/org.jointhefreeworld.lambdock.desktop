@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Lambdock
+GenericName=Desktop Dock
+Comment=Wayland-native dock customizable with GNU Guile Scheme
+Exec=lambdock
+TryExec=lambdock
+Icon=org.jointhefreeworld.lambdock
+Terminal=false
+Categories=Utility;GTK;
+Keywords=dock;launcher;panel;wayland;guile;scheme;taskbar;
+StartupNotify=false
+StartupWMClass=org.jointhefreeworld.lambdock

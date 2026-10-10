@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright © Josep Bigorra <jjbigorra@gmail.com> -->
+<component type="desktop-application">
+  <id>org.jointhefreeworld.lambdock</id>
+
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Lambdock</name>
+  <summary>Customizable Wayland desktop dock</summary>
+
+  <developer id="org.jointhefreeworld">
+    <name>Josep Bigorra</name>
+  </developer>
+
+  <description>
+    <p>
+      Lambdock is a Wayland-native desktop dock for GNU/Linux, in the spirit of
+      Cairo-Dock, Plank and the macOS Dock. It is built with GTK4 and
+      gtk4-layer-shell, and can be themed, extended and reconfigured live with
+      GNU Guile Scheme.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>Dynamic window tracking via the Wayland foreign-toplevel protocol</li>
+      <li>Multi-monitor support and multiple dock instances</li>
+      <li>Auto-hide with fluid slide-out animations</li>
+      <li>GTK CSS themes and configurable application launchers</li>
+      <li>Dynamic widgets for CPU, RAM, temperature and more</li>
+      <li>An embedded Guile runtime with hot-reloading and an optional REPL</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">org.jointhefreeworld.lambdock.desktop</launchable>
+
+  <url type="homepage">https://codeberg.org/jjba23/lambdock</url>
+  <url type="bugtracker">https://codeberg.org/jjba23/lambdock/issues</url>
+  <url type="vcs-browser">https://codeberg.org/jjba23/lambdock</url>
+
+  <translation type="gettext">lambdock</translation>
+
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>dock</keyword>
+    <keyword>launcher</keyword>
+    <keyword>panel</keyword>
+    <keyword>wayland</keyword>
+    <keyword>guile</keyword>
+    <keyword>scheme</keyword>
+  </keywords>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png</image>
+      <caption>Lambdock as a floating dock with auto-hide</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png</image>
+      <caption>Lambdock with a light GTK CSS theme</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png</image>
+      <caption>Application launchers and running window indicators</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png</image>
+      <caption>Dynamic widgets for system information</caption>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="0.7.4" date="2026-09-07">
+      <description>
+        <p>Expanded test coverage and packaging improvements.</p>
+      </description>
+    </release>
+    <release version="0.7.3" date="2026-09-06">
+      <description>
+        <p>Improved RPM packaging and stability fixes.</p>
+      </description>
+    </release>
+    <release version="0.7.2" date="2026-08-31">
+      <description>
+        <p>Packaging and build refinements.</p>
+      </description>
+    </release>
+    <release version="0.6.3" date="2026-08-22">
+      <description>
+        <p>Added Podman/Docker builds and improved APT and RPM packaging.</p>
+      </description>
+    </release>
+  </releases>
+</component>

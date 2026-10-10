@@ -168,6 +168,58 @@ add_project_arguments(
 # Instructs `meson install` to copy local Scheme source code into the Guile system module path
 install_subdir('scheme/lambdock', install_dir: scheme_install_path)
 
+
+# ------------------------------------------------------------------------------
+# Desktop Integration (.desktop entry, AppStream metadata & application icon)
+# ------------------------------------------------------------------------------
+# Reverse-DNS application identifier, kept in sync with the GtkApplication ID
+# used in src/main.c and with the Flatpak manifest.
+lambdock_app_id = 'org.jointhefreeworld.lambdock'
+
+# Install a freedesktop.org compliant desktop entry so lambdock shows up in
+# application launchers, Rofi/dmenu, GNOME Shell search, and similar tools.
+lambdock_desktop_file = files('data' / lambdock_app_id + '.desktop')
+install_data(
+  lambdock_desktop_file,
+  install_dir: get_option('datadir') / 'applications',
+)
+
+# Install AppStream metadata so software centers (GNOME Software), Flathub and
+# other catalogues can present lambdock with its description and screenshots.
+lambdock_metainfo_file = files('data' / lambdock_app_id + '.metainfo.xml')
+install_data(
+  lambdock_metainfo_file,
+  install_dir: get_option('datadir') / 'metainfo',
+)
+
+# Install the application icon into the hicolor icon theme under lambdock's
+# reverse-DNS application ID, so `Icon=org.jointhefreeworld.lambdock` resolves
+# in launchers and window/desktop menus.
+install_data(
+  'resources/img/agnus-dei.svg',
+  install_dir: get_option('datadir') / 'icons/hicolor/scalable/apps',
+  rename: lambdock_app_id + '.svg',
+)
+
+# Validate the installed desktop entry when `desktop-file-validate` is present.
+desktop_file_validate = find_program('desktop-file-validate', required: false)
+if desktop_file_validate.found()
+  test('desktop_entry', desktop_file_validate, args: lambdock_desktop_file)
+else
+  message('desktop-file-validate not found: skipping desktop entry validation')
+endif
+
+# Validate the AppStream metadata when `appstreamcli` is present. Network
+# access is disabled so the check stays hermetic inside build sandboxes.
+appstreamcli = find_program('appstreamcli', required: false)
+if appstreamcli.found()
+  test('appstream_metainfo', appstreamcli,
+       args: ['validate', '--no-net', lambdock_metainfo_file])
+else
+  message('appstreamcli not found: skipping AppStream metadata validation')
+endif
+
+
 # ------------------------------------------------------------------------------
 # i18n, localization and internationalization
 # ------------------------------------------------------------------------------

@@ -35,6 +35,7 @@ BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-protocols)
 Requires:       gtk4
 Requires:       guile
+Requires:       hicolor-icon-theme
 
 %description
 Lambdock is a Wayland-native desktop dock built with GTK4,
@@ -68,6 +69,9 @@ Wayfire, Niri, and other compatible compositors.
 %license COPYING
 %doc README.org NEWS.org
 %{_bindir}/lambdock
+%{_datadir}/applications/org.jointhefreeworld.lambdock.desktop
+%{_datadir}/metainfo/org.jointhefreeworld.lambdock.metainfo.xml
+%{_datadir}/icons/hicolor/scalable/apps/org.jointhefreeworld.lambdock.svg
 %dir %{_datadir}/guile
 %dir %{_datadir}/guile/site
 %dir %{_datadir}/guile/site/3.0
