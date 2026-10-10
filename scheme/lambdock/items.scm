@@ -190,46 +190,57 @@
                 #:poll-interval 1000
                 #:hover-animate? hover-animate?))
 
-(define (get-cpu-percent)
-  "Parses /proc/stat over a 100ms window and returns CPU usage percentage."
-  (catch #t
-    (lambda ()
-      (define (read-cpu-counters)
-        (call-with-input-file "/proc/stat"
-          (lambda (port)
-            (let loop ((line (read-line port)))
-              (cond
-                ((eof-object? line) #f)
-                ((string-prefix? "cpu " line)
-                 (let* ((parts (string-split line #\space))
-                        (nums (map string->number
-                                   (filter (lambda (s) (not (string-null? s)))
-                                           (cdr parts)))))
-                   (if (>= (length nums) 4)
-                       (let ((idle (list-ref nums 3))
-                             (iowait (if (>= (length nums) 5) (list-ref nums 4) 0))
-                             (total (apply + nums)))
-                         (cons (+ idle iowait) total))
-                       #f)))
-                (else (loop (read-line port))))))))
+;; CPU sampling state. Poll functions run on the GTK main thread, so they must
+;; never block. An earlier implementation slept 100ms inside this procedure to
+;; measure a delta, freezing the whole dock; instead we keep the previous
+;; /proc/stat counters and compute usage between consecutive poll invocations.
+(define %cpu-last-sample
+  (vector #f))
 
-      (let ((sample1 (read-cpu-counters)))
-        (usleep 100000) ; Sleep for 100ms to measure CPU delta
-        (let ((sample2 (read-cpu-counters)))
-          (if (and sample1 sample2)
-              (let* ((idle1 (car sample1))
-                     (total1 (cdr sample1))
-                     (idle2 (car sample2))
-                     (total2 (cdr sample2))
-                     (diff-idle (- idle2 idle1))
-                     (diff-total (- total2 total1)))
-                (if (> diff-total 0)
-                    (let ((pct (inexact->exact (round (* 100 (- 1 (/ diff-idle diff-total)))))))
-                      (format #f "CPU ~a%" pct))
-                    "CPU N/A"))
-              "CPU N/A"))))
-    (lambda _
-      "CPU N/A")))
+(define (read-cpu-counters)
+  "Reads the aggregate 'cpu' line from /proc/stat as (idle+iowait . total)."
+  (catch #t
+         (lambda ()
+           (call-with-input-file "/proc/stat"
+             (lambda (port)
+               (let loop
+                 ((line (read-line port)))
+                 (cond
+                   ((eof-object? line)
+                    #f)
+                   ((string-prefix? "cpu " line)
+                    (let* ((parts (string-split line #\space))
+                           (nums (map string->number
+                                      (filter (lambda (s)
+                                                (not (string-null? s)))
+                                              (cdr parts)))))
+                      (if (>= (length nums) 4)
+                          (let ((idle (list-ref nums 3))
+                                (iowait (if (>= (length nums) 5)
+                                            (list-ref nums 4) 0))
+                                (total (apply + nums)))
+                            (cons (+ idle iowait) total)) #f)))
+                   (else (loop (read-line port))))))))
+         (lambda _
+           #f)))
+
+(define (get-cpu-percent)
+  "Returns CPU usage percentage computed since the previous poll (non-blocking)."
+  (let ((sample (read-cpu-counters))
+        (previous (vector-ref %cpu-last-sample 0)))
+    (vector-set! %cpu-last-sample 0 sample)
+    (if (and sample previous)
+        (let* ((idle1 (car previous))
+               (total1 (cdr previous))
+               (idle2 (car sample))
+               (total2 (cdr sample))
+               (diff-idle (- idle2 idle1))
+               (diff-total (- total2 total1)))
+          (if (> diff-total 0)
+              (let ((pct (inexact->exact (round (* 100
+                                                   (- 1
+                                                      (/ diff-idle diff-total)))))))
+                (format #f "CPU ~a%" pct)) "CPU N/A")) "CPU N/A")))
 
 (define* (cpu-item #:key (hover-animate? #f))
   (dynamic-item #:name "CPU Usage"
