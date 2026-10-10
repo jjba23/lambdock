@@ -84,4 +84,18 @@ gboolean is_app_excluded(const char *app_id, const char *config_path);
 
 gboolean get_track_windows_config_for(const char *config_path);
 
+/**
+ * get_taskbar_config_for:
+ * Reads the `dock-mode` Scheme symbol for a config path and returns TRUE when it
+ * is 'taskbar (full-width bar) rather than 'dock (floating capsule).
+ */
+gboolean get_taskbar_config_for(const char *config_path);
+
+/**
+ * get_show_window_titles_config_for:
+ * Returns TRUE when window title labels should be shown on running app items
+ * (Windows XP-style taskbar buttons).
+ */
+gboolean get_show_window_titles_config_for(const char *config_path);
+
 #endif // GUILE_BRIDGE_H

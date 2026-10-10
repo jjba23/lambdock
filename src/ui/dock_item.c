@@ -269,10 +269,29 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 
   item->button = gtk_button_new();
 
+  /* App items host their icon and an (initially hidden) window-title label in
+   * a horizontal box. The label is shown only when `show-window-titles?` is on
+   * and the app has a running window (Windows XP-style taskbar buttons). */
+  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+  gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
+
   if (image) {
     gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_button_set_child(GTK_BUTTON(item->button), image);
+    gtk_box_append(GTK_BOX(content_box), image);
   }
+
+  item->label = gtk_label_new(NULL);
+  gtk_widget_add_css_class(item->label, "window-title-label");
+  gtk_label_set_ellipsize(GTK_LABEL(item->label), PANGO_ELLIPSIZE_END);
+  gtk_label_set_max_width_chars(GTK_LABEL(item->label),
+                                WINDOW_TITLE_MAX_CHARS);
+  gtk_label_set_single_line_mode(GTK_LABEL(item->label), TRUE);
+  gtk_widget_set_valign(item->label, GTK_ALIGN_CENTER);
+  gtk_widget_set_visible(item->label, FALSE);
+  gtk_box_append(GTK_BOX(content_box), item->label);
+  item->window_title_label = TRUE;
+
+  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
 
   gtk_widget_add_css_class(item->button, "flat");
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
@@ -581,6 +600,24 @@ void update_dock_item_status(DockItem *item) {
     if (gtk_widget_has_css_class(item->button, "running-app"))
       gtk_widget_remove_css_class(item->button, "running-app");
   }
+
+  /* Keep the window-title label in sync for app items (never for dynamic items,
+   * whose label carries polled text, or separators). */
+  if (!item->window_title_label || !item->label)
+    return;
+
+  gboolean show = item->state && item->state->show_window_titles &&
+                  item->windows != NULL;
+  if (show) {
+    AppWindow *win = (AppWindow *)item->windows->data;
+    const char *title = (win && win->title && *win->title != '\0')
+                            ? win->title
+                            : (item->name ? item->name : item->app_id);
+    gtk_label_set_text(GTK_LABEL(item->label), title ? title : "");
+    gtk_widget_set_visible(item->label, TRUE);
+  } else {
+    gtk_widget_set_visible(item->label, FALSE);
+  }
 }
 
 /**
@@ -689,6 +726,14 @@ void reload_dock_instance(LambdockState *state) {
   // Reload active theme config and custom CSS for this specific dock instance
   free(state->theme); /* get_theme_config_for may return a scm_to_utf8_string result */
   state->theme = get_theme_config_for(state->config_path);
+
+  // Mode flags must refresh before CSS reload so the taskbar modifier
+  // stylesheet is (un)loaded to match.
+  gboolean prev_taskbar = state->taskbar;
+  state->taskbar = get_taskbar_config_for(state->config_path);
+  state->show_window_titles =
+      get_show_window_titles_config_for(state->config_path);
+
   load_custom_css(state);
 
   // Cancel any pending auto-hide timer
@@ -743,13 +788,19 @@ void reload_dock_instance(LambdockState *state) {
   // Re-sync Wayland foreign window handles back to newly populated launchers
   sync_window_trackers(state);
 
-  // Update widget alignments for all dock items
+  // Update widget alignments and status (running indicator + window titles)
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
     if (!item || !item->button)
       continue;
 
     apply_dock_item_alignment(item);
+    update_dock_item_status(item);
+  }
+
+  apply_dock_mode_classes(state);
+  if (state->taskbar != prev_taskbar) {
+    refresh_dock_mode(state);
   }
 
   update_dock_dimensions(state);

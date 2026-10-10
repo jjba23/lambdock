@@ -9,6 +9,15 @@
     <file>css/solarized-light.css</file>
     <file>css/unity.css</file>
     <file>css/nature.css</file>
+    <!-- macOS-inspired themes -->
+    <file>css/macos-big-sur.css</file>
+    <file>css/macos-ventura.css</file>
+    <!-- Windows-inspired themes -->
+    <file>css/windows-xp.css</file>
+    <file>css/windows-10.css</file>
+    <file>css/windows-11.css</file>
+    <!-- Taskbar / window-title mode modifier (always available) -->
+    <file>css/taskbar.css</file>
     <!-- Images -->
     <file>img/agnus-dei.svg</file>
     <file>img/agnus-dei.png</file>

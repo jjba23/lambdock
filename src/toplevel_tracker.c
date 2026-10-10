@@ -85,6 +85,8 @@ toplevel_handle_title(void *data,
           win->title = g_strdup(title);
         }
       }
+      /* Refresh the XP-style window-title label, if enabled. */
+      update_dock_item_status(item);
     }
   }
 }
@@ -149,6 +151,7 @@ toplevel_handle_app_id(void *data,
       g_free(win->title);
       win->title = g_strdup(top->title);
     }
+    update_dock_item_status(item);
 
     // Register handle in state window_trackers
     if (!g_list_find(state->window_trackers, handle)) {

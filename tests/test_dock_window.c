@@ -152,6 +152,76 @@ static void test_update_dock_dimensions_stale_monitor(void) {
 }
 
 /* ============================================================================
+ * TASKBAR MODE
+ * ============================================================================ */
+
+static void test_apply_dock_mode_classes(void) {
+  LambdockState state = {0};
+  state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+
+  apply_dock_mode_classes(&state);
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "taskbar"));
+
+  state.taskbar = TRUE;
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "taskbar"));
+
+  /* Idempotent when already applied. */
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "taskbar"));
+
+  state.taskbar = FALSE;
+  apply_dock_mode_classes(&state);
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "taskbar"));
+
+  /* NULL guards. */
+  apply_dock_mode_classes(NULL);
+
+  g_object_ref_sink(state.bg_capsule);
+  g_object_unref(state.bg_capsule);
+}
+
+static void test_update_dock_dimensions_taskbar(void) {
+  LambdockState state = {0};
+  state.overlay = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.scrolled_window = gtk_scrolled_window_new();
+  state.orientation = GTK_ORIENTATION_HORIZONTAL;
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.icon_size = 48;
+  state.taskbar = TRUE;
+
+  update_dock_dimensions(&state);
+
+  g_assert_cmpint(gtk_widget_get_halign(state.bg_capsule), ==, GTK_ALIGN_FILL);
+  g_assert_cmpint(gtk_widget_get_halign(state.box), ==, GTK_ALIGN_START);
+  g_assert_cmpint(gtk_widget_get_halign(state.scrolled_window), ==,
+                  GTK_ALIGN_FILL);
+  g_assert_true(gtk_widget_get_hexpand(state.scrolled_window));
+
+  /* Switching back to dock mode recenters and stops expanding. */
+  state.taskbar = FALSE;
+  update_dock_dimensions(&state);
+
+  g_assert_cmpint(gtk_widget_get_halign(state.bg_capsule), ==,
+                  GTK_ALIGN_CENTER);
+  g_assert_cmpint(gtk_widget_get_halign(state.box), ==, GTK_ALIGN_CENTER);
+  g_assert_cmpint(gtk_widget_get_halign(state.scrolled_window), ==,
+                  GTK_ALIGN_CENTER);
+  g_assert_false(gtk_widget_get_hexpand(state.scrolled_window));
+
+  g_object_ref_sink(state.overlay);
+  g_object_unref(state.overlay);
+  g_object_ref_sink(state.bg_capsule);
+  g_object_unref(state.bg_capsule);
+  g_object_ref_sink(state.box);
+  g_object_unref(state.box);
+  g_object_ref_sink(state.scrolled_window);
+  g_object_unref(state.scrolled_window);
+}
+
+/* ============================================================================
  * POPOVER COUNTER / AUTO-HIDE
  * ============================================================================ */
 
@@ -281,6 +351,10 @@ int main(int argc, char **argv) {
                   test_update_dock_dimensions_vertical);
   g_test_add_func("/ui/dock_window/dimensions_stale_monitor",
                   test_update_dock_dimensions_stale_monitor);
+  g_test_add_func("/ui/dock_window/apply_dock_mode_classes",
+                  test_apply_dock_mode_classes);
+  g_test_add_func("/ui/dock_window/dimensions_taskbar",
+                  test_update_dock_dimensions_taskbar);
   g_test_add_func("/ui/dock_window/popover_closed", test_on_popover_closed);
   g_test_add_func("/ui/dock_window/hide_guards", test_hide_dock_guards);
   g_test_add_func("/ui/dock_window/reveal_cancels_timer",

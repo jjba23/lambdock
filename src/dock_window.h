@@ -120,6 +120,20 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 void update_dock_dimensions(LambdockState *state);
 
 /**
+ * apply_dock_mode_classes:
+ * Toggles the `taskbar` CSS class on the background capsule so themes can
+ * style full-width taskbar mode distinctly from the floating dock.
+ */
+void apply_dock_mode_classes(LambdockState *state);
+
+/**
+ * refresh_dock_mode:
+ * Re-applies layer-shell anchors, mode CSS classes and dimension requests after
+ * a live configuration reload toggles dock <-> taskbar mode.
+ */
+void refresh_dock_mode(LambdockState *state);
+
+/**
  * unregister_dock_state:
  * Unlinks an active LambdockState instance from the global state tracker list
  * in main.c.

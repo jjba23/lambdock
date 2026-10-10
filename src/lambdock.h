@@ -59,6 +59,9 @@
 #define POPOVER_ROW_SPACING 6
 #define POPOVER_TITLE_MAX_CHARS 30
 
+/* Max characters shown for a running-window title label on taskbar buttons */
+#define WINDOW_TITLE_MAX_CHARS 28
+
 /* Resource Parsing Constants */
 #define RESOURCE_URI_PREFIX "resource://"
 #define RESOURCE_URI_PREFIX_LEN 11
@@ -112,6 +115,7 @@ typedef struct DockItem {
   SCM poll_fn;
   guint poll_timer_id;
   GtkWidget *label;
+  gboolean window_title_label; /* TRUE when label shows a window title */
   gboolean hover_animate;
 } DockItem;
 
@@ -131,6 +135,8 @@ struct LambdockState {
   gboolean show_when_clear;
   gboolean track_windows; /* <-- Track open Wayland foreign windows */
   gboolean hover_animate;
+  gboolean taskbar;             /* Full-width bar instead of floating dock */
+  gboolean show_window_titles;  /* Show window titles on running app items */
   int icon_size;
   guint hide_timer_id;
   gboolean is_hidden;
@@ -159,6 +165,7 @@ struct LambdockState {
 
   /* Per instance CSS providers */
   GtkCssProvider *base_css_provider;
+  GtkCssProvider *taskbar_css_provider; /* Loaded in taskbar / window titles */
   GtkCssProvider *user_css_provider;
 };
 

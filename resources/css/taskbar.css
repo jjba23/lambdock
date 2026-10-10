@@ -1,0 +1,43 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * TASKBAR / WINDOW-TITLE MODIFIER
+ * =========================================================================
+ * Loaded in addition to the active theme whenever the dock runs in taskbar
+ * mode (full-width bar) or with running-window titles enabled. It squares off
+ * the floating capsule and provides a readable default for the XP-style
+ * window-title labels. Themes with more specific selectors can override it.
+ */
+
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Running-window title shown next to an app icon in taskbar mode. */
+.window-title-label {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 0 2px;
+}
+
+button.flat:hover .window-title-label {
+  color: inherit;
+}

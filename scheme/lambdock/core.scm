@@ -67,6 +67,8 @@
                get-dock-repl-socket-path
                get-dock-hover-animate?
                get-dock-track-windows?
+               get-dock-mode
+               get-dock-show-window-titles?
 
                ;; Setters
                set-dock-position!
@@ -77,6 +79,8 @@
                set-dock-monitor!
                set-dock-hover-animate!
                set-dock-track-windows!
+               set-dock-mode!
+               set-dock-show-window-titles!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -141,7 +145,12 @@
                                     #:hover-animate? (cfg 'dock-hover-animate?
                                                           'hover-animate? #t)
                                     #:track-windows? (cfg 'dock-track-windows?
-                                                          'track-windows? #t))))
+                                                          'track-windows? #t)
+                                    #:mode (cfg 'dock-mode
+                                                'mode 'dock)
+                                    #:show-window-titles?
+                                    (cfg 'dock-show-window-titles?
+                                         'show-window-titles? #f))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

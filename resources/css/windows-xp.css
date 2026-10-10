@@ -1,0 +1,167 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - WINDOWS XP (LUNA BLUE) STYLE
+ * ========================================================================= */
+
+window {
+  background-color: transparent;
+}
+
+/* Luna blue taskbar: rectangular, edge-to-edge, glossy top highlight */
+.lambdock-window {
+  border-radius: 0;
+  padding: 3px 6px;
+  margin: 0;
+
+  background-image: linear-gradient(
+    180deg,
+    #3f8cf3 0%,
+    #245edb 8%,
+    #1941a5 45%,
+    #245edb 92%,
+    #3f8cf3 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+  padding: 3px 6px;
+}
+
+/* -------------------------------------------------------------------------
+ * ITEMS - raised "task button" look
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background-image: linear-gradient(
+    180deg,
+    #4993f7 0%,
+    #2c6be0 50%,
+    #2358c9 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 3px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  padding: 3px 6px;
+  margin: 2px 2px;
+  color: #ffffff;
+
+  transition: background-color 100ms ease;
+}
+
+button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    #6aa9fb 0%,
+    #3f7fe8 50%,
+    #2f68d6 100%
+  );
+  color: #ffffff;
+}
+
+button.flat:active {
+  background-image: linear-gradient(
+    180deg,
+    #16419f 0%,
+    #1c4fb5 100%
+  );
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.dynamic-item-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.window-title-label {
+  color: #ffffff;
+  font-weight: 600;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+/* Running apps look like a pressed, darker task button */
+button.running-app {
+  background-image: linear-gradient(
+    180deg,
+    #16419f 0%,
+    #1f53bd 50%,
+    #2a63d0 100%
+  );
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 4px 5px;
+  background-color: rgba(255, 255, 255, 0.35);
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * POPOVERS
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: #ece9d8;
+  color: #000000;
+  border-radius: 0;
+  border: 1px solid #0a246a;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #0a246a;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  background-image: none;
+  background-color: transparent;
+  color: #000000;
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 5px 10px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-color: #316ac5;
+  color: #ffffff;
+  border: 1px solid #0a246a;
+}
+
+window.about-dialog {
+  background-color: #ece9d8;
+  color: #000000;
+}

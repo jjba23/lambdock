@@ -154,6 +154,20 @@ gboolean get_track_windows_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-track-windows?", config_path);
 }
 
+/** Returns TRUE when the dock should render as a full-width taskbar. */
+gboolean get_taskbar_config_for(const char *config_path) {
+  char *mode =
+      get_guile_string_for("get-dock-mode", NULL, config_path, "dock");
+  gboolean taskbar = (g_ascii_strcasecmp(mode, "taskbar") == 0);
+  free(mode);
+  return taskbar;
+}
+
+/** Returns TRUE when running app items should show their window title. */
+gboolean get_show_window_titles_config_for(const char *config_path) {
+  return get_guile_bool_for("get-dock-show-window-titles?", config_path);
+}
+
 /** Retrieves target monitor screen configuration string for a specific config
  * path. */
 char *get_monitor_config_for(const char *config_path) {

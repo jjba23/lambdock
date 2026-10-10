@@ -166,6 +166,11 @@ void load_custom_css(LambdockState *state) {
         display, GTK_STYLE_PROVIDER(state->base_css_provider));
     g_clear_object(&state->base_css_provider);
   }
+  if (state->taskbar_css_provider) {
+    gtk_style_context_remove_provider_for_display(
+        display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
+    g_clear_object(&state->taskbar_css_provider);
+  }
   if (state->user_css_provider) {
     gtk_style_context_remove_provider_for_display(
         display, GTK_STYLE_PROVIDER(state->user_css_provider));
@@ -177,6 +182,26 @@ void load_custom_css(LambdockState *state) {
     LOG_C_INFO("UI", "Theme set to 'none' for [%s].",
                state->config_path ? state->config_path : "default");
     return;
+  }
+
+  // --------------------------------------------------------------------------
+  // 1a. TASKBAR / WINDOW-TITLE MODIFIER (loaded before the theme so theme rules
+  // can still override equal-specificity modifiers)
+  // --------------------------------------------------------------------------
+  if (state->taskbar || state->show_window_titles) {
+    GBytes *mod = g_resources_lookup_data(
+        "/org/jointhefreeworld/lambdock/css/taskbar.css",
+        G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+    if (mod) {
+      gsize mod_size = 0;
+      const char *mod_css = g_bytes_get_data(mod, &mod_size);
+      state->taskbar_css_provider = create_scoped_provider(
+          display, mod_css, theme_class,
+          GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      LOG_C_INFO("UI", "Loaded taskbar/window-title modifier for [%s]",
+                 state->config_path ? state->config_path : "default");
+      g_bytes_unref(mod);
+    }
   }
 
   // --------------------------------------------------------------------------

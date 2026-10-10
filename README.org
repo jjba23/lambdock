@@ -121,8 +121,10 @@ Tip: It might be useful sometimes to clean the Guile cache, specially when upgra
 
 ;; Themes:
 ;; 'vanilla | 'vanilla-light | 'snow-leopard | 'snow-leopard-dark
-;; | 'solarized-light
-;; 'nature | 'unity | 'none
+;; | 'solarized-light | 'nature | 'unity
+;; | 'macos-big-sur | 'macos-ventura
+;; | 'windows-xp | 'windows-10 | 'windows-11
+;; | 'none
 (define dock-theme 'vanilla)
 
 ;; 'all         -> Render dock on every connected monitor
@@ -145,6 +147,12 @@ Tip: It might be useful sometimes to clean the Guile cache, specially when upgra
 
 ;; Whether to keep track of open apps and windows and show indicators and popovers
 (define dock-track-windows? #t)
+
+;; Layout mode: 'dock (floating capsule) | 'taskbar (full-width bar)
+(define dock-mode 'dock)
+
+;; Show the focused window's title next to running app icons (Windows XP-style)
+(define dock-show-window-titles? #f)
 
 ;; Application launchers list
 (define dock-items
@@ -358,6 +366,11 @@ While tools like Waybar and EWW excel as status bars or custom widget dashboards
 - Nature 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted specular borders, and a lively Emerald Leaf glowing running app indicator.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-58.png]]
 - Unity 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark aubergine glass background, Ubuntu warm orange highlights, and an active indicator glowing in iconic Orange.
+- macOS Big Sur 🍎 (~'macos-big-sur~): frosted, softly-rounded translucent capsule with a white running dot, echoing macOS 11.
+- macOS Ventura / Sonoma 🍎 (~'macos-ventura~): darker, denser frosted capsule with a stronger shadow and a small dock dot, echoing macOS 13/14.
+- Windows XP (Luna) 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised, beveled task buttons; running apps look pressed.
+- Windows 10 🪟 (~'windows-10~): flat, near-black rectangular taskbar with a thin blue accent underline on running apps.
+- Windows 11 🪟 (~'windows-11~): translucent, subtly-rounded dark surface with a small accent pill running indicator.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
 - None (~'none~): no styling applied, using default GTK appearance.
 [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
@@ -389,6 +402,27 @@ An example override of a theme could look like this:
 }
 #+end_src
 
+
+-------
+
+* Dock mode: floating dock or full-width taskbar 📊
+
+~dock-mode~ switches between the default floating, content-hugging dock capsule (~'dock~) and a full-width bar anchored edge-to-edge (~'taskbar~). In taskbar mode the layer-shell surface is stretched across the monitor, the capsule is squared off, and icons are laid out from the start of the bar.
+
+#+begin_src scheme
+;; 'dock (default) -> floating capsule sized to its icons
+;; 'taskbar        -> full-width (or full-height) bar spanning the monitor
+(define dock-mode 'taskbar)
+#+end_src
+
+On top of that, ~dock-show-window-titles?~ renders the focused window's title next to each running app's icon, like the classic Windows XP taskbar. Pinned apps that are not running stay icon-only, and titles are ellipsized when they get long.
+
+#+begin_src scheme
+;; Show window titles on running app items (Windows XP-style taskbar buttons)
+(define dock-show-window-titles? #t)
+#+end_src
+
+Combine either mode with any theme. The ~'windows-*~ and ~'macos-*~ themes include dedicated taskbar styling, and a generic taskbar modifier squares off the capsule and styles the title labels when needed.
 
 -------
 

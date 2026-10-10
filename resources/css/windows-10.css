@@ -1,0 +1,140 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - WINDOWS 10 STYLE
+ * ========================================================================= */
+
+window {
+  background-color: transparent;
+}
+
+/* Flat, near-black taskbar with a subtle top hairline */
+.lambdock-window {
+  border-radius: 0;
+  padding: 2px 6px;
+  margin: 0;
+
+  background-color: rgba(31, 31, 31, 0.97);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------------------
+ * ITEMS
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  margin: 2px 2px;
+  border-radius: 2px;
+  color: #ffffff;
+
+  transition: background-color 120ms ease;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.10);
+  color: #ffffff;
+}
+
+button.flat:active {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.dynamic-item-label {
+  color: #ffffff;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 0 2px;
+}
+
+.window-title-label {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* Running indicator: a short flat accent bar under the icon */
+button.running-app {
+  background-image: linear-gradient(
+    to right,
+    #5ab0f6 0%,
+    #5ab0f6 100%
+  );
+  background-size: 16px 3px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-size: 22px 3px;
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 6px 5px;
+  background-color: rgba(255, 255, 255, 0.16);
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * POPOVERS
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: #2b2b2b;
+  color: #ffffff;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #cccccc;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #ffffff;
+  border-radius: 2px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
+window.about-dialog {
+  background-color: #1f1f1f;
+  color: #ffffff;
+}

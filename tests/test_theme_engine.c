@@ -225,6 +225,108 @@ static void test_load_custom_css_unknown_theme_falls_back(void) {
   g_object_unref(state.window);
 }
 
+/* ============================================================================
+ * SHIPPED STYLESHEETS: PARSE VALIDITY
+ * ============================================================================ */
+
+static void on_css_parse_error(GtkCssProvider *provider, GtkCssSection *section,
+                               const GError *error, gpointer user_data) {
+  (void)provider;
+  (void)section;
+  guint *count = (guint *)user_data;
+  (*count)++;
+  g_test_message("CSS parse error: %s",
+                 (error && error->message) ? error->message : "unknown");
+}
+
+/* Every CSS resource we ship (themes + the taskbar modifier) must parse with
+ * zero errors once scoped, so a typo cannot silently break a theme at runtime. */
+static void test_all_shipped_css_parse(void) {
+  char **entries = g_resources_enumerate_children(
+      "/org/jointhefreeworld/lambdock/css", G_RESOURCE_LOOKUP_FLAGS_NONE,
+      NULL);
+  g_assert_nonnull(entries);
+
+  guint stylesheets = 0;
+  for (int i = 0; entries[i] != NULL; i++) {
+    if (!g_str_has_suffix(entries[i], ".css"))
+      continue;
+
+    char *path =
+        g_strdup_printf("/org/jointhefreeworld/lambdock/css/%s", entries[i]);
+    GBytes *data =
+        g_resources_lookup_data(path, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+    g_assert_nonnull(data);
+
+    gsize size = 0;
+    const char *raw = g_bytes_get_data(data, &size);
+    char *scoped = theme_scope_css_selectors(raw, "theme-test");
+
+    GtkCssProvider *provider = gtk_css_provider_new();
+    guint errors = 0;
+    gulong handler = g_signal_connect(provider, "parsing-error",
+                                      G_CALLBACK(on_css_parse_error), &errors);
+    gtk_css_provider_load_from_string(provider, scoped);
+    g_signal_handler_disconnect(provider, handler);
+
+    if (errors > 0)
+      g_test_message("stylesheet %s produced %u parse error(s)", entries[i],
+                     errors);
+    g_assert_cmpuint(errors, ==, 0);
+
+    g_object_unref(provider);
+    g_free(scoped);
+    g_bytes_unref(data);
+    g_free(path);
+    stylesheets++;
+  }
+  g_strfreev(entries);
+
+  /* We ship several themes plus the taskbar modifier. */
+  g_assert_cmpuint(stylesheets, >=, 6);
+}
+
+/* ============================================================================
+ * TASKBAR / WINDOW-TITLE MODIFIER
+ * ============================================================================ */
+
+static void test_load_custom_css_taskbar_modifier(void) {
+  LambdockState state = {0};
+  state.window = gtk_window_new();
+  state.config_path = g_strdup("test_settings.scm");
+  state.theme = g_strdup("vanilla");
+  state.taskbar = TRUE;
+
+  load_custom_css(&state);
+  g_assert_nonnull(state.taskbar_css_provider);
+
+  char *css = gtk_css_provider_to_string(state.taskbar_css_provider);
+  /* GTK normalizes the compound class selector to `.taskbar.lambdock-window`. */
+  g_assert_nonnull(strstr(css, ".theme-vanilla .taskbar.lambdock-window"));
+  g_free(css);
+
+  /* Disabling taskbar mode drops the modifier on reload. */
+  state.taskbar = FALSE;
+  state.show_window_titles = FALSE;
+  load_custom_css(&state);
+  g_assert_null(state.taskbar_css_provider);
+
+  /* Enabling window titles alone is enough to load it. */
+  state.show_window_titles = TRUE;
+  load_custom_css(&state);
+  g_assert_nonnull(state.taskbar_css_provider);
+
+  GdkDisplay *display = gdk_display_get_default();
+  gtk_style_context_remove_provider_for_display(
+      display, GTK_STYLE_PROVIDER(state.base_css_provider));
+  g_clear_object(&state.base_css_provider);
+  g_free(state.config_path);
+  g_free(state.theme);
+  g_free(state.active_theme_class);
+  g_object_ref_sink(state.window);
+  g_object_unref(state.window);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -252,6 +354,10 @@ int main(int argc, char **argv) {
                   test_load_custom_css_none);
   g_test_add_func("/ui/theme_engine/load_unknown_falls_back",
                   test_load_custom_css_unknown_theme_falls_back);
+  g_test_add_func("/ui/theme_engine/all_shipped_css_parse",
+                  test_all_shipped_css_parse);
+  g_test_add_func("/ui/theme_engine/load_taskbar_modifier",
+                  test_load_custom_css_taskbar_modifier);
 
   return g_test_run();
 }

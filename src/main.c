@@ -638,15 +638,21 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
 
-  /* Load CSS theme AFTER window context is created */
-  state->theme = get_theme_config_for(state->config_path);
-  load_custom_css(state);
+  /* Resolve mode flags BEFORE loading CSS so the taskbar modifier stylesheet is
+   * applied when taskbar mode or window titles are enabled. */
+  state->taskbar = get_taskbar_config_for(state->config_path);
+  state->show_window_titles =
+      get_show_window_titles_config_for(state->config_path);
 
   state->auto_hide = get_autohide_config_for(state->config_path);
   state->track_windows = get_track_windows_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
+
+  /* Load CSS theme AFTER window context is created */
+  state->theme = get_theme_config_for(state->config_path);
+  load_custom_css(state);
 
   GtkWidget *overlay = gtk_overlay_new();
   gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
@@ -656,6 +662,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
   state->bg_capsule = bg_capsule;
+  apply_dock_mode_classes(state);
 
   GtkWidget *box = gtk_box_new(state->orientation, DOCK_BOX_SPACING_PX);
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);

@@ -115,6 +115,10 @@
              48 (get-dock-icon-size))
 (check-equal "fallback config is not auto-hiding"
              #f (get-dock-auto-hide?))
+(check-equal "fallback config mode is 'dock"
+             'dock (get-dock-mode))
+(check-equal "fallback config does not show window titles"
+             #f (get-dock-show-window-titles?))
 
 ;; =============================================================================
 ;; (lambdock loader) — config path resolution
@@ -150,6 +154,8 @@
 (define dock-theme 'unity)
 (define dock-auto-hide? #t)
 (define dock-monitor \"DP-1\")
+(define dock-mode 'taskbar)
+(define dock-show-window-titles? #t)
 (define dock-items (list (app-item #:name \"Terminal\"
                                    #:icon \"Alacritty\"
                                    #:exec \"alacritty\")))
@@ -168,6 +174,10 @@
              #t (assq-ref %extracted 'dock-auto-hide?))
 (check-equal "extracted dock-monitor is DP-1"
              "DP-1" (assq-ref %extracted 'dock-monitor))
+(check-equal "extracted dock-mode is 'taskbar"
+             'taskbar (assq-ref %extracted 'dock-mode))
+(check-equal "extracted dock-show-window-titles? is #t"
+             #t (assq-ref %extracted 'dock-show-window-titles?))
 (check-equal "extracted one dock item"
              1 (length (assq-ref %extracted 'dock-items)))
 
@@ -188,7 +198,9 @@
                  #:enable-repl? #t
                  #:repl-socket-path "/tmp/x.sock"
                  #:hover-animate? #f
-                 #:track-windows? #f)
+                 #:track-windows? #f
+                 #:mode 'taskbar
+                 #:show-window-titles? #t)
 
 (check-equal "config record is retrievable by path key"
              'left (get-dock-position %cfg-path))
@@ -210,6 +222,10 @@
              #f (get-dock-hover-animate? %cfg-path))
 (check-equal "track-windows? getter"
              #f (get-dock-track-windows? %cfg-path))
+(check-equal "mode getter"
+             'taskbar (get-dock-mode %cfg-path))
+(check-equal "show-window-titles? getter"
+             #t (get-dock-show-window-titles? %cfg-path))
 (check-equal "exclude-apps getter"
              '("daemon" "tracker") (get-dock-exclude-apps %cfg-path))
 
@@ -251,6 +267,14 @@
 (set-dock-track-windows! #f %cfg-path)
 (check-equal "set-dock-track-windows! updates the targeted config"
              #f (get-dock-track-windows? %cfg-path))
+
+(set-dock-mode! 'dock %cfg-path)
+(check-equal "set-dock-mode! updates the targeted config"
+             'dock (get-dock-mode %cfg-path))
+
+(set-dock-show-window-titles! #f %cfg-path)
+(check-equal "set-dock-show-window-titles! updates the targeted config"
+             #f (get-dock-show-window-titles? %cfg-path))
 
 ;; =============================================================================
 ;; (lambdock items) — record constructors and accessors

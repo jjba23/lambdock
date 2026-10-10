@@ -218,7 +218,11 @@ static void test_populate_dock_items(void) {
   g_assert_cmpstr(app->app_id, ==, "Good");
   g_assert_true(app->is_favorite);
   g_assert_true(app->hover_animate);
-  g_assert_null(app->label);
+  /* App items now carry a window-title label, hidden until the app runs and
+   * `show-window-titles?` is enabled. */
+  g_assert_nonnull(app->label);
+  g_assert_true(app->window_title_label);
+  g_assert_false(gtk_widget_get_visible(app->label));
   g_assert_true(GTK_IS_BUTTON(app->button));
 
   DockItem *dyn = (DockItem *)g_list_nth_data(state.dock_items, 1);

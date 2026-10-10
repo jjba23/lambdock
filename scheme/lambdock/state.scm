@@ -39,6 +39,8 @@
             get-dock-show-when-clear?
             get-dock-hover-animate?
             get-dock-track-windows?
+            get-dock-mode
+            get-dock-show-window-titles?
 
             ;; Setters
             set-dock-position!
@@ -48,7 +50,9 @@
             set-dock-show-when-clear!
             set-dock-monitor!
             set-dock-hover-animate!
-            set-dock-track-windows!))
+            set-dock-track-windows!
+            set-dock-mode!
+            set-dock-show-window-titles!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -66,7 +70,9 @@
                     enable-repl?
                     repl-socket-path
                     hover-animate?
-                    track-windows?)
+                    track-windows?
+                    mode
+                    show-window-titles?)
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
@@ -81,7 +87,10 @@
   (repl-socket-path dock-config-repl-socket-path
                     set-dock-config-repl-socket-path!)
   (hover-animate? dock-config-hover-animate? set-dock-config-hover-animate?!)
-  (track-windows? dock-config-track-windows? set-dock-config-track-windows?!))
+  (track-windows? dock-config-track-windows? set-dock-config-track-windows?!)
+  (mode dock-config-mode set-dock-config-mode!)
+  (show-window-titles? dock-config-show-window-titles?
+                       set-dock-config-show-window-titles?!))
 
 ;; Global hashtable storing isolated <dock-config> records keyed by config path / symbol
 (define *dock-configs*
@@ -100,7 +109,9 @@
                     #f
                     "/tmp/lambdock-repl.sock"
                     #t
-                    #t))
+                    #t
+                    'dock
+                    #f))
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -119,7 +130,9 @@
                           (enable-repl? #f)
                           (repl-socket-path "/tmp/lambdock-repl.sock")
                           (hover-animate? #t)
-                          (track-windows? #t))
+                          (track-windows? #t)
+                          (mode 'dock)
+                          (show-window-titles? #f))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -132,7 +145,9 @@
                                enable-repl?
                                repl-socket-path
                                hover-animate?
-                               track-windows?)))
+                               track-windows?
+                               mode
+                               show-window-titles?)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
 
@@ -237,6 +252,18 @@
                                   (car args)))))
     (dock-config-track-windows? cfg)))
 
+(define (get-dock-mode . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-mode cfg)))
+
+(define (get-dock-show-window-titles? . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-show-window-titles? cfg)))
+
 ;; =============================================================================
 ;; Setters
 ;; =============================================================================
@@ -296,3 +323,11 @@
 (define (set-dock-track-windows! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-track-windows?! cfg val)) args))
+
+(define (set-dock-mode! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-mode! cfg val)) args))
+
+(define (set-dock-show-window-titles! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-show-window-titles?! cfg val)) args))

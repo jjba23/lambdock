@@ -467,6 +467,21 @@ void setup_layer_shell_window(LambdockState *state) {
   // Anchor window to screen edge (Top, Bottom, Left, or Right)
   gtk_layer_set_anchor(window, state->edge, TRUE);
 
+  // Taskbar mode: also anchor the two perpendicular edges so the surface is
+  // stretched to span the whole monitor (full-width bottom/top bar, or
+  // full-height left/right bar). A floating dock leaves them unanchored and
+  // keeps its natural, content-hugging size.
+  if (state->taskbar) {
+    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+        state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
+    } else {
+      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
+      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+    }
+  }
+
   // Exclusive zone reserves desktop space so windows do not overlap dock.
   // Reserve exact background capsule thickness when auto-hide is disabled.
   if (state->auto_hide) {
@@ -713,11 +728,21 @@ void update_dock_dimensions(LambdockState *state) {
                             (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
                                 ? GTK_ALIGN_START
                                 : GTK_ALIGN_END);
-      gtk_widget_set_halign(state->scrolled_window, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(state->scrolled_window,
+                            state->taskbar ? GTK_ALIGN_FILL
+                                           : GTK_ALIGN_CENTER);
+      /* In taskbar mode the content viewport must expand to fill the bar so
+       * icons grow from the left edge. */
+      gtk_widget_set_hexpand(state->scrolled_window, state->taskbar);
     }
 
-    gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
-    gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
+    if (state->taskbar) {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_FILL);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
+      gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
+    }
 
     if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
       gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_START);
@@ -740,11 +765,19 @@ void update_dock_dimensions(LambdockState *state) {
                             (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
                                 ? GTK_ALIGN_START
                                 : GTK_ALIGN_END);
-      gtk_widget_set_valign(state->scrolled_window, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(state->scrolled_window,
+                            state->taskbar ? GTK_ALIGN_FILL
+                                           : GTK_ALIGN_CENTER);
+      gtk_widget_set_vexpand(state->scrolled_window, state->taskbar);
     }
 
-    gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
-    gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
+    if (state->taskbar) {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_FILL);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_START);
+    } else {
+      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
+      gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
+    }
 
     if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
       gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_START);
@@ -754,6 +787,49 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_widget_set_halign(state->box, GTK_ALIGN_END);
     }
   }
+}
+
+/*
+ * apply_dock_mode_classes:
+ * Toggles the `taskbar` CSS class on the background capsule so themes can give
+ * taskbar mode its own rectangular, edge-to-edge styling.
+ */
+void apply_dock_mode_classes(LambdockState *state) {
+  if (!state || !state->bg_capsule)
+    return;
+
+  if (state->taskbar) {
+    if (!gtk_widget_has_css_class(state->bg_capsule, "taskbar"))
+      gtk_widget_add_css_class(state->bg_capsule, "taskbar");
+  } else if (gtk_widget_has_css_class(state->bg_capsule, "taskbar")) {
+    gtk_widget_remove_css_class(state->bg_capsule, "taskbar");
+  }
+}
+
+/*
+ * refresh_dock_mode:
+ * Re-applies layer-shell anchors, mode CSS classes and dimension requests so a
+ * live config reload can switch between floating dock and full-width taskbar
+ * without restarting.
+ */
+void refresh_dock_mode(LambdockState *state) {
+  if (!state || !state->window)
+    return;
+
+  gboolean horizontal_edge = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                              state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+  GtkWindow *window = GTK_WINDOW(state->window);
+
+  if (horizontal_edge) {
+    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, state->taskbar);
+    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, state->taskbar);
+  } else {
+    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, state->taskbar);
+    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, state->taskbar);
+  }
+
+  apply_dock_mode_classes(state);
+  update_dock_dimensions(state);
 }
 
 /* =========================================================================
@@ -773,6 +849,11 @@ void destroy_dock_instance(LambdockState *state) {
       gtk_style_context_remove_provider_for_display(
           display, GTK_STYLE_PROVIDER(state->base_css_provider));
       g_clear_object(&state->base_css_provider);
+    }
+    if (state->taskbar_css_provider) {
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
+      g_clear_object(&state->taskbar_css_provider);
     }
     if (state->user_css_provider) {
       gtk_style_context_remove_provider_for_display(
