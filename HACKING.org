@@ -1,48 +1,180 @@
-#+title: lambdock — Developer Onboarding & Architecture Guide
+#+title: lambdock HACKING
+#+subtitle: developer onboarding & architecture guide
 #+author: Josep Bigorra
 #+email: jjbigorra@gmail.com
-#+options: toc:3 num:nil
-#+startup: overview
 #+language: en
+#+options: toc:nil num:nil html-style:nil
+#+startup: overview
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/build-meson.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
+[[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]] [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]] [[https://jointhefreeworld.org/ggg/dist/jointhefreeworld-org.svg]] [[https://img.shields.io/badge/CI-Byggsteg%20%7C%20Woodpecker-2ea44f.svg]]
+
+/the map of the territory, for people about to change it./
 
 #+begin_quote
 Welcome aboard! This guide is the map for the territory that is the *lambdock*
 codebase. It is aimed at a competent C / GTK / Scheme developer who has *not*
 seen this project before. It explains what the pieces are, how execution and data
-flow between them, what the lifecycles are, and — most importantly — the traps
+flow between them, what the lifecycles are, and -- most importantly -- the traps
 that will bite you. Read it once end to end, then keep it open as a reference.
 #+end_quote
 
+- 📖 *Read the user-facing side:* [[file:README.org][README.org]] -- what the dock does and how it is configured
+- 📰 *Read what changed:* [[file:NEWS.org][NEWS.org]]
+- 💾 *Read the source:* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
+- 🐛 *Report a bug:* [[https://codeberg.org/jjba23/lambdock/issues][the issue tracker]]
+- 💬 *Ask a question:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
+
+#+TOC: headlines 2
+
+------------------
+
+* What this document is
+:PROPERTIES:
+:CUSTOM_ID: what-this-document-is
+:END:
+
+lambdock is a small program with a deliberately unusual shape: a C core that
+draws, and an embedded Lisp that decides. This guide is the bridge between
+reading the code and changing it safely.
+
+** Who it is for
+:PROPERTIES:
+:CUSTOM_ID: who-it-is-for
+:END:
+
+- *You, if you are new to the tree.*  Read [[#introduction-and-mental-model][Introduction & mental model]],
+  then [[#data-flow][Data flow]], then [[#pitfalls][Pitfalls]]. That is 80% of what you need.
+- *You, if you know C and GTK but not Lisp.*  [[#the-scheme-side][Module reference (Scheme)]]
+  and [[#interop-hazards][C ↔ Guile interop hazards]] are the parts that will surprise you.
+- *You, if you know Lisp but not GTK.*  [[#lifecycles][Lifecycles]] and
+  [[#gtk-glib-hazards][GTK / GLib hazards]] are where the sharp edges are.
+- *You, if you are reviewing a patch.*  [[#verifying-a-change][Verifying a change]] and
+  [[#core-invariants][Core invariants]] are the checklist the code is held to.
+- *You, if you are packaging or porting.*  [[#toolchain][Toolchain]],
+  [[#build-packaging-hazards][Build & packaging hazards]] and the trees in
+  [[#repository-layout][Repository layout]].
+
+** How to read it
+:PROPERTIES:
+:CUSTOM_ID: how-to-read-it
+:END:
+
+The document is layered on purpose: skim the tables and the quick tour, then drop
+into a section when you touch that part of the tree. Code names are written the
+way they appear in the source, so ~free_dock_item~ is a C function and
+~get-dock-theme~ is a Scheme procedure.
+
+|-----------------------------------+-------------------------------------------------------------|
+| *Diagrams*                        | The flowcharts are [[https://mermaid.js.org/][Mermaid]] blocks; Emacs will not   |
+|                                   | render them, but Codeberg and GitHub do.                    |
+| *C source of truth*               | =src/lambdock.h= for types, =meson.build= for the build.    |
+| *Scheme source of truth*          | =scheme/lambdock/core.scm= for what C may call.             |
+| *Behavioural rules*               | [[#pitfalls][Pitfalls]] -- each one was a real bug once.              |
+|-----------------------------------+-------------------------------------------------------------|
+
+** The 60-second orientation
+:PROPERTIES:
+:CUSTOM_ID: the-60-second-orientation
+:END:
+
+If you read nothing else, read this.
+
+1. *Two runtimes, one process.* C owns the window, the widgets, the Wayland
+   protocols, the animations and all memory. GNU Guile owns the configuration and
+   can drive C from the inside.
+2. *Scheme decides /what/; C decides /how/ and /when/.* Intent and user
+   configuration live in Lisp; rendering and resource ownership live in C.
+3. *Everything UI is on the GTK main thread.* The REPL is a different thread and
+   must never touch GTK directly; it goes through ~g_idle_add~.
+4. *Configuration path:* =settings*.scm= → isolated Scheme evaluation → alist →
+   ~<dock-config>~ record in ~*dock-configs*~ → C reads it through
+   =guile_bridge.c= into ~LambdockState~.
+5. *Items path:* Scheme ~<dock-item>~ records → ~populate_dock_items_for~ →
+   GTK buttons/dynamic labels/separators appended to ~state->box~.
+6. *Windows path:* the compositor's foreign-toplevel manager → =toplevel_tracker.c=
+   → ~DockItem~ + ~AppWindow~ → running indicator and the window popover.
+7. *Reload path:* =GFileMonitor= on =~/.config/lambdock= → 150 ms debounce →
+   ~sync_docks_with_disk~ → create/reload/destroy dock instances.
+8. *Ownership:* ~LambdockState~ owns its items, window trackers, monitor ref,
+   size group and CSS providers. Free items through ~free_dock_item~ and docks
+   through ~destroy_dock_instance~ -- never ~g_free~.
+9. *Stored Scheme values must be protected* with ~scm_gc_protect_object~ (see
+   ~DockItem::poll_fn~) and unprotected when freed.
+10. *Build with ~maak test~ or ~meson test -C build~, and use an ASAN build for
+    anything touching memory.* Run the uninstalled binary from the repository
+    root (see the ~%load-path~ pitfall in [[#build-packaging-hazards][Build & packaging hazards]]).
+
+*** If you want to change X, start in Y
+:PROPERTIES:
+:CUSTOM_ID: if-you-want-to-change-x
+:END:
+
+| I want to...                              | Start in                                                      |
+|-------------------------------------------+---------------------------------------------------------------|
+| Add or change a configuration option       | =scheme/lambdock/state.scm= → =core.scm= → =src/guile_bridge.c= |
+| Add a launcher or icon preset              | =scheme/lambdock/presets.scm=                                  |
+| Add a widget (CPU, clock, ...)             | =scheme/lambdock/items.scm=                                    |
+| Change how an item is drawn                | =src/ui/dock_item.c=                                           |
+| Change the window popover                  | =src/ui/popover_menu.c=                                        |
+| Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
+| Change auto-hide or animation              | =src/dock_window.c=                                            |
+| Change CSS scoping or theming              | =src/ui/theme_engine.c=                                        |
+| Change icon lookup                         | =src/ui/icon_resolver.c=                                       |
+| Understand boot, glue or multi-dock        | =src/main.c=                                                   |
+| Add a test                                 | =tests/test_<unit>.c= or =tests/scheme/lambdock_tests.scm=     |
+
+See [[#extending-lambdock][Extending lambdock]] for the step-by-step versions.
+
+------------------
+
 * Introduction & mental model
+:PROPERTIES:
+:CUSTOM_ID: introduction-and-mental-model
+:END:
 
 lambdock is two runtimes living in one process:
 
-- A *C core* built on GTK4 and ~gtk4-layer-shell~. It owns the window, the
-   widgets, the CSS, the Wayland protocols, the animations, and all memory.
+- A *C core* built on [[https://gtk.org/][GTK4]] and
+  [[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]. It owns the
+  window, the widgets, the CSS, the Wayland protocols, the animations, and all
+  memory.
 - An *embedded GNU Guile Scheme engine* that owns the /configuration/ and, at
-   runtime, can drive the C core through exported primitives.
+  runtime, can drive the C core through exported primitives.
 
 The division of responsibility is deliberate and is the single most important
 thing to internalize:
 
-| Concern                                   | Lives in        | Notes                                                |
-|-------------------------------------------+-----------------+------------------------------------------------------|
-| Screen surface, widgets, rendering        | C (GTK4)        | Must run on the GTK main thread                      |
-| Wayland layer shell / foreign toplevel    | C (raw Wayland) | No Scheme in the event path                          |
-| Memory ownership of state/items/windows   | C               | Scheme never allocates the structs it reads          |
-| User configuration (per dock)             | Scheme          | Parsed by C callbacks, stored in a Scheme hash table |
-| Item model (launchers, separators, widgets)| Scheme records | Converted to GTK widgets by C                        |
-| Live introspection / mutation             | Scheme          | REPL thread calls C primitives (marshalled)          |
-| CSS theme resolution & scoping            | C               | Loaded from GResource, scoped per dock instance       |
+| Concern                                    | Lives in        | Notes                                                |
+|--------------------------------------------+-----------------+------------------------------------------------------|
+| Screen surface, widgets, rendering         | C (GTK4)        | Must run on the GTK main thread                      |
+| Wayland layer shell / foreign toplevel     | C (raw Wayland) | No Scheme in the event path                          |
+| Memory ownership of state/items/windows    | C               | Scheme never allocates the structs it reads          |
+| User configuration (per dock)              | Scheme          | Parsed by C callbacks, stored in a Scheme hash table |
+| Item model (launchers, separators, widgets)| Scheme records  | Converted to GTK widgets by C                        |
+| Live introspection / mutation              | Scheme          | REPL thread calls C primitives (marshalled)          |
+| CSS theme resolution & scoping             | C               | Loaded from [[https://docs.gtk.org/gio/struct.Resource.html][GResource]], scoped per dock instance   |
 
 A useful one-liner: *Scheme decides /what/ the dock contains; C decides /how/ it
 is drawn and /when/ it is destroyed.* When in doubt about where a change belongs,
-ask whether it is about /intent/ or /user configuration/ (Lisp/Scheme) or /rendering and resources/ (C).
+ask whether it is about /intent/ or /user configuration/ (Lisp/Scheme) or
+/rendering and resources/ (C).
 
 Because the two runtimes share a process, several hazards come from the seam
-between them (threading, GC, allocators). See the section on [[#pitfalls-and-things-to-be-careful-about][Pitfalls & things to be careful about]].
+between them (threading, GC, allocators). See the section on
+[[#pitfalls][Pitfalls & things to be careful about]].
+
+The user-facing half of the documentation -- features, configuration options,
+themes, the REPL and the item DSL -- lives in [[file:README.org][README.org]]; this file only covers
+the parts a person changing the code needs.
+
+------------------
 
 * Repository layout
+:PROPERTIES:
+:CUSTOM_ID: repository-layout
+:END:
 
 #+begin_example
 lambdock/
@@ -57,10 +189,10 @@ lambdock/
 │   ├── toplevel_tracker.h   # Public tracker API
 │   ├── logger.h             # LOG_C_* colored logging macros
 │   └── ui/
-│       ├── dock_item.c/.h   # Item widgets, window association, free/clear, reload
-│       ├── popover_menu.c/.h# Right-click/multi-window popover builder
-│       ├── theme_engine.c/.h# GResource CSS loading + per-instance selector scoping
-│       └── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
+│       ├── dock_item.c/.h    # Item widgets, window association, free/clear, reload
+│       ├── popover_menu.c/.h # Right-click/multi-window popover builder
+│       ├── theme_engine.c/.h # GResource CSS loading + per-instance selector scoping
+│       └── icon_resolver.c/.h# 6-stage icon fallback pipeline + icon theme setup
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
 │   ├── core.scm             # Public API surface: init-dock!, load-dock-config!, start-repl!
 │   ├── items.scm            # <dock-item> record, constructors, dynamic pollers
@@ -68,31 +200,57 @@ lambdock/
 │   ├── loader.scm           # Isolated evaluation of a settings file -> alist
 │   ├── presets.scm          # preset-icons / preset-launchers alists + helpers
 │   └── logger.scm           # Scheme-side colored logging
-├── resources/              # Embedded via GResource
-│   ├── css/*.css            # Built-in themes
-│   └── img/agnus-dei.*      # Logo
-├── protocols/              # Bundled Wayland XML (fallback when wlr-protocols absent)
-├── tests/                  # C unit tests, Scheme test suite + shared stubs
-├── po/                     # gettext translations
-├── packaging/              # arch / debian / opensuse / flatpak
-├── meson.build             # Build definition
-├── flake.nix / package.nix # Nix
+├── resources/               # Embedded via GResource
+│   ├── css/*.css            # Built-in themes (+ taskbar.css modifier)
+│   ├── img/agnus-dei.*      # Logo
+│   └── lambdock.gresource.xml # What gets embedded
+├── protocols/               # Bundled Wayland XML (fallback when wlr-protocols absent)
+├── data/                    # .desktop entry + AppStream metainfo
+├── tests/                   # C unit tests, Scheme test suite + shared stubs
+│   ├── test_*.c             # One binary per unit (see Tests)
+│   ├── test_stubs.c         # get_active_dock_states / unregister_dock_state doubles
+│   ├── run_scheme_tests.sh  # Guile driver (exit 77 = skipped)
+│   └── scheme/lambdock_tests.scm
+├── po/                      # gettext translations (.pot, *.po, LINGUAS)
+├── packaging/               # arch / debian / opensuse / flatpak
+├── .woodpecker/             # CI pipeline definition (Byggsteg jobs)
+├── Dockerfile               # Container image
+├── meson.build              # Build definition
+├── flake.nix / package.nix  # Nix
 ├── guix.scm / manifest.scm / channels.scm # Guix
-└── maak.scm                # Task runner (run, test, add-libs, packaging, ...)
+└── maak.scm                 # Task runner (run, test, add-libs, packaging, ...)
 #+end_example
 
+Documentation files: [[file:README.org][README.org]] (users), this file (developers),
+[[file:NEWS.org][NEWS.org]] (changelog), and =COPYING= (GPL-3.0-or-later).
+
+------------------
+
 * Build, run, and test
+:PROPERTIES:
+:CUSTOM_ID: build-run-test
+:END:
 
 ** Toolchain
+:PROPERTIES:
+:CUSTOM_ID: toolchain
+:END:
 
 lambdock targets GNU/Linux and Wayland only (GNOME/Mutter is unsupported because
 it lacks ~wlr-layer-shell~).
 
-The canonical, hermetic environment is *GNU Guix*; Nix and native distro toolchains are also supported.
+The canonical, hermetic environment is [[https://guix.gnu.org/][GNU Guix]]; [[https://nixos.org/][Nix]] and
+native distro toolchains are also supported.
 
-Required: ~gtk4~, ~gtk4-layer-shell~, ~guile-3.0~, ~wayland-client~, ~wayland-scanner~, ~meson~, ~ninja~, ~pkg-config~.
+Required: ~gtk4~, ~gtk4-layer-shell~, ~guile-3.0~, ~wayland-client~,
+~wayland-scanner~, plus [[https://mesonbuild.com/][Meson]],
+[[https://ninja-build.org/][Ninja]] and
+[[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]].
 
 ** Guix (preferred)
+:PROPERTIES:
+:CUSTOM_ID: guix-preferred
+:END:
 
 #+begin_src sh
 # Enter a dev shell pinned by channels.scm
@@ -103,6 +261,9 @@ guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
 #+end_src
 
 ** Meson / Ninja directly
+:PROPERTIES:
+:CUSTOM_ID: meson-ninja
+:END:
 
 #+begin_src sh
 meson setup build
@@ -111,23 +272,37 @@ meson compile -C build
 #+end_src
 
 ** Task runner (~maak~)
+:PROPERTIES:
+:CUSTOM_ID: task-runner
+:END:
 
-~maak.scm~ wraps the common operations. Inspect it — it is short and readable.
+~maak.scm~ wraps the common operations -- it is
+[[https://codeberg.org/jjba23/maak][Maak]], a Scheme task runner, so the recipes
+are readable Lisp. Inspect it: it is short.
 
 #+begin_src sh
-maak run         # run inside the time-machine environment
-maak test        # build + run the test suite
-maak repl        # open a Scheme REPL against dev context
-maak add-libs    # regenerate .ccls for the LSP from Guix store paths
-maak meson-build # plain meson build
-maak debug-run   # debug build/run
-maak deb-build arch-build rpm-build nix-build flatpak-build container-build
+maak run          # run inside the time-machine environment
+maak test         # build + run the test suite
+maak repl         # open a Scheme REPL against dev context
+maak add-libs     # regenerate .ccls for the LSP from Guix store paths
+maak meson-build  # plain meson build
+maak debug-run    # debug build/run
+maak deb-build arch-build rpm-build
+maak nix-build nix-test nix-run
+maak flatpak-build
+maak container-build container-run
+maak i18n-update  # refresh .pot and merge into the .po files
 #+end_src
 
-** Tests
+The full list is the set of definitions at the top level of =maak.scm=.
 
-~meson test~ drives two kinds of suites: GLib/GTK C binaries (one per unit) and
-a pure-Guile suite for the Scheme engine.
+** Tests
+:PROPERTIES:
+:CUSTOM_ID: tests
+:END:
+
+~meson test~ drives two kinds of suites: GLib/GTK C binaries (one per unit) and a
+pure-Guile suite for the Scheme engine.
 
 #+begin_src sh
 meson test -C build                 # everything
@@ -139,36 +314,43 @@ meson test -C build scheme_unit_tests
 ./tests/run_scheme_tests.sh
 #+end_src
 
-C unit binaries (in ~tests/~):
+C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~:
 
-- =test_dock_item= — item lifecycle, window tracking, alignment, exec matching
-- =test_guile_bridge= — every C↔Scheme config getter, exclusions, populate
-- =test_dock_window= — monitor validation, dimension maths, auto-hide, teardown
-- =test_popover_menu= — menu layouts for every window-count branch
-- =test_theme_engine= — CSS selector scoping + provider lifecycle
-- =test_icon_resolver= — resource/file/theme icon resolution
+- =test_dock_item= -- item lifecycle, window tracking, alignment, exec matching
+- =test_guile_bridge= -- every C↔Scheme config getter, exclusions, populate
+- =test_dock_window= -- monitor validation, dimension maths, auto-hide, teardown
+- =test_popover_menu= -- menu layouts for every window-count branch
+- =test_theme_engine= -- CSS selector scoping + provider lifecycle
+- =test_icon_resolver= -- resource/file/theme icon resolution
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
-~tests/run_scheme_tests.sh=) loads the real ~scheme/lambdock~ modules under Guile
-and needs neither a display server nor the C runtime. It is skipped (exit 77)
-when no Guile interpreter is available.
+[[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
+~scheme/lambdock~ modules under Guile and needs neither a display server nor the
+C runtime. It is skipped (exit 77) when no Guile interpreter is available.
 
 Three important caveats:
 
-- The tests use ~gtk_init_check()~ and *skip* the GTK-dependent cases when no
-  display server is available (they will still run the pure-logic cases).
+- The tests use ~gtk_init_check()~
+  ([[https://docs.gtk.org/gtk4/func.init_check.html][GTK docs]]) and *skip* the
+  GTK-dependent cases when no display server is available (they will still run the
+  pure-logic cases).
 - A build directory is pinned to the Meson version that created it. If you get
   ~"Build directory has been generated with Meson version X, incompatible with Y"~,
   recreate it (~meson setup --reconfigure~ or a fresh dir) / use the Guix shell.
 - ~detect_leaks=1~ exits non-zero on the third-party EGL/fontconfig/GLib leaks
-  described under *Sanitizers* below. To run the whole suite green use
+  described under [[#sanitizers][Sanitizers]] below. To run the whole suite green use
   ~ASAN_OPTIONS=detect_leaks=0 meson test -C build-asan~ and check leak stacks
   separately for frames in ~src/~.
 
 ** Sanitizers
+:PROPERTIES:
+:CUSTOM_ID: sanitizers
+:END:
 
 Because lambdock leaks and dangling pointers are easy to introduce, use
-AddressSanitizer/UBSan builds for anything touching memory:
+[[https://clang.llvm.org/docs/AddressSanitizer.html][AddressSanitizer]] /
+[[https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html][UBSan]] builds
+for anything touching memory:
 
 #+begin_src sh
 meson setup build-asan -Db_sanitize=address,undefined -Db_lto=false -Dbuildtype=debug
@@ -176,11 +358,59 @@ ninja -C build-asan
 ASAN_OPTIONS=detect_leaks=1 ./build-asan/test_dock_item
 #+end_src
 
-Note: ASAN on GTK apps routinely reports ~leaks~ from Mesa/EGL/fontconfig and the X11/DRM stack. Those are *not* yours. Look for frames in ~src/~.
+Note: ASAN on GTK apps routinely reports ~leaks~ from Mesa/EGL/fontconfig and the
+X11/DRM stack. Those are *not* yours. Look for frames in ~src/~.
+
+** Verifying a change
+:PROPERTIES:
+:CUSTOM_ID: verifying-a-change
+:END:
+
+The short version, in the order that catches the most expensive mistakes first:
+
+#+begin_src sh
+# 1. Clean compile - the build treats warnings as errors
+maak meson-build
+
+# 2. The whole suite
+meson test -C build --print-errorlogs
+
+# 3. Only if you touched memory, timers, signals or the C/Guile bridge
+meson setup build-asan -Db_sanitize=address,undefined -Db_lto=false -Dbuildtype=debug
+ninja -C build-asan
+ASAN_OPTIONS=detect_leaks=0 meson test -C build-asan
+
+# 4. The real thing, from the repo root (see the %load-path pitfall)
+./build/lambdock
+#+end_src
+
+And the checklist that goes with it:
+
+- Compile is clean under ~-Werror~ (see [[#build-packaging-hazards][Build & packaging hazards]]).
+- ~meson test~ passes; any skipped GTK cases are skipped for lack of a display,
+  not because the assertion was weak.
+- New C behaviour has a case in the matching =tests/test_*.c=; new configuration
+  or item behaviour has one in =tests/scheme/lambdock_tests.scm=.
+- If you added a source, callback or provider, you added the matching teardown
+  ([[#source-signal-lifecycle-rules][Source / signal lifecycle rules]]).
+- New user-visible strings are wrapped in ~(G_ "...")~ and ~maak i18n-update~
+  has been run.
+- Documentation moved with the code: [[file:README.org][README.org]] for user-facing
+  behaviour, this file for internals, [[file:NEWS.org][NEWS.org]] for what changed.
+- If the change fixes one of the [[#pitfalls][Pitfalls]], move it out of the
+  pitfall list in the same commit.
+
+------------------
 
 * Runtime architecture
+:PROPERTIES:
+:CUSTOM_ID: runtime-architecture
+:END:
 
 ** Boot sequence
+:PROPERTIES:
+:CUSTOM_ID: boot-sequence
+:END:
 
 #+begin_src mermaid
 flowchart TD
@@ -207,8 +437,13 @@ Key facts:
   the GTK main thread.
 - ~setup_guile_primitives()~ defines the C subr ~reload-dock!~ inside the
   ~(lambdock core)~ module and exports it.
+- The monitor listener and the file monitor are the only two things that can
+  create docks after boot; both funnel into ~sync_docks_with_disk~.
 
 ** Global state in C
+:PROPERTIES:
+:CUSTOM_ID: global-state-in-c
+:END:
 
 There is exactly one global registry of live docks, in ~main.c~:
 
@@ -220,35 +455,54 @@ void unregister_dock_state(LambdockState *state);
 
 Plus two globals used by the debounce and by the Wayland tracker:
 
-- ~static guint g_reload_timer_id~ — the debounce timer for config reloads.
+- ~static guint g_reload_timer_id~ -- the debounce timer for config reloads.
 - ~toplevel_tracker.c~ statics: ~toplevel_manager~, ~default_seat~,
   ~tracker_initialized~, ~g_master_toplevels~ (a list of ~MasterToplevel~).
 
 Everything else is per-dock, held in a ~LambdockState~ (see below).
 
 ** The central struct
+:PROPERTIES:
+:CUSTOM_ID: the-central-struct
+:END:
 
 =lambdock.h= is the single source of truth for types. Read it before anything
 else. ~LambdockState~ groups a dock instance's entire C-side world:
 
-- Widgets: ~window~, ~overlay~, ~bg_capsule~, ~scrolled_window~, ~box~, ~popover~, ~size_group~.
+- Widgets: ~window~, ~overlay~, ~bg_capsule~, ~scrolled_window~, ~box~,
+  ~popover~, ~size_group~.
 - Config mirror (read from Scheme): ~auto_hide~, ~show_when_clear~,
-  ~track_windows~, ~hover_animate~, ~icon_size~, ~theme~, ~config_path~, ~edge~, ~orientation~.
-- Animation: ~tick_cb_id~, ~anim_start_time~, ~current_margin~, ~start_margin~, ~target_margin~, ~is_hidden~, ~hide_timer_id~.
-- Ownership lists: ~dock_items~ (GList of ~DockItem*~) and ~window_trackers~ (GList of raw ~zwlr_foreign_toplevel_handle_v1*~).
-- ~monitor~ (a /referenced/ ~GdkMonitor~ or NULL), ~is_destroying~ re-entrancy guard, ~active_popovers~ counter, per-instance CSS providers.
+  ~track_windows~, ~hover_animate~, ~icon_size~, ~theme~, ~config_path~, ~edge~,
+  ~orientation~.
+- Animation: ~tick_cb_id~, ~anim_start_time~, ~current_margin~, ~start_margin~,
+  ~target_margin~, ~is_hidden~, ~hide_timer_id~.
+- Ownership lists: ~dock_items~ (~GList~ of ~DockItem*~, see
+  [[https://docs.gtk.org/glib/struct.List.html][GList]]) and ~window_trackers~
+  (~GList~ of raw ~zwlr_foreign_toplevel_handle_v1*~).
+- ~monitor~ (a /referenced/
+  [[https://docs.gtk.org/gdk4/class.Monitor.html][GdkMonitor]] or NULL),
+  ~is_destroying~ re-entrancy guard, ~active_popovers~ counter, per-instance CSS
+  providers.
 
 =AppWindow= is the (window-handle, title) pair tracked per dock item. ~DockItem~
 is described in [[#dock-item-lifecycle][Dock item lifecycle]].
 
 One ~LambdockState~ == one GTK window == one ~settings*.scm~ (or the fallback).
 
+------------------
+
 * Data flow
+:PROPERTIES:
+:CUSTOM_ID: data-flow
+:END:
 
 This is the heart of the guide. Follow a change from a file on disk to pixels,
 then back.
 
 ** 1. Configuration: file → Scheme table → C mirror
+:PROPERTIES:
+:CUSTOM_ID: data-flow-configuration
+:END:
 
 #+begin_src mermaid
 flowchart LR
@@ -272,9 +526,9 @@ Details:
   (~dock-position~) and short (~position~) spellings, applying defaults, and
   calling ~configure-dock!~ with ~#:config-path file-path~.
 - =state.scm= stores a ~<dock-config>~ record in the ~*dock-configs*~ hash table
-  under the file path. If the path is ~'default~ /or/ ends in
-  ~settings.scm~, it /also/ writes the record under the ~'default~ key. This
-  aliasing is why "the primary settings file" can be reached without a path.
+  under the file path. If the path is ~'default~ /or/ ends in ~settings.scm~, it
+  /also/ writes the record under the ~'default~ key. This aliasing is why "the
+  primary settings file" can be reached without a path.
 - C reads this table through =guile_bridge.c=, which resolves public procedures
   (~scm_c_public_ref~) and calls them with the dock's ~config_path~, converting
   Scheme values to C.
@@ -294,7 +548,13 @@ Then thin typed wrappers: ~get_autohide_config_for~, ~get_position_config_for~,
 ~get_hover_animate_config_for~, ~get_repl_config_for~, and
 ~is_app_excluded(app_id, path)~.
 
+The key names, their defaults and their meanings are tabulated for users in
+[[file:README.org::#configuration-options][README: Configuration options reference]].
+
 ** 2. Items: Scheme records → GTK widgets
+:PROPERTIES:
+:CUSTOM_ID: data-flow-items
+:END:
 
 =populate_dock_items_for(state)= in ~guile_bridge.c~:
 
@@ -311,7 +571,13 @@ The record and constructors live in =items.scm=; the dispatch reads the
 *public* accessors (~dock-item-name~ etc.), so the internal ~%dock-item-*~
 accessors can change freely as long as the public wrappers stay stable.
 
+The item DSL as users see it (including the presets and dynamic widgets) is
+documented in [[file:README.org::#the-dock-dsl][README: The dock DSL: items and presets]].
+
 ** 3. Window tracking: compositor → items → popover
+:PROPERTIES:
+:CUSTOM_ID: data-flow-windows
+:END:
 
 #+begin_src mermaid
 flowchart TD
@@ -337,7 +603,15 @@ flowchart TD
 - Popovers (=popover_menu.c=) render the per-item window list, with "focus",
   "close", "new instance", and "close all".
 
+The protocol itself is
+[[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][zwlr_foreign_toplevel_management_unstable_v1]]
+on [[https://wayland.app/][wayland.app]]; the user-visible behaviour is in
+[[file:README.org::#toplevel-tracking][README: Wayland Toplevel Tracking & Popovers]].
+
 ** 4. Hot reload & reconciliation
+:PROPERTIES:
+:CUSTOM_ID: data-flow-reload
+:END:
 
 #+begin_src mermaid
 flowchart TD
@@ -359,11 +633,22 @@ monitor-hotplug listener and at startup. It:
 - For each file, (re)loads its Scheme config, (re)starts its REPL if enabled, and
   reconciles monitor binding:
   - ~dock-monitor = 'all~ → one dock per connected monitor.
-  - anything else → one dock with ~monitor = NULL~ (see the pitfall about specific
-    connectors not being resolved).
-- If /no/ settings files exist, spawns a single fallback dock (~config_path == NULL~).
+  - A connector name such as ~"DP-1"~ → resolved through
+    ~find_monitor_by_connector()~; if no output matches, it logs a warning and
+    falls back to the default monitor assignment.
+  - Anything else (~'default~, empty) → one dock with ~monitor = NULL~, left to
+    the compositor's default assignment.
+- If /no/ settings files exist, spawns a single fallback dock
+  (~config_path == NULL~).
+
+The watcher is the =GFileMonitor= of [[https://docs.gtk.org/gio/class.FileMonitor.html][GIO]], debounced with
+~g_timeout_add~ so that a burst of saves (editors writing several files, or a
+~git checkout~) results in one reconciliation.
 
 ** 5. REPL / live mutation flow
+:PROPERTIES:
+:CUSTOM_ID: data-flow-repl
+:END:
 
 #+begin_src mermaid
 flowchart LR
@@ -375,14 +660,24 @@ flowchart LR
 
 The crucial rule: the REPL runs on *another thread*. It must never touch GTK
 directly. ~reload-dock!~ therefore schedules work onto the main loop with
-~g_idle_add~. Getters (~get-dock-*~) are safe to call from the REPL because they
-only read the Scheme hash table.
+~g_idle_add~ ([[https://docs.gtk.org/glib/func.idle_add.html][GLib docs]]).
+Getters (~get-dock-*~), and the setters in =state.scm=, are safe to call from the
+REPL because they only touch the Scheme hash table -- the setters end by calling
+~trigger-ui-reload!~, which is where the hop back to the main thread happens.
+
+------------------
 
 * Lifecycles
+:PROPERTIES:
+:CUSTOM_ID: lifecycles
+:END:
 
 ** Dock instance lifecycle
+:PROPERTIES:
+:CUSTOM_ID: dock-instance-lifecycle
+:END:
 
-*Create* — ~create_dock_instance(app, monitor, config_path)~ (in ~main.c~):
+*Create* -- ~create_dock_instance(app, monitor, config_path)~ (in ~main.c~):
 
 1. Allocate ~LambdockState~, ~g_object_ref~ the monitor, connect its
    ~invalidate~ signal to immediately unbind layer-shell.
@@ -393,17 +688,18 @@ only read the Scheme hash table.
 4. Rebuild items (~populate_dock_items_for~).
 5. Build the app context popover (About/Quit) and the right-click gesture.
 6. ~setup_layer_shell_window~ + ~setup_dock_motion_controller~.
-7. Append to ~g_active_states~ and connect ~window "destroy" → destroy_dock_instance~.
+7. Append to ~g_active_states~ and connect ~window "destroy" →
+   destroy_dock_instance~.
 8. ~gtk_window_present~, ~init_toplevel_tracker~, ~sync_window_trackers~.
 9. Apply initial auto-hide behavior.
 
-*Reload* — ~reload_dock_instance(state)~ (in ~dock_item.c~): re-read theme and
+*Reload* -- ~reload_dock_instance(state)~ (in ~dock_item.c~): re-read theme and
 CSS, cancel the hide timer, hot-swap edge/orientation (un-anchor old edge,
 re-anchor new), re-read booleans/icon size, ~clear_favorite_dock_items~ +
 ~populate_dock_items_for~, ~sync_window_trackers~, re-align all items,
 ~update_dock_dimensions~, and re-apply auto-hide/exclusive-zone policy.
 
-*Destroy* — ~destroy_dock_instance(state)~ (in ~dock_window.c~). The order
+*Destroy* -- ~destroy_dock_instance(state)~ (in ~dock_window.c~). The order
 matters and is the canonical teardown sequence:
 
 1. Set ~is_destroying = TRUE~ (re-entrancy guard; the ~"destroy"~ signal will
@@ -422,6 +718,9 @@ matters and is the canonical teardown sequence:
 ~destroy_dock_instance~ so timers/handlers/providers are cleaned up.
 
 ** Dock item lifecycle
+:PROPERTIES:
+:CUSTOM_ID: dock-item-lifecycle
+:END:
 
 =ui/dock_item.c= owns ~DockItem~:
 
@@ -429,8 +728,10 @@ matters and is the canonical teardown sequence:
   click gesture). ~is_favorite = TRUE~.
 - ~create_dynamic_dock_item~: label widget + poll timer + protected Scheme thunk.
   ~is_favorite = TRUE~ (so it is recreated on reload from config).
-- ~create_separator_dock_item~: a ~GtkSeparator~ (note: not a button — helpers
-  must null-check with ~GTK_IS_BUTTON~). ~is_favorite = TRUE~.
+- ~create_separator_dock_item~: a ~GtkSeparator~
+  ([[https://docs.gtk.org/gtk4/class.Separator.html][GTK docs]]) (note: not a
+  [[https://docs.gtk.org/gtk4/class.Button.html][button]] -- helpers must
+  null-check with ~GTK_IS_BUTTON~). ~is_favorite = TRUE~.
 - Tracked (running-window) items created by the tracker use
   ~create_dock_item(..., is_favorite = FALSE, ...)~ and are removed automatically
   when their last window closes.
@@ -441,31 +742,58 @@ matters and is the canonical teardown sequence:
   ~is_favorite~ items, leaving tracked (non-favorite) items in place. Used by
   reload before repopulating.
 
+The reason the two kinds are separated is reload: after a config edit the pinned
+launchers are rebuilt from Scheme, while items that exist only because a window is
+open must survive that rebuild untouched.
+
 ** Source / signal lifecycle rules
+:PROPERTIES:
+:CUSTOM_ID: source-signal-lifecycle-rules
+:END:
 
 Every GLib/GTK source that stores a raw pointer must be cancelled before that
 pointer dies:
 
-- Timers: ~hide_timer_id~, ~poll_timer_id~ → ~g_source_remove~.
-- Tick callbacks: ~tick_cb_id~ → ~gtk_widget_remove_tick_callback~.
+- Timers: ~hide_timer_id~, ~poll_timer_id~ → ~g_source_remove~
+  ([[https://docs.gtk.org/glib/struct.Source.html][GSource]]).
+- Tick callbacks: ~tick_cb_id~ → ~gtk_widget_remove_tick_callback~
+  ([[https://docs.gtk.org/gtk4/method.Widget.add_tick_callback.html][add_tick_callback]]).
 - Signals: ~g_signal_handlers_disconnect_by_data~ (the data pointer is the key).
-- Idle callbacks (~g_idle_add~) currently pass ~NULL~ data, so they cannot dangle.
+- Idle callbacks (~g_idle_add~) currently pass ~NULL~ data, so they cannot
+  dangle.
+
+------------------
 
 * Module reference (C)
+:PROPERTIES:
+:CUSTOM_ID: module-reference-c
+:END:
 
-| File                       | Responsibility                                                                 |
-|----------------------------+--------------------------------------------------------------------------------+
-| =main.c=                   | Boot, globals, file/monitor watching, multi-dock reconciliation, create/activate |
-| =dock_window.c=            | LambdockState lifecycle, layer shell, margin animation, auto-hide, dimension math, about dialog |
-| =guile_bridge.c=           | All C→Scheme config reads, item population, exclusion checks                     |
-| =toplevel_tracker.c=       | Raw Wayland registry/manager/handle listeners, per-window title/app_id/closed    |
-| =ui/dock_item.c=           | Item widgets, window association, free paths, reload of a dock                  |
-| =ui/popover_menu.c=        | Dynamic popover building, focus/close/launch/close-all callbacks                |
-| =ui/theme_engine.c=        | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
-| =ui/icon_resolver.c=       | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
-| =logger.h=                 | ~LOG_C_DEBUG/INFO/WARN/ERROR~ macros                                              |
+| File                  | Responsibility                                                                 |
+|-----------------------+--------------------------------------------------------------------------------+
+| =main.c=              | Boot, globals, file/monitor watching, multi-dock reconciliation, create/activate |
+| =dock_window.c=       | LambdockState lifecycle, layer shell, margin animation, auto-hide, dimension math, about dialog |
+| =guile_bridge.c=      | All C→Scheme config reads, item population, exclusion checks                     |
+| =toplevel_tracker.c=  | Raw Wayland registry/manager/handle listeners, per-window title/app_id/closed    |
+| =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
+| =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
+| =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
+| =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
+| =logger.h=            | ~LOG_C_DEBUG/INFO/WARN/ERROR~ macros                                              |
+
+The six stages of ~create_image_for_icon~, in order, are: an embedded
+[[https://docs.gtk.org/gio/struct.Resource.html][GResource]] path, an absolute
+file path, a [[https://docs.gtk.org/gtk4/class.IconTheme.html][GtkIconTheme]]
+lookup, an XDG data-directory ~pixmaps~ search, a ~-symbolic~ variant, and
+finally the generic ~application-x-executable~ icon. Users see this list from the
+other side in [[file:README.org::#finding-icon-names][README: Finding icon names]].
+
+------------------
 
 * Module reference (Scheme)
+:PROPERTIES:
+:CUSTOM_ID: the-scheme-side
+:END:
 
 | Module               | Key exports                                                                        |
 |----------------------+------------------------------------------------------------------------------------+
@@ -476,12 +804,27 @@ pointer dies:
 | =(lambdock presets)= | ~preset-icons~, ~preset-launchers~, ~preset-icon~, ~preset-launcher~, ~preset-launchers-for~ |
 | =(lambdock logger)=  | ~log-debug/info/warn/error~                                                        |
 
-* Configuration & CLI/CSS reference
+The setter side matters for the REPL: every ~set-dock-*!~ goes through
+~apply-to-targets~ and ends with ~trigger-ui-reload!~, which is what turns a
+Scheme mutation into a ~(reload-dock!)~ call on the C side.
+
+Setting up a working REPL (Geiser, ~socat~, ~ncat~) is described for users in
+[[file:README.org::#repl][README: Interactive lambdock REPL]].
+
+------------------
+
+* Configuration & CSS reference
+:PROPERTIES:
+:CUSTOM_ID: configuration-and-css-reference
+:END:
 
 ** The DSL
+:PROPERTIES:
+:CUSTOM_ID: the-dsl
+:END:
 
 Settings files are ordinary Guile programs. They define variables that the loader
-extracts — the conventional names are:
+extracts -- the conventional names are:
 
 #+begin_src scheme
 (define dock-auto-hide? #t)
@@ -490,8 +833,12 @@ extracts — the conventional names are:
 (define dock-icon-size 48)
 (define dock-theme 'vanilla)        ;; 'vanilla | 'vanilla-light | 'snow-leopard
                                     ;; | 'snow-leopard-dark | 'solarized-light
-                                    ;; | 'nature | 'unity | 'none
-(define dock-monitor 'all)          ;; 'all | 'default | "DP-1" (see pitfall)
+                                    ;; | 'nature | 'unity | 'macos-big-sur
+                                    ;; | 'macos-ventura | 'windows-xp | 'windows-10
+                                    ;; | 'windows-11 | 'none
+(define dock-monitor 'all)          ;; 'all | 'default | "DP-1"
+(define dock-mode 'dock)            ;; 'dock | 'taskbar
+(define dock-show-window-titles? #f)
 (define dock-exclude-apps '())
 (define dock-enable-repl? #f)
 (define dock-repl-socket-path "/tmp/lambdock-repl.sock")
@@ -510,7 +857,14 @@ Item constructors: ~app-item~ (~#:name #:icon #:exec #:hover-animate?~),
 ~preset-launchers-for~. Dynamic presets: ~ram-item~, ~clock-item~, ~cpu-item~,
 ~battery-item~, ~cpu-temp-item~.
 
+Defaults, accepted values and the full preset list are in
+[[file:README.org::#configuration-options][README: Configuration options reference]]
+and [[file:README.org::#the-preset-zoo][README: The preset zoo]].
+
 ** CSS & themes
+:PROPERTIES:
+:CUSTOM_ID: css-and-themes
+:END:
 
 Themes are GResource files at ~/org/jointhefreeworld/lambdock/css/<theme>.css~.
 ~load_custom_css~:
@@ -526,7 +880,18 @@ Scoping rules: ~.foo~ becomes ~.theme-<name> .foo~; a selector starting with
 ~window~ becomes ~window.theme-<name>...~; ~@~-rules/comments pass through. This
 is why a user override still needs to target the dock's own classes.
 
+Only [[https://docs.gtk.org/gtk4/css-overview.html][GTK CSS]] applies here, not
+browser CSS; the properties are listed in
+[[https://docs.gtk.org/gtk4/css-properties.html][the GTK CSS property reference]].
+User-facing theming -- the twelve built-in themes and how to override them -- is in
+[[file:README.org::#styling-and-theming][README: Styling & theming]].
+
+------------------
+
 * Threading model
+:PROPERTIES:
+:CUSTOM_ID: threading-model
+:END:
 
 | Thread            | Runs                                                        | May touch GTK? |
 |-------------------+-------------------------------------------------------------+----------------|
@@ -541,57 +906,90 @@ Rules:
   (as ~poll_fn~ is in ~create_dynamic_dock_item~) and unprotected in
   ~free_dock_item~.
 - Do not block the main thread. Polling callbacks run there (see pitfall on
-  ~cpu-item~).
+  ~cpu-item~ in [[#core-invariants][Core invariants]]).
+
+------------------
 
 * Debugging tips
+:PROPERTIES:
+:CUSTOM_ID: debugging-tips
+:END:
 
 - Verbose logs: the C macros print to stdout; the Scheme logger uses ANSI colors.
 - Live inspect: enable ~dock-enable-repl?~, then attach with ~socat -
-  UNIX-CONNECT:/tmp/lambdock-repl.sock~ or Emacs/Geiser (~geiser-connect-local~).
-  Try ~(get-dock-theme)~, ~(set-dock-theme! 'nature)~, ~(reload-dock!)~.
+  UNIX-CONNECT:/tmp/lambdock-repl.sock~ or Emacs/[[https://www.nongnu.org/geiser/][Geiser]]
+  (~geiser-connect-local~). Try ~(get-dock-theme)~, ~(set-dock-theme! 'nature)~,
+  ~(reload-dock!)~.
 - Renderer issues: override with ~GSK_RENDERER=gl~ (or ~vulkan~, ~cairo~).
-- LSP: ~maak add-libs~ generates =.ccls=.
+- LSP: ~maak add-libs~ generates =.ccls= for
+  [[https://github.com/MaskRay/ccls][ccls]].
 - Guile caching oddities after upgrades: ~rm -rf ~/.cache/guile~.
 - Isolate a crash: an ASAN build plus a single ~settings*.scm~ is the fastest
   loop.
+- ~G_DEBUG=fatal-warnings~ turns GLib criticals into a crash with a backtrace,
+  which is often the quickest way to find a widget-lifecycle mistake.
+- ~meson test -C build --print-errorlogs~ shows the output of the failing test
+  rather than just its name.
+
+------------------
 
 * Extending lambdock
+:PROPERTIES:
+:CUSTOM_ID: extending-lambdock
+:END:
 
 ** Add a new configuration option
+:PROPERTIES:
+:CUSTOM_ID: add-a-configuration-option
+:END:
 
 Touch these in order:
 
-1. =scheme/lambdock/state.scm= — add the field to ~<dock-config>~
+1. =scheme/lambdock/state.scm= -- add the field to ~<dock-config>~
    (constructor + accessor + setter), add it to ~%default-fallback-config%~,
    add a ~configure-dock!~ keyword and its assignment, add a ~get-dock-*~ getter
    (variadic, defaulting to ~'default~), and a ~set-dock-*!~ setter that calls
    ~apply-to-targets~.
-2. =scheme/lambdock/core.scm= — re-export the new getter/setter, and map it in
+2. =scheme/lambdock/core.scm= -- re-export the new getter/setter, and map it in
    ~load-dock-config!~ (accept both ~dock-foo~ and ~foo~).
-3. =src/guile_bridge.h= / ~.c~ — add a typed ~get_*_config_for(path)~ wrapper.
+3. =src/guile_bridge.h= / ~.c~ -- add a typed ~get_*_config_for(path)~ wrapper.
 4. Consume it where relevant (usually ~create_dock_instance~ /
    ~reload_dock_instance~).
 5. Consider whether it belongs in the C struct in =src/lambdock.h=.
 6. Add a test (see below) and update =README.org= and this file's DSL section.
 
 ** Add a preset launcher or icon
+:PROPERTIES:
+:CUSTOM_ID: add-a-preset
+:END:
 
 Append to the alists in =scheme/lambdock/presets.scm= (~preset-icons~,
 ~preset-launchers~). No C changes needed.
 
 ** Add a built-in theme
+:PROPERTIES:
+:CUSTOM_ID: add-a-theme
+:END:
 
 Drop a CSS file in =resources/css/=, register it in
 =resources/lambdock.gresource.xml=, and add the name to the ~dock-theme~ doc.
 Scoping is automatic.
 
 ** Add a dynamic poller preset
+:PROPERTIES:
+:CUSTOM_ID: add-a-dynamic-poller
+:END:
 
 Define a ~get-*~ procedure in =items.scm=, add a ~*-item~ builder, export both
 from =items.scm= and re-export from =core.scm=. Keep pollers fast and
-non-blocking.
+non-blocking: they run on the GTK main thread.
+=items.scm= contains a worked example of why -- the CPU poller keeps its previous
+sample instead of sleeping.
 
 ** Add tests
+:PROPERTIES:
+:CUSTOM_ID: add-tests
+:END:
 
 C suites are one binary per unit driven by ~tests/test_<unit>.c~. Shared sources
 are listed in =meson.build= (~unit_tests~); add your file there. Use
@@ -603,13 +1001,21 @@ through ~tests/run_scheme_tests.sh~. Assertions run against the real modules
 (no C), so they are the cheapest place to lock down ~state.scm=, =items.scm=,
 =presets.scm=, =loader.scm= and =core.scm= behaviour.
 
+------------------
+
 * Pitfalls & things to be careful about
+:PROPERTIES:
+:CUSTOM_ID: pitfalls
+:END:
 
 These are the traps. Some are latent bugs present in the current tree; fixing
 them is welcome, but until then understand them before you build on the affected
 code.
 
 ** Memory ownership & freeing
+:PROPERTIES:
+:CUSTOM_ID: memory-ownership
+:END:
 
 - *One owner per resource.* ~LambdockState~ owns its ~dock_items~,
   ~window_trackers~, ~monitor~ ref, ~size_group~, and CSS providers. GTK owns the
@@ -622,8 +1028,15 @@ code.
 - *~window_trackers~ holds raw Wayland handles, not owned objects.*
   ~free_window_tracker~ and ~clear_window_tracker_dock_references~ are currently
   no-op stubs; do not assume they release anything.
+- *GTK widgets are refcounted.* When you take a reference for your own use,
+  release it: see
+  [[https://docs.gtk.org/gobject/method.Object.ref.html][g_object_ref]] and the
+  monitor ref-balancing in ~update_dock_dimensions~.
 
 ** Core invariants (these were bugs; do not regress them)
+:PROPERTIES:
+:CUSTOM_ID: core-invariants
+:END:
 
 The issues below were present in earlier revisions and have since been fixed.
 They are kept here as guard-rails because each is easy to reintroduce.
@@ -651,7 +1064,10 @@ They are kept here as guard-rails because each is easy to reintroduce.
   the manager proxy, and call ~clear_tracked_windows~ on each dock so no dock
   retains a handle from a departed compositor.
 - *Monitor connectors resolve.* ~find_monitor_by_connector~ maps a connector
-  name (e.g. ~"DP-1"~) to a ~GdkMonitor~ so ~dock-monitor~ can target one output.
+  name (e.g. ~"DP-1"~) to a
+  [[https://docs.gtk.org/gdk4/class.Monitor.html][GdkMonitor]] so ~dock-monitor~
+  can target one output; an unknown connector warns and falls back instead of
+  failing silently.
 - *About dialog is a singleton.* ~on_about_action~ reuses one dialog and destroys
   it on close, and ~activate~ drops the initial ~GSimpleAction~ reference after
   adding it to the action map.
@@ -664,11 +1080,14 @@ They are kept here as guard-rails because each is easy to reintroduce.
   Keep the prefix check first.
 
 ** C ↔ Guile interop hazards
+:PROPERTIES:
+:CUSTOM_ID: interop-hazards
+:END:
 
 - *Resolve procedures, don't guess them.* C reaches Scheme only via
   ~scm_c_public_ref("lambdock core", "name")~. If you rename or stop exporting a
   procedure, C silently degrades to defaults (~g_strdup(default_val)~) instead of
-  crashing — which makes bugs easy to miss. Keep the export lists in =core.scm=
+  crashing -- which makes bugs easy to miss. Keep the export lists in =core.scm=
   and =state.scm= in sync with what C asks for.
 - *Guard ~scm_is_true~ on lookups.* ~scm_c_public_ref~ returns a value that must
   be checked before calling; the existing helpers do this. Follow suit.
@@ -681,11 +1100,14 @@ They are kept here as guard-rails because each is easy to reintroduce.
 - *Protect every stored SCM.* Anything kept in a C struct across calls
   (~DockItem::poll_fn~) must be ~scm_gc_protect_object~'d and later
   ~scm_gc_unprotect_object~'d. Forgetting protection means the GC can collect a
-  live thunk.
+  live thunk. Background: [[https://www.gnu.org/software/guile/manual/html_node/Garbage-Collection.html][Guile garbage collection]].
 - *Don't call GTK off the main thread.* The REPL is a different thread. Use
   ~g_idle_add~ (that is exactly what ~scm_reload_dock~ does).
 
 ** GTK / GLib hazards
+:PROPERTIES:
+:CUSTOM_ID: gtk-glib-hazards
+:END:
 
 - *GTK main-thread affinity* (repeated because it is the #1 crash source).
 - *Signal data is a raw pointer.* ~g_signal_connect(..., state)~ hands GTK a
@@ -699,9 +1121,14 @@ They are kept here as guard-rails because each is easy to reintroduce.
 - *Monitor objects are refcounted.* ~create_dock_instance~ refs, ~destroy~
   unrefs, and ~update_dock_dimensions~ balances its temporary ref. If you cache a
   ~GdkMonitor~ anywhere, ref it.
-- *Popovers must be unparented before their parent dies* (see teardown order).
+- *Popovers must be unparented before their parent dies* (see teardown order):
+  a [[https://docs.gtk.org/gtk4/class.Popover.html][GtkPopover]] is a child of
+  the widget it is anchored to, not a toplevel of its own.
 
 ** Build & packaging hazards
+:PROPERTIES:
+:CUSTOM_ID: build-packaging-hazards
+:END:
 
 - *~-Werror~ everywhere.* ~meson.build~ builds with ~warning_level=3~,
   ~werror=true~, plus extra pedantic flags (~-Wshadow~, ~-Wstrict-prototypes~,
@@ -718,8 +1145,15 @@ They are kept here as guard-rails because each is easy to reintroduce.
   applies. Run from the repo root during development, or install.
 - *The generated Wayland protocol sources are build artifacts.* Do not edit them;
   edit ~protocols/*.xml~ or rely on the ~wlr-protocols~ package.
+- *Translations are generated too.* ~po/*.po~ are edited, ~lambdock.pot~ is
+  produced by ~maak i18n-update~; do not edit the template by hand.
+- *Meson options are documented upstream* if you need to add a feature toggle:
+  [[https://mesonbuild.com/Builtin-options.html][built-in options]].
 
 ** Configuration semantics
+:PROPERTIES:
+:CUSTOM_ID: configuration-semantics
+:END:
 
 - *Config keys are aliased.* Both ~dock-foo~ and ~foo~ are accepted by the
   loader. Keep new options consistent.
@@ -727,13 +1161,21 @@ They are kept here as guard-rails because each is easy to reintroduce.
   path and ~'default~. Multiple ~settings-*.scm~ files each get their own
   record; be deliberate about which key you read.
 - *~is_app_excluded~ is case-insensitive* (~g_ascii_strcasecmp~) and is applied to
-  name, icon, and exec on the C side and to ~app_id~ on the tracker side —
+  name, icon, and exec on the C side and to ~app_id~ on the tracker side --
   exclusions can therefore suppress more than you expect.
 - *Item matching is heuristic.* ~find_dock_item_by_app_id~ matches ~app_id~,
   ~icon~, ~name~, and does substring matching on ~exec~; this can associate a
   window with the wrong item. Understand it before extending the matcher.
+- *Item lists are rebuilt on reload, window state is not.* A reload clears only
+  the favorite items ([[#dock-item-lifecycle][Dock item lifecycle]]); anything you
+  cache on a ~DockItem~ that is /not/ a favorite will outlive the config change.
+
+------------------
 
 * Glossary
+:PROPERTIES:
+:CUSTOM_ID: glossary
+:END:
 
 | Term                  | Meaning                                                                 |
 |-----------------------+-------------------------------------------------------------------------+
@@ -747,12 +1189,48 @@ They are kept here as guard-rails because each is easy to reintroduce.
 | Scoped CSS            | Theme selectors rewritten to ~.theme-<name> ...~ so docks do not leak styles |
 | Fallback dock         | The dock spawned when no ~settings*.scm~ exists (~config_path == NULL~)     |
 
+Words that belong to the wider stack (compositor, layer shell, GSK, thunk,
+foreign toplevel, XDG, ...) are defined in
+[[file:README.org::#glossary][README: Glossary: the words in this document]].
+
+------------------
+
+* Further reading
+:PROPERTIES:
+:CUSTOM_ID: further-reading
+:END:
+
+Everything below is upstream documentation for something this codebase uses.
+
+| Topic                          | Start here                                                                                       |
+|--------------------------------+--------------------------------------------------------------------------------------------------|
+| Guile as an extension language | [[https://www.gnu.org/software/guile/manual/html_node/libguile.html][Using Guile in other programs (libguile)]]      |
+| Guile garbage collection       | [[https://www.gnu.org/software/guile/manual/html_node/Garbage-Collection.html][GC and scm_gc_protect_object]]   |
+| Guile macros & quasiquoting    | [[https://www.gnu.org/software/guile/manual/html_node/Macros.html][Macros]], [[https://www.gnu.org/software/guile/manual/html_node/Quasiquote.html][Quasiquote]] |
+| GTK4 API                       | [[https://docs.gtk.org/gtk4/][docs.gtk.org/gtk4]]                                                                |
+| GTK4 CSS                       | [[https://docs.gtk.org/gtk4/css-overview.html][CSS overview]], [[https://docs.gtk.org/gtk4/css-properties.html][properties]]                        |
+| GObject refcounting            | [[https://docs.gtk.org/gobject/concepts.html][GObject concepts]]                                                      |
+| GIO (files, resources, models) | [[https://docs.gtk.org/gio/][docs.gtk.org/gio]]                                                                |
+| GLib main loop & sources       | [[https://docs.gtk.org/glib/main-loop.html][Main loop]], [[https://docs.gtk.org/glib/struct.Source.html][GSource]]                     |
+| Wayland layer shell            | [[https://wayland.app/protocols/wlr-layer-shell-unstable-v1][the protocol]] , [[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]       |
+| Wayland foreign toplevel       | [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][the protocol]]             |
+| Meson                          | [[https://mesonbuild.com/][mesonbuild.com]], [[https://mesonbuild.com/Unit-tests.html][unit tests]]                        |
+| Mermaid diagrams               | [[https://mermaid.js.org/][mermaid.js.org]]                                                                  |
+| ASan / UBSan                   | [[https://clang.llvm.org/docs/AddressSanitizer.html][AddressSanitizer]], [[https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html][GCC instrumentation]] |
+
+------------------
+
 * Getting help / contributing
+:PROPERTIES:
+:CUSTOM_ID: getting-help
+:END:
 
 - Codeberg repository: https://codeberg.org/jjba23/lambdock
+- Issue tracker: https://codeberg.org/jjba23/lambdock/issues
 - Zulip community: https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock
 - Changelog: [[file:NEWS.org]]
 
 Read [[file:README.org]] for the user-facing feature description, and this file
 for how to work on the code. When you fix one of the pitfalls above, please
-update this document in the same change.
+update this document in the same change -- and if you learn something that would
+have saved you an afternoon, add it to [[#debugging-tips][Debugging tips]].
