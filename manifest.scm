@@ -36,6 +36,10 @@
              (gnu packages build-tools)
              (gnu packages cpp)
              (gnu packages gtk)
+             (gnu packages glib)
+             (gnu packages gnome)
+             (gnu packages xorg)
+             (gnu packages base)
              (gnu packages freedesktop)
              (gnu packages gettext)
              (gnu packages build-tools)
@@ -59,4 +63,17 @@
                           guile-documenta
                           wlr-protocols
                           ninja
-                          guile-ares-rs))
+                          guile-ares-rs
+                          ;; `glib-compile-resources' lives in the "bin" output of
+                          ;; glib, which is not what gtk propagates. Without it
+                          ;; meson aborts at gnome.compile_resources.
+                          (list glib "bin")
+                          ;; Headless display + X authority for the test stage.
+                          xvfb-run
+                          ;; An icon theme is what makes `utilities-terminal'
+                          ;; resolvable: without it the dock item tests treat the
+                          ;; icon fallback warning as a failure.
+                          adwaita-icon-theme
+                          ;; `tests/run_scheme_tests.sh' and `xvfb-run' use
+                          ;; dirname/mktemp; do not depend on the host PATH.
+                          coreutils))

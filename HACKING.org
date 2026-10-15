@@ -102,9 +102,10 @@ If you read nothing else, read this.
    through ~destroy_dock_instance~ -- never ~g_free~.
 9. *Stored Scheme values must be protected* with ~scm_gc_protect_object~ (see
    ~DockItem::poll_fn~) and unprotected when freed.
-10. *Build with ~maak test~ or ~meson test -C build~, and use an ASAN build for
-    anything touching memory.* Run the uninstalled binary from the repository
-    root (see the ~%load-path~ pitfall in [[#build-packaging-hazards][Build & packaging hazards]]).
+10. *Test with ~maak test~* (rebuilds =build/= and runs the suite on a virtual
+    display, so it also works over SSH), *and use an ASAN build for anything
+    touching memory.* Run the uninstalled binary from the repository root (see
+    the ~%load-path~ pitfall in [[#build-packaging-hazards][Build & packaging hazards]]).
 
 *** If you want to change X, start in Y
 :PROPERTIES:
@@ -282,7 +283,7 @@ are readable Lisp. Inspect it: it is short.
 
 #+begin_src sh
 maak run          # run inside the time-machine environment
-maak test         # build + run the test suite
+maak test         # rebuild + run the whole suite headlessly (Xvfb)
 maak repl         # open a Scheme REPL against dev context
 maak add-libs     # regenerate .ccls for the LSP from Guix store paths
 maak meson-build  # plain meson build
@@ -328,15 +329,33 @@ The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 ~scheme/lambdock~ modules under Guile and needs neither a display server nor the
 C runtime. It is skipped (exit 77) when no Guile interpreter is available.
 
-Three important caveats:
+On a machine with no compositor -- a CI runner, a TTY, an SSH session -- run the
+suite the way ~maak test~ does:
 
-- The tests use ~gtk_init_check()~
-  ([[https://docs.gtk.org/gtk4/func.init_check.html][GTK docs]]) and *skip* the
-  GTK-dependent cases when no display server is available (they will still run the
-  pure-logic cases).
-- A build directory is pinned to the Meson version that created it. If you get
-  ~"Build directory has been generated with Meson version X, incompatible with Y"~,
-  recreate it (~meson setup --reconfigure~ or a fresh dir) / use the Guix shell.
+#+begin_src sh
+maak test                      # whole suite, pinned Guix env, virtual display
+
+# the same by hand, from a shell that has the packages of manifest.scm
+GTK_A11Y=none GDK_BACKEND=x11 \
+  xvfb-run -a -s "-screen 0 1024x768x24" meson test -C build --print-errorlogs
+#+end_src
+
+Four caveats, in the order they bit us:
+
+- *The C tests need a display.* They call ~gtk_init_check()~
+  ([[https://docs.gtk.org/gtk4/func.init_check.html][GTK docs]]) and return 77
+  ("skipped") when it fails, but GTK emits its warnings -- no session bus, no
+  icon theme -- *before* that check, and [[https://docs.gtk.org/glib/testing.html][g_test]]
+  makes GLib warnings fatal. In a headless shell six of the seven C tests
+  therefore abort with ~SIGTRAP~ instead of skipping. Hence ~xvfb-run~.
+- *An icon theme is required.* =test_dock_item= and =test_guile_bridge= build
+  items whose icon is ~utilities-terminal~, resolved through ~GtkIconTheme~, and
+  they treat the "falling back to =application-x-executable=" warning as a
+  failure. ~adwaita-icon-theme~ is in =manifest.scm= for that reason.
+- A build directory is pinned to the Meson version that created it. Reading an
+  old tree with a newer Meson fails with ~"Build data file ... references
+  functions or classes that don't exist"~; use ~meson setup --reconfigure build~,
+  a fresh directory, or ~maak test~, which discards =build/= first.
 - ~detect_leaks=1~ exits non-zero on the third-party EGL/fontconfig/GLib leaks
   described under [[#sanitizers][Sanitizers]] below. To run the whole suite green use
   ~ASAN_OPTIONS=detect_leaks=0 meson test -C build-asan~ and check leak stacks
@@ -372,7 +391,9 @@ The short version, in the order that catches the most expensive mistakes first:
 # 1. Clean compile - the build treats warnings as errors
 maak meson-build
 
-# 2. The whole suite
+# 2. The whole suite, headless-safe: rebuilds build/ and runs it on Xvfb
+maak test
+#    ...or directly, when you are on a compositor session:
 meson test -C build --print-errorlogs
 
 # 3. Only if you touched memory, timers, signals or the C/Guile bridge
@@ -387,8 +408,8 @@ ASAN_OPTIONS=detect_leaks=0 meson test -C build-asan
 And the checklist that goes with it:
 
 - Compile is clean under ~-Werror~ (see [[#build-packaging-hazards][Build & packaging hazards]]).
-- ~meson test~ passes; any skipped GTK cases are skipped for lack of a display,
-  not because the assertion was weak.
+- ~maak test~ passes: the C suite, the Scheme suite and the desktop/AppStream
+  checks, with nothing skipped for lack of a display.
 - New C behaviour has a case in the matching =tests/test_*.c=; new configuration
   or item behaviour has one in =tests/scheme/lambdock_tests.scm=.
 - If you added a source, callback or provider, you added the matching teardown
@@ -1001,6 +1022,10 @@ through ~tests/run_scheme_tests.sh~. Assertions run against the real modules
 (no C), so they are the cheapest place to lock down ~state.scm=, =items.scm=,
 =presets.scm=, =loader.scm= and =core.scm= behaviour.
 
+Whichever suite you touch, ~maak test~ builds and runs all of it on a virtual
+display; to iterate on a single case, run that binary directly under ~xvfb-run~
+([[#tests][Tests]] explains why a display is not optional).
+
 ------------------
 
 * Pitfalls & things to be careful about
@@ -1145,6 +1170,13 @@ They are kept here as guard-rails because each is easy to reintroduce.
   applies. Run from the repo root during development, or install.
 - *The generated Wayland protocol sources are build artifacts.* Do not edit them;
   edit ~protocols/*.xml~ or rely on the ~wlr-protocols~ package.
+- *The Guix manifest needs the =bin= output of glib.* ~gtk~ propagates glib's
+  default output only, and ~glib-compile-resources~ lives in =glib:bin=. Without
+  it ~meson~ aborts while measuring =gnome.compile_resources()=:
+  ~Dependency 'gio-2.0' tool variable 'glib_compile_resources' contains
+  erroneous value: 'glib-compile-resources'~. A development shell often hides
+  this because the host's copy is on ~PATH~; a CI container does not.
+  =manifest.scm= therefore lists ~(list glib "bin")~.
 - *Translations are generated too.* ~po/*.po~ are edited, ~lambdock.pot~ is
   produced by ~maak i18n-update~; do not edit the template by hand.
 - *Meson options are documented upstream* if you need to add a feature toggle:

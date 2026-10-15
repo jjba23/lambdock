@@ -1581,7 +1581,7 @@ runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
 |--------------------+-----------------------------------------------------------------------|
 | ~maak run~         | Build and run lambdock inside the pinned Guix environment.            |
 | ~maak meson-build~ | Plain Meson/Ninja build of the project.                               |
-| ~maak test~        | Run the whole test suite (C tests plus the Scheme unit tests).         |
+| ~maak test~        | Rebuild and run the whole suite headlessly (Xvfb + X11 backend).      |
 | ~maak debug-run~   | Rebuild and launch under ~gdb --args~.                                 |
 | ~maak repl~        | Start a development REPL for the project.                             |
 | ~maak add-libs~    | Regenerate ~.ccls~ with the right Guix package flags.                  |
@@ -1630,8 +1630,14 @@ ninja -C build test
 
 The Nix package runs exactly this suite under
 [[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a
-controlled font configuration, which is also a practical recipe for
-running the whole thing headless on a machine with no compositor.
+controlled font configuration.
+
+The Guix side does the same through ~maak test~: it rebuilds =build/ inside the
+pinned environment and runs the suite on a virtual X server with
+the X11 backend and an icon theme, so a CI runner with no compositor
+runs the real GTK tests instead of skipping them.  That is why the Guix
+manifest carries ~xvfb-run~ and ~adwaita-icon-theme~ alongside the compiler and
+Meson.
 
 ** Translations
 :PROPERTIES:
@@ -1744,9 +1750,10 @@ You can also mail me <jjbigorra@gmail.com> to chat, discuss or send feedback.
 
 The branch is ~trunk~.  Small, focused commits are the easiest to review.
 
-- Build and test before you send: ~maak test~ (or ~meson test -C build~) should
-  pass, and the C compiler is configured with ~-Werror~ for things like implicit
-  conversions, so a warning is a build failure.
+- Build and test before you send: ~maak test~ should pass (it rebuilds
+  =build/= and runs everything on a virtual display), and the C compiler is
+  configured with ~-Werror~ for things like implicit conversions, so a warning
+  is a build failure.
 - New behaviour wants a test.  C behaviour goes in ~tests/~, the configuration
   engine in ~tests/scheme/~, and both are cheap to extend.
 - New user-visible strings should be wrapped in ~(G_ "...")~ in C so they can be

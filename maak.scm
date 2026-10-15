@@ -41,9 +41,34 @@
                               #:verbose? #t))
 
 (define (test)
-  "Test the project"
-  (time-machine-manifest-shell (list "meson setup build && ninja -C build test")
-                               #:verbose? #t))
+  "Build and run the whole test suite headlessly.
+
+The shell wrapper only applies to the first command, so the pipeline is run by
+one inner `sh -c' instead of a bare `&&': otherwise `ninja' would execute
+outside the Guix environment.
+
+The GTK tests need a display: with none, `gtk_init_check' fails and GLib turns
+the resulting GTK warnings into aborts (6 of 7 tests die with SIGTRAP), so the
+suite runs on a virtual X server, as in package.nix's checkPhase. `GDK_BACKEND'
+and `GTK_A11Y' are pinned because there is no compositor and no a11y bus here.
+
+The build directory is thrown away first: the Byggsteg job clone survives
+between jobs, and a tree configured by a different Meson version makes both
+`meson setup' and `ninja' fail with 'build data file ... references functions
+or classes that don't exist'. Rebuilding from scratch also means the passing
+tests are the ones that match the checked out sources."
+  (time-machine-manifest-shell
+   (list "/bin/sh -c"
+         (string-append "'"
+                        "set -eu; "
+                        "export GTK_A11Y=none GDK_BACKEND=x11; "
+                        "rm -rf build; "
+                        "meson setup build; "
+                        "ninja -C build; "
+                        "xvfb-run -a -s \"-screen 0 1024x768x24\" "
+                        "meson test -C build --print-errorlogs"
+                        "'"))
+   #:verbose? #t))
 
 (define (repl)
   "Development REPL."
