@@ -42,8 +42,8 @@
 
 (define (test)
   "Test the project"
-  (time-machine-program-shell (list "meson setup build && ninja -C build test")
-                              #:verbose? #t))
+  (time-machine-manifest-shell (list "meson setup build && ninja -C build test")
+                               #:verbose? #t))
 
 (define (repl)
   "Development REPL."
