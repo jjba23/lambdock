@@ -1,110 +1,644 @@
 #+title: lambdock
-#+options: num:nil toc:2
+#+subtitle: quest for the eternal dock
 #+author: Josep Jesus Bigorra Algaba
 #+email: jjbigorra@gmail.com
 #+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
 
-* lambdock: quest for the eternal dock
+[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/build-meson.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
+[[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]] [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]] [[https://jointhefreeworld.org/ggg/dist/jointhefreeworld-org.svg]] [[https://img.shields.io/badge/CI-Byggsteg%20%7C%20Woodpecker-2ea44f.svg]]
 
-[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/build-meson.svg]]  [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]]   [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]]
-[[https://jointhefreeworld.org/ggg/dist/license-gpl3+.svg]]    [[https://jointhefreeworld.org/ggg/dist/license-fdl13+.svg]]
+/a desktop dock for Wayland that you can reprogram while it is running./
+
+~lambdock~ is a dock for your GNU/Linux desktop: the strip of application
+launchers that sits on an edge of the screen, shows which apps are running, and
+brings their windows back when you click them.  It is built on *[[https://gtk.org/][GTK4]]* and
+*[[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]*, so it belongs on a *[[https://wayland.freedesktop.org/][Wayland]]* compositor --
+[[https://github.com/YaLTeR/niri][Niri]], [[https://swaywm.org/][Sway]], [[https://hyprland.org/][Hyprland]], [[https://github.com/riverwm/river][River]], [[https://kde.org/plasma-desktop/][Plasma]], and friends -- and it is engineered
+the way *[[https://www.gnu.org/software/emacs/][Emacs]]* is: a small, fast *[[https://en.wikipedia.org/wiki/C_(programming_language)][C]]* core for rendering, Wayland protocol work and frame-clock animation, wrapped around an
+embedded *[[https://www.gnu.org/software/guile/][GNU Guile Scheme]]* engine that is the brain of the whole thing.
+
+That architecture is what makes ~lambdock~ different from every other dock.  You
+configure it in *[[https://en.wikipedia.org/wiki/Lisp_(programming_language)][Lisp]]*, theme it in *[[https://developer.mozilla.org/en-US/docs/Web/CSS][CSS]]*, and then you hot-reload both from disk or poke at the running dock
+over a *live socket [[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop][REPL]]* -- inspecting state, swapping themes, adding launchers and forcing
+a rebuild without ever restarting the process or dropping a frame.
+
+#+name: lambdock-showcase
+#+caption: The dock sliding in from the screen edge with eased auto-hide, launching applications, the fish-eye magnification under the pointer, the multi-window popover listing every open window of the focused app (with =Close All Windows=), and the dock's own right-click menu with =About lambdock= and =Quit=.
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
+
+- 🐑 *Read the source (and send PR/issue/patches):* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
+- 📦 *Install it:* [[https://build.opensuse.org/package/show/home:jjba23/lambdock][openSUSE Build Service]], [[https://search.nixos.org/packages?query=lambdock][NixPkgs]], Guix, Docker Hub, and the packaged tarballs
+- 📚 *Hack on it:* [[file:HACKING.org][the Developer Onboarding & Architecture Guide]]
+- 💬 *Ask anything:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
+- 📰 *Follow what changed:* [[file:NEWS.org][the changelog]]
+- 🗺️ *Read why it exists:* [[https://jointhefreeworld.org/blog/articles/gnu-linux/quest-for-eternal-dock/index.html][Quest for the eternal dock]]
+- ☕ *Support the work:* [[https://bmc.link/jjbigorra][buying me a cup of coffee]]
+
+#+TOC: headlines 1
+
+------------------
+
+* What lambdock is
+:PROPERTIES:
+:CUSTOM_ID: what-lambdock-is
+:END:
 
 #+begin_quote
-~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application (as made popular by CairoDock, macOS, Plank) engineered for GNU/Linux users, people that like docks, macOS refugees,  ricers, free software and Lisp enthusiasts, Wayland minimalists...
+~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application
+(as made popular by CairoDock, macOS, Plank) engineered for GNU/Linux users,
+people that like docks, macOS refugees, ricers, free software and Lisp
+enthusiasts, Wayland minimalists...
 #+end_quote
 
-It's built in the C programming language and using GTK4 libraries and toolkit, ~gtk4-layer-shell~, Lisp ( GNU Guile Scheme) with fullruntime inspectability and configurability, hot-reload of config and of the GTK-CSS.
+It is built in the C programming language using the GTK4 libraries and toolkit,
+~gtk4-layer-shell~, and Lisp (GNU Guile Scheme), with full runtime
+inspectability and configurability, hot-reload of the config and of the GTK CSS.
 
-Whether you are running Niri,  Sway, Hyprland, River, or any ~wlroots~ / Layer Shell compliant compositor, ~lambdock~ brings clean application launching, dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased auto-hiding directly to your setup.
+Whether you are running Niri, Sway, Hyprland, River, or any ~wlroots~ / Layer
+Shell compliant compositor, ~lambdock~ brings clean application launching,
+dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased
+auto-hiding directly to your setup.
 
-#+begin_export html
-<img alt="lambdock showcase" src="https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif">
+** Who it is for
+:PROPERTIES:
+:CUSTOM_ID: who-it-is-for
+:END:
 
-<img alt="lambdock showcase whitesur icons"
-src="https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif">
-#+end_export
+- *People who miss the [[https://en.wikipedia.org/wiki/Dock_(macOS)][macOS Dock]]* --
+  and want it on a compositor where windows are told who is in charge.  Fish-eye magnification, a glassy capsule, running
+  indicators, window titles: all there, none of it proprietary.
+- *Wayland minimalists* who keep a compositor, a terminal, and a small pile of
+    well-chosen tools -- and want a dock that does not drag an
+  [[https://en.wikipedia.org/wiki/X_Window_System][X11]] toolkit, a configuration
+  daemon, or a [[https://www.gnome.org/][GNOME]] session along with it.
+- *Ricers and theme collectors*, who will want the twelve built-in themes, the
+  CSS override hook, and the ability to restyle anything on the fly.
+- *Lisp people*, who would rather write eleven lines of Scheme than file a
+  feature request, and who expect a REPL inside the program they are running.
+- *Free software lovers* who want the dock to be theirs: GPL-3.0-or-later,
+  no account, no telemetry, no phone-home.
 
---------
+** What it is built with
+:PROPERTIES:
+:CUSTOM_ID: what-it-is-built-with
+:END:
 
+~lambdock~ is powered by:
+*[[https://en.wikipedia.org/wiki/C_(programming_language)][C]]* and *GTK4* /
+*[[https://docs.gtk.org/gsk4/][GSK]]* for the graphics core and the
+frame-clock-driven animations,
+*[[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]* for the Wayland
+surface protocol,
+*[[https://www.gnu.org/software/guile/][GNU Guile 3.0]]* embedded in-process through
+[[https://www.gnu.org/software/guile/manual/html_node/libguile.html][libguile]],
+*[[https://mesonbuild.com/][Meson]]* and *[[https://ninja-build.org/][Ninja]]* for
+the build, *[[https://guix.gnu.org/][GNU Guix]]* and
+*[[https://nixos.org/][Nix]]* for hermetic, reproducible environments,
+*[[https://codeberg.org/jjba23/maak][Maak]]* for the task runner,
+*[[https://www.gnu.org/software/gettext/][GNU gettext]]* for translations, and
+[[https://www.gnu.org/software/emacs/][Emacs]] (with
+[[https://www.nongnu.org/geiser/][Geiser]]) as the recommended way to talk to the
+running dock.
 
-- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge anchoring, cubic-eased slide animations, and compositor integration.
-- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~ to display active app indicators, window titles, and popover HUDs for focusing or closing instances.
-- *Multi-Monitor Flexibility*: Span docks across all connected screens (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~).
-- *Smooth Auto-Hide*: Keeps the dock out of your way with configurable reveal thresholds and fluid sliding animations.
-- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for declarative dock setups, custom app launchers, separators, and options. Multiple config files and multiple docks are supported.
-- *Smart and Safe Hot-Reloading*: Automatic file watcher (~GFileMonitor~) and REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS without blocking the UI thread.
-- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a Unix domain socket (~/tmp/lambdock-repl.sock~) via Emacs/Geiser, ~socat~, or ~ncat~.
-- *Theme Engine*: Extensible with CSS, and ships with built-in themes, while supporting user extensions and overrides via =~/.config/lambdock/styles.css=.
-- *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme icons, absolute paths, system pixmaps, and symbolic variants.
-- *Async Command Launching*: Spawns binaries, scripts, and Flatpaks asynchronously using GLib process spawning without freezing the UI.
-- *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent background utilities or specific application IDs from creating unwanted launchers.
-- *Reproducible Builds*: Fully hermetic development environment and builds powered by GNU Guile, Meson, and GNU Guix.
-- *Native fluid fish-eye* magnification effect on hover (a la macOS) which is opt-in since some users might want less animations.
-- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar exceeds available display dimensions.
+There is no scripting bridge to a separate process, no
+[[https://en.wikipedia.org/wiki/D-Bus][D-Bus]] daemon in the middle, and no
+configuration format to learn in [[https://www.json.org/][JSON]] or
+[[https://yaml.org/][YAML]]: the interpreter is inside the dock, and the dock is the
+interpreter's playground.
 
--------
-On the 30th of July 2026, I had a revelation and set out to build *lambdock*: a Wayland-native desktop dock that wouldn't just replicate the macOS or Cairo-Dock experience, but would transcend it with full runtime inspectability, hackability, and Lisp enlightenment.
+** Glossary: the words in this document
+:PROPERTIES:
+:CUSTOM_ID: glossary
+:END:
 
-I find GTK to be the very best UI toolkit for GNU/Linux and other platforms, anno 2026. So for me that choice was pretty clear, even if I also toyed with Qt and others, but GTK always came  on top. After the wreckage of many PoCs and while reading some HackerNews in bed, a thought crossed my mind, and suddenly, *absolute clarity*!
+New to the Wayland, GTK or Lisp stack?  Every piece of jargon in this document is
+one line away.  Skim it now, or come back when a word bites.
 
-Why not use idiomatic modern GTK4, in the language that it's written in. Oh wait, that language, C, has ~libguile.h~, a great library inter-operability with Lisp (GNU Guile Scheme), allowing bi-directional bindings and communication. Why not go down this rabbit hole, which might at the same time teach me more about my favourite language (GNU Guile) and allow me a frictionless setup with GTK and native super performance.
+| Term                    | What it means                                                                                                                                                     |
+|-------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| *Wayland*               | The modern display protocol on GNU/Linux.  [[https://wayland.freedesktop.org/][wayland.freedesktop.org]]                                                         |
+| *Compositor*            | The Wayland program that draws windows, positions surfaces and routes input: Niri, Sway, Hyprland, River, Plasma, ...                                             |
+| *Layer shell*           | The Wayland protocol for surfaces that belong to the desktop rather than to a window (bars, docks, launchers).  Provided by [[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]].                      |
+| *GTK 4*                 | The graphical toolkit ~lambdock~ draws with.  [[https://gtk.org/][gtk.org]]                                                                                       |
+| *GSK*                   | The GTK Scene Kit, GTK4's rendering engine.  [[https://docs.gtk.org/gsk4/][docs.gtk.org/gsk4]]                                                                  |
+| *GLib / GIO*            | The C utility and I/O library under GTK (file monitors, idle dispatch, process spawning).  [[https://docs.gtk.org/glib/][docs.gtk.org/glib]]                                     |
+| *Guile*                 | GNU's implementation of Scheme, and the extension language embedded in ~lambdock~.  [[https://www.gnu.org/software/guile/][gnu.org/software/guile]]                                       |
+| *Lisp / Scheme*         | The functional language family this dock is configured in.  [[https://en.wikipedia.org/wiki/Lisp_(programming_language)][Wikipedia]]                                           |
+| *S-expression*          | The fully parenthesized syntax of Lisp, which is also the data it manipulates.  [[https://en.wikipedia.org/wiki/S-expression][Wikipedia]]                                   |
+| *Thunk*                 | A procedure that takes no arguments; here, what a dynamic widget polls for its text.                                                                             |
+| *REPL*                  | Read-Eval-Print Loop: a live prompt where you type code and see the result at once.  [[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop][Wikipedia]]                 |
+| *Quasiquoting, macros*  | Lisp facilities for writing code that writes code.                                                                                                               |
+| *Foreign toplevel*      | The Wayland protocol that tells a client what windows exist and what they are called.  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][protocol reference]]                  |
+| *Popover*               | A small floating menu anchored to a widget: here, the window HUD.                                                                                                |
+| *XDG*                   | The freedesktop.org conventions for where desktop programs keep their files.  [[https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html][base directory specification]]              |
+| */proc*                 | The pseudo-filesystem where the Linux kernel reports memory, CPU, temperature and battery state.  [[https://en.wikipedia.org/wiki/Procfs][procfs]]                                   |
+| *gettext, .po*          | GNU's translation system, and the per-language files it reads.  [[https://www.gnu.org/software/gettext/][gnu.org/software/gettext]]                                           |
+| *Meson, Ninja*          | The build system and the build runner.  [[https://mesonbuild.com/][mesonbuild.com]], [[https://ninja-build.org/][ninja-build.org]]                                                            |
+| *Guix, Nix*             | Functional package managers that pin every dependency, including the compiler.  [[https://guix.gnu.org/][guix.gnu.org]], [[https://nixos.org/][nixos.org]]                              |
+| *Flatpak*               | A sandboxed application packaging format; the ~-flatpak~ presets launch apps through it.  [[https://flatpak.org/][flatpak.org]]                                               |
+| *Maak*                  | The Scheme task runner this project builds with instead of a Makefile.  [[https://codeberg.org/jjba23/maak][codeberg.org/jjba23/maak]]                                          |
+| *socat, ncat, rlwrap*   | Terminal tools for talking to the socket REPL, the last one adding line editing.                                                                                 |
+| *ccls, LSP*             | A C/C++ language server, and the Language Server Protocol editors speak:  [[https://github.com/MaskRay/ccls][ccls]], [[https://microsoft.github.io/language-server-protocol/][LSP]]                                                 |
+
+** Where to start
+:PROPERTIES:
+:CUSTOM_ID: where-to-start
+:END:
+
+|----------------------------------+-----------------------------------------------------------------------|
+| *Just want to see it?*           | Watch the GIF above, read [[#features][Features]], then [[#quick-start][Quick start]].                       |
+| *New to all of this?*            | Start with the [[#glossary][glossary]], then [[#which-compositors-are-supported][which compositors are supported]].                       |
+| *Want it on your desktop now?*   | [[#quick-start][Quick start]] gets a themed dock on screen in under a minute.  |
+| *Want to install it properly?*   | [[#installing-lambdock][Installing lambdock]] has Guix, Nix, Meson, distro and container paths. |
+| *Want to hack on it?*            | Read [[file:HACKING.org][HACKING.org]], then [[#developing][Developing lambdock]].                        |
+|----------------------------------+-----------------------------------------------------------------------|
+
+** Which compositors are supported
+:PROPERTIES:
+:CUSTOM_ID: which-compositors-are-supported
+:END:
+
+~lambdock~ is a GNU/Linux first utility.  It uses ~gtk4-layer-shell~ to render,
+position itself, and behave like a dock.  That means it works well in Wayland
+compositors that implement the ~wlr-layer-shell-unstable-v1~ protocol, including:
+
+- *Smithay-based compositors*: Niri, [[https://system76.com/cosmic][COSMIC Desktop]]
+- *wlroots-based compositors*: [[https://gitlab.freedesktop.org/wlroots/wlroots][wlroots]]
+  powers Sway, Hyprland, River, [[https://wayfire.org/][Wayfire]]
+- *KDE Plasma* (Wayland session)
+- *[[https://mir-server.io/][Mir]]-based compositors*
+
+Note: [[https://en.wikipedia.org/wiki/Mutter_(software)][GNOME (Mutter)]] is
+currently not supported, because it does not implement the protocol.
+
+** Why it exists (a note from the author)
+:PROPERTIES:
+:CUSTOM_ID: why-it-exists
+:END:
+
+On the 30th of July 2026, I had a revelation and set out to build ~lambdock~: a
+Wayland-native desktop dock that wouldn't just replicate the macOS or Cairo-Dock
+experience, but would transcend it with full runtime inspectability, hackability,
+and Lisp enlightenment.
+
+I find GTK to be the very best UI toolkit for GNU/Linux and other platforms,
+anno 2026. So for me that choice was pretty clear, even if I also toyed with Qt
+and others, but GTK always came on top. After the wreckage of many PoCs and while
+reading some HackerNews in bed, a thought crossed my mind, and suddenly,
+*absolute clarity*!
+
+Why not use idiomatic modern GTK4, in the language that it's written in. Oh wait,
+that language, C, has ~libguile.h~, a great library inter-operability with Lisp
+(GNU Guile Scheme), allowing bi-directional bindings and communication. Why not
+go down this rabbit hole, which might at the same time teach me more about my
+favourite language (GNU Guile) and allow me a frictionless setup with GTK and
+native super performance.
 
 #+BEGIN_EXPORT html
 <img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
 #+END_EXPORT
 
 #+begin_quote
-I therefore designed lambdock in my mind, in bed, much inspired by Emacs. A powerful, small C core that powers the program, rendering, graphics and low level details, and an embedded GNU Guile Scheme engine that at runtime is the heart and brain of the whole thing. This architecture uniquely delivers interactive socket REPL control, Lisp metaprogramming macros, dynamic multi-dock spawning, native Wayland foreign-toplevel window tracking, and frame-clock-driven hover animations.
+I therefore designed lambdock in my mind, in bed, much inspired by Emacs. A
+powerful, small C core that powers the program, rendering, graphics and low level
+details, and an embedded GNU Guile Scheme engine that at runtime is the heart and
+brain of the whole thing. This architecture uniquely delivers interactive socket
+REPL control, Lisp metaprogramming macros, dynamic multi-dock spawning, native
+Wayland foreign-toplevel window tracking, and frame-clock-driven hover
+animations.
 #+end_quote
+
+#+begin_quote
+~lambdock~ is a story of resilience in many ways, as I cannot even remember how
+many attempts I made at building a dock (in different ways). Little did I know
+how many paradigms, ideas and PoCs would collapse before my vision became
+tangible reality.
+#+end_quote
+
+------------------
+
+* Features
+:PROPERTIES:
+:CUSTOM_ID: features
+:END:
+
+- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge
+  anchoring, cubic-eased slide animations, and compositor integration.
+- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~, the Wayland
+  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
+  to display active app indicators, window titles, and popover
+  HUDs for focusing or closing instances; see
+  [[#toplevel-tracking][Wayland toplevel tracking]].
+- *Multi-Monitor Flexibility*: Span docks across all connected screens
+  (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~);
+  see [[#configuration-options][the options reference]].
+- *Smooth Auto-Hide*: Keeps the dock out of your way with a two-pixel reveal
+  strip and fluid, frame-clock-driven sliding animations.
+- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for
+  declarative dock setups, custom app launchers, separators, and options.
+  Multiple config files and multiple docks are supported.
+- *Smart and Safe Hot-Reloading*: Automatic file watcher
+  ([[https://docs.gtk.org/glib/][GLib]] ~GFileMonitor~, with a 150 ms debounce) and
+  REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS
+  without blocking the UI thread.
+- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a
+  [[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]]
+  (=/tmp/lambdock-repl.sock=) via Emacs/Geiser, ~socat~, or ~ncat~; see
+  [[#repl][the REPL section]].
+- *Theme Engine*: Extensible with CSS, and ships with twelve built-in themes,
+  while supporting user extensions and overrides via
+  =~/.config/lambdock/styles.css=; see [[#styling-and-theming][Styling & theming]].
+- *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme
+  icons, absolute paths, system pixmaps, and symbolic variants.
+- *Async Command Launching*: Spawns binaries, scripts, and
+  [[https://flatpak.org/][Flatpaks]] asynchronously using GLib process spawning
+  without freezing the UI.
+- *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent
+  background utilities or specific application IDs from creating unwanted
+  launchers.
+- *Reproducible Builds*: Fully hermetic development environment and builds
+  powered by GNU Guile, Meson, and GNU Guix.
+- *Native fluid fish-eye* magnification effect on hover (a la macOS), enabled by
+  default and switchable per item or globally if you want less animation.
+- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar
+  exceeds available display dimensions.
+- *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
+  Scheme thunks you can replace with your own pollers; see
+  [[#dynamic-widgets][Dynamic widgets]].
+- *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
+  as a floating capsule or a full-width taskbar with window titles.
+- *Free software*: GPL-3.0-or-later, with documentation under the GNU FDL v1.3 or
+  newer.  Yours to run, read, fork and extend.
+
+------------------
+
+* Using the dock
+:PROPERTIES:
+:CUSTOM_ID: using-the-dock
+:END:
+
+A dock is a mouse-first object, so here is everything it can do once it is on
+your screen.
+
+** Launching, focusing and switching
+:PROPERTIES:
+:CUSTOM_ID: launching-focusing-and-switching
+:END:
+
+- *Left click a pinned launcher*: the app starts.  If the app is already running,
+  its window is focused and raised instead of a second instance being spawned.
+- *Left click a running app with several windows*: the window popover opens (see
+  below), so you pick which window you meant.
+- *Right click a running app with several windows*: the same popover, useful when
+  you want to close one instance without stealing focus.
+
+** The window popover (HUD)
+:PROPERTIES:
+:CUSTOM_ID: the-window-popover
+:END:
+
+When an app has one window, clicking it just focuses it.  When it has more than
+one, ~lambdock~ opens a floating GTK popover built from what the compositor told
+it:
+
+- a *header* with the application's name, then a separator;
+- *one row per open window*, with the window title as a button (ellipsized at 30
+  characters) to focus that instance, and a close button next to it;
+- *New Instance*, to start another instance of the application, when the item has
+  an exec command;
+- *Close All Windows*, shown only when more than one window is open;
+- *Launch Application*, when an app is in the dock but nothing is running yet.
+
+The protocol behind that list is described in
+[[#toplevel-tracking][Wayland Toplevel Tracking & Popovers]].
+
+** The dock's own menu
+:PROPERTIES:
+:CUSTOM_ID: the-docks-own-menu
+:END:
+
+Right-clicking the dock background opens a small menu with *About lambdock*
+(the splash dialog with version, licence and a link to the source) and *Quit*.
+
+** Scrolling a crowded dock
+:PROPERTIES:
+:CUSTOM_ID: scrolling-a-crowded-dock
+:END:
+
+When the launchers, running apps and widgets no longer fit on screen, the items
+are packed into an overflow-visible
+[[https://docs.gtk.org/gtk4/class.ScrolledWindow.html][scrolled viewport]]
+(~GtkScrolledWindow~).  Mouse wheel and touchpad scrolls translate directly into
+movement along the dock's axis, horizontally or vertically.
+
+** Auto-hide
+:PROPERTIES:
+:CUSTOM_ID: auto-hide
+:END:
+
+With ~dock-auto-hide?~ enabled, the dock slides off the screen edge with a
+250 ms cubic ease-out transition and comes back when the pointer reaches a
+two-pixel strip at that edge.  It waits a moment before hiding again (400 ms
+after a popover closes, 600 ms after the pointer leaves) so that a hasty
+mouse movement does not chase the dock away.  The hide/show is driven by
+=gtk_widget_add_tick_callback=, so it stays in step with your display's refresh
+rate, 60 Hz or 120 Hz or whatever your compositor gives it.
+
+------------------
+
+* Quick start (the impatient path)
+:PROPERTIES:
+:CUSTOM_ID: quick-start
+:END:
+
+You need [[https://guix.gnu.org/][GNU Guix]] for this path (the other paths are in
+[[#installing-lambdock][Installing lambdock]]) and a running layer-shell compositor.
+
+#+begin_src sh
+# 1. Get the source
+git clone https://codeberg.org/jjba23/lambdock.git
+cd lambdock
+
+# 2. Write a settings file
+mkdir -p ~/.config/lambdock
+cat > ~/.config/lambdock/settings.scm <<'EOF'
+(define dock-position 'bottom)
+(define dock-theme 'vanilla)
+(define dock-auto-hide? #t)
+(define dock-icon-size 48)
+(define dock-items
+  (append (preset-launchers-for 'alacritty 'firefox 'emacs)
+          (list (separator-item))
+          (preset-launchers-for 'ram 'cpu 'clock)))
+EOF
+
+# 3. Run it, with every dependency pinned
+guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
+#+end_src
+
+A themed dock should now be at the bottom of your screen with a few launchers
+and three live widgets.  Leave it running, edit =~/.config/lambdock/settings.scm=
+in your editor, and save: the dock rebuilds itself where it stands.  Swap
+~'vanilla~ for ~'snow-leopard~ or ~'windows-xp~ and save again to see the theme
+change.
+
+To get a dock on every monitor, set ~(define dock-monitor 'all)~.  To turn the
+dock into a full-width taskbar with window titles, set
+~(define dock-mode 'taskbar)~ and ~(define dock-show-window-titles? #t)~.
+
+------------------
+
+* Installing lambdock
+:PROPERTIES:
+:CUSTOM_ID: installing-lambdock
+:END:
+
+** Dependencies
+:PROPERTIES:
+:CUSTOM_ID: dependencies
+:END:
+
+The project requires the following C and Scheme dependencies:
+
+- *GTK 4* (~gtk4~)
+- *GTK4 Layer Shell* (~gtk4-layer-shell~)
+- *GNU Guile 3.0* (~guile-3.0~)
+- *Wayland development files* (~libwayland-dev~, ~wayland-protocols~,
+  ~wlr-protocols~)
+- [[https://mesonbuild.com/][Meson]] & [[https://ninja-build.org/][Ninja]], and
+  [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]]
+- [[https://www.gnu.org/software/gettext/][GNU gettext]] (for building the
+  translations)
+
+** GNU Guix
+:PROPERTIES:
+:CUSTOM_ID: gnu-guix
+:END:
+
+~lambdock~ is officially distributed via the
+[[https://guix.gnu.org/][Guix]] package manager. You can also use Guix locally and
+to develop on this project. See also the ~run~ maak task.
+
+Enter a development container with all required dependencies:
+
+#+begin_src sh
+guix time-machine --channels=channels.scm -- shell -m manifest.scm
+#+end_src
+
+Also, a ~guix.scm~ is provided to run lambdock fully with Guix.
+
+#+begin_src sh
+guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
+#+end_src
 
 -------
 
-* What systems does lambdock support?
+** Nix
+:PROPERTIES:
+:CUSTOM_ID: nix
+:END:
 
-~lambdock~ is a GNU/Linux first utility.
+~lambdock~ is officially part of [[https://search.nixos.org/packages][NixPkgs]], and
+can also easily be used with [[https://nixos.org/][Nix]] (flakes) too, where
+[[https://github.com/NixOS/nixpkgs][nixpkgs]] supplies the packages. See also the
+~nix-build~ maak task.
 
-The tool uses ~gtk4-layer-shell~ to render to the screen and positioning and for dock behavior.
+#+begin_src shell
+nix --extra-experimental-features 'nix-command flakes' build
+nix --extra-experimental-features 'nix-command flakes' run .#
+#+end_src
 
-That means it works well in Wayland compositors that support the  ~wlr-layer-shell-unstable-v1~ protocol, including:
+-------
 
-- KDE Plasma (Wayland session)
-- Smithay-based compositors: Niri, COSMIC Desktop
-- wlroots-based compositors: Sway, Hyprland, River, Wayfire
-- Mir-based compositors
+** Meson
+:PROPERTIES:
+:CUSTOM_ID: meson
+:END:
 
-Note: GNOME (Mutter) currently not supported due to not implementing the protocol
+The plain path, with [[https://mesonbuild.com/][Meson]] and
+[[https://ninja-build.org/][Ninja]] from your own distribution:
 
---------
+#+begin_src sh
+# Setup build directory
+meson setup build
 
+# Compile project
+meson compile -C build
 
-* Community & Support
+# Run locally
+./build/lambdock
+#+end_src
 
-Join the ~lambdock~ community to ask questions, discuss development, share configurations, screenshots, report issues, or just hang out:
+-------
 
-Issues & development: [[https://codeberg.org/jjba23/lambdock][Codeberg repository]]
+** Arch Linux
+:PROPERTIES:
+:CUSTOM_ID: arch-linux
+:END:
 
-Chat, support, discussion, announcements (Zulip): [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][Join the lambdock Zulip community]]
+On [[https://archlinux.org/][Arch Linux]], ensure the dev build tools are installed:
+=sudo pacman -S --needed base-devel=
 
-If you're unsure where to start, Zulip is recommended. Codeberg issues is also a good place to add ideas, report bugs or improvements.
+Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
+See also the ~arch-build~ maak task.
 
----------
+-------
 
-* Configuring lambdock
+** openSUSE (RPM distros)
+:PROPERTIES:
+:CUSTOM_ID: opensuse
+:END:
 
-Configurations are written in GNU Guile Scheme, and user style overrides are written in CSS/GTK4.
+~lambdock~ is packaged on [[https://www.opensuse.org/][openSUSE]]'s
+[[https://build.opensuse.org/package/show/home:jjba23/lambdock][OBS]] and you can
+download it from there, or add the Zypper repo.  The packages it produces are
+[[https://en.wikipedia.org/wiki/RPM_Package_Manager][RPMs]], which also fit Fedora
+and RHEL.
 
-~lambdock~ will scan your  configuration Directory: ~$XDG_CONFIG_HOME/lambdock/~ (usually =~/.config/lambdock/=) for ~settings*.scm~ files, effectively supporting multi-dock multi-config.
+To build the RPM locally on Tumbleweed, install the packaging tools and setup the
+developer directories. See also the ~rpm-build~ maak task.
 
-Tip: It might be useful sometimes to clean the Guile cache, specially when upgrading to newer ~lambdock~ versions. You can do this with =rm -rf ~/.cache/guile=
+#+begin_src shell
+sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
+rpmdev-setuptree
+#+end_src
 
-- Single Configuration File: =~/.config/lambdock/settings.scm=
-- Multi-Instance Configuration Files: =~/.config/lambdock/settings-1.scm=, =~/.config/lambdock/settings-2.scm=, etc.
-- *Styles and overrides*: ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually =~/.config/lambdock/styles.css=).
-- *Hot-Reloading*: Save your files, and ~lambdock~ automatically updates existing docks or spawns/destroys dock instances as files are created or deleted.
-- *Sensible Defaults:* Every option comes pre-configured—you only need to override and export the settings you wish to customize.
-- *Presets* that can help you reduce boilerplate, see [[file:scheme/lambdock/presets.scm]]
+Create the source tarball. You can do this with ~git archive~ (or also simply
+copying the directory and manually ~tar -cvzf~). This tarball should be placed in
+=~/rpmbuild/SOURCES/=
+
+Copy the spec and build the RPM:
+#+begin_src shell
+cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
+rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
+#+end_src
+
+Then you should get the RPM files successfully generated:
+#+begin_src shell
+~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
+~/rpmbuild/SRPMS/lambdock-0.1.0-0.src.rpm
+#+end_src
+
+Test the resulting package. Install it:
+
+#+begin_src shell
+sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
+#+end_src
+
+Then you can run ~lambdock~.
+
+-----------------
+
+** Debian (APT distros)
+:PROPERTIES:
+:CUSTOM_ID: debian
+:END:
+
+Install the required build tools and compile the package on
+[[https://www.debian.org/][Debian]] or Ubuntu (whose package manager is
+[[https://en.wikipedia.org/wiki/APT_(software)][APT]]).  See also the ~deb-build~
+maak task.
+
+#+begin_src shell
+# Install build dependencies on your Debian/Ubuntu system
+sudo apt update
+sudo apt install build-essential debhelper devscripts meson ninja-build \
+                 pkg-config libgtk-4-dev libgtk4-layer-shell-dev \
+                 guile-3.0-dev libwayland-dev wayland-protocols
+
+# Build the package (unsigned binary build)
+# you will need to copy the packaging/debian/* to root of repo or equivalent approach
+debuild -b -uc -us
+#+end_src
 
 --------------------
+
+** Flatpak
+:PROPERTIES:
+:CUSTOM_ID: flatpak
+:END:
+
+You can also use lambdock as a [[https://flatpak.org/][Flatpak]] (experimental).
+Ensure to give it the correct permissions (using something like
+[[https://flathub.org/apps/com.github.tchx84.Flatseal][Flatseal]]).
+
+#+begin_src shell
+flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50
+flatpak-builder --install --user build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml --force-clean
+flatpak run org.jointhefreeworld.lambdock
+#+end_src
+
+----------------------
+
+** Podman/Docker
+:PROPERTIES:
+:CUSTOM_ID: podman-docker
+:END:
+
+~lambdock~ is also available as a container, on
+[[https://podman.io/][Podman]] or [[https://www.docker.com/][Docker]].  You can pull
+its images from
+[[https://hub.docker.com/repository/docker/jjba23/lambdock/general][DockerHub]] or
+build it yourself. It's also recommended to see ~maak.scm~ for more details on
+how to use it that way.
+
+In a nutshell, you can run lambdock easily this way, provided you mount necessary
+devices and files.
+
+#+begin_src shell
+podman run -d --rm --name lambdock \
+       --network host \
+       --userns=keep-id --ipc=host \
+       --device /dev/dri \
+       -e XDG_RUNTIME_DIR=/run/user/$(id -u) \
+       -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
+       -e HOME="$HOME" \
+       -v /run/user/$(id -u):/run/user/$(id -u):z \
+       -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro" \
+       -v "$HOME:$HOME" \
+       -v /usr/share/icons:/usr/share/icons:ro \
+       -v /usr/share/applications:/usr/share/applications:ro \
+       lambdock:latest
+#+end_src
+
+------------------
+
+* Configuring lambdock
+:PROPERTIES:
+:CUSTOM_ID: configuring-lambdock
+:END:
+
+Configurations are written in GNU Guile Scheme, and user style overrides are
+written in CSS/GTK4.
+
+~lambdock~ will scan your configuration directory -- the one the XDG base
+directory specification
+([[https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html][freedesktop.org]])
+puts at ~$XDG_CONFIG_HOME/lambdock/~, usually =~/.config/lambdock/= -- for
+~settings*.scm~ files, effectively supporting multi-dock multi-config.
+
+Tip: It might be useful sometimes to clean the Guile cache, specially when
+upgrading to newer ~lambdock~ versions. You can do this with
+=rm -rf ~/.cache/guile=
+
+- *Single Configuration File*: =~/.config/lambdock/settings.scm=
+- *Multi-Instance Configuration Files*: =~/.config/lambdock/settings-1.scm=,
+  =~/.config/lambdock/settings-2.scm=, etc.
+- *Styles and overrides*: ~$XDG_CONFIG_HOME/lambdock/styles.css~ (usually
+  =~/.config/lambdock/styles.css=).
+- *Hot-Reloading*: Save your files, and ~lambdock~ automatically updates existing
+  docks or spawns/destroys dock instances as files are created or deleted.
+- *Sensible Defaults:* Every option comes pre-configured -- you only need to
+  override and export the settings you wish to customize.
+- *Presets* that can help you reduce boilerplate, see
+  [[file:scheme/lambdock/presets.scm]]
+
+** A settings file, top to bottom
+:PROPERTIES:
+:CUSTOM_ID: a-settings-file
+:END:
 
 #+begin_src scheme
 ;; Enable/disable smooth edge sliding auto-hide
@@ -170,14 +704,138 @@ Tip: It might be useful sometimes to clean the Guile cache, specially when upgra
                   #:icon "emacs")))
 #+end_src
 
-Since lambdock configuration files are evaluated directly as standard GNU Guile Scheme, you can run any arbitrary Guile code ‼️✨ right inside any =~/.config/lambdock/settings*.scm= files.  You can import modules, define helper functions, query system state (like time, hostnames, or installed packages), do API calls, and dynamically build your configuration.
+** Configuration options reference
+:PROPERTIES:
+:CUSTOM_ID: configuration-options
+:END:
 
-#+begin_export html
-<details>
-  <summary>See <strong>examples of configs</strong> (e.g. $HOME/.config/lambdock/settings-joe.scm) </summary>
-#+end_export
+Every option below is a top-level definition in your =settings*.scm=.  Writing
+~dock-foo~ or just ~foo~ both work; the defaults are what you get when you say
+nothing at all.
 
-Here an example of separators being used along with presets.
+| Option                        | Default                      | What it does                                                                   |
+|-------------------------------+------------------------------+--------------------------------------------------------------------------------|
+| ~dock-position~               | ~'bottom~                    | Screen edge to attach to: ~'bottom~, ~'top~, ~'left~, ~'right~.                 |
+| ~dock-icon-size~              | ~48~                         | Icon pixel size.                                                               |
+| ~dock-items~                  | ~'()~                        | The item list -- launchers, separators and dynamic widgets, in order.          |
+| ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
+| ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
+| ~dock-mode~                   | ~'dock~                      | ~'dock~ (floating capsule) or ~'taskbar~ (full-width bar).                      |
+| ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
+| ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
+| ~dock-show-window-titles?~    | ~#f~                         | Show the focused window title next to running items (taskbar style).            |
+| ~dock-hover-animate?~         | ~#t~                         | Fish-eye magnification on hover.                                               |
+| ~dock-track-windows?~         | ~#t~                         | Track open apps/windows for indicators, focus and popovers.                     |
+| ~dock-exclude-apps~           | ~'()~                        | App IDs never to show in the dock (e.g. ~'("warp-taskbar")~).                   |
+| ~dock-enable-repl?~           | ~#f~                         | Serve a Unix socket REPL for live inspection and mutation.                      |
+| ~dock-repl-socket-path~       | ~"/tmp/lambdock-repl.sock"~  | Where that REPL listens.                                                        |
+
+The same names are also the keyword arguments of the programmatic
+~(configure-dock! ...)~ procedure, which is what the loader calls after reading
+your file and what you can call yourself from the REPL:
+
+#+begin_src scheme
+(configure-dock!
+ #:position 'right
+ #:theme 'windows-11
+ #:icon-size 40
+ #:mode 'taskbar
+ #:items (preset-launchers-for 'alacritty 'emacs)
+ #:auto-hide? #t
+ #:enable-repl? #t
+ #:repl-socket-path "/tmp/lambdock-repl.sock")
+#+end_src
+
+** The dock DSL: items and presets
+:PROPERTIES:
+:CUSTOM_ID: the-dock-dsl
+:END:
+
+~lambdock~ provides a small Lisp DSL for defining your dock, based on items and
+presets.
+
+| Scheme Constructor / Procedure  | Return Type | Description                                        | Keyword Arguments                                                                                     |
+|---------------------------------+-------------+----------------------------------------------------+-------------------------------------------------------------------------------------------------------|
+| ~(app-item ...)~                | Record      | Custom application launcher definition              | ~#:name~, ~#:icon~, ~#:exec~, ~#:hover-animate?~                                                       |
+| ~(dynamic-item ...)~            | Record      | Dynamic polling widget showing live textual data    | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~                       |
+| ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
+| ~(preset-launcher 'symbol)~     | Record      | Standard launcher resolved from the preset list      | Symbol (e.g. ~'emacs~, ~'alacritty~)                                                                    |
+| ~(preset-launchers-for 'a 'b)~  | List        | Batch helper returning a list of preset launchers    | Variadic list of symbols, or one list of symbols                                                       |
+| ~(preset-icon 'symbol)~         | String      | Resolves the default icon name for a given preset    | Symbol                                                                                                |
+
+*** Dynamic widgets
+:PROPERTIES:
+:CUSTOM_ID: dynamic-widgets
+:END:
+
+Dynamic items poll a Scheme thunk on the GTK main thread and print a string.
+~lambdock~ ships ready-made ones, each with a sane default exec action when you
+click it:
+
+| Preset             | Polls                                    | Default interval |
+|--------------------+------------------------------------------+------------------|
+| ~'clock~           | ~get-clock-text~ (day, date, time)       | 1 s              |
+| ~'ram~             | ~get-used-ram-percent~ (from /proc)      | 2 s              |
+| ~'cpu~             | ~get-cpu-percent~ (delta between polls)  | 2 s              |
+| ~'cpu-temp~        | ~get-cpu-temp~ (thermal zone)            | 3 s              |
+| ~'battery~         | ~get-battery-status~ (capacity, charging) | 5 s             |
+
+Writing your own is one thunk.  Because the poller runs on the main thread, it
+must not block -- keep it to a cheap read, never a sleep:
+
+#+begin_src scheme
+;; A widget that shows how many days remain in the year
+(define (get-days-left)
+  (let* ((now (localtime (current-time)))
+         (yday (tm:yday now))
+         (year (tm:year now))
+         (leap? (and (= 0 (modulo year 4))
+                     (or (not (= 0 (modulo year 100)))
+                         (= 0 (modulo year 400)))))
+         (total (if leap? 366 365)))
+    (format #f "~a days left" (- total yday))))
+
+(define dock-items
+  (list (dynamic-item #:name "Year"
+                      #:icon "x-office-calendar"
+                      #:exec "gnome-calendar"
+                      #:poll-fn get-days-left
+                      #:poll-interval 60000
+                      #:hover-animate? #f)))
+#+end_src
+
+*** The preset zoo
+:PROPERTIES:
+:CUSTOM_ID: the-preset-zoo
+:END:
+
+~preset-launchers-for~ understands symbols for a growing list of common apps,
+both native and Flatpak.  The Flatpak variants are suffixed ~-flatpak~ and run
+through ~flatpak run ...~.
+
+- *Browsers*: ~google-chrome~, ~firefox~, ~chromium~, ~brave~, ~nyxt~,
+  ~zen-browser~, ~librewolf~
+- *Terminals*: ~alacritty~, ~kitty~, ~foot~, ~wezterm~, ~gnome-terminal~,
+  ~ghostty~
+- *Editors & IDEs*: ~emacs~, ~vscode~, ~intellij~, ~webstorm~, ~datagrip~,
+  ~bruno~, ~zed~, ~neovim~
+- *Utilities*: ~nautilus~, ~gnome-calendar~, ~gnome-calculator~, ~pavucontrol~,
+  ~btop~, ~onepassword~, ~thunderbird~, ~bitwarden~
+- *Media & messaging*: ~spotify~, ~zapzap~, ~discord~, ~slack~, ~telegram~,
+  ~gimp~, ~inkscape~, ~obs~, ~vlc~, ~steam~, ~blender~
+- *Widgets*: ~ram~, ~cpu~, ~cpu-temp~, ~battery~, ~clock~
+
+Anything missing is still one ~app-item~ away -- or one more entry in
+[[file:scheme/lambdock/presets.scm][presets.scm]], if you feel like giving it
+back to everyone.
+
+*** Building your item list procedurally
+:PROPERTIES:
+:CUSTOM_ID: building-your-item-list
+:END:
+
+Here is an example of separators being used along with presets.
+
 #+begin_src scheme
 ;; Alternatively, construct dock-items procedurally using list operations:
 (define dock-items
@@ -196,26 +854,8 @@ Here an example of separators being used along with presets.
                                 'onepassword)))
 #+end_src
 
-Here an example of a dynamic setting, where we only do auto-hide if the host name is ~thinkpad~. For example can be useful to have dock auto-hide on laptop but not on other machines.
-#+begin_src scheme
-(use-modules (ice-9 popen)
-             (ice-9 rdelim)
-             (srfi srfi-19)
-             (srfi srfi-1))
+Here a snapshot of my own (@jjba23) configuration:
 
-;; Helper to run a shell command and return its output as a clean string
-(define (sh-output cmd)
-  (let* ((port (open-input-pipe cmd))
-         (output (read-line port)))
-    (close-pipe port)
-    (if (eof-object? output) "" output)))
-
-;; Enable auto-hide only on a specific hostname (e.g., laptop setup)
-(define dock-auto-hide?
-  (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
-#+end_src
-
-Here a snapshot of my own (@jjba23) configuration
 #+begin_src scheme
 (define dock-auto-hide? #t)
 
@@ -256,12 +896,70 @@ Here a snapshot of my own (@jjba23) configuration
    (preset-launchers-for 'ram 'cpu 'cpu-temp 'battery)))
 #+end_src
 
-#+begin_export html
-</details>
-#+end_export
+** Your config is a real program
+:PROPERTIES:
+:CUSTOM_ID: your-config-is-a-real-program
+:END:
 
+Since lambdock configuration files are evaluated directly as standard GNU Guile
+Scheme, you can run *any arbitrary Guile code* ‼️✨ right inside any
+=~/.config/lambdock/settings*.scm= file.  You can import modules, define helper
+functions, query system state (like time, hostnames, or installed packages), do
+API calls, and dynamically build your configuration.
 
-Also, here a small demo of hot-reload
+#+begin_src scheme
+(use-modules (ice-9 popen)
+             (ice-9 rdelim)
+             (srfi srfi-19)
+             (srfi srfi-1))
+
+;; Helper to run a shell command and return its output as a clean string
+(define (sh-output cmd)
+  (let* ((port (open-input-pipe cmd))
+         (output (read-line port)))
+    (close-pipe port)
+    (if (eof-object? output) "" output)))
+
+;; Enable auto-hide only on a specific hostname (e.g., laptop setup)
+(define dock-auto-hide?
+  (string=? (string-trim-both (sh-output "hostname")) "thinkpad"))
+
+;; Pick the dock edge from the current hour: a sunny-side-up desk by day...
+(define dock-position
+  (if (< (date-hour (current-date)) 12) 'top 'bottom))
+#+end_src
+
+That flexibility is the point: a dock that reads your machine, instead of a dock
+that only reads a file.
+
+** Multi-config & multi-dock instances
+:PROPERTIES:
+:CUSTOM_ID: multi-config-and-multi-dock
+:END:
+
+~lambdock~ features built-in multi-dock orchestration. Rather than being limited
+to a single dock bar, you can run multiple independent docks simultaneously
+across different screen edges or monitors.
+
+- *Automatic Directory Monitoring*: ~lambdock~ watches =~/.config/lambdock/= for
+  files matching ~settings.scm~ or ~settings-*.scm~ (e.g., ~settings-left.scm~,
+  ~settings-bottom.scm~).
+- *Isolated State*: Each configuration file defines its own isolated
+  ~LambdockState~, position (~dock-position~), theme (~dock-theme~), monitor
+  targets (~dock-monitor~), and item launcher layout (~dock-items~).
+- *Dynamic Spawning*: Creating a new ~settings-2.scm~ file instantly spawns a new
+  dock bar on screen.
+- *Dynamic Hot-Reloading*: Editing any ~settings-*.scm~ file hot-reloads that
+  specific dock instance without flickering or restarting other running
+  instances.
+- *Dynamic Destruction*: Deleting a ~settings-*.scm~ file safely tears down and
+  destroys its corresponding dock window, removing Wayland handles and GTK
+  widgets without crashing the application.
+- *Monitor Hotplug*: Docks survive monitors coming and going; layer-shell is
+  unbound from an output before it is disconnected rather than after.
+
+Also, here is a small demo of hot-reload:
+
 #+begin_export html
 <details>
   <summary>see GIF</summary>
@@ -273,125 +971,96 @@ Also, here a small demo of hot-reload
 </details>
 #+end_export
 
-lambdock provides a beautiful Lisp DSL for defining your dock, based on items and presets
-#+begin_export html
-<details>
-  <summary>see <strong>reference</strong> and available item <strong>constructors</strong></summary>
-#+end_export
+** Styling & theming 🎨
+:PROPERTIES:
+:CUSTOM_ID: styling-and-theming
+:END:
 
-| Scheme Constructor / Procedure | Return Type | Description | Keyword Arguments |
-|--------------------------------+-------------+-------------+-------------------|
-| ~(app-item ...)~ | Record | Custom application launcher definition | ~#:name~, ~#:exec~, ~#:icon~ |
-| ~(dynamic-item ...)~ | Record | Dynamic polling widget displaying dynamic textual data | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:interval-ms~, ~#:hover-animate?~ |
-| ~(preset-launcher 'symbol)~ | Record | Standard launcher resolved from internal preset list | Symbol (e.g. ~'emacs~, ~'alacritty~) |
-| ~(preset-launchers-for 'a 'b)~ | List | Batch helper returning a list of preset launchers | Variadic list of symbols |
-| ~(separator-item)~ | Record | Layout divider line | None |
-| ~(preset-icon 'symbol)~ | String | Resolves default icon name string for a given preset | Symbol |
-
-#+begin_export html
-</details>
-#+end_export
------------
-
-*** Multi-Config & Multi-Dock Instance
-
-~lambdock~ features built-in multi-dock orchestration. Rather than being limited to a single dock bar, you can run multiple independent docks simultaneously across different screen edges or monitors.
-
-- *Automatic Directory Monitoring*: ~lambdock~ watches =~/.config/lambdock/= for files matching ~settings.scm~ or ~settings-*.scm~ (e.g., ~settings-left.scm~, ~settings-bottom.scm~).
-
-Each configuration file defines its own isolated ~LambdockState~, position (~dock-position~), theme (~dock-theme~), monitor targets (~dock-monitor~), and item launcher layout (~dock-items~).
-- *Dynamic Spawning*: Creating a new ~settings-2.scm~ file instantly spawns a new dock bar on screen.
-- *Dynamic Hot-Reloading*: Editing any ~settings-*.scm~ file hot-reloads that specific dock instance without flickering or restarting other running instances.
-- *Dynamic Destruction*: Deleting a ~settings-*.scm~ file safely tears down and destroys its corresponding dock window, removing Wayland handles and GTK widgets without crashing the application.
-
---------
-
-*** Dock Scrolling & Viewport
-
-When a dock contains numerous pinned launchers, running app windows, and dynamic widgets that exceed the available display width or height:
-
-- *GTK Scrolled Viewport*: ~lambdock~ automatically encapsulates dock items inside an overflow-visible scrolled viewport container (~GtkScrolledWindow~).
-- *Mouse Wheel Gestures*: Scrolling your mouse wheel or touchpad over the dock bar translates input deltas smoothly into axis movement along horizontal or vertical docks.
-
---------
-
-* Why lambdock? A comparison table
-
-While tools like Waybar and EWW excel as status bars or custom widget dashboards, ~lambdock~ is specifically engineered as a hyper-hackable, Wayland-native high-performance application dock with an embedded Lisp engine and full GTK4 graphics core.
-
-#+ATTR_CENTRAL: :align c
-| Feature / Dimension               | ~lambdock~                         | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | macOS Dock        |
-|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Primary Design Target             | Application Dock                   | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
-| Wayland Native (~wlr-layer-shell~) | ✅                                 | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (macOS Quartz)    |
-| UI Toolkit & Graphics Core        | GTK4 (GL / GSK)                    | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
-|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Config & Scripting Engine         | GNU Guile Scheme (Lisp)            | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
-| Multi-Dock Instances (Files)      | ✅ Dynamic (~settings-*.scm~)      | ⚠️ Limited         | ⚠️ Multi-bar config| ⚠️ Multi-bar config   | ❌ Single dock    |
-| Live Interactive Socket REPL      | ✅ (Emacs/Geiser, ~socat~)         | ❌                 | ❌                 | ❌                    | ❌                 |
-| Hot-Reloading                     | ✅ Runtime Code, Docks & CSS  | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
-| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~               | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
-|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Wayland Window Tracking           | ✅ ~zwlr_foreign_toplevel_v1~      | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)    |
-| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu      |
-| Dynamic Polling Widgets           | ✅ Scheme Thunks (RAM/CPU/Clock)   | ⚠️ C Plugins       | ✅ Custom modules  | ✅ Yuck pollers       | ❌ Static         |
-| Hover Magnification (Fish-eye)    | ✅ Cosine-Bell (Per-Item Toggle)   | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
-| Dock Viewport Scrolling           | ✅ Mouse Wheel / Touchpad          | ❌                 | ❌                 | ❌                    | ❌                 |
-| Smooth Auto-Hide Animations       | ✅ Frame-Clock Eased Slide         | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
-|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
-| Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                 |
-| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
-| Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
-
-
---------------
-
-* Styling & Theming 🎨
-
-~lambdock~ ships with pre-baked themes embedded via build defines.
+~lambdock~ ships with pre-baked themes embedded via build defines, and every one
+of them is a CSS file you are free to read, copy and argue with.
 
 #+begin_export html
 <details>
   <summary>See <strong>some screenshots of the themes here</strong></summary>
 #+end_export
 
-- Vanilla Glassmorphism 🧊 (~'vanilla~): Modern translucent dark pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
-- Vanilla Light Glassmorphism 🧊 (~'vanilla-light~): Modern frosted glass translucent pill layout with soft backdrop reflections, glow indicators, and spring physics button effects.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png]]
-- Snow Leopard 3D Glass 🍎  (~'snow-leopard~, ~'snow-leopard-dark~): Classic 3D glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots, and vertical lift displacement.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png]]
-- Solarized Light ☀️ (~'solarized-light~): Timeless palette, easy on the eyes, ivory, roasted, off-white goodness.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png]]
-- Nature 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted specular borders, and a lively Emerald Leaf glowing running app indicator.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-58.png]]
-- Unity 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark aubergine glass background, Ubuntu warm orange highlights, and an active indicator glowing in iconic Orange.
-- macOS Big Sur 🍎 (~'macos-big-sur~): frosted, softly-rounded translucent capsule with a white running dot, echoing macOS 11.
-- macOS Ventura / Sonoma 🍎 (~'macos-ventura~): darker, denser frosted capsule with a stronger shadow and a small dock dot, echoing macOS 13/14.
-- Windows XP (Luna) 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised, beveled task buttons; running apps look pressed.
-- Windows 10 🪟 (~'windows-10~): flat, near-black rectangular taskbar with a thin blue accent underline on running apps.
-- Windows 11 🪟 (~'windows-11~): translucent, subtly-rounded dark surface with a small accent pill running indicator.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
-- None (~'none~): no styling applied, using default GTK appearance.
-[[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
+- *Vanilla Glassmorphism* 🧊 (~'vanilla~): Modern translucent dark pill layout
+  with soft backdrop reflections, glow indicators, and spring physics button
+  effects.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
+
+- *Vanilla Light Glassmorphism* 🧊 (~'vanilla-light~): Modern frosted glass
+  translucent pill layout with soft backdrop reflections, glow indicators, and
+  spring physics button effects.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png]]
+
+- *Snow Leopard 3D Glass* 🍎 (~'snow-leopard~, ~'snow-leopard-dark~): Classic 3D
+  glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots,
+  and vertical lift displacement.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png]]
+
+- *Solarized Light* ☀️ (~'solarized-light~): Timeless palette, easy on the eyes,
+  ivory, roasted, off-white goodness.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png]]
+
+- *Nature* 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted
+  specular borders, and a lively Emerald Leaf glowing running app indicator.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-58.png]]
+
+- *Unity* 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark
+  aubergine glass background, Ubuntu warm orange highlights, and an active
+  indicator glowing in iconic Orange.
+- *macOS Big Sur* 🍎 (~'macos-big-sur~): frosted, softly-rounded translucent
+  capsule with a white running dot, echoing macOS 11.
+- *macOS Ventura / Sonoma* 🍎 (~'macos-ventura~): darker, denser frosted capsule
+  with a stronger shadow and a small dock dot, echoing macOS 13/14.
+- *Windows XP (Luna)* 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised,
+  beveled task buttons; running apps look pressed.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
+
+- *Windows 10* 🪟 (~'windows-10~): flat, near-black rectangular taskbar with a
+  thin blue accent underline on running apps.
+- *Windows 11* 🪟 (~'windows-11~): translucent, subtly-rounded dark surface with
+  a small accent pill running indicator.
+- *None* (~'none~): no styling applied, using default GTK appearance.
+
+  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
 
 #+begin_export html
 </details>
 #+end_export
 
----------
+And here is the same dock wearing WhiteSur icons, over a Niri session:
 
-You can override any GTK style class on the fly without re-compiling C sources. ~lambdock~ automatically monitors and loads user styles from:
+[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif]]
+
+** Overriding a theme with your own CSS
+:PROPERTIES:
+:CUSTOM_ID: overriding-a-theme
+:END:
+
+You can override any GTK style class on the fly without re-compiling C sources.
+~lambdock~ automatically monitors and loads user styles from:
 
 #+begin_src sh
 ~/.config/lambdock/styles.css
 #+end_src
 
-User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking precedence over default app themes.
+User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking
+precedence over default app themes.
 
-Make sure you use [[https://docs.gtk.org/gtk4/css-properties.html][GTK CSS]], not "web-browser CSS". For understanding better what is available and what you can override, you should look at the theme definitions at ~./resources/css~.
+Make sure you use [[https://docs.gtk.org/gtk4/css-properties.html][GTK CSS]], not
+"web-browser CSS". For understanding better what is available and what you can
+override, you should look at the theme definitions at ~./resources/css~.
 
 An example override of a theme could look like this:
+
 #+begin_src css
 /* Custom user tweaks in ~/.config/lambdock/styles.css */
 
@@ -402,12 +1071,17 @@ An example override of a theme could look like this:
 }
 #+end_src
 
+Save the file and the change is applied live, just like the Scheme settings.
 
--------
+** Dock mode: floating dock or full-width taskbar 📊
+:PROPERTIES:
+:CUSTOM_ID: dock-mode
+:END:
 
-* Dock mode: floating dock or full-width taskbar 📊
-
-~dock-mode~ switches between the default floating, content-hugging dock capsule (~'dock~) and a full-width bar anchored edge-to-edge (~'taskbar~). In taskbar mode the layer-shell surface is stretched across the monitor, the capsule is squared off, and icons are laid out from the start of the bar.
+~dock-mode~ switches between the default floating, content-hugging dock capsule
+(~'dock~) and a full-width bar anchored edge-to-edge (~'taskbar~). In taskbar
+mode the layer-shell surface is stretched across the monitor, the capsule is
+squared off, and icons are laid out from the start of the bar.
 
 #+begin_src scheme
 ;; 'dock (default) -> floating capsule sized to its icons
@@ -415,28 +1089,48 @@ An example override of a theme could look like this:
 (define dock-mode 'taskbar)
 #+end_src
 
-On top of that, ~dock-show-window-titles?~ renders the focused window's title next to each running app's icon, like the classic Windows XP taskbar. Pinned apps that are not running stay icon-only, and titles are ellipsized when they get long.
+On top of that, ~dock-show-window-titles?~ renders the focused window's title next
+to each running app's icon, like the classic Windows XP taskbar. Pinned apps that
+are not running stay icon-only, and titles are ellipsized when they get long.
 
 #+begin_src scheme
 ;; Show window titles on running app items (Windows XP-style taskbar buttons)
 (define dock-show-window-titles? #t)
 #+end_src
 
-Combine either mode with any theme. The ~'windows-*~ and ~'macos-*~ themes include dedicated taskbar styling, and a generic taskbar modifier squares off the capsule and styles the title labels when needed.
+Combine either mode with any theme. The ~'windows-*~ and ~'macos-*~ themes
+include dedicated taskbar styling, and a generic taskbar modifier squares off the
+capsule and styles the title labels when needed.
 
--------
+** Finding icon names
+:PROPERTIES:
+:CUSTOM_ID: finding-icon-names
+:END:
 
-* Finding icon names
+~lambdock~ supports loading and specifying icons in different ways. It loads the
+active GTK 4 Icon theme and proceeds to load the icon.
 
-~lambdock~ supports loading and specifying icons in different ways. It loads the active GTK 4 Icon theme and proceeds to load the icon.
+When you pass an icon string to ~app-item~, the C runtime's
+~create_image_for_icon~ function checks for the icon in this order:
 
-When you pass an icon string to ~app-item~, the C runtime's ~create_image_for_icon~ function checks for the icon in this order:
+1. *Embedded Resource*: A ~resource://~ path, or one under
+   ~/org/jointhefreeworld/lambdock/~, is loaded straight from the GResource
+   bundle.
+2. *Direct File Path*: Checks if the string is a valid file path on disk.
+3. *Theme Icon*: Queries
+   [[https://docs.gtk.org/gtk4/class.IconTheme.html][GtkIconTheme]] for the icon
+   name in your active GTK icon theme (e.g., Papirus, Adwaita, Yaru), otherwise
+   through [[https://en.wikipedia.org/wiki/Dconf][DConf]].
+4. *System Pixmaps*: Searches ~pixmaps/<name>.png~ in each XDG system data
+   directory (usually ~/usr/share/pixmaps/~).
+5. *Symbolic Fallback*: Appends ~-symbolic~ to try a monochrome fallback.
+6. *Generic Fallback*: Displays the standard application-x-executable icon if no
+   match is found.
 
-1. Direct File Path: Checks if the string is a valid file path on disk.
-2. Theme Icon: Queries GtkIconTheme for the icon name in your active GTK icon theme (e.g., Papirus, Adwaita, Yaru), otherwise through DConf.
-3. System Pixmaps: Checks ~/usr/share/pixmaps/~.
-4. Symbolic Fallback: Appends -symbolic to try a monochrome fallback.
-5. Generic Fallback: Displays the standard application-x-executable icon if no match is found.
+The pipeline lives in ~create_image_for_icon~
+([[file:src/ui/icon_resolver.c][src/ui/icon_resolver.c]]);
+[[file:HACKING.org::#module-reference-c][HACKING.org]] lists the same stages from
+the C side.
 
 You can also find available icons already in many ways, see some examples below:
 
@@ -455,29 +1149,21 @@ rg -i "^Icon=" ~/.local/share/flatpak/exports/share/applications/*.desktop
 find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg$//' | sort -u
 #+end_src
 
----------
-
-* Etymology
-
-The name /lambdock/ is a play on words combining:
-
--  *Ship Docks* ⚓ where containers and applications dock safely.
-- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
-- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
-- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
-
-~lambdock~ adopts as  its project logo a modified version of the  [[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]], but without attaching itself to any religious meaning or belief.
-
-You could say using this dock /es casi una experiencia religiosa como la de [[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]]/
-
----------
-
+------------------
 
 * Interactive lambdock REPL
+:PROPERTIES:
+:CUSTOM_ID: repl
+:END:
 
-For purposes of development, experimentation and live hackability, ~lambdock~ features an embedded GNU Guile Scheme runtime. You can enable a background Unix domain socket REPL to query or dynamically alter the running dock's state in real time.
+For purposes of development, experimentation and live hackability, ~lambdock~
+features an embedded GNU Guile Scheme runtime. You can enable a background
+[[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]] REPL to
+query or dynamically alter the running dock's state in real time.
 
-In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. You can optionally customize the socket path using =#:repl-socket-path= (defaults to =/tmp/lambdock-repl.sock=):
+In your =~/.config/lambdock/settings.scm= file, set ~dock-enable-repl?~ to ~#t~.
+You can optionally customize the socket path using ~dock-repl-socket-path~
+(defaults to =/tmp/lambdock-repl.sock=):
 
 #+begin_src scheme
 (configure-dock!
@@ -488,9 +1174,11 @@ In your =~/.config/lambdock/settings.scm= file, set =#:enable-repl?= to =#t=. Yo
  #:repl-socket-path "/tmp/lambdock-repl.sock")
 #+end_src
 
-You can then inspect or modify the dock state, and when desired also reload the dock (with ~reload-dock!~).
+You can then inspect or modify the dock state, and when desired also reload the
+dock (with ~reload-dock!~).
 
-Once connected, you can evaluate Scheme expressions against the running ~lambdock~ instance, possibilities are endless, e.g.
+Once connected, you can evaluate Scheme expressions against the running
+~lambdock~ instance, possibilities are endless, e.g.
 
 #+begin_example
 scheme@(guile-user)> (use-modules (lambdock core))
@@ -499,9 +1187,13 @@ scheme@(guile-user)> (set-dock-theme! 'nature)
 scheme@(guile-user)> (reload-dock!)
 #+end_example
 
-*** Emacs (Geiser) — Recommended
+** Emacs (Geiser) -- Recommended
+:PROPERTIES:
+:CUSTOM_ID: emacs-geiser
+:END:
 
-If you use Emacs with Geiser:
+If you use [[https://www.gnu.org/software/emacs/][Emacs]] with
+[[https://www.nongnu.org/geiser/][Geiser]]:
 
 1. Run ~M-x geiser-connect-local~.
 2. Select ~guile~ as the Scheme implementation.
@@ -518,10 +1210,15 @@ If you use Emacs with Geiser:
 </details>
 #+end_export
 
+** Other options
+:PROPERTIES:
+:CUSTOM_ID: repl-other-options
+:END:
 
-*** Other options
-
-You can connect directly from your terminal using different tooling, like ~nc~, ~ncat~,  ~socat~ wrapped with ~rlwrap~ , and others:
+You can connect directly from your terminal using different tooling, like
+[[https://en.wikipedia.org/wiki/Netcat][nc]], [[https://nmap.org/ncat/][ncat]] or
+[[http://www.dest-unreach.org/socat/][socat]] wrapped with
+[[https://github.com/hanslub42/rlwrap][rlwrap]], and others:
 
 #+begin_src sh
 socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
@@ -530,34 +1227,45 @@ nc -U /tmp/lambdock-repl.sock
 rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
 #+end_src
 
-
------------
+------------------
 
 * Wayland Toplevel Tracking & Popovers
+:PROPERTIES:
+:CUSTOM_ID: toplevel-tracking
+:END:
 
-~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
+~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly
+from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
 
-- Single Window: Left-clicking a running app launcher focuses and raises its existing window surface.
+- *Single Window*: Left-clicking a running app launcher focuses and raises its
+  existing window surface.
+- *Multiple Windows*: Left-clicking or right-clicking an app launcher with
+  multiple open instances opens a floating GTK Popover HUD.
+- *Popover Capabilities*: Select individual windows by title, close specific
+  window instances, open a new window, or execute a "Close All Windows" command.
 
-- Multiple Windows: Left-clicking or right-clicking an app launcher with multiple open instances opens a floating GTK Popover HUD.
-
-Popover Capabilities: Select individual windows by title, close specific window instances, or execute a "Close All Windows" command.
+Window tracking can be switched off entirely with ~dock-track-windows?~ for a
+dock that is purely a launcher, and specific applications can be kept out of the
+dock with ~dock-exclude-apps~.
 
 ------------------
 
-* Developer Onboarding 📚
-
-New to the codebase? Start with the [[file:HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C core, the embedded GNU Guile Scheme engine, the bi-directional data flow, the full dock/item/window lifecycles, the build and test workflow, and the common pitfalls to watch out for.
-
--------------------------------------------------------------------------------
-
 * Bi-Directionality of C and Guile Scheme
+:PROPERTIES:
+:CUSTOM_ID: c-guile-bidirectionality
+:END:
 
-~lambdock~ is not merely configured by Scheme. It has an embedded, extensible Lisp engine and runtime environment which complements a high-performance C applciation core and graphics engine. Execution flows bi-directionally between C and Guile.
+~lambdock~ is not merely configured by Scheme. It has an embedded, extensible
+Lisp engine and runtime environment which complements a high-performance C
+application core and graphics engine. Execution flows bi-directionally between C
+and Guile.
 
-The entry point of the binary (~main.c~) boots the Guile interpreter using ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to manage state and extract settings.
+The entry point of the binary (~main.c~) boots the Guile interpreter using
+~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to
+manage state and extract settings.
 
-Scheme is not restricted to passive data declarations, as it can trigger actions inside the running C engine.
+Scheme is not restricted to passive data declarations, as it can trigger actions
+inside the running C engine.
 
 #+begin_src mermaid
 flowchart LR
@@ -608,188 +1316,287 @@ flowchart LR
   <summary>See <strong>a more detailed explanation here</strong></summary>
 #+end_export
 
+** C → Guile (Embedding & Inspection)
+:PROPERTIES:
+:CUSTOM_ID: c-to-guile
+:END:
 
-*** C → Guile (Embedding & Inspection)
+- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and
+  evaluate the user's =~/.config/lambdock/settings.scm=.
+- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and
+  Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to
+  retrieve properties like ~get-dock-position~, ~get-dock-theme~, and
+  ~get-dock-items~.
+- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's
+  ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix
+  domain socket thread.
 
-- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and evaluate the user's =~/.config/lambdock/settings.scm=.
-- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to retrieve properties like ~get-dock-position~, ~get-dock-theme~, and ~get-dock-items~.
-- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix domain socket thread.
+** Guile → C (Extending & Primitives)
+:PROPERTIES:
+:CUSTOM_ID: guile-to-c
+:END:
 
-*** Guile → C (Extending & Primitives)
+- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses
+  ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside
+  the ~(lambdock core)~ module.
+- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly
+  calls the C function ~scm_reload_dock~.
 
-- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside the ~(lambdock core)~ module.
-- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly calls the C function ~scm_reload_dock~.
+** Thread-Safe Async Dispatch (~g_idle_add~)
+:PROPERTIES:
+:CUSTOM_ID: thread-safe-dispatch
+:END:
 
-*** Thread-Safe Async Dispatch (~g_idle_add~)
+Because the socket REPL server runs on a background Guile thread while GTK4
+requires all UI updates to occur on the main thread, calling GTK primitives
+directly from Scheme would cause thread panics.
 
-Because the socket REPL server runs on a background Guile thread while GTK4 requires all UI updates to occur on the main thread, calling GTK primitives directly from Scheme would cause thread panics.
+To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~
+event loop dispatcher.
 
-To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~ event loop dispatcher.
-
-For example, when ~(reload-dock!)~ is called over the socket REPL, C safely schedules the UI teardown and rebuild onto the GTK main loop without blocking or crashing the application.
+For example, when ~(reload-dock!)~ is called over the socket REPL, C safely
+schedules the UI teardown and rebuild onto the GTK main loop without blocking or
+crashing the application.
 
 #+begin_export html
 </details>
 #+end_export
 
----------
+------------------
 
-* Building and Installing
-** Dependencies
+* Animations
+:PROPERTIES:
+:CUSTOM_ID: animations
+:END:
 
-The project requires the following C and Scheme dependencies:
-- *GTK 4* (~gtk4~)
-- *GTK4 Layer Shell* (~gtk4-layer-shell~)
-- *GNU Guile 3.0* (~guile-3.0~)
-- *Meson* & *Ninja*
-- *pkg-config*
+There are several approaches and layers to getting animations and smooth visual
+effects on the dock.
 
-** GNU Guix
+Lambdock features a smooth, frame-clock-driven auto-hide mechanism powered by
+modern GTK4 APIs and the Wayland Layer Shell protocol; the timings a user actually
+sees are described in [[#auto-hide][Auto-hide]].
 
-~lambdock~ is officially distributed via the Guix package manager. You can also use Guix locally and to develop on this project. See also the ~run~ maak task.
+Starting with the auto-hide feature, lambdock features a cubic ease-out spatial
+transition to give a smooth showing and hiding to screen edge (within 250ms), and
+synchronizes with display refresh rates (60 Hz, 120 Hz, etc.) using
+=gtk_widget_add_tick_callback=.
 
-Enter a development container with all required dependencies:
+Also the fish-eye effect (~dock-hover-animate?~) uses a cosine bell curve scaling
+for smooth zooming and sizing: magnification peaks at 1.45x within a 140-pixel
+radius of the pointer, and each item can opt out with ~#:hover-animate? #f~.
 
-#+begin_src sh
-guix time-machine --channels=channels.scm -- shell -m manifest.scm
+Of course, you are also free to add CSS ~transform~ directives or other things to
+your liking, e.g.
+
+#+begin_src css
+button.flat:hover {
+  transform: scale(1.15) translateY(-4px);
+}
 #+end_src
 
-Also, a ~guix.scm~ is provided to run lambdock fully with Guix.
+------------------
 
-#+begin_src sh
-guix time-machine --channels=channels.scm -- shell -f guix.scm -- lambdock
-#+end_src
+* Why Lisp (GNU Guile Scheme) ?
+:PROPERTIES:
+:CUSTOM_ID: why-lisp
+:END:
 
--------
+Desktop docks traditionally rely on static configuration formats like
+[[https://www.json.org/][JSON]], [[https://en.wikipedia.org/wiki/INI_file][INI]], or
+[[https://yaml.org/][YAML]]. While straightforward, these formats force a compromise: adding dynamic
+behavior or custom logic requires writing C plugins or re-compiling the binary.
 
-** Meson
+~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be
+limited to static key-value pairs. It should be an active, extensible programming
+environment.
 
-#+begin_src sh
-# Setup build directory
-meson setup build
+** Live Interactive REPL & Inspectability
+:PROPERTIES:
+:CUSTOM_ID: live-repl
+:END:
 
-# Compile project
-meson compile -C build
+Lisp is built around live interactive development. With Guile embedded directly
+inside the C graphics core, you can connect a Unix domain socket REPL (via
+Emacs/Geiser or terminal tools like ~socat~) directly into the running dock
+process.  With ~lambdock~ you can inspect state variables, swap themes,
+dynamically insert launchers, or execute arbitrary Scheme functions on the fly,
+all without restarting the application or dropping Wayland frames.
 
-# Run locally
-./build/lambdock
-#+end_src
+** Power of Lisp
+:PROPERTIES:
+:CUSTOM_ID: power-of-lisp
+:END:
 
--------
+- Clean and powerful abstractions to batch-generate config dynamically and
+  without boilerplate.
+- *S-Expression Templating:* Use meta-programming, quasiquoting and macro
+  expansion for Lisp super powers
+  ([[https://www.gnu.org/software/guile/manual/html_node/Quasiquote.html][quasiquote]],
+  [[https://www.gnu.org/software/guile/manual/html_node/Macros.html][macros]]).
+- *Code that writes code* for a deep system integration with your OS, as
+  demonstrated in my
+  [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]].
 
+** Bi-Directional C / Guile Interop
+:PROPERTIES:
+:CUSTOM_ID: interop
+:END:
 
-** openSUSE (RPM distros)
+Guile is engineered from the ground up as the official GNU extension language.
+Through the ~libguile~ API, execution flows seamlessly in both directions. This
+gives many interesting advantages, and it is what allows the same process to own
+both the rendering and the language you control it with.
 
-~lambdock~ is packaged at OBS: https://build.opensuse.org/package/show/home:jjba23/lambdock and you can download it from there, or add the Zypper repo.
+------------------
 
-To build the RPM locally on Tumbleweed, install the packaging tools and setup the developer directories. See also the ~rpm-build~ maak task.
+* On Reproducibility: Why GNU Guix?
+:PROPERTIES:
+:CUSTOM_ID: reproducibility
+:END:
 
-#+begin_src shell
-sudo zypper install rpm-build  rpmdevtools  osc  rpmlint
-rpmdev-setuptree
-#+end_src
+A build should never fail because "it worked on my machine." Reliable software
+development requires explicit, bit-for-bit reproducibility and a functional
+approach to package management
+([[https://guix.gnu.org/manual/en/html_node/Introduction.html][the Guix manual]]) and
+system deployment.
 
-Create the source tarball. You can do this with ~git archive~ (or also simply copying the directory and manually ~tar -cvzf~). This tarball should be placed in =~/rpmbuild/SOURCES/=
+#+BEGIN_EXPORT html
+<a href="https://guix.gnu.org/">
+  <img src="https://jointhefreeworld.org/ggg/dist/gnu-guix.svg" alt="GNU Guix logo" style="max-width: 250px; width: 100%; height: auto;" />
+</a>
+#+END_EXPORT
 
-Copy the spec and build the RPM:
-#+begin_src shell
-cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/
-rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
-#+end_src
+- *Declarative Build Graphs:* Packages are pure functions of their inputs with no
+  implicit system state.
+- *Programmable with Guile:* Full system and package configurations written in
+  [[https://www.gnu.org/software/guile/][Guile Scheme]] rather than rigid DSLs or
+  static files.
+- *Time Travel:* Rebuild the exact system state from any point in git history
+  using
+  [[https://guix.gnu.org/manual/en/html_node/Invoking-guix-time_002dmachine.html][guix time-machine]].
+- *Atomic Operations:* Instantly upgrade or roll back environments without
+  leaving orphaned dependencies or broken states.
+- *Unified Tooling:* One tool manages development shells, isolated containers,
+  package builds, and full system configurations.
 
-Then you should get the RPM files successfully generated:
-#+begin_src shell
-~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
-~/rpmbuild/SRPMS/lambdock-0.1.0-0.src.rpm
-#+end_src
+And for the Nix people, ~flake.nix~ and ~package.nix~ provide the same guarantees
+in their ecosystem: the flake pins ~nixpkgs~, builds the C core with Meson, and
+runs the test suite under ~xvfb~ with a private DBus session, so ~nix flake check~
+means something.
 
-Test the resulting package. Install it:
+------------------
 
-#+begin_src shell
-sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.1.0-0.x86_64.rpm
-#+end_src
+* Why lambdock? A comparison table
+:PROPERTIES:
+:CUSTOM_ID: comparison
+:END:
 
-Then you can run ~lambdock~.
+While tools like [[https://github.com/Alexays/Waybar][Waybar]] and
+[[https://github.com/elkowar/eww][EWW]] excel as status bars or custom widget
+dashboards, ~lambdock~ is specifically engineered as a hyper-hackable,
+Wayland-native high-performance application dock with an embedded Lisp engine and
+full GTK4 graphics core.  The comparison names other docks, toolkits and macOS
+APIs; [[#glossary][the glossary]] says what each one is.
 
------------------
+| Feature / Dimension               | ~lambdock~                         | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | macOS Dock        |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Primary Design Target             | Application Dock                   | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
+| Wayland Native (~wlr-layer-shell~) | ✅                                 | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (macOS Quartz)    |
+| UI Toolkit & Graphics Core        | GTK4 (GL / GSK)                    | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Config & Scripting Engine         | GNU Guile Scheme (Lisp)            | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
+| Multi-Dock Instances (Files)      | ✅ Dynamic (~settings-*.scm~)      | ⚠️ Limited         | ⚠️ Multi-bar config| ⚠️ Multi-bar config   | ❌ Single dock    |
+| Live Interactive Socket REPL      | ✅ (Emacs/Geiser, ~socat~)         | ❌                 | ❌                 | ❌                    | ❌                |
+| Hot-Reloading                     | ✅ Runtime Code, Docks & CSS  | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
+| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~               | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Wayland Window Tracking           | ✅ ~zwlr_foreign_toplevel_v1~      | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (macOS Server)    |
+| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu      |
+| Dynamic Polling Widgets           | ✅ Scheme Thunks (RAM/CPU/Clock)   | ⚠️ C Plugins       | ✅ Custom modules  | ✅ Yuck pollers       | ❌ Static         |
+| Hover Magnification (Fish-eye)    | ✅ Cosine-Bell (Per-Item Toggle)   | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
+| Dock Viewport Scrolling           | ✅ Mouse Wheel / Touchpad          | ❌                 | ❌                 | ❌                    | ❌                |
+| Smooth Auto-Hide Animations       | ✅ Frame-Clock Eased Slide         | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                |
+| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
+| Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
 
-** Debian (APT distros)
+------------------
 
-Install the required build tools and compile the package. See also the ~deb-build~ maak task.
+* Translation status
+:PROPERTIES:
+:CUSTOM_ID: translations
+:END:
 
-#+begin_src shell
-# Install build dependencies on your Debian/Ubuntu system
-sudo apt update
-sudo apt install build-essential debhelper devscripts meson ninja-build \
-                 pkg-config libgtk-4-dev libgtk4-layer-shell-dev \
-                 guile-3.0-dev libwayland-dev wayland-protocols
+This project aims for accessibility and ease-of-use for users. For this purpose,
+we try to translate lambdock to all languages we can maintain. See below the
+status of translations for this project:
 
-# Build the package (unsigned binary build)
-# you will need to copy the packaging/debian/* to root of repo or equivalent approach
-debuild -b -uc -us
-#+end_src
+| Language      | Status |
+|---------------+--------|
+| English 🇬🇧     | 100%   |
+| Catalan 🇪🇸     | 100%   |
+| Dutch 🇳🇱       | 100%   |
+| French 🇫🇷      | 100%   |
+| German 🇩🇪      | 100%   |
+| Italian 🇮🇹     | 100%   |
+| Portuguese 🇵🇹  | 100%   |
+| Spanish 🇪🇸     | 100%   |
 
---------------------
+Translations live in ~po/~ and are managed with
+[[https://www.gnu.org/software/gettext/][GNU gettext]] through Meson.  The
+~i18n-update~ maak task regenerates the =.pot= template and merges it into every
+=.po=, and adding a new language is a matter of adding its code to ~po/LINGUAS~.
+If your language is missing, or if a string reads badly in yours, that is a
+welcome patch -- and a good first contribution.
 
-** Arch Linux
+------------------
 
-Ensure dev build tools are installed: =sudo pacman -S --needed base-devel=
+* Developing lambdock
+:PROPERTIES:
+:CUSTOM_ID: developing
+:END:
 
-Then go to ~packaging/arch~ and run ~makepkg -sic~ to install lambdock.
+** Read the guide first
+:PROPERTIES:
+:CUSTOM_ID: read-the-guide
+:END:
 
---------------
+New to the codebase? Start with the [[file:HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C core, the embedded GNU Guile Scheme
+engine, the bi-directional data flow, the full dock/item/window lifecycles, the
+build and test workflow, and the common pitfalls to watch out for. It covers the
+threading model, memory ownership rules, GTK/GLib hazards and the invariants that
+used to be bugs.
 
-** Nix
+** Hacking with ~maak~ & CCLS
+:PROPERTIES:
+:CUSTOM_ID: hacking-with-maak
+:END:
 
-~lambdock~ is officially part of [[https://search.nixos.org/packages][NixPkgs]], and can also easily be used with Nix (flakes) too. See also the ~nix-build~ maak task.
+~lambdock~ uses [[https://codeberg.org/jjba23/maak][Maak]], a Scheme task
+runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
+~maak <task>~ from the repository root:
 
+| Task               | What it does                                                          |
+|--------------------+-----------------------------------------------------------------------|
+| ~maak run~         | Build and run lambdock inside the pinned Guix environment.            |
+| ~maak meson-build~ | Plain Meson/Ninja build of the project.                               |
+| ~maak test~        | Run the whole test suite (C tests plus the Scheme unit tests).         |
+| ~maak debug-run~   | Rebuild and launch under ~gdb --args~.                                 |
+| ~maak repl~        | Start a development REPL for the project.                             |
+| ~maak add-libs~    | Regenerate ~.ccls~ with the right Guix package flags.                  |
+| ~maak i18n-update~ | Refresh the gettext =.pot= and =.po= files.                            |
+| ~maak deb-build~   | Build the Debian package (unsigned).                                  |
+| ~maak rpm-build~   | Build the RPM packages and lint them.                                 |
+| ~maak arch-build~  | Build the Arch package and run ~namcap~.                               |
+| ~maak nix-build~   | Build the Nix package (~nix-test~ runs the flake checks).              |
+| ~maak flatpak-build~ | Build the Flatpak bundle.                                           |
+| ~maak container-build~ | Build the Podman/Docker image (~container-run~ runs it).          |
 
-#+begin_src shell
-nix --extra-experimental-features 'nix-command flakes' build
-nix --extra-experimental-features 'nix-command flakes' run .#
-#+end_src
-
-----------------------
-
-** Podman/Docker
-
-~lambdock~ is also available as a container. You can pull its images from [[https://hub.docker.com/repository/docker/jjba23/lambdock/general][DockerHub]] or build it yourself. It's also recommended to see ~maak.scm~ for more details on how to use it that way.
-
-In a nutshell, you can run lambdock easily this way, provided you mount necessary devices and files.
-
-#+begin_src shell
-podman run -d --rm --name lambdock \
-       --network host \
-       --userns=keep-id --ipc=host \
-       --device /dev/dri \
-       -e XDG_RUNTIME_DIR=/run/user/$(id -u) \
-       -e WAYLAND_DISPLAY="$WAYLAND_DISPLAY" \
-       -e HOME="$HOME" \
-       -v /run/user/$(id -u):/run/user/$(id -u):z \
-       -v "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro" \
-       -v "$HOME:$HOME" \
-       -v /usr/share/icons:/usr/share/icons:ro \
-       -v /usr/share/applications:/usr/share/applications:ro \
-       lambdock:latest
-#+end_src
-
-----------
-
-** Flatpak
-
-You can also use lambdock as a Flatpak (experimental). Ensure to give it the correct permissions (using something like Flatseal).
-
-#+begin_src shell
-flatpak install --user flathub org.gnome.Platform//50 org.gnome.Sdk//50
-flatpak-builder --install --user build-dir packaging/flatpak/org.jointhefreeworld.lambdock.yaml --force-clean
-flatpak run org.jointhefreeworld.lambdock
-#+end_src
-
------------
-
-* Hacking with ~maak~ & CCLS
-
-If you use  ~ccls~ or another LSP client, generate your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the solution.
+If you use [[https://github.com/MaskRay/ccls][ccls]] or another
+[[https://microsoft.github.io/language-server-protocol/][LSP]] client, generate
+your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the
+solution.
 
 #+begin_src sh
 # Generate .ccls with correct Guix package flags
@@ -799,131 +1606,239 @@ maak add-libs
 maak run
 #+end_src
 
--------
+** Tests
+:PROPERTIES:
+:CUSTOM_ID: tests
+:END:
 
-* Animations
+The suite has two halves, and both run under Meson:
 
-There are several approaches and layers to getting animations and smooth visual effects on the dock.
-
-Lambdock features a smooth, frame-clock-driven auto-hide mechanism powered by modern GTK4 APIs and the Wayland Layer Shell protocol.
-
-Starting with the auto-hide feature, lambdock features a cubic ease-out spatial transition to give a smooth showing and hiding to screen edge (within 250ms), and synchronizes with display refresh rates (60 Hz, 120 Hz, etc.) using =gtk_widget_add_tick_callback=.
-
-Also the opt-in fish-eye effect  (~dock-hover-animate?~) uses a cosine bell curve scaling for smooth zooming and sizing.
-
-Of course, you are also free to add CSS ~transform~ directives or other things to your liking, e.g.
-#+begin_src css
-button.flat:hover {
-  transform: scale(1.15) translateY(-4px);
-}
+#+begin_src sh
+meson setup build
+ninja -C build test
 #+end_src
 
--------
+- *C tests* (~tests/test_*.c~): dock items, dock window, Guile bridge, popover
+  menu, theme engine and icon resolver.  These build and exercise real GTK
+  widgets through Meson (~test_dock_item~, ~test_dock_window~,
+  ~test_popover_menu~, ~test_theme_engine~, ~test_icon_resolver~,
+  ~test_guile_bridge~), so they catch GTK behaviour, not just arithmetic.
+- *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by
+  [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]): the pure-Guile configuration engine -- state,
+  items, presets, loader and core -- with no display server and no C runtime
+  needed, so they are fast and easy to run in a loop.
 
-* Licensing
-Lambdock and all of its source code are free software, licensed under the GNU General Public License v3 (or newer at your convenience).
+The Nix package runs exactly this suite under
+[[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a
+controlled font configuration, which is also a practical recipe for
+running the whole thing headless on a machine with no compositor.
 
-https://www.gnu.org/licenses/gpl-3.0.html
+** Translations
+:PROPERTIES:
+:CUSTOM_ID: developing-translations
+:END:
 
-The documentation and examples, including this document, which are provided with Lambdock, are all licensed under the GNU Free Documentation License v1.3 (or newer at your convenience).
+See [[#translations][Translation status]] above. ~po/~ is the place to be, and
+~maak i18n-update~ keeps the template in step with the source.
 
-https://www.gnu.org/licenses/fdl-1.3.html
+------------------
 
----------
+* Community & Support
+:PROPERTIES:
+:CUSTOM_ID: community
+:END:
 
-* AI Policy
+Join the ~lambdock~ community to ask questions, discuss development, share
+configurations, screenshots, report issues, or just hang out:
 
-This project adheres to the [[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI (Artificial Intelligence) policy]].
+- *Issues & development:* [[https://codeberg.org/jjba23/lambdock][Codeberg repository]]
+- *Chat, support, discussion, announcements (Zulip):*
+  [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
 
-Our core principle is simple: *AI should assist human creativity and problem-solving, never replace human reasoning.*
+If you're unsure where to start, Zulip is recommended. Codeberg issues is also a
+good place to add ideas, report bugs or improvements.
 
-While tools like Large Language Models (LLMs) and interactive chatbots can be beneficial for reviewing, refactoring small functions, or acting as a sounding board, they should be used with moderation.
-
-We require a human in the loop for all contributions. The use of autonomous AI agents to automatically generate and submit pull requests to this project is strictly prohibited.
-
-
----------------------
-
-* Code of conduct
-This project adheres to the jointhefreeworld code of conduct. Find it here:
-
-https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
-
-In summary, we foster an inclusive, respectful, and cooperative environment for all contributors and users of this free software project. Inspired by the ideals of the GNU Project, we strive to uphold freedom, equality, and community as guiding principles. We believe that collaboration in a community of mutual respect is essential to creating excellent free software.
-
-
---------
-
-* Translation status
-
-This project aims for accessibility and ease-of-use for users. For this purpose, we try to translate lambdock to all languages we can maintain. See below the status of translations for this project:
-
-- English 🇬🇧 :: 100%
-- Dutch 🇳🇱 :: 100%
-- French 🇫🇷  :: 100%
-- Italian 🇮🇹 :: 100%
-- Spanish 🇪🇸 :: 100%
-- Catalan 🇪🇸 :: 100%
-- Portuguese 🇵🇹 :: 100%
-
---------
-
-* Why Lisp (GNU Guile Scheme) ?
-
-Desktop docks traditionally rely on static configuration formats like JSON, INI, or YAML. While straightforward, these formats force a compromise: adding dynamic behavior or custom logic requires writing C plugins or re-compiling the binary.
-
-~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be limited to static key-value pairs. It should be an active, extensible programming environment.
-
-*** Live Interactive REPL & Inspectability
-Lisp is built around live interactive development. With Guile embedded directly inside the C graphics core, you can connect a Unix domain socket REPL (via Emacs/Geiser or terminal tools like ~socat~) directly into the running dock process.
-With ~lambdock~ you can inspect state variables, swap themes, dynamically insert launchers, or execute arbitrary Scheme functions on the fly, all without restarting the application or dropping Wayland frames.
-
-*** Power of Lisp
-- Clean and powerful  abstractions to batch-generate config dynamically and without boilerplate.
-- *S-Expression Templating:* Use meta-programming and quasiquoting and macro expansion for Lisp super powers
-Code that manipulates and emits other code, write Lisp from Lisp, for my use-case in a deep system integration with my OS, (as demonstrated in my [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]] ).
-
-*** Bi-Directional C / Guile Interop
-Guile is engineered from the ground up as the official GNU extension language. Through the ~libguile~ API, execution flows seamlessly in both directions. This gives many interesting advantages.
-
---------------
-
-* On Reproducibility: Why GNU Guix?
-
-A build should never fail because "it worked on my machine." Reliable software development requires explicit, bit-for-bit reproducibility and a functional approach to package management and system deployment.
-
-#+BEGIN_EXPORT html
-<a href="https://guix.gnu.org/">
-  <img src="https://jointhefreeworld.org/ggg/dist/gnu-guix.svg" alt="GNU Guix logo" style="max-width: 250px; width: 100%; height: auto;" />
-</a>
-#+END_EXPORT
-
-- *Declarative Build Graphs:* Packages are pure functions of their inputs with no implicit system state.
-- *Programmable with Guile:* Full system and package configurations written in [[https://www.gnu.org/software/guile/][Guile Scheme]] rather than rigid DSLs or static files.
-- *Time Travel:* Rebuild the exact system state from any point in git history using ~guix time-machine~.
-- *Atomic Operations:* Instantly upgrade or roll back environments without leaving orphaned dependencies or broken states.
-- *Unified Tooling:* One tool manages development shells, isolated containers, package builds, and full system configurations.
-
-------------
+------------------
 
 * News and Changelog
+:PROPERTIES:
+:CUSTOM_ID: news
+:END:
 
-You can find the [[file:NEWS.org][NEWS file with the Changelog here]]
+You can find the [[file:NEWS.org][NEWS file with the Changelog here]], and the packaged
+release notes in [[file:data/org.jointhefreeworld.lambdock.metainfo.xml][the AppStream metadata]].
 
--------------
+------------------
 
 * What people are saying
+:PROPERTIES:
+:CUSTOM_ID: what-people-say
+:END:
 
 See what people are saying about the ~lambdock~ project:
+
 - https://jointhefreeworld.org/blog/articles/gnu-linux/quest-for-eternal-dock/index.html
 - https://hackernoon.com/lambdock-a-hackable-wayland-dock-built-with-c-and-lisp
 - https://lobste.rs/s/lvspri/quest_for_eternal_dock_on_wayland
 - https://dev.to/jjba23/quest-for-eternal-dock-on-wayland-lambdock-c-gtk4-lisp-gnu-guile-scheme-1mm9
 - https://news.ycombinator.com/item?id=49476653
 
+------------------
 
-------------
+* Etymology
+:PROPERTIES:
+:CUSTOM_ID: etymology
+:END:
 
-#+begin_quote
-~lambdock~'s  is a story of resilience in many ways, as I cannot even remember how many attempts I made at building a dock (in different ways). Little did I know how many paradigms, ideas and PoCs would collapse before my vision became tangible reality.
-#+end_quote
+The name /lambdock/ is a play on words combining:
+
+- *Ship Docks* ⚓ where containers and applications dock safely.
+- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
+- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
+- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, macOS Dock).
+
+~lambdock~ adopts as its project logo a modified version of the
+[[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]], but without attaching
+itself to any religious meaning or belief.
+
+You could say using this dock /es casi una experiencia religiosa como la de
+[[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]].
+
+------------------
+
+* Contributing
+:PROPERTIES:
+:CUSTOM_ID: contributing
+:END:
+
+Contributing to free software (as in freedom) is a uniquely beautiful act,
+because it embodies principles of generosity, collaboration and empowerment.  We
+welcome everyone to feel invited to the ~lambdock~ project, and we encourage
+active contribution in all forms: improving it, reporting issues, brainstorming,
+making it more modular or more flexible, translating it, or simply sharing a
+screenshot of your desktop.
+
+** Reporting a bug or an idea
+:PROPERTIES:
+:CUSTOM_ID: reporting-a-bug
+:END:
+
+Open an issue on the [[https://codeberg.org/jjba23/lambdock][repository's homepage]],
+or bring it up on [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][Zulip]]
+first if you are not sure yet whether it is a bug.
+
+A report is easiest to act on when it says what you did, what you expected, and
+what happened instead -- plus your compositor and its version, your GTK, Guile
+and (if you use it) Guix versions, whether you are on a released tag or ~trunk~,
+and the contents of your =~/.config/lambdock/settings.scm=.  If the dock crashes
+or misbehaves, the output of ~lambdock~ from a terminal, plus
+~ninja -C build && ./build/lambdock~ if you can reproduce it on ~trunk~, saves a
+round trip.
+
+You can also mail me <jjbigorra@gmail.com> to chat, discuss or send feedback.
+
+** Sending a PR/patch
+:PROPERTIES:
+:CUSTOM_ID: sending-a-patch
+:END:
+
+The branch is ~trunk~.  Small, focused commits are the easiest to review.
+
+- Build and test before you send: ~maak test~ (or ~meson test -C build~) should
+  pass, and the C compiler is configured with ~-Werror~ for things like implicit
+  conversions, so a warning is a build failure.
+- New behaviour wants a test.  C behaviour goes in ~tests/~, the configuration
+  engine in ~tests/scheme/~, and both are cheap to extend.
+- New user-visible strings should be wrapped in ~(G_ "...")~ in C so they can be
+  translated, and the ~.po~ files refreshed with ~maak i18n-update~.
+- New themes are a CSS file in ~resources/css~ plus a build define; new presets
+  are an entry in [[file:scheme/lambdock/presets.scm][presets.scm]].
+- Documentation counts as code here: if this README, [[file:HACKING.org][HACKING.org]] or
+  [[file:NEWS.org][NEWS.org]] no longer matches what the program does, that is a
+  bug worth a patch.
+
+** Trying it before you trust it
+:PROPERTIES:
+:CUSTOM_ID: trying-it
+:END:
+
+Everything here is meant to be read and run.  Clone it, run ~maak run~, change a
+theme symbol in your settings file, watch the dock change under you, then open
+~M-x geiser-connect-local~ and ask the running dock what it thinks its theme is.
+If something in this document does not match what the code does, tell us.
+
+------------------
+
+* Licensing
+:PROPERTIES:
+:CUSTOM_ID: licensing
+:END:
+
+Lambdock and all of its source code are free software, licensed under the
+[[https://www.gnu.org/licenses/gpl-3.0.html][GNU General Public License v3]] (or
+newer at your convenience).
+
+https://www.gnu.org/licenses/gpl-3.0.html
+
+The documentation and examples, including this document, which are provided with
+Lambdock, are all licensed under the
+[[https://www.gnu.org/licenses/fdl-1.3.html][GNU Free Documentation License v1.3]]
+(or newer at your convenience).
+
+https://www.gnu.org/licenses/fdl-1.3.html
+
+------------------
+
+* AI Policy
+:PROPERTIES:
+:CUSTOM_ID: ai-policy
+:END:
+
+This project adheres to the
+[[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI (Artificial Intelligence) policy]].
+
+Our core principle is simple: *AI should assist human creativity and
+problem-solving, never replace human reasoning.*
+
+While tools like Large Language Models (LLMs) and interactive chatbots can be
+beneficial for reviewing, refactoring small functions, or acting as a sounding
+board, they should be used with moderation.
+
+We require a human in the loop for all contributions. The use of autonomous AI
+agents to automatically generate and submit pull requests to this project is
+strictly prohibited.
+
+------------------
+
+* Code of conduct
+:PROPERTIES:
+:CUSTOM_ID: code-of-conduct
+:END:
+
+This project adheres to the jointhefreeworld code of conduct. Find it here:
+
+https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
+
+In summary, we foster an inclusive, respectful, and cooperative environment for
+all contributors and users of this free software project. Inspired by the ideals
+of the GNU Project, we strive to uphold freedom, equality, and community as
+guiding principles. We believe that collaboration in a community of mutual
+respect is essential to creating excellent free software.
+
+------------------
+
+* About this project
+:PROPERTIES:
+:CUSTOM_ID: about
+:END:
+
+- 📦 *Read the source:* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
+- 📚 *Read the internals:* [[file:HACKING.org][HACKING.org]]
+- 📰 *Read the changelog:* [[file:NEWS.org][NEWS.org]]
+- 💬 *Talk to us:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
+- ☕ *Support the work:* [[https://bmc.link/jjbigorra][buying me a cup of coffee]]
+
+~lambdock~ is part of the [[https://jointhefreeworld.org/][jointhefreeworld]] family
+of small, readable, self-hostable free software, alongside
+[[https://codeberg.org/jjba23/byggsteg][byggsteg]],
+[[https://codeberg.org/jjba23/lucidplan][lucidplan]] and friends.
