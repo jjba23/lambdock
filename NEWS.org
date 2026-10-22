@@ -8,15 +8,17 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+
+---------
+
+*[Released]*
+
+** v0.7.5 (2026-10-22)
 - Add a pure-Scheme unit test suite (~tests/scheme~) covering state, items,
   presets, loader and core
 - Expand the C test suites (dock items, dock window, Guile bridge, popover menu,
   theme engine, icon resolver) with many more cases
 - Fix an out-of-bounds read when scoping short CSS selectors
-
----------
-
-*[Released]*
 
 ** v0.6.3 (2026-08-22)
 - Added Podman/Docker build and run
