@@ -61,6 +61,27 @@ Shell compliant compositor, ~lambdock~ brings clean application launching,
 dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased
 auto-hiding directly to your setup.
 
+
+** See it in action
+:PROPERTIES:
+:CUSTOM_ID: see-it-in-action
+:END:
+
+[[file:resources/img/lambdock-demo.gif]]
+
+=tools/record-demo/= records a scripted showcase of every feature and every
+built-in theme in a nested niri session, then encodes it as a GIF under 15 MiB:
+
+#+begin_src sh
+./tools/record-demo/record-demo.sh
+# output: tools/record-demo/out/lambdock-demo.gif
+#+end_src
+
+The storyboard covers auto-hide, fish-eye magnification, launching, the window
+popover, the right-click menu, the About window, a live Guile REPL session,
+theme hot-swapping and taskbar mode.  See
+[[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites and options.
+
 ** Who it is for
 :PROPERTIES:
 :CUSTOM_ID: who-it-is-for

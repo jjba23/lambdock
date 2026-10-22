@@ -1,0 +1,203 @@
+#+title: Recording the lambdock showcase GIF
+#+author: lambdock contributors
+#+options: toc:nil num:nil
+
+This directory contains a reproducible end-to-end recorder for the lambdock
+demo GIF.  One command starts a *nested niri session* inside your current
+session, runs lambdock there, drives a virtual pointer through a scripted
+storyboard, records the nested output with =wf-recorder=, and encodes a
+palette-optimised GIF that stays under 15 MiB.
+
+The result shows every headline feature and every built-in theme:
+
+- auto-hide (once, with reveal + hide),
+- native fish-eye magnification (several passes),
+- launching applications and the running-app indicator,
+- the window popover HUD (focus / new instance / close all),
+- right-click dock menu and the *About lambdock* window,
+- live mutation through the Guile socket REPL (icon size, dock mode, titles),
+- hot-swapping all built-in dark and light themes,
+- taskbar mode with window titles,
+- matching generated wallpapers (dark galaxy / light mountains).
+
+* Quick start
+
+#+begin_src sh
+# Build lambdock first, or let the script do it:
+meson setup build && meson compile -C build
+
+# Record the default GIF:
+./tools/record-demo/record-demo.sh
+
+# Output:
+#   tools/record-demo/out/lambdock-demo.gif
+#+end_src
+
+Useful variants:
+
+#+begin_src sh
+./tools/record-demo/record-demo.sh --build          # rebuild before recording
+./tools/record-demo/record-demo.sh --out /tmp/d.gif --keep
+./tools/record-demo/record-demo.sh --width 1000 --fps 12
+./tools/record-demo/record-demo.sh --no-captions
+./tools/record-demo/record-demo.sh --keep-cursor    # do not hide the host cursor
+./tools/record-demo/record-demo.sh --help
+#+end_src
+
+* Requirements
+
+The script must run *inside a running niri session* (it uses =niri msg= and
+spawns a nested niri).  It refuses to start otherwise.
+
+| Thing                        | Why                                                        |
+|------------------------------+------------------------------------------------------------|
+| =niri=                       | outer + nested compositor, window actions, output geometry |
+| wlr-virtual-pointer support  | pointer motion, buttons and scroll for the storyboard      |
+| =wf-recorder=                | screen capture of the nested output                        |
+| =ffmpeg= with =libass=       | captions, palette generation, GIF encoding                 |
+| =gifsicle=                   | final lossy/colour optimisation                            |
+| =wayland-scanner=            | generates the virtual-pointer protocol bindings            |
+| =gcc=, =pkg-config=          | builds the tiny =vptr= helper                              |
+| =python3= + =numpy=, =Pillow= | wallpapers, captions and the storyboard                   |
+| =kitty=                      | the terminal that hosts the live REPL demo                 |
+| =swaybg=                     | wallpaper rendering inside the nested session              |
+| =dbus-run-session=, =setsid= | private session bus and process-group cleanup              |
+| =jq=                         | parses =niri msg -j= output                                |
+
+Also required: =wayland-client= development files (=pkg-config
+wayland-client=).  The script checks all of this up front and exits with a
+clear message if something is missing.
+
+* How it works
+
+** Isolation
+
+The nested niri runs with a temporary =HOME=, =XDG_CONFIG_HOME=,
+=XDG_DATA_HOME= and =XDG_CACHE_HOME=, under =dbus-run-session=, so the host
+lambdock instance and its single-instance lock are never touched.  A generated
+=settings.scm= points lambdock at a REPL socket inside the temporary directory.
+The whole nested process group is killed (SIGTERM, then SIGKILL) on exit.
+
+** Output geometry and cropping
+
+The outer output is queried with =niri msg -j outputs=.  The nested output
+(=winit=) uses a scale chosen from the physical width (2.0 / 1.5 / 1.0), and
+the nested window is fullscreened so the recording is a clean rectangle.
+
+The host pointer is parked in the top-left corner and a margin (=EDGE=, 64 px
+by default) is cropped away, so the hardware cursor never appears in the
+recording.  The crop is applied *during* capture:
+
+#+begin_src sh
+wf-recorder -r 20 -D \
+  -F "crop=W:H:EDGE:EDGE,scale=1200:-2:flags=lanczos" -f raw.mkv
+#+end_src
+
+Recording directly at the final width keeps the lossless intermediate small.
+The GIF is then produced with =fps=, =palettegen=, =paletteuse= and finally
+=gifsicle -O3 --lossy=30 --colors 256=; the lossy value is raised
+automatically (45, 60, 75, ...) until the file fits in 15 MiB.
+
+** Pointer control
+
+=niri= supports =zwlr_virtual_pointer_manager_v1= but *not*
+=wp_pointer_warp_v1=, so =vptr.c= is a ~150-line Wayland client that binds a
+virtual pointer and exposes =move=, =glide=, =click=, =rightclick= and scroll
+subcommands.  Coordinates are given in physical (nested) pixels.
+
+Nested virtual-pointer motion alone does not reliably trigger layer-shell
+enter/leave events for lambdock, so the controller drives the *outer*
+compositor's pointer as well, translating nested coordinates to the outer
+logical space with
+
+#+begin_src python
+factor = nested_scale / outer_scale
+#+end_src
+
+That is what makes auto-hide and fish-eye magnification behave exactly as they
+do for a real user.  The outer cursor is invisible because of the cursor-hide
+step below; the GIF gets a synthetic cursor drawn from the controller's own
+pointer events (see =make_subtitles.py=).
+
+** Host cursor hiding (temporary config edit)
+
+The compositor draws its hardware cursor itself, and a Wayland client cannot
+move or hide it.  The script therefore backs up the outer niri config
+(=~/.config/niri/config.kdl=, or =$NIRI_CONFIG=), inserts
+=hide-after-inactive-ms 100= into the existing =cursor { ... }= block, and
+reloads niri for the duration of the recording.  The backup is restored
+byte-for-byte on exit, including on failure (=trap ... EXIT INT TERM=).
+Pass =--keep-cursor= to skip this edit if you prefer the real cursor in the
+recording.
+
+** Captions and the synthetic cursor
+
+The controller writes a timestamped =events.tsv= (=caption=, =caption_end=,
+=theme=, =pointer_move=, =pointer_glide=, =pointer_click=, ...).
+=make_subtitles.py= turns that into an ASS subtitle file with lower-third
+captions, theme labels and a white arrow cursor with a yellow click dot.  ASS
+was chosen over =drawtext= because it keeps the cursor smooth and the text
+crisp at any GIF size.
+
+* Storyboard
+
+The timeline is defined in =controller.py=.  Each phase logs
+=caption=/=caption_end= events that become the burnt-in text:
+
+1. *Auto-hide* -- pointer jumps to the 2 px strip at the bottom edge, the dock
+   slides in, the pointer glides away and it hides.  Then the settings file is
+   edited (=dock-auto-hide? #f=) to showcase the file watcher; the dock comes
+   back and stays.
+2. *Magnification* -- two slow passes across the dock.
+3. *Launch* -- the calculator preset is launched, then three titled Alacritty
+   windows; running apps get an indicator.
+4. *Popover HUD* -- right-click a launcher, glide through windows, focus one,
+   open a new instance, then *Close All*.
+5. *Menu + About* -- hover animation is frozen through the REPL, the dock's
+   context menu is opened on a separator, and *About lambdock* is opened and
+   closed.  Hover animation is re-enabled afterwards.
+6. *Live REPL* -- kitty runs =repl_ui.py=, which types real Guile expressions
+   into the socket: read the theme and icon size, then change the icon size
+   several times.
+7. *Theme montage* -- all eight dark themes, the wallpaper switches to the
+   light mountains image, then all five light themes.
+8. *Taskbar* -- Windows XP theme in taskbar mode with window titles on/off.
+9. *Outro* -- back to Vanilla Light, pointer sweep across the dock, closing
+   caption.
+
+The pointer waits =0.6 s= after the outer script touches =go=, so that
+=wf-recorder= is already capturing before the first move.
+
+* Files
+
+| File                                | Purpose                                                  |
+|-------------------------------------+----------------------------------------------------------|
+| =record-demo.sh=                    | entrypoint: options, deps, assets, session, capture, GIF |
+| =controller.py=                     | storyboard, niri actions, pointer, events, REPL driving  |
+| =repl_ui.py=                        | fake-but-real terminal REPL front-end (kitty)            |
+| =make_wallpapers.py=                | seeded galaxy + mountains wallpapers                     |
+| =make_subtitles.py=                 | ASS captions, theme labels, synthetic cursor overlay     |
+| =vptr.c=                            | virtual-pointer helper (=move=, =glide=, =click=, ...)   |
+| =wlr-virtual-pointer-unstable-v1.xml= | vendored protocol description                          |
+
+Output defaults to =tools/record-demo/out/lambdock-demo.gif= (ignored by git).
+With =--keep= the temporary directory is kept and printed; it contains
+=raw.mkv=, =events.tsv=, =controller.log=, =lambdock.log=, =captions.ass= and
+the generated wallpapers, which is handy when tweaking timings.
+
+* Reproducibility notes
+
+- Wallpapers and all storyboard timings are deterministic; the only source of
+  variation is compositor timing.  If a click lands during an animation, bump
+  the preceding =sleep= in =controller.py= (the storyboard is deliberately
+  written with generous holds).
+- Coordinates in =controller.py= are designed for the reference nested output
+  =1128x752= (physical =2256x1504= at scale 2) and translated by
+  =self.X()= / =self.Y()=, so other output sizes work as long as the dock
+  stays at the bottom edge.
+- Do not switch =wf-recorder= to a realtime codec: VP9 shimmering at low CRF
+  inflated the GIF past 100 MB.  The lossless utvideo default is both smaller
+  to encode and cleaner after palette reduction.
+- =wf-recorder= is started *after* the controller says it is ready and with
+  =-D= (no damage tracking), otherwise static frames (the final caption) are
+  dropped from the raw video.

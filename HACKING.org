@@ -421,6 +421,39 @@ And the checklist that goes with it:
 - If the change fixes one of the [[#pitfalls][Pitfalls]], move it out of the
   pitfall list in the same commit.
 
+** Recording the showcase GIF
+:PROPERTIES:
+:CUSTOM_ID: recording-the-showcase-gif
+:END:
+
+=tools/record-demo/= turns a real running dock into a reproducible demo GIF
+under 15 MiB.  It starts a nested niri session (isolated =HOME= and a private
+DBus session, so your own lambdock is untouched), generates a matching
+wallpaper, drives a virtual pointer through a fixed storyboard, records the
+nested output with =wf-recorder=, and burns captions, theme labels and a
+synthetic cursor into the GIF.
+
+#+begin_src sh
+meson compile -C build
+./tools/record-demo/record-demo.sh              # -> tools/record-demo/out/lambdock-demo.gif
+./tools/record-demo/record-demo.sh --keep       # keep raw.mkv + events.tsv for tweaking
+#+end_src
+
+It covers auto-hide, magnification, launching, the popover HUD, the right-click
+menu, About lambdock, live REPL mutation, every built-in theme, and taskbar
+mode with window titles.  Features that change should usually update the
+storyboard in =controller.py= and, if needed, the captions in
+=make_subtitles.py= -- treat the recorder as part of the test surface for
+user-visible behaviour.
+
+#+begin_quote
+*Warning:* to keep the compositor's hardware cursor out of the recording, the
+script temporarily adds =hide-after-inactive-ms 100= to the outer niri config
+and then restores it byte-for-byte on exit (including failures).  Pass
+=--keep-cursor= to skip that edit.  Requirements, storyboard details and the
+reproducibility notes live in [[file:tools/record-demo/README.org][tools/record-demo/README.org]].
+#+end_quote
+
 ------------------
 
 * Runtime architecture
