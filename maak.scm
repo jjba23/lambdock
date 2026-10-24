@@ -17,22 +17,19 @@
 
 (define-module (maak)
   #:declarative? #t
-  #:use-module (ice-9 string-fun)
-  #:use-module (ice-9 textual-ports)
-  #:use-module (ice-9 popen)
   #:use-module (maak maak)
   ;; The container helpers are imported under a prefix because the
   ;; tasks below are named the way maak exposes them on the command
   ;; line -- `maak container-build' -- and a task may not shadow the
   ;; helper it calls.
-  #:use-module ((maak container) #:prefix ct:))
-
-;; ===== Maak abstractions =====
-
-(define (syscall-with-output cmd)
-  (let* ((process (open-input-pipe cmd))
-         (process-output (get-string-all process)))
-    (close-pipe process) process-output))
+  #:use-module ((maak container) #:prefix ct:)
+  ;; The Nix helpers are imported the same way: two of the tasks below are
+  ;; named `nix-build' and `nix-run'.
+  #:use-module ((maak nix) #:prefix nx:)
+  ;; The task named `run' shadows the shell builtin of that name for the rest
+  ;; of this file, so every command here is started through `dsl:run' -- the
+  ;; builtin under the name of the module it comes from -- instead.
+  #:use-module ((maak dsl) #:prefix dsl:))
 
 ;; ===== Maak tasks =======
 
@@ -41,7 +38,9 @@
 
 (define (run)
   "Run lambdock with Guix"
-  ($ '("pkill lambdock || true"))
+  ;; Nothing of the right name running is not a failure, so the command is
+  ;; allowed to say so instead of the task dying on `pkill''s non-zero exit.
+  (dsl:run (list "pkill" "lambdock") #:allow-failure? #t)
   (time-machine-program-shell (list "lambdock")
                               #:verbose? #t))
 
@@ -63,22 +62,26 @@ between jobs, and a tree configured by a different Meson version makes both
 or classes that don't exist'. Rebuilding from scratch also means the passing
 tests are the ones that match the checked out sources."
   (time-machine-manifest-shell
-   (list "/bin/sh -c"
-         (string-append "'"
-                        "set -eu; "
-                        "export GTK_A11Y=none GDK_BACKEND=x11; "
-                        "rm -rf build; "
-                        "meson setup build; "
-                        "ninja -C build; "
-                        "xvfb-run -a -s \"-screen 0 1024x768x24\" "
-                        "meson test -C build --print-errorlogs"
-                        "'"))
+   (list "/bin/sh" "-c"
+         ;; One token, because it is one shell script: the quoting that keeps
+         ;; `-screen 0 1024x768x24' one argument to xvfb-run is part of the
+         ;; text the inner shell reads.
+         (~ "'~a'"
+            (string-join
+             (list "set -eu"
+                   "export GTK_A11Y=none GDK_BACKEND=x11"
+                   "rm -rf build"
+                   "meson setup build"
+                   "ninja -C build"
+                   "xvfb-run -a -s \"-screen 0 1024x768x24\" meson test -C build --print-errorlogs")
+             "; ")))
    #:verbose? #t))
 
 (define (repl)
   "Development REPL."
-  (time-machine-manifest-shell '("guile -L ./src"
-                                 "-c '((@ (ares server) run-nrepl-server))'")))
+  (time-machine-manifest-shell
+   (list "guile" "-L" "./src"
+         "-c" "'((@ (ares server) run-nrepl-server))'")))
 
 (define c-packages
   (make-parameter (string-join (map symbol->string
@@ -87,11 +90,15 @@ tests are the ones that match the checked out sources."
 
 (define (add-libs)
   (delete-file-recursively ".ccls")
-  (time-machine-manifest-shell (list (~ "pkg-config --cflags ~a"
-                                        (c-packages))
-                                     " | tr ' ' '\n' >> .ccls")
-                               #:verbose? #t)
-  ($ '("cat .ccls")))
+  ;; A pipe and an append-redirection, so this is one of the lines that needs a
+  ;; shell.  Every part is a word of it, and `tr''s second set is the `\n'
+  ;; escape the shell hands over as a newline character.
+  (time-machine-manifest-shell
+   (append (list "pkg-config" "--cflags")
+           (string-split (c-packages) #\space)
+           (list "|" "tr" "' '" "'\n'" ">>" ".ccls"))
+   #:verbose? #t)
+  (cat ".ccls"))
 
 (define deb-packages
   (make-parameter (map symbol->string
@@ -112,36 +119,40 @@ tests are the ones that match the checked out sources."
 
 (define (deb-build)
   "Build .deb package (unsigned)"
-  ($ '("sudo apt update")
-     #:verbose? #t)
-  ($ (cons "sudo apt install -y"
-           (deb-packages))
-     #:verbose? #t)
+  (dsl:run (list "apt" "update")
+           #:sudo? #t
+           #:verbose? #t)
+  (dsl:run (append (list "apt" "install" "-y")
+                   (deb-packages))
+           #:sudo? #t
+           #:verbose? #t)
 
   (dynamic-wind
    ;; Setup: create temporary symlink at project root
    (lambda ()
-     ($ '("ln -s packaging/debian debian")
-        #:verbose? #t))
+     (ln-s "packaging/debian" "debian"
+           #:force? #f
+           #:verbose? #t))
 
    ;; Execution: run debian build commands against ./debian
    (lambda ()
-     ($ '("sudo mk-build-deps -i -r debian/control")
-        #:verbose? #t)
-     ($ '("debuild -b -uc -us")
-        #:verbose? #t))
+     (dsl:run (list "mk-build-deps" "-i" "-r" "debian/control")
+              #:sudo? #t
+              #:verbose? #t)
+     (dsl:run (list "debuild" "-b" "-uc" "-us")
+              #:verbose? #t))
 
    ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
    (lambda ()
-     ($ '("rm -rf debian")
-        #:verbose? #t))))
+     (rm-rf "debian"
+            #:verbose? #t))))
 
 (define (arch-build)
   "Build Arch Linux package (.pkg.tar.zst)"
-  ($ '("makepkg -si")
-     #:verbose? #t)
-  ($ '("namcap packaging/arch/PKGBUILD")
-     #:verbose? #t))
+  (dsl:run (list "makepkg" "-si")
+           #:verbose? #t)
+  (dsl:run (list "namcap" "packaging/arch/PKGBUILD")
+           #:verbose? #t))
 
 (define rpm-packages
   (make-parameter (map symbol->string
@@ -158,45 +169,56 @@ tests are the ones that match the checked out sources."
 
 (define (rpm-build)
   "Build RPM package for openSUSE and Fedora/RHEL"
-  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0"))
-         (latest-tag-num (string-trim-both (string-drop latest-tag 1))))
-    ($ '("rpmdev-setuptree")
-       #:verbose? #t)
-    ($ (list "git archive --format=tar.gz"
-             (~ "--prefix=lambdock-~a/" latest-tag-num)
-             (~ "-o ~~/rpmbuild/SOURCES/lambdock-~a.tar.gz" latest-tag-num)
-             latest-tag)
-       #:verbose? #t)
-    ($ '("cp packaging/opensuse/lambdock.spec ~/rpmbuild/SPECS/")
-       #:verbose? #t)
-    ($ '("rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec")
-       #:verbose? #t)
-    ($ '("ls ~/rpmbuild/RPMS/x86_64/lambdock-[0-9]*.rpm"))
-    (let* ((latest-rpm (syscall-with-output
-                        "ls -t ~/rpmbuild/RPMS/x86_64/lambdock-[0-9]*.rpm | head -n 1"))
-           (latest-src-rpm (syscall-with-output
-                            "ls -t ~/rpmbuild/SRPMS/lambdock-[0-9]*.rpm | head -n 1")))
-      ($ '("cp packaging/opensuse/lambdock-rpmlintrc ~/rpmbuild/RPMS/x86_64/")
-         #:verbose? #t)
-      ($ (list (~ "rpmlint ~a" latest-rpm))
-         #:verbose? #t)
-      ($ '("cp packaging/opensuse/lambdock-rpmlintrc ~/rpmbuild/SRPMS/")
-         #:verbose? #t)
-      ($ (list (~ "rpmlint ~a" latest-src-rpm))
-         #:verbose? #t))))
+  (let* ((latest-tag (git-describe-tag))
+         ;; `git describe' prints nothing in a dry run, and a version is not
+         ;; derived from nothing: the tag is kept as it came when it carries no
+         ;; leading `v'.
+         (latest-tag-num (cond ((string=? latest-tag "") "")
+                               ((string-prefix? "v" latest-tag)
+                                (string-drop latest-tag 1))
+                               (else latest-tag)))
+         (sources (~ "~a/rpmbuild/SOURCES" (home-dir)))
+         (specs (~ "~a/rpmbuild/SPECS" (home-dir)))
+         (rpms (~ "~a/rpmbuild/RPMS/x86_64" (home-dir)))
+         (srpms (~ "~a/rpmbuild/SRPMS" (home-dir))))
+    (dsl:run (list "rpmdev-setuptree")
+             #:verbose? #t)
+    (git-archive-tar (~ "~a/lambdock-~a.tar.gz" sources latest-tag-num)
+                     #:prefix (~ "lambdock-~a/" latest-tag-num)
+                     #:revision latest-tag)
+    (cp "packaging/opensuse/lambdock.spec" specs
+        #:verbose? #t)
+    (dsl:run (list "rpmbuild" "-ba" (~ "~a/lambdock.spec" specs))
+             #:verbose? #t)
+    (dsl:run (list "ls" (~ "~a/lambdock-[0-9]*.rpm" rpms))
+             #:expand? #t)
+    (let* ((latest-rpm
+            (string-trim-both
+             (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" rpms))))
+           (latest-src-rpm
+            (string-trim-both
+             (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" srpms)))))
+      (cp "packaging/opensuse/lambdock-rpmlintrc" rpms
+          #:verbose? #t)
+      (dsl:run (list "rpmlint" latest-rpm)
+               #:verbose? #t)
+      (cp "packaging/opensuse/lambdock-rpmlintrc" srpms
+          #:verbose? #t)
+      (dsl:run (list "rpmlint" latest-src-rpm)
+               #:verbose? #t))))
 
 (define (nix-test)
   "Run Nix flake checks and test phase"
-  ($ '("nix --extra-experimental-features 'nix-command flakes' flake check")
-     #:verbose? #t))
+  (nx:nix-flake-check #:flake "."
+                      #:verbose? #t))
 
 (define (nix-build)
   "Build Nix package"
-  ($ '("nix --extra-experimental-features 'nix-command flakes' build")))
+  (nx:nix-flake-build #:flake "."))
 
 (define (nix-run)
   "Run Nix package"
-  ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
+  (nx:nix-run '()))
 
 (define (default)
   "List the tasks this project defines."
@@ -208,53 +230,77 @@ tests are the ones that match the checked out sources."
 
 (define (container-run)
   "Run Container image"
-  ($ '("podman run -d --rm --name lambdock" "--network host"
-       "--userns=keep-id --ipc=host"
-       "--device /dev/dri"
-       "-e XDG_RUNTIME_DIR=/run/user/$(id -u)"
-       "-e WAYLAND_DISPLAY=\"$WAYLAND_DISPLAY\""
-       "-e HOME=\"$HOME\""
-       "-v /run/user/$(id -u):/run/user/$(id -u):z"
-       "-v \"$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY:/run/user/$(id -u)/$WAYLAND_DISPLAY:ro\""
-       "-v \"$HOME:$HOME\""
-       "-v /usr/share/icons:/usr/share/icons:ro"
-       "-v /usr/share/applications:/usr/share/applications:ro"
-       "lambdock:latest")
-     #:verbose? #t))
+  ;; `$(id -u)' and `$WAYLAND_DISPLAY' were the shell's way of naming the
+  ;; session's runtime directory and socket; they are asked for in Scheme here,
+  ;; so the whole command line is arguments rather than words a shell splits.
+  ;; The flags without a `container-run' keyword -- `--userns', `--ipc' and
+  ;; `--device' -- are what the escape hatch is for.
+  (let* ((user-id (number->string (getuid)))
+         (runtime-dir (or (getenv "XDG_RUNTIME_DIR")
+                          (~ "/run/user/~a" user-id)))
+         (wayland-display (or (getenv "WAYLAND_DISPLAY") ""))
+         (home (home-dir))
+         (socket (~ "~a/~a" runtime-dir wayland-display)))
+    (ct:container
+     (list "run" "--detach" "--rm"
+           "--name" "lambdock"
+           "--network" "host"
+           "--userns=keep-id"
+           "--ipc=host"
+           "--device" "/dev/dri"
+           "--env" (~ "XDG_RUNTIME_DIR=~a" runtime-dir)
+           "--env" (~ "WAYLAND_DISPLAY=~a" wayland-display)
+           "--env" (~ "HOME=~a" home)
+           "--volume" (~ "/run/user/~a:/run/user/~a:z" user-id user-id)
+           "--volume" (~ "~a:/run/user/~a/~a:ro" socket user-id
+                         wayland-display)
+           "--volume" (~ "~a:~a" home home)
+           "--volume" "/usr/share/icons:/usr/share/icons:ro"
+           "--volume" "/usr/share/applications:/usr/share/applications:ro"
+           "lambdock:latest")
+     #:verbose? #t)))
 
 (define (push-docker-latest)
   "Push the latest locally generated Docker image to Dockerhub."
-  ($ (list (~ "podman push localhost/~a:latest" project-name)
-           (~ "docker.io/jjba23/~a:latest" project-name))
-     #:verbose? #t))
+  (ct:container (list "push"
+                      (~ "localhost/~a:latest" project-name)
+                      (~ "docker.io/jjba23/~a:latest" project-name))
+                #:verbose? #t))
 
 (define (push-docker-tag)
   "Push the locally generated Docker image to Dockerhub."
   (git-fetch "--all")
-  (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
-    ($ (list (~ "podman push localhost/~a:latest" project-name)
-             (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
-       #:verbose? #t)))
+  (let ((latest-tag (git-describe-tag)))
+    (ct:container (list "push"
+                        (~ "localhost/~a:latest" project-name)
+                        (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
+                  #:verbose? #t)))
 
 (define (i18n-update)
   "Update .pot and .po files based on the source code."
-  (time-machine-manifest-shell (list "meson setup build &&"
-                                     "ninja -C build lambdock-pot &&"
-                                     "ninja -C build lambdock-update-po")))
+  ;; Three steps of the same build, each run where it happens rather than as
+  ;; one `&&' chain inside a single shell: the one that fails is the one that
+  ;; says so.
+  (time-machine-manifest-shell (list "meson" "setup" "build"))
+  (time-machine-manifest-shell (list "ninja" "-C" "build" "lambdock-pot"))
+  (time-machine-manifest-shell (list "ninja" "-C" "build"
+                                     "lambdock-update-po")))
 
 (define (meson-build)
   "Meson build."
   ;;(delete-file-recursively "./build")
-  (time-machine-program-shell (list "meson setup build &&" "ninja -C build")))
+  (time-machine-program-shell (list "meson" "setup" "build"))
+  (time-machine-program-shell (list "ninja" "-C" "build")))
 
 (define (debug-run)
   "Debug run lambdock."
   (meson-build)
-  ($ '("gdb --args ./build/lambdock")))
+  (dsl:run (list "gdb" "--args" "./build/lambdock")))
 
 (define (flatpak-build)
   "Build Flatpak package."
-  ($ '("flatpak install --user flathub org.gnome.Platform//50"
-       "org.gnome.Sdk//50"))
-  ($ '("flatpak-builder build-dir"
-       "packaging/flatpak/org.jointhefreeworld.lambdock.yaml" "--force-clean")))
+  (dsl:run (list "flatpak" "install" "--user" "flathub"
+                 "org.gnome.Platform//50" "org.gnome.Sdk//50"))
+  (dsl:run (list "flatpak-builder" "build-dir"
+                 "packaging/flatpak/org.jointhefreeworld.lambdock.yaml"
+                 "--force-clean")))
