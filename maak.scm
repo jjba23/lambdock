@@ -20,7 +20,12 @@
   #:use-module (ice-9 string-fun)
   #:use-module (ice-9 textual-ports)
   #:use-module (ice-9 popen)
-  #:use-module (maak maak))
+  #:use-module (maak maak)
+  ;; The container helpers are imported under a prefix because the
+  ;; tasks below are named the way maak exposes them on the command
+  ;; line -- `maak container-build' -- and a task may not shadow the
+  ;; helper it calls.
+  #:use-module ((maak container) #:prefix ct:))
 
 ;; ===== Maak abstractions =====
 
@@ -193,9 +198,13 @@ tests are the ones that match the checked out sources."
   "Run Nix package"
   ($ '("nix --extra-experimental-features 'nix-command flakes' run .#")))
 
+(define (default)
+  "List the tasks this project defines."
+  (list-tasks))
+
 (define (container-build)
   "Build Container image"
-  ($ '("podman build -t lambdock .")))
+  (ct:container-build "." #:tag "lambdock:latest" #:verbose? #t))
 
 (define (container-run)
   "Run Container image"
@@ -221,7 +230,7 @@ tests are the ones that match the checked out sources."
 
 (define (push-docker-tag)
   "Push the locally generated Docker image to Dockerhub."
-  ($ '("git fetch --all"))
+  (git-fetch "--all")
   (let* ((latest-tag (syscall-with-output "git describe --tags --abbrev=0")))
     ($ (list (~ "podman push localhost/~a:latest" project-name)
              (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
