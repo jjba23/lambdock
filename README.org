@@ -1153,101 +1153,305 @@ Combine either mode with any theme. The ~'windows-*~ and ~'macos-*~ themes
 include dedicated taskbar styling, and a generic taskbar modifier squares off the
 capsule and styles the title labels when needed.
 
-** The glass shelf: from a flat capsule to the Mavericks dock 🐆
+** The glass shelf: one dock, any shape 🐆
 :PROPERTIES:
 :CUSTOM_ID: shelf
 :END:
 
 ~lambdock~ has *one* dock implementation. Its shape is described by plain
-numbers, so a flat capsule, a subtle 3D shelf and the Mac OS X 10.9 *Mavericks*
-dock are all the same code with different values. There are no modes and no
-presets: every knob is independent and has a default that keeps the classic
-flat capsule.
+numbers, so a flat capsule, a frosted plinth, a subtle 3D shelf and the Mac OS X
+10.9 *Mavericks* dock are the same code with different values. There are no modes
+and no presets: every knob is independent, and all of them default to the classic
+flat capsule, so a dock that says nothing looks exactly like it always did.
 
-| Parameter                  | Default | What it does                                                  |
-|----------------------------+---------+---------------------------------------------------------------|
-| ~dock-shelf-tilt~          | ~0~     | Tilt of the shelf plane, in degrees (0 = flat, orthographic). |
-| ~dock-shelf-perspective~   | ~400~   | Projection distance for the tilt, px (smaller = stronger 3D). |
-| ~dock-shelf-margin~        | ~24~    | Glass on the *inner* side of the icons, px. Can be negative.  |
-| ~dock-shelf-front~         | ~0~     | Glass on the *outer* side (the front face), px.               |
-| ~dock-reflection~          | ~0~     | Reflection band height / icon size (0 = no reflections).      |
-| ~dock-reflection-intensity~| ~0.55~  | Alpha of the reflection where it touches the icon.            |
-| ~dock-reflection-blur~     | ~0.05~  | Gaussian blur radius / icon size.                             |
+*** The seven numbers
+| Parameter                   | Default | Range      | What it does                                                   |
+|-----------------------------+---------+------------+----------------------------------------------------------------|
+| ~dock-shelf-tilt~           | ~0~     | -45 … 45   | Tilt of the shelf plane in degrees. 0 = flat (orthographic).    |
+| ~dock-shelf-perspective~    | ~400~   | 50 … 5000  | Projection distance for the tilt, px (only used with a tilt).   |
+| ~dock-shelf-margin~         | ~24~    | -200 … 200 | Glass on the *inner* side of the icons, px. Negative = overhang.|
+| ~dock-shelf-front~          | ~0~     | 0 … 200    | Glass on the *outer* side (the front face), px.                 |
+| ~dock-reflection~           | ~0~     | 0 … 2      | Reflection band height / icon size. 0 = no reflections.         |
+| ~dock-reflection-intensity~ | ~0.55~  | 0 … 1      | Alpha of the reflection where it touches the icon.              |
+| ~dock-reflection-blur~      | ~0.05~  | 0 … 0.25   | Gaussian blur radius / icon size.                               |
 
-The capsule is sized from them, so the glass always matches the values you pick:
+Out-of-range values are clamped instead of failing, and every option can also be
+set from the ~(configure-dock! ...)~ keyword arguments (~#:shelf-margin~,
+~#:reflection~, ...).
+
+*** The geometry in one line
+#+begin_example
+ ──────────────────────────────────────────────  inner edge of the glass
+                    ↑
+      dock-shelf-margin (glass above the icons; make it negative and
+                    ↓   the icons overhang past this line)
+       [icon]      [icon]      [icon]
+ ──────────────────────────────────────────────  the icons' bottom
+      mirrored icons, fading out                  ← dock-shelf-front
+ ──────────────────────────────────────────────  the screen edge
+#+end_example
 
 #+begin_src scheme
-band   = round(icon-size * dock-reflection)
-outer  = max(dock-shelf-front, band)      ; glass in front of the icons
-capsule = icon-size + dock-shelf-margin + outer
+band    = round(dock-icon-size * dock-reflection)
+outer   = max(dock-shelf-front, band)     ; glass in front of the icons
+capsule = dock-icon-size + dock-shelf-margin + outer
 #+end_src
 
-*** Reaching the Mavericks dock
-The OS X 10.9 dock is a light platinum slab that the icons overhang, with their
-reflections fading over the glass in front of them. That is exactly this:
+Three consequences worth remembering:
+
+- ~dock-shelf-margin~ and ~dock-shelf-front~ are *pixels*, so they do not follow
+  ~dock-icon-size~. ~dock-reflection~ is a *ratio*, so the mirror does scale with
+  the icons.
+- A negative ~dock-shelf-margin~ is what makes the icons overhang the glass, like
+  the OS X dock. The overlay reserves room for the overhang, so nothing is clipped.
+- If the mirror is taller than the front face, the capsule grows to fit it
+  (~outer = band~); if the front face is taller, the extra glass stays empty and
+  the mirror fades before reaching it.
+
+*** Recipes
+Every recipe below is a complete, copy-pasteable settings fragment: add the lines
+to your =settings.scm= and the dock redraws itself.
+
+**** 1. The classic flat dock (the default)
+Write nothing. That is ~tilt 0~, ~margin 24~, no front face, no reflections.
+
+**** 2. A frosted plinth: glass all around the icons
+#+begin_src scheme
+(define dock-shelf-margin 18)   ; glass above the icons
+(define dock-shelf-front 18)    ; glass below them
+(define dock-reflection 0)      ; no mirror
+#+end_src
+
+**** 3. A subtle 3D shelf
+#+begin_src scheme
+(define dock-shelf-tilt 4)          ; a hint of perspective
+(define dock-shelf-perspective 900) ; ... with a long camera distance
+(define dock-shelf-margin 8)
+(define dock-shelf-front 12)
+(define dock-reflection 0.25)
+(define dock-reflection-intensity 0.35)
+#+end_src
+
+**** 4. The OS X Mavericks dock (platinum slab)
+The 10.9 dock is a light, glossy slab that the icons overhang, with short blurred
+mirrors fading over the glass in front of them. It is orthographic, so the tilt
+stays at 0:
 
 #+begin_src scheme
-(define dock-theme 'macos-mavericks)  ; the platinum material
+(define dock-theme 'macos-mavericks)   ; platinum slab material
 
 (define dock-icon-size 48)
-(define dock-shelf-margin -22)        ; icons overhang the slab by 22px
-(define dock-shelf-front 18)          ; 18px of glass in front of them
-(define dock-reflection 0.28)         ; short, blurred mirror image
+(define dock-shelf-margin -22)         ; icons overhang by 22px
+(define dock-shelf-front 18)           ; 18px of glass in front
+(define dock-reflection 0.28)          ; short blurred mirror
 (define dock-reflection-intensity 0.5)
 (define dock-reflection-blur 0.05)
-;; no tilt: the real dock is orthographic
+;; tilt stays 0 - the real dock is orthographic
 (define dock-shelf-tilt 0)
 #+end_src
 
-*** Other shapes to start from
+Any other theme works with the same numbers; it just wears its own material
+instead of the platinum one (see [[#shelf-material][styling the material]]).
+
+**** 5. A dark smoked-glass shelf
+Same geometry, dark material: pick a dark theme and override the shelf material
+in =~/.config/lambdock/styles.css= (user styles always win):
+
 #+begin_src scheme
-;; 1. Classic flat dock: this is what you get when you say nothing.
-
-;; 2. A gentle "shelf": a hint of tilt and short reflections
-(define dock-shelf-tilt 4)
-(define dock-shelf-perspective 900)
-(define dock-shelf-margin 8)
-(define dock-shelf-front 10)
-(define dock-reflection 0.25)
-(define dock-reflection-intensity 0.35)
-
-;; 3. Only mirror the icons, keep the capsule flat and fully "glassy"
-(define dock-reflection 0.4)
-
-;; 4. A tall front face with no reflections (frosted plinth)
-(define dock-shelf-front 26)
-(define dock-reflection 0)
-
-;; 5. Icons floating above the shelf, reflections on the glass below
-(define dock-shelf-margin -32)
-(define dock-shelf-front 20)
+(define dock-theme 'vanilla)
+(define dock-shelf-margin -18)
+(define dock-shelf-front 16)
 (define dock-reflection 0.35)
+(define dock-reflection-intensity 0.75)  ; brighter mirror on dark glass
+(define dock-reflection-blur 0.06)
 #+end_src
 
-*** What happens under the hood
+#+begin_src css
+/* ~/.config/lambdock/styles.css */
+.lambdock-window.shelf-mode {
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.55) 0px,
+    rgba(96, 108, 130, 0.95) 2px,
+    rgba(44, 52, 70, 0.95) 7px,
+    rgba(60, 70, 90, 0.92) 8px,
+    rgba(24, 29, 40, 0.90) 100%
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+#+end_src
+
+**** 6. Icons hanging over the glass, with a long mirror
+#+begin_src scheme
+(define dock-shelf-margin -34)   ; a lot of overhang
+(define dock-shelf-front 26)
+(define dock-reflection 0.45)    ; a tall mirror in the front face
+(define dock-reflection-blur 0.04)
+#+end_src
+
+**** 7. Only the mirror: keep the flat capsule, add reflections
+#+begin_src scheme
+(define dock-reflection 0.4)     ; no margin/front changes at all
+#+end_src
+
+**** 8. No glass at all: icons and their mirrors over the wallpaper
+Keep a theme -- with ~dock-theme 'none~ the dock falls back to the default GTK
+window background -- and delete the shelf material instead. The geometry and the
+reflections stay:
+
+#+begin_src scheme
+(define dock-theme 'vanilla)
+(define dock-shelf-front 14)     ; room for the mirror under the icons
+(define dock-reflection 0.3)
+#+end_src
+
+#+begin_src css
+/* ~/.config/lambdock/styles.css - the "shelf" is only a mirror now */
+.lambdock-window.shelf-mode {
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+#+end_src
+
+**** 9. A shelf in taskbar mode
+The shelf works in a full-width bar too: the material squares off and the front
+face stays below the icons.
+
+#+begin_src scheme
+(define dock-mode 'taskbar)
+(define dock-shelf-margin -10)
+(define dock-shelf-front 14)
+(define dock-reflection 0.2)
+#+end_src
+
+**** 10. Top, left and right docks
+Nothing special to do: the geometry mirrors with the dock edge, and the tilt
+direction is flipped for you. ~margin~ is always the *inner* side (away from the
+screen edge) and ~front~ always the *outer* one.
+
+#+begin_src scheme
+(define dock-position 'top)
+(define dock-shelf-margin -20)
+(define dock-shelf-front 16)
+(define dock-reflection 0.3)
+#+end_src
+
+*** Turning the knobs: what the extremes do
+| Knob                     | Lower it to get…                       | Raise it to get…                                  |
+|--------------------------+----------------------------------------+---------------------------------------------------|
+| ~dock-shelf-tilt~        | a flat, edge-on dock (0 = orthographic) | a shelf that leans away, foreshortened            |
+| ~dock-shelf-perspective~ | a violent wide-angle taper             | an almost orthographic tilt                       |
+| ~dock-shelf-margin~      | icons overhanging more and more        | a thicker glass body around the icons             |
+| ~dock-shelf-front~       | no room under the icons                | a tall front face (reflections fade inside it)    |
+| ~dock-reflection~        | a shorter mirror, or none at 0         | a mirror as tall as the icons                     |
+| ~dock-reflection-intensity~ | a ghost of a mirror (0 = invisible) | a strong mirror (1 = solid copy)                  |
+| ~dock-reflection-blur~   | a sharp, recognisable mirror           | a soft frosted smear                              |
+
+Two things to keep in mind:
+
+- ~dock-reflection~ is also what enables the whole reflection machinery: the
+  contact shadow under the icons, the mirror, and the white running-app dot on the
+  glass. At ~0~ the dock uses the theme's own running indicator instead.
+- The mirror follows the fisheye magnification sideways, but the band stays the
+  same thickness, so hovering one icon never pushes the row up and down.
+
+*** Changing the look live
+Every option has a setter, and calling one redraws every dock immediately, so you
+can tune a look from the REPL with the dock in front of you:
+
+#+begin_src scheme
+scheme@(guile-user)> (set-dock-shelf-margin! -22)
+scheme@(guile-user)> (set-dock-shelf-front! 18)
+scheme@(guile-user)> (set-dock-reflection! 0.28)
+scheme@(guile-user)> (set-dock-reflection-intensity! 0.5)
+scheme@(guile-user)> (set-dock-reflection-blur! 0.05)
+;; one instance only: pass its settings path as the second argument
+scheme@(guile-user)> (set-dock-shelf-tilt! 0 "/home/me/.config/lambdock/settings.scm")
+#+end_src
+
+The matching getters (~get-dock-shelf-margin~, ~get-dock-reflection~, ...) tell
+you what the dock is using right now. Setters only change the running dock: they
+do not rewrite =settings.scm=, so once you like a value, write it into the file to
+keep it across restarts.
+
+*** Styling the material in CSS
+:PROPERTIES:
+:CUSTOM_ID: shelf-material
+:END:
+
+The numbers above are geometry; the *material* (colour, gradients, borders,
+corners) is CSS, and it is theme-agnostic:
+
+| Where | What it styles |
+|-------+----------------|
+| =resources/css/shelf.css= | the generic light frosted slab, loaded for *any* theme while the shelf is active |
+| =resources/css/macos-mavericks.css= | the platinum slab: near-white surface, bluish thickness band, bright outer specular line |
+| =~/.config/lambdock/styles.css= | your overrides, loaded last at user priority |
+
+Classes you can hook into:
+
+| Class | Applies to |
+|-------+------------|
+| ~.lambdock-window.shelf-mode~ | the capsule while any shelf parameter differs from the defaults |
+| ~.lambdock-window.shelf-mirror~ | the capsule while reflections are on |
+| ~.shelf-top~ / ~.shelf-bottom~ / ~.shelf-left~ / ~.shelf-right~ | on both the window and the capsule: which edge the dock is on |
+| ~window.shelf-mode~ | the whole dock (icons, popovers, labels) |
+| ~.shelf-frame~, ~.shelf-item~, ~.shelf-reflection~ | the tilt frame, the per-item wrapper and the reflection widget |
+
+The modifier is loaded *before* the theme at the same priority, so a theme that
+wants its own shelf material has to repeat the selector
+(~.lambdock-window.shelf-mode~) — that is exactly what =macos-mavericks.css= does.
+Without that, the generic frosted slab is what you get.
+
+A couple of shapes worth stealing:
+
+#+begin_src css
+/* a flat matte bar: no gloss, no rounded outer corners */
+.lambdock-window.shelf-mode {
+  background-image: linear-gradient(180deg, #2b3140 0%, #1b2029 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* a two-tone slab: bright inner strip, darker front face */
+.lambdock-window.shelf-mode.shelf-bottom {
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.85) 0px,
+    rgba(120, 134, 156, 0.95) 2px,
+    rgba(88, 100, 120, 0.95) 6px,
+    rgba(232, 238, 246, 0.92) 7px,
+    rgba(246, 249, 252, 0.92) 100%
+  );
+}
+#+end_src
+
+*** Under the hood
 - *Tilt* projects the themed capsule onto a plane that recedes from the screen
-  edge; the icons stay upright on top of it. It is a real =GskTransform= (rotate
-  + perspective) because GTK CSS transforms are affine only and would just
-  squash the shelf.
+  edge; the icons stay upright on top of it. It is a real =GskTransform= (rotate +
+  perspective) because GTK CSS transforms are affine only and would just squash
+  the shelf.
 - *Margin / front* place the icons in the glass: a negative margin lets them
   overhang the inner edge, and the front face is the glass in front of them.
 - *Reflection* paints a mirrored, gaussian-blurred copy that fades out over the
-  front face, plus a soft contact shadow under the icon and the white running
-  indicator near the outer edge. The band is ~icon × reflection~ tall and
-  follows the fisheye magnification sideways.
+  front face, plus a soft contact shadow under the icon and the running-app dot
+  near the outer edge. The fade is drawn in bands sized to the band height, so a
+  short mirror fades smoothly instead of showing steps.
+- Everything is derived: the capsule, the overlay's reserved space, the exclusive
+  zone, the auto-hide distance and the fisheye geometry all read the same numbers.
+  Put them back to their defaults and the dock is pixel-identical to before, live,
+  with no restart.
 
-Everything is theme-agnostic: the material ships as a modifier stylesheet
-(~resources/css/shelf.css~, scoped per theme) plus the ~shelf-*~ widget classes,
-so your theme keeps styling icons, fonts, popovers and running indicators while
-the geometry comes from the numbers above. Set them back to their defaults and
-the dock is pixel-identical to before, live, with no restart.
-
-#+begin_note
+*** What it cannot do
 A Wayland layer-shell surface cannot read the pixels behind it, so a *real*
-backdrop blur is not possible without compositor help (e.g. a KWin blur rule).
-The frosted look is drawn with gradients instead; the blur the shelf adds for
-real is the gaussian blur on the icon reflections.
-#+end_note
+backdrop blur is impossible without compositor help (e.g. a KWin blur rule). The
+frosted look is drawn with gradients instead; the blur the shelf adds for real is
+the gaussian blur on the icon reflections.
 
 ** Finding icon names
 :PROPERTIES:
