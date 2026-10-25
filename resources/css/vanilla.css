@@ -61,7 +61,9 @@ button.flat {
   border: none;
   box-shadow: none;
   padding: 6px;
-  margin: 2px 3px;
+  /* The horizontal gap between items comes from `dock-item-spacing'; the theme
+   * only keeps a vertical margin, so the row is as tight as the setting says. */
+  margin: 2px 0;
   border-radius: 14px;
   color: #f5f5f7;
 

@@ -1173,9 +1173,10 @@ Two numbers decide how the row of icons looks:
 The *visible* gap is ~dock-item-spacing~ plus whatever the active theme gives
 its buttons as padding and margins, so it is the knob for the rhythm while the
 theme keeps control of the clickable area. As a reference, the OS X dock keeps
-its icons about ~0.3 × their size~ apart: 50px icons with ~15px between them,
-which is ~dock-icon-size 48~ + ~dock-item-spacing 4~ with a theme whose buttons
-add ~10px (the ~'macos-mavericks~ one does exactly that).
+its icons about ~0.3 × their size~ apart: 50px icons with ~15px between them.
+With 48px icons and ~dock-item-spacing 4~ that is a ~14–16px~ gap: the
+~'vanilla~ and ~'macos-mavericks~ themes keep no horizontal button margin, so
+their ~6px~ / ~10px~ of padding plus the setting land right there.
 
 #+begin_src scheme
 ;; packed tight, icons almost touching
