@@ -13,6 +13,9 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   `set-dock-item-spacing!` for live changes. The default reproduces the OS X
   dock's rhythm (icons about 0.3 x their size apart, counting the theme's button
   padding), and the README has a short section on spacing and sizing.
+- Fix the REPL setters: `reload-dock!` was being defined in `(guile-user)`
+  instead of `(lambdock core)`, so `(set-dock-theme! ...)`,
+  `(set-dock-icon-size! ...)` and friends never redrew the dock.
 
 ---------
 
