@@ -15,6 +15,15 @@ Nothing yet.
 
 *[Released]*
 
+** v0.8.1 (2026-10-25)
+- README: document the glass shelf properly -- every option with its default and
+  clamped range, the geometry in one line, ten copy-pasteable recipes (flat,
+  frosted plinth, subtle 3D, the OS X Mavericks platinum slab, dark smoked glass,
+  overhanging icons with a long mirror, mirror-only, no glass at all, taskbar and
+  side docks), what the extremes of each knob do, live tuning from the REPL, and
+  how to restyle the material with the `shelf-*` CSS classes
+- CI: move the Byggsteg pipeline to v2
+
 ** v0.8.0 (2026-10-25)
 - One dock implementation described by plain numbers -- no modes, no presets:
   `dock-shelf-tilt`, `dock-shelf-perspective`, `dock-shelf-margin`,
