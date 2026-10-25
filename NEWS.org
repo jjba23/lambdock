@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.10.2 (2026-10-25)
 - Make the fish-eye magnification cheap and smooth. Hovering used to ask the icon
   theme for the artwork at every pixel size the pointer passed through, and every
   one of those is a fresh lookup, decode and resample -- tens of milliseconds per
@@ -20,10 +25,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   size to the next. Motion events are applied once per frame rather than once per
   event, so a high-rate mouse cannot repeat the same work before it is drawn, and
   the icons at rest are pixel-for-pixel what they were.
-
----------
-
-*[Released]*
 
 ** v0.10.1 (2026-10-25)
 - Read the XDG desktop entry cache to match windows to dock items. A compositor's
