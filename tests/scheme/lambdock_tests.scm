@@ -784,6 +784,30 @@
 (check-equal "set-dock-shelf-flare! updates the targeted config"
              40 (get-dock-shelf-flare %flare-cfg))
 
+;; --- the capsule's end padding ---------------------------------------------
+
+(check-equal "the capsule padding defaults to 12"
+             12 (get-dock-capsule-padding (tmp-path "no-padding.scm")))
+
+(define %padding-cfg (tmp-path "padding.scm"))
+(write-file %padding-cfg
+            "(define dock-capsule-padding 8)
+")
+(load-dock-config! %padding-cfg)
+(check-equal "the capsule padding is read from the config"
+             8 (get-dock-capsule-padding %padding-cfg))
+
+(set-dock-capsule-padding! 0 %padding-cfg)
+(check-equal "set-dock-capsule-padding! accepts zero"
+             0 (get-dock-capsule-padding %padding-cfg))
+(set-dock-capsule-padding! 20 %padding-cfg)
+(check-equal "set-dock-capsule-padding! updates the targeted config"
+             20 (get-dock-capsule-padding %padding-cfg))
+
+;; It is a layout knob, not a shelf knob: it works without any shelf geometry.
+(check-equal "the padding is independent of the shelf"
+             0 (get-dock-shelf-flare %padding-cfg))
+
 ;; =============================================================================
 ;; Summary
 ;; =============================================================================

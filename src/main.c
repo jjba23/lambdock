@@ -663,6 +663,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
   state->item_spacing = get_item_spacing_config_for(state->config_path);
+  state->capsule_padding =
+      get_capsule_padding_config_for(state->config_path);
 
   /* Load CSS theme AFTER window context is created */
   state->theme = get_theme_config_for(state->config_path);

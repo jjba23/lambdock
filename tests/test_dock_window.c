@@ -69,6 +69,7 @@ static void test_update_dock_dimensions_horizontal(void) {
   state.orientation = GTK_ORIENTATION_HORIZONTAL;
   state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
   state.icon_size = 48;
+  state.capsule_padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
   update_dock_dimensions(&state);
 
@@ -94,6 +95,39 @@ static void test_update_dock_dimensions_horizontal(void) {
   g_object_unref(state.box);
 }
 
+static void test_capsule_padding_setting(void) {
+  LambdockState state = {0};
+  state.overlay = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.orientation = GTK_ORIENTATION_HORIZONTAL;
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.icon_size = 48;
+
+  /* `dock-capsule-padding' moves the icons in from the capsule's ends. */
+  state.capsule_padding = 8;
+  update_dock_dimensions(&state);
+  g_assert_cmpint(gtk_widget_get_margin_start(state.box), ==, 8);
+  g_assert_cmpint(gtk_widget_get_margin_end(state.box), ==, 8);
+
+  /* Zero is a real value: icons flush with the ends of the capsule. */
+  state.capsule_padding = 0;
+  update_dock_dimensions(&state);
+  g_assert_cmpint(gtk_widget_get_margin_start(state.box), ==, 0);
+  g_assert_cmpint(gtk_widget_get_margin_end(state.box), ==, 0);
+
+  /* The capsule's cross dimension does not depend on it. */
+  g_assert_cmpint(dock_capsule_cross_dim(&state), ==,
+                  48 + CAPSULE_PADDING_PX);
+
+  g_object_ref_sink(state.overlay);
+  g_object_unref(state.overlay);
+  g_object_ref_sink(state.bg_capsule);
+  g_object_unref(state.bg_capsule);
+  g_object_ref_sink(state.box);
+  g_object_unref(state.box);
+}
+
 static void test_update_dock_dimensions_vertical(void) {
   LambdockState state = {0};
   state.overlay = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
@@ -102,6 +136,7 @@ static void test_update_dock_dimensions_vertical(void) {
   state.orientation = GTK_ORIENTATION_VERTICAL;
   state.edge = GTK_LAYER_SHELL_EDGE_LEFT;
   state.icon_size = 40;
+  state.capsule_padding = CAPSULE_MAIN_AXIS_PADDING_PX;
 
   update_dock_dimensions(&state);
 
@@ -136,6 +171,7 @@ static void test_update_dock_dimensions_stale_monitor(void) {
   state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   state.orientation = GTK_ORIENTATION_HORIZONTAL;
   state.icon_size = 48;
+  state.capsule_padding = CAPSULE_MAIN_AXIS_PADDING_PX;
   state.monitor = (GdkMonitor *)0xdeadbeef;
 
   update_dock_dimensions(&state);
@@ -242,6 +278,7 @@ static void test_update_dock_dimensions_shelf(void) {
   state.orientation = GTK_ORIENTATION_HORIZONTAL;
   state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
   state.icon_size = 48;
+  state.capsule_padding = CAPSULE_MAIN_AXIS_PADDING_PX;
   state.shelf = lambdock_shelf_params_default();
   state.shelf.tilt_deg = 14.0;
   state.shelf.margin_px = -20;
@@ -459,6 +496,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/dock_window/monitor_valid", test_is_monitor_valid);
   g_test_add_func("/ui/dock_window/dimensions_guards",
                   test_update_dock_dimensions_guards);
+  g_test_add_func("/ui/dock_window/capsule_padding",
+                  test_capsule_padding_setting);
   g_test_add_func("/ui/dock_window/dimensions_horizontal",
                   test_update_dock_dimensions_horizontal);
   g_test_add_func("/ui/dock_window/dimensions_vertical",

@@ -199,6 +199,24 @@ int get_item_spacing_config_for(const char *config_path) {
   return DOCK_ITEM_SPACING_PX;
 }
 
+/**
+ * get_capsule_padding_config_for:
+ * Reads `dock-capsule-padding` (px between the capsule's ends and the icons),
+ * clamped so a typo cannot collapse or explode the dock.
+ */
+int get_capsule_padding_config_for(const char *config_path) {
+  SCM res = call_core_proc_with_path("get-dock-capsule-padding", config_path);
+  if (scm_is_true(res) && (scm_is_integer(res) || scm_is_number(res))) {
+    int padding = scm_to_int(res);
+    if (padding < 0)
+      return 0;
+    if (padding > CAPSULE_MAIN_AXIS_PADDING_MAX_PX)
+      return CAPSULE_MAIN_AXIS_PADDING_MAX_PX;
+    return padding;
+  }
+  return CAPSULE_MAIN_AXIS_PADDING_PX;
+}
+
 /** Checks if Guile REPL is enabled for a specific config path. */
 gboolean get_repl_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-enable-repl?", config_path);

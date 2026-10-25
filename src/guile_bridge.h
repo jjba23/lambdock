@@ -48,6 +48,13 @@ int get_icon_size_config_for(const char *config_path);
 int get_item_spacing_config_for(const char *config_path);
 
 /**
+ * get_capsule_padding_config_for:
+ * Reads `dock-capsule-padding` (px between the capsule's ends and the icons,
+ * clamped to 0..96). Falls back to CAPSULE_MAIN_AXIS_PADDING_PX.
+ */
+int get_capsule_padding_config_for(const char *config_path);
+
+/**
  * populate_dock_items_for:
  * @state: Pointer to main LambdockState structure.
  *

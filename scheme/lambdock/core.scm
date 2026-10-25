@@ -72,6 +72,7 @@
                get-dock-theme
                get-dock-icon-size
                get-dock-item-spacing
+               get-dock-capsule-padding
                get-dock-auto-hide?
                get-dock-show-when-clear?
                get-dock-monitor
@@ -96,6 +97,7 @@
                set-dock-theme!
                set-dock-icon-size!
                set-dock-item-spacing!
+               set-dock-capsule-padding!
                set-dock-auto-hide!
                set-dock-show-when-clear!
                set-dock-monitor!
@@ -165,6 +167,8 @@ keeps its default (the plain flat dock)."
                                                      'icon-size 48)
                                     #:item-spacing (cfg 'dock-item-spacing
                                                         'item-spacing 4)
+                                    #:capsule-padding (cfg 'dock-capsule-padding
+                                                           'capsule-padding 12)
                                     #:items (cfg 'dock-items
                                                  'items
                                                  '())

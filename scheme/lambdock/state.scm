@@ -33,6 +33,7 @@
             get-dock-theme
             get-dock-icon-size
             get-dock-item-spacing
+            get-dock-capsule-padding
             get-dock-auto-hide?
             get-dock-monitor
             get-dock-exclude-apps
@@ -57,6 +58,7 @@
             set-dock-theme!
             set-dock-icon-size!
             set-dock-item-spacing!
+            set-dock-capsule-padding!
             set-dock-auto-hide!
             set-dock-show-when-clear!
             set-dock-monitor!
@@ -81,6 +83,7 @@
   (make-dock-config position
                     icon-size
                     item-spacing
+                    capsule-padding
                     items
                     auto-hide?
                     show-when-clear?
@@ -105,6 +108,8 @@
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
   (item-spacing dock-config-item-spacing set-dock-config-item-spacing!)
+  (capsule-padding dock-config-capsule-padding
+                   set-dock-config-capsule-padding!)
   (items dock-config-items set-dock-config-items!)
   (auto-hide? dock-config-auto-hide? set-dock-config-auto-hide?!)
   (show-when-clear? dock-config-show-when-clear?
@@ -141,6 +146,7 @@
   (make-dock-config 'bottom
                     48
                     4       ; item spacing (px between dock items)
+                    12      ; capsule padding (px inside the capsule's ends)
                     '()
                     #f
                     #t
@@ -171,6 +177,7 @@
                           (position 'bottom)
                           (icon-size 48)
                           (item-spacing 4)
+                          (capsule-padding 12)
                           (items '())
                           (auto-hide? #f)
                           (show-when-clear? #t)
@@ -195,6 +202,7 @@
   (let ((cfg (make-dock-config position
                                icon-size
                                item-spacing
+                               capsule-padding
                                items
                                auto-hide?
                                show-when-clear?
@@ -227,7 +235,7 @@
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a/padding ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
      config-path
      (if (list? items)
          (length items) 0)
@@ -240,6 +248,7 @@
      mode
      icon-size
      item-spacing
+     capsule-padding
      shelf-tilt
      shelf-margin
      shelf-front
@@ -288,6 +297,12 @@
                                   'default
                                   (car args)))))
     (dock-config-item-spacing cfg)))
+
+(define (get-dock-capsule-padding . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-capsule-padding cfg)))
 
 (define (get-dock-auto-hide? . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -444,6 +459,10 @@
 (define (set-dock-item-spacing! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-item-spacing! cfg val)) args))
+
+(define (set-dock-capsule-padding! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-capsule-padding! cfg val)) args))
 
 (define (set-dock-auto-hide! val . args)
   (apply-to-targets (lambda (cfg)

@@ -764,7 +764,10 @@ void update_dock_dimensions(LambdockState *state) {
     }
   }
 
-  int padding = CAPSULE_MAIN_AXIS_PADDING_PX;
+  /* The room between the capsule's ends and the icons: the theme's button
+   * padding sits on top of it. */
+  int padding = (state->capsule_padding >= 0) ? state->capsule_padding
+                                              : CAPSULE_MAIN_AXIS_PADDING_PX;
 
   if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
     gtk_widget_set_margin_start(state->box, padding);

@@ -33,7 +33,11 @@
 /* --- UI Layout & Dimension Constants --- */
 #define DEFAULT_ICON_SIZE 48
 #define CAPSULE_PADDING_PX 24
+/* Padding inside the capsule along the dock's axis, between its ends and the
+ * first/last icon. This is only the default: `dock-capsule-padding' overrides it
+ * (see LambdockState.capsule_padding). */
 #define CAPSULE_MAIN_AXIS_PADDING_PX 12
+#define CAPSULE_MAIN_AXIS_PADDING_MAX_PX 96
 /* Gap between dock items, in px. The default is the Mac OS X dock's: with its
  * 50px icons and ~15px gaps the spacing is about 0.3x the icon size, and the
  * themes' own button padding/margins make up the rest. */
@@ -238,7 +242,8 @@ struct LambdockState {
   gboolean show_window_titles;  /* Show window titles on running app items */
   LambdockShelfParams shelf;    /* Glass shelf / reflection geometry */
   int icon_size;
-  int item_spacing; /* Gap between dock items, in px */
+  int item_spacing;      /* Gap between dock items, in px */
+  int capsule_padding;   /* Room between the capsule's ends and the icons, px */
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;
