@@ -189,6 +189,44 @@ void shelf_frame_set_shape(GtkWidget *frame, GtkLayerShellEdge edge,
 gboolean shelf_frame_is_frame(gpointer widget);
 
 /**
+ * shelf_frame_project_point:
+ * @frame: A widget created by shelf_frame_new().
+ * @point: (inout): a point in the frame's own coordinate space. On success it is
+ * replaced by where the slab draws it.
+ *
+ * Maps a point through the shelf's projection -- the keystone and the tilt, in
+ * the same order the frame draws them -- so a widget that has to lie *on* the
+ * slab can follow it. The perspective divide is applied: the result is where the
+ * point ends up on screen, not a matrix product.
+ *
+ * Returns: TRUE when @point was projected, FALSE when the frame is a plain
+ * rectangle (no tilt, no flare) or has no allocation yet.
+ */
+gboolean shelf_frame_project_point(GtkWidget *frame, graphene_point_t *point);
+
+/**
+ * shelf_frame_is_projected:
+ * @frame: A widget created by shelf_frame_new().
+ *
+ * Whether the slab is drawn as a shape rather than a rectangle, i.e. whether
+ * shelf_frame_project_point() would move anything.
+ *
+ * Returns: TRUE when the frame has a tilt or a keystone.
+ */
+gboolean shelf_frame_is_projected(GtkWidget *frame);
+
+/**
+ * shelf_frame_cross_orientation:
+ * @frame: A widget created by shelf_frame_new().
+ *
+ * The axis the slab's depth runs along: vertical for a dock on the top or bottom
+ * edge, horizontal for one on the left or right.
+ *
+ * Returns: the cross-axis orientation.
+ */
+GtkOrientation shelf_frame_cross_orientation(GtkWidget *frame);
+
+/**
  * shelf_wrap_item:
  * @state: Pointer to the dock state.
  * @button: The item's button (or separator) widget.

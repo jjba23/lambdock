@@ -9,6 +9,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Draw dock separators on the glass when the dock is shaped. On a keystoned or
+  tilted shelf a separator is part of the slab, not a divider standing in front of
+  it: it now runs down the glass's face (it used to be confined to the icons' box,
+  which is only half the slab deep) and leans with the surface, further the further
+  it sits from the middle of the dock, and away from the middle as it comes
+  forwards -- the way the 10.9 dock's do. The `macos-mavericks` themes give those
+  separators the rod look, fading out at both ends, while a flat dock keeps the
+  plain divider it had.
+
 ---------
 
 *[Released]*

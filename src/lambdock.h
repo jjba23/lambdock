@@ -172,6 +172,7 @@ typedef struct DockItem {
   GtkWidget *button;
   GtkWidget *container;  /* Wrapper box: [button] + [reflection] */
   GtkWidget *reflection; /* Mirrored glass-shelf icon reflection */
+  GtkWidget *separator_follow; /* Separators only: the shelf-following body */
   GtkWidget *popover;
   GList *windows;
   LambdockState *state;

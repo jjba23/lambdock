@@ -262,6 +262,7 @@ sources = files(
   'src/ui/launchpad.c',
   'src/ui/meter.c',
   'src/ui/shelf.c',
+  'src/ui/shelf_follow.c',
 )
 
 # Compiles and links the final binary application executable
@@ -299,6 +300,7 @@ full_app_sources = files(
   'src/ui/launchpad.c',
   'src/ui/meter.c',
   'src/ui/shelf.c',
+  'src/ui/shelf_follow.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 

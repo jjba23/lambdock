@@ -20,6 +20,7 @@
 #include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
 #include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
 #include "shelf.h"               // Glass shelf reflections (icons on the glass)
+#include "shelf_follow.h"         // Items that follow the shelf's projection
 #include "desktop_entry.h" // XDG desktop entries (app id matching)
 #include "dock_dnd.h"            // Drag and drop (reorder, add, remove)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
@@ -1030,6 +1031,7 @@ DockItem *create_separator_dock_item(LambdockState *state,
   item->hover_animate = FALSE;
 
   item->button = gtk_separator_new(orientation);
+  gtk_widget_add_css_class(item->button, "dock-separator");
 
   if (orientation == GTK_ORIENTATION_VERTICAL) {
     gtk_widget_set_margin_start(item->button, SEPARATOR_MARGIN_PX);
@@ -1043,9 +1045,19 @@ DockItem *create_separator_dock_item(LambdockState *state,
     apply_dock_item_alignment(item);
   }
 
+  /* A separator stands *on* the shelf, so it follows the slab's projection: on
+   * a keystoned or tilted dock it leans with the glass instead of standing
+   * upright in front of it. On a flat capsule the follower is a pass-through. */
+  GtkWidget *body = item->button;
+  if (state && state->bg_shelf) {
+    body = shelf_follow_new(item->button, state->bg_shelf,
+                            state->bg_capsule);
+    item->separator_follow = body;
+  }
+
   /* Separators carry no icon, so they only get the wrapper box (keeping the
    * item list uniform); no reflection is created for them. */
-  item->container = shelf_wrap_item(state, item->button, NULL);
+  item->container = shelf_wrap_item(state, body, NULL);
 
   if (state && state->box) {
     GtkWidget *child = item->container ? item->container : item->button;

@@ -225,6 +225,38 @@ separator {
   min-width: 1px;
 }
 
+/* On the glass shelf the separator is part of the slab rather than a divider
+ * standing in front of it: it starts at the icons' base line, runs down the face
+ * the slab tilts towards the viewer, and fades out before the front lip, the way
+ * the 10.9 dock's does. It only applies while the slab is actually projected
+ * (keystone or tilt), so a flat capsule keeps the divider above. */
+.shelf-projected separator {
+  margin: 0;
+  min-width: 3px;
+  border: none;
+  background-color: transparent;
+
+  /* Smoked glass: a dark groove with a dim lit edge, fading at both ends. */
+  background-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(255, 255, 255, 0.13) 18%,
+      rgba(255, 255, 255, 0.13) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0, 0, 0, 0.42) 18%,
+      rgba(0, 0, 0, 0.42) 74%,
+      transparent 100%
+    );
+  background-size: 2px 100%, 1px 100%;
+  background-position: right, left;
+  background-repeat: no-repeat, no-repeat;
+}
+
 /* -------------------------------------------------------------------------
  * HUD POPOVER MENUS
  * ------------------------------------------------------------------------- */

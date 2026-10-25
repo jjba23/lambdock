@@ -1618,6 +1618,37 @@ Two things to keep in mind:
 - The mirror follows the fisheye magnification sideways, but the band stays the
   same thickness, so hovering one icon never pushes the row up and down.
 
+*** Separators on the glass
+A separator belongs to the slab rather than to the row of icons, and on a shaped
+dock it is drawn that way: it runs down the glass's face instead of standing in
+front of it, and it leans with the surface. The lean is the keystone's own --
+proportional to how far the separator sits from the middle of the dock, and away
+from the middle as it comes towards the viewer, exactly as the slab's sides do --
+emphasised, because lambdock's keystone is a gentler projection than the dock this
+look comes from. Dead centre a separator is perfectly vertical; the further out it
+sits, the more it leans.
+
+On a flat capsule (no ~dock-shelf-flare~, no ~dock-shelf-tilt~) nothing changes:
+the separator is the plain divider the theme draws, with the theme's own margins.
+
+What a separator that is *on* the glass looks like -- how wide it is, how it fades
+at both ends -- is CSS, and only applies while the slab is shaped:
+
+#+begin_src css
+.shelf-projected separator {
+  margin: 0;
+  min-width: 3px;
+  background-image:
+    linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.22) 18%,
+                    rgba(255, 255, 255, 0.22) 74%, transparent),
+    linear-gradient(to bottom, transparent, rgba(112, 126, 146, 0.30) 18%,
+                    rgba(112, 126, 146, 0.30) 74%, transparent);
+  background-size: 2px 100%, 1px 100%;
+  background-position: right, left;
+  background-repeat: no-repeat, no-repeat;
+}
+#+end_src
+
 *** Changing the look live
 Every option has a setter, and calling one redraws every dock immediately, so you
 can tune a look from the REPL with the dock in front of you:

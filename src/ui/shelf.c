@@ -720,56 +720,55 @@ static gboolean shelf_frame_keystone(int width, int height,
   return TRUE;
 }
 
-static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
-                                          GtkSnapshot *snapshot) {
-  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(widget);
-  GtkWidget *child = frame_child(widget);
+/**
+ * shelf_frame_transform_new:
+ * The projection the frame applies to the slab, as one transform: the keystone
+ * (which gives the slab its trapezoid) followed by the tilt (which tips it away
+ * from the viewer).
+ *
+ * Both the frame's own painting and anything that has to sit on the slab -- dock
+ * separators, which must lean with it -- go through this, so they cannot drift
+ * apart.
+ *
+ * Returns: (transfer full) (nullable): the transform, or NULL when the shelf is
+ * a plain rectangle that needs no projection.
+ */
+static GskTransform *shelf_frame_transform_new(const LambdockShelfFrame *self,
+                                               int width, int height) {
+  if (!self || (self->tilt == 0.0 && self->flare == 0))
+    return NULL;
+  if (width <= 0 || height <= 0)
+    return NULL;
 
-  if (!child || !gtk_widget_should_layout(child))
-    return;
-
-  if (self->tilt == 0.0 && self->flare == 0) {
-    gtk_widget_snapshot_child(widget, child, snapshot);
-    return;
-  }
-
-  double width = (double)gtk_widget_get_width(widget);
-  double height = (double)gtk_widget_get_height(widget);
   gboolean depth_axis = (self->edge == GTK_LAYER_SHELL_EDGE_TOP ||
                          self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
   gboolean pinned_at_end = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM ||
                             self->edge == GTK_LAYER_SHELL_EDGE_RIGHT);
 
-  /* Two independent projections, outermost first: the keystone (which gives the
-   * slab its trapezoid) and then the tilt (which tips it away from the
-   * viewer). */
   graphene_matrix_t keystone;
-  gboolean has_keystone =
-      shelf_frame_keystone((int)width, (int)height, depth_axis, self->flare,
-                           pinned_at_end, &keystone);
+  GskTransform *keystone_transform = NULL;
+  if (shelf_frame_keystone(width, height, depth_axis, self->flare,
+                           pinned_at_end, &keystone))
+    keystone_transform = gsk_transform_matrix(NULL, &keystone);
 
-  gtk_snapshot_save(snapshot);
-  if (has_keystone)
-    gtk_snapshot_transform(snapshot,
-                           gsk_transform_matrix(NULL, &keystone));
-
+  GskTransform *tilt_transform = NULL;
   if (self->tilt != 0.0) {
     /* Tilt around the docked edge: that edge stays pinned on screen while the
      * inner edge recedes and is projected slightly narrower. */
     graphene_point_t pivot;
     switch (self->edge) {
     case GTK_LAYER_SHELL_EDGE_TOP:
-      graphene_point_init(&pivot, (float)(width / 2.0), 0.0f);
+      graphene_point_init(&pivot, (float)width / 2.0f, 0.0f);
       break;
     case GTK_LAYER_SHELL_EDGE_LEFT:
-      graphene_point_init(&pivot, 0.0f, (float)(height / 2.0));
+      graphene_point_init(&pivot, 0.0f, (float)height / 2.0f);
       break;
     case GTK_LAYER_SHELL_EDGE_RIGHT:
-      graphene_point_init(&pivot, (float)width, (float)(height / 2.0));
+      graphene_point_init(&pivot, (float)width, (float)height / 2.0f);
       break;
     case GTK_LAYER_SHELL_EDGE_BOTTOM:
     default:
-      graphene_point_init(&pivot, (float)(width / 2.0), (float)height);
+      graphene_point_init(&pivot, (float)width / 2.0f, (float)height);
       break;
     }
 
@@ -783,19 +782,46 @@ static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
     GskTransform *transform = gsk_transform_translate(NULL, &origin);
     transform = gsk_transform_rotate_3d(transform, self->tilt, &axis);
     transform = gsk_transform_perspective(transform, (float)self->perspective);
-    transform = gsk_transform_translate(transform, &pivot);
-
-    gtk_snapshot_save(snapshot);
-    gtk_snapshot_transform(snapshot, transform);
-    gtk_widget_snapshot_child(widget, child, snapshot);
-    gtk_snapshot_restore(snapshot);
-
+    tilt_transform = gsk_transform_translate(transform, &pivot);
     gsk_transform_unref(transform);
-  } else {
-    gtk_widget_snapshot_child(widget, child, snapshot);
   }
 
+  if (!keystone_transform)
+    return tilt_transform;
+  if (!tilt_transform)
+    return keystone_transform;
+
+  /* The keystone is applied to the tilted slab, as the frame has always drawn
+   * it: `gsk_transform_transform(next, previous)` applies previous first. */
+  GskTransform *composed =
+      gsk_transform_transform(keystone_transform, tilt_transform);
+  gsk_transform_unref(keystone_transform);
+  gsk_transform_unref(tilt_transform);
+  return composed;
+}
+
+static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
+                                          GtkSnapshot *snapshot) {
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(widget);
+  GtkWidget *child = frame_child(widget);
+
+  if (!child || !gtk_widget_should_layout(child))
+    return;
+
+  GskTransform *transform = shelf_frame_transform_new(
+      self, gtk_widget_get_width(widget), gtk_widget_get_height(widget));
+
+  if (!transform) {
+    gtk_widget_snapshot_child(widget, child, snapshot);
+    return;
+  }
+
+  gtk_snapshot_save(snapshot);
+  gtk_snapshot_transform(snapshot, transform);
+  gtk_widget_snapshot_child(widget, child, snapshot);
   gtk_snapshot_restore(snapshot);
+
+  gsk_transform_unref(transform);
 }
 
 static void lambdock_shelf_frame_dispose(GObject *object) {
@@ -1030,6 +1056,43 @@ void shelf_frame_set_shape(GtkWidget *frame, GtkLayerShellEdge edge,
 gboolean shelf_frame_is_frame(gpointer widget) {
   return widget != NULL && GTK_IS_WIDGET(widget) &&
          G_TYPE_CHECK_INSTANCE_TYPE(widget, LAMBDOCK_TYPE_SHELF_FRAME);
+}
+
+gboolean shelf_frame_is_projected(GtkWidget *frame) {
+  if (!shelf_frame_is_frame(frame))
+    return FALSE;
+
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(frame);
+  return self->tilt != 0.0 || self->flare != 0;
+}
+
+GtkOrientation shelf_frame_cross_orientation(GtkWidget *frame) {
+  if (!shelf_frame_is_frame(frame))
+    return GTK_ORIENTATION_VERTICAL;
+
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(frame);
+
+  /* A dock on the top or bottom edge runs horizontally, so the slab's depth --
+   * the axis across the dock -- is vertical. */
+  gboolean horizontal_dock = (self->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                              self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+  return horizontal_dock ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
+}
+
+gboolean shelf_frame_project_point(GtkWidget *frame, graphene_point_t *point) {
+  if (!shelf_frame_is_frame(frame) || !point)
+    return FALSE;
+
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(frame);
+  GskTransform *transform =
+      shelf_frame_transform_new(self, gtk_widget_get_width(frame),
+                                gtk_widget_get_height(frame));
+  if (!transform)
+    return FALSE;
+
+  gsk_transform_transform_point(transform, point, point);
+  gsk_transform_unref(transform);
+  return TRUE;
 }
 
 GtkWidget *shelf_wrap_item(LambdockState *state, GtkWidget *button,
