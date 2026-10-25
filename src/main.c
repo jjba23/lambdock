@@ -469,10 +469,19 @@ static SCM scm_reload_dock(void) {
  * Exposes C functions to the Guile Scheme runtime engine.
  */
 static void setup_guile_primitives(void) {
-  scm_c_use_module("lambdock core");
+  /* Define the primitive *inside* (lambdock core): `scm_c_use_module' only
+   * imports that module into the current one, so defining without switching
+   * first would put `reload-dock!' in (guile-user) -- where the setters, which
+   * resolve it with `module-ref' on (lambdock core), would never find it and
+   * the dock would not redraw after `(set-dock-...!)'. */
+  SCM module = scm_c_resolve_module("lambdock core");
+  SCM previous = scm_set_current_module(module);
+
   scm_c_define_gsubr("reload-dock!", 0, 0, 0,
                      (scm_t_subr)(intptr_t)scm_reload_dock);
   scm_c_export("reload-dock!", NULL);
+
+  scm_set_current_module(previous);
 }
 
 /**
