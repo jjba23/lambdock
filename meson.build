@@ -86,12 +86,18 @@ guile_dep = dependency('guile-3.0', include_type: 'system')         # GNU Guile 
 layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system') # GTK4 Wayland desktop layer integration
 wayland_client_dep = dependency('wayland-client', include_type: 'system')   # Core Wayland client C API
 
+# libm: the dock uses round(), cos() and fabs() for the fisheye and the shelf
+# geometry. Some toolchains resolve those through another library's dependencies
+# and some do not, so link it explicitly instead of relying on luck.
+libm_dep = cc.find_library('m', required: false)
+
 # Shared dependency array for the main executable and multi-dependency tests
 lambdock_deps = [
     gtk_dep,
     guile_dep,
     layer_shell_dep,
     wayland_client_dep,
+    libm_dep,
 ]
 
 # ------------------------------------------------------------------------------
@@ -289,7 +295,7 @@ unit_tests = [
     'id': 'theme_engine',
     'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
                       lambdock_resources],
-    'deps': [gtk_dep, guile_dep, layer_shell_dep],
+    'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep],
   },
   {
     'id': 'popover_menu',
@@ -302,7 +308,7 @@ unit_tests = [
   {
     'id': 'icon_resolver',
     'extra_sources': ['src/ui/icon_resolver.c', lambdock_resources],
-    'deps': [gtk_dep],
+    'deps': [gtk_dep, libm_dep],
   },
   {
     'id': 'dock_window',

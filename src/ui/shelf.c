@@ -398,8 +398,14 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
     gtk_snapshot_push_blur(snapshot, blur);
 
     gtk_snapshot_save(snapshot);
+    /* Scale, then translate. `gsk_transform_matrix_2d()' would be shorter but
+     * only exists in recent GTK, and the dock has to build against older ones
+     * (Guix 4.16, for instance), so the transform is composed from primitives
+     * that every GTK 4 has. */
+    graphene_point_t mirror_offset = GRAPHENE_POINT_INIT(tx, ty);
     gtk_snapshot_transform(
-        snapshot, gsk_transform_matrix_2d(NULL, sx, 0.0f, 0.0f, sy, tx, ty));
+        snapshot, gsk_transform_translate(gsk_transform_scale(NULL, sx, sy),
+                                          &mirror_offset));
 
     /* Draw the mirrored source as a stack of bands with a power-curve alpha
      * falloff, so the reflection fades away as it recedes from the icon. The
