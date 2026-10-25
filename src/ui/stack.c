@@ -182,12 +182,35 @@ static void free_clicked_path(gpointer data, GClosure *closure) {
  * ============================================================================
  */
 
+/* The stack popover is a panel, not a strip: it gets a real minimum box so a
+ * folder with a handful of entries still opens at a size worth looking at, and a
+ * ceiling so a folder with hundreds of screenshots scrolls instead of growing
+ * past the screen. */
+#define STACK_MIN_WIDTH 440
+#define STACK_MIN_HEIGHT 320
+#define STACK_MAX_HEIGHT 560
+
+/* One grid cell: wide enough for a thumbnail and two lines of name. A cell keeps
+ * this width whatever the file is called -- without it a long name stretches the
+ * cell (and, because the flow box is homogeneous, every other cell with it) and
+ * the panel grows past the screen. */
+#define STACK_CELL_WIDTH 104
+
 static GtkWidget *scrolled_view(GtkWidget *child, int max_height) {
   GtkWidget *scrolled = gtk_scrolled_window_new();
   gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER,
                                  GTK_POLICY_AUTOMATIC);
+
+  /* The content must not dictate the popover's width: a flow box's natural width
+   * is everything on one line, which is how the stack ended up as a full-width
+   * strip one row tall. The viewport keeps the size the popover gives it and the
+   * grid wraps inside that. */
   gtk_scrolled_window_set_propagate_natural_width(
-      GTK_SCROLLED_WINDOW(scrolled), TRUE);
+      GTK_SCROLLED_WINDOW(scrolled), FALSE);
+  gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(scrolled),
+                                            STACK_MIN_WIDTH);
+  gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scrolled),
+                                             STACK_MIN_HEIGHT);
   gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scrolled),
                                              max_height);
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), child);
@@ -199,6 +222,10 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size) {
   GtkIconTheme *theme =
       gtk_icon_theme_get_for_display(gdk_display_get_default());
   GtkWidget *flow = gtk_flow_box_new();
+
+  /* A stack is browsed, not skimmed: its icons are drawn a little larger than
+   * the dock's. */
+  int cell_icon_size = MAX(40, (int)(icon_size * 1.2));
 
   gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(flow), GTK_SELECTION_NONE);
   gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(flow), TRUE);
@@ -214,18 +241,25 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size) {
     GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_valign(content, GTK_ALIGN_CENTER);
 
-    GtkWidget *image = image_for_entry(theme, entry, icon_size);
+    GtkWidget *image = image_for_entry(theme, entry, cell_icon_size);
     if (image)
       gtk_box_append(GTK_BOX(content), image);
 
+    /* Wrapping is what caps the label's natural width: with it, the cell is as
+     * wide as STACK_CELL_WIDTH and a long name wraps (and then ellipsizes)
+     * instead of stretching the grid. */
     GtkWidget *label = gtk_label_new(entry->name);
+    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+    gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
     gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_label_set_max_width_chars(GTK_LABEL(label), 12);
-    gtk_label_set_lines(GTK_LABEL(label), 2);
+    gtk_label_set_max_width_chars(GTK_LABEL(label), 14);
+    gtk_label_set_lines(GTK_LABEL(label), 1);
     gtk_label_set_justify(GTK_LABEL(label), GTK_JUSTIFY_CENTER);
+    gtk_widget_set_hexpand(label, TRUE);
     gtk_box_append(GTK_BOX(content), label);
 
     GtkWidget *button = gtk_button_new();
+    gtk_widget_set_size_request(button, STACK_CELL_WIDTH, -1);
     gtk_widget_add_css_class(button, "flat");
     gtk_widget_add_css_class(button, "stack-entry");
     gtk_widget_set_tooltip_text(button, entry->name);
@@ -238,7 +272,7 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size) {
     gtk_flow_box_append(GTK_FLOW_BOX(flow), button);
   }
 
-  return scrolled_view(flow, 420);
+  return scrolled_view(flow, STACK_MAX_HEIGHT);
 }
 
 static GtkWidget *build_list_view(GPtrArray *entries, int icon_size) {
@@ -282,7 +316,7 @@ static GtkWidget *build_list_view(GPtrArray *entries, int icon_size) {
     gtk_box_append(GTK_BOX(box), button);
   }
 
-  return scrolled_view(box, 420);
+  return scrolled_view(box, STACK_MAX_HEIGHT);
 }
 
 /* ============================================================================

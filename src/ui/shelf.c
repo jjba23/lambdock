@@ -278,9 +278,11 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   gboolean vertical = reflection_is_vertical_band(self);
   double cross = vertical ? w : h;
 
-  double dot_cross = MAX(4.0, cross * 0.16);
-  double dot_along = MAX(3.0, dot_cross * 0.55);
-  double margin = 3.0;
+  /* The OS X dot reads as a small spotlight on the glass: wide enough to see at a
+   * glance, shallow enough to stay a dot rather than a bar. */
+  double dot_cross = MAX(7.0, cross * 0.24);
+  double dot_along = MAX(4.0, dot_cross * 0.52);
+  double margin = 2.5;
 
   double cx = w / 2.0;
   double cy = h / 2.0;

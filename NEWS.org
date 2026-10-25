@@ -9,6 +9,18 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Open stack popovers as panels instead of strips. A flow box's natural width is
+  every entry on one line, and the popover was taking it: a folder of screenshots
+  opened as a full-width strip one row tall with the grid cut off. The stack views
+  now keep their own width (the flow box wraps inside it) and have a real minimum
+  box -- 440x320, scrolling past 560 -- so a folder with a handful of entries
+  still opens at a size worth browsing, and a long filename no longer stretches
+  the grid (names ellipsize in one line, with the full name in the tooltip). The
+  entries themselves are larger too: a bigger icon and a wider cell.
+- Larger running-app indicators in the Mavericks themes: the dot on the glass is
+  about half again as large, and so is the flat dock's CSS dot (20x7, 26x9 while
+  hovered).
+
 ---------
 
 *[Released]*

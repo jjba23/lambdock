@@ -38,7 +38,7 @@ button.flat.dragging {
  * ------------------------------------------------------------------------- */
 
 .stack-popover {
-  min-width: 260px;
+  min-width: 440px;
 }
 
 .stack-popover .title {
@@ -51,9 +51,9 @@ button.flat.dragging {
 }
 
 .stack-grid button.stack-entry {
-  padding: 6px;
-  border-radius: 10px;
-  min-width: 72px;
+  padding: 8px;
+  border-radius: 12px;
+  min-width: 92px;
 }
 
 .stack-grid button.stack-entry:hover {
