@@ -379,10 +379,11 @@ rate, 60 Hz or 120 Hz or whatever your compositor gives it.
 Parking the pointer on that edge keeps the dock out, and leaving does not need any
 particular gesture: the strip is the last two pixels of the screen, so a pointer
 resting there is on the dock when it is in and a hair past it when it is out. The
-dock tells those crossings apart from the ones its own slide produces -- a window
-that moves under a still pointer makes a compositor report the pointer leaving a
-surface it is still on -- and ignores the echoes, which is what used to make it
-bounce in and out for as long as the pointer stayed put.
+dock ignores the crossings its own slide produces -- a window that moves under a
+still pointer makes a compositor report the pointer leaving a surface it is still
+on -- and a leave only counts once the pointer has actually moved since it
+arrived. That is what used to make it bounce in and out for as long as the pointer
+stayed put.
 
 ** Stacks: a folder on the dock 📁
 :PROPERTIES:

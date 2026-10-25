@@ -278,12 +278,10 @@ struct LambdockState {
   double applied_pointer_y;
   gboolean pointer_applied;
 
-  /* Auto-hide: how far the pointer sits from the screen edge the dock hides
-   * into, in dock pixels. Unlike its position inside the window this does not
-   * change while the dock slides, so it says whether a pointer that is not
-   * moving is resting on the dock's revealing strip. */
-  double pointer_edge_gap;
-  gboolean pointer_edge_gap_valid;
+  /* Auto-hide: whether the pointer has moved since it last entered the dock. A
+   * leave that arrives without any movement is an echo of the dock sliding under
+   * a pointer that never moved, not the user leaving. */
+  gboolean pointer_moved_since_enter;
 
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;

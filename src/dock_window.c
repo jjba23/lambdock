@@ -470,6 +470,7 @@ static void on_motion_enter(GtkEventControllerMotion *controller, double x,
   (void)x;
   (void)y;
   LambdockState *state = (LambdockState *)user_data;
+  state->pointer_moved_since_enter = FALSE;
   state->pointer_applied = FALSE;
   reveal_dock(state);
 }
@@ -524,16 +525,16 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
   LambdockState *state = (LambdockState *)user_data;
 
   if (state) {
-    /* Crossings cannot be trusted while the dock slides under a pointer that is
-     * not moving -- the window moves, the pointer does not, and a compositor
-     * reports the pointer leaving a surface it is still on, right after the
-     * slide settles. Believing that one makes the dock hide, which puts the
-     * revealing strip back under the pointer, which reveals it again: the dock
-     * bounces at the edge forever. Only a crossing from a dock that has been
-     * sitting still counts. */
-    if (dock_is_settling(state)) {
+    /* Not every leave means the pointer went anywhere. The dock slides under a
+     * pointer that is not moving -- the window moves, the pointer does not -- and
+     * compositors report crossings that follow from that, which is what used to
+     * bounce the dock at its screen edge: a leave hides it, the revealing strip
+     * comes back under the pointer, an enter reveals it, and round it goes. So a
+     * leave only counts when the dock is sitting still *and* the pointer has
+     * actually moved since it arrived; a pointer that has not moved cannot have
+     * left. */
+    if (dock_is_settling(state) || !state->pointer_moved_since_enter)
       return;
-    }
 
     /* A frame that is already queued must not magnify anything after the
      * pointer has left. */
@@ -569,7 +570,12 @@ static void on_motion_notify(GtkEventControllerMotion *controller, double x,
     return;
 
   /* Remember where the pointer is and let the frame clock do the work, at most
-   * once per frame. */
+   * once per frame. A motion only counts as the pointer moving when the dock
+   * itself is still: while it slides, the window moves under the pointer and the
+   * positions that come back are its own movement. */
+  if (!dock_is_settling(state))
+    state->pointer_moved_since_enter = TRUE;
+
   state->pointer_x = x;
   state->pointer_y = y;
 

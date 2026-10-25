@@ -22,7 +22,8 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the pointer stayed put. Crossings that arrive while the dock is sliding -- or in
   the moment just after it stops, when they are echoes of its own movement rather
   than the pointer moving -- are now ignored, while a leave from a dock that has
-  been sitting still still hides it as before.
+  been sitting still, and the pointer has actually moved since it arrived, still
+  hides it as before -- a pointer that has not moved cannot have left.
 
 ** v0.10.4 (2026-10-25)
 - Draw dock separators on the glass when the dock is shaped. On a keystoned or
