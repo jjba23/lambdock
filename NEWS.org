@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.10.1 (2026-10-25)
 - Read the XDG desktop entry cache to match windows to dock items. A compositor's
   app id and the desktop file of the application behind it rarely agree on
   spelling (`org.gnome.Nautilus` vs. a pinned `nautilus` icon, `idea` vs.
@@ -31,10 +36,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   be resolved from any source is replaced by the one the desktop entry names, which
   is how a preset saying `pavucontrol` gets the icon that actually ships as
   `org.pulseaudio.pavucontrol`.
-
----------
-
-*[Released]*
 
 ** v0.10.0 (2026-10-25)
 - `dock-capsule-padding`: how much room sits between the capsule's ends and the
