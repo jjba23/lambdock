@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.9.0 (2026-10-25)
 - Stacks: `(stack-item #:name "Downloads" #:path "~/Downloads" #:view-mode 'grid)`
   turns a dock icon into a folder popover, macOS Downloads style. The popover
   lists the folder (dot-files skipped, folders first, capped at 300 entries) in
@@ -46,10 +51,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   and 30 new Scheme assertions (163 in total) for the new item types and the dock
   layout overrides. The C tests now run from the source root so they always
   exercise the modules in this tree.
-
----------
-
-*[Released]*
 
 ** v0.8.2 (2026-10-25)
 - Fix the build against GTK < 4.18: the mirror transform no longer uses
