@@ -193,9 +193,9 @@ button.flat:hover .dynamic-item-label {
 button.running-app {
   background-image: radial-gradient(
     circle at center,
-    rgba(70, 90, 120, 0.85) 0%,
-    rgba(90, 110, 140, 0.55) 45%,
-    transparent 80%
+    rgba(255, 255, 255, 0.95) 0%,
+    rgba(198, 220, 246, 0.70) 45%,
+    transparent 82%
   );
   background-size: 14px 5px;
   background-position: center bottom;
@@ -205,9 +205,9 @@ button.running-app {
 button.running-app:hover {
   background-image: radial-gradient(
     circle at center,
-    rgba(50, 70, 100, 0.95) 0%,
-    rgba(80, 105, 140, 0.60) 50%,
-    transparent 84%
+    rgba(255, 255, 255, 1.00) 0%,
+    rgba(214, 232, 252, 0.85) 50%,
+    transparent 86%
   );
   background-size: 18px 6px;
   background-position: center bottom;

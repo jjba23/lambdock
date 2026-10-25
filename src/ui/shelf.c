@@ -114,7 +114,8 @@ typedef struct _LambdockReflection {
   GtkWidget parent_instance;
 
   GtkWidget *source;        /* Weak ref to the mirrored widget */
-  GdkPaintable *paintable;  /* Rendering source (bound lazily) */
+  GdkPaintable *paintable;  /* What gets mirrored */
+  gboolean paintable_ready; /* FALSE until a lazy (widget) paintable is bound */
   GtkLayerShellEdge edge;   /* Shelf edge: decides mirror + fade axis */
   int icon_size;            /* Fallback size while the source is unsized */
   double band_ratio;        /* Reflection band / icon size */
@@ -152,15 +153,18 @@ static gboolean reflection_is_vertical_band(const LambdockReflection *self) {
  * from the first snapshot, when the icon certainly has an allocation.
  */
 static void reflection_sync_paintable(LambdockReflection *self) {
+  if (self->paintable_ready)
+    return;
   if (!self->source || !gtk_widget_get_mapped(self->source))
     return;
   if (gtk_widget_get_width(self->source) <= 0 ||
       gtk_widget_get_height(self->source) <= 0)
     return;
-  if (self->paintable && gdk_paintable_get_intrinsic_width(self->paintable) > 0)
-    return;
 
+  /* Second chance for a widget paintable: once the source is mapped and sized,
+   * a fresh one does paint. */
   g_set_object(&self->paintable, gtk_widget_paintable_new(self->source));
+  self->paintable_ready = TRUE;
   gtk_widget_queue_resize(GTK_WIDGET(self));
 }
 
@@ -361,6 +365,7 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
 
   double w = (double)gtk_widget_get_width(widget);
   double h = (double)gtk_widget_get_height(widget);
+
   if (w <= 0.0 || h <= 0.0)
     return;
 
@@ -374,23 +379,34 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
   reflection_source_size(self, &sw, &sh);
 
   if (self->paintable && sw > 0.0 && sh > 0.0) {
-    /* Mirror + squash: map the source box onto the reflection band so that the
-     * edge touching the icon becomes the mirror plane. */
+    /* Mirror the artwork at full scale across the edge that touches the icon and
+     * let the glass crop it: a reflection does not shrink, it just disappears
+     * into the surface it fades on. Only the part of the icon within the band's
+     * depth is ever visible, which is what makes the mirror read as a reflection
+     * instead of a squashed copy.
+     *
+     * GskTransform composes the other way round from the way it reads: the
+     * argument is applied *after* the new operation, so `scale(translate(..))'
+     * means "translate, then scale" and it is the form that keeps the translation
+     * in the widget's own coordinates. */
     float sx = (float)(w / sw);
-    float sy = (float)(h / sh);
+    float sy = 1.0f;
     float tx = 0.0f;
     float ty = 0.0f;
 
     if (vertical_band) {
       if (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
         /* Mirror about the icon's bottom edge: the shelf reflects downwards. */
-        sy = -sy;
-        ty = (float)h;
+        sy = -1.0f;
+        ty = (float)sh;
+      } else {
+        /* Top dock: the icon's top edge is the mirror plane. */
+        ty = 0.0f;
       }
     } else if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
       /* Mirror about the icon's right edge: the shelf reflects sideways. */
       sx = -sx;
-      tx = (float)w;
+      tx = (float)sw;
     }
 
     double blur_unit = vertical_band ? w : h;
@@ -398,22 +414,17 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
     if (blur < 0.5)
       blur = 0.5;
 
+    graphene_point_t mirror_offset = GRAPHENE_POINT_INIT(tx, ty);
+    GskTransform *mirror =
+        gsk_transform_scale(gsk_transform_translate(NULL, &mirror_offset), sx,
+                            sy);
+
     gtk_snapshot_push_blur(snapshot, blur);
 
-    gtk_snapshot_save(snapshot);
-    /* Scale, then translate. `gsk_transform_matrix_2d()' would be shorter but
-     * only exists in recent GTK, and the dock has to build against older ones
-     * (Guix 4.16, for instance), so the transform is composed from primitives
-     * that every GTK 4 has. */
-    graphene_point_t mirror_offset = GRAPHENE_POINT_INIT(tx, ty);
-    gtk_snapshot_transform(
-        snapshot, gsk_transform_translate(gsk_transform_scale(NULL, sx, sy),
-                                          &mirror_offset));
-
-    /* Draw the mirrored source as a stack of bands with a power-curve alpha
-     * falloff, so the reflection fades away as it recedes from the icon. The
-     * count follows the band height: sub-pixel bands would be quantised away
-     * and leave visible gaps. */
+    /* The reflection fades as it recedes from the icon: draw the mirrored artwork
+     * once per slice, with a power-curve alpha. Each slice's clip is pushed
+     * *before* the mirror transform, so it is expressed in the widget's own
+     * coordinates. */
     double axis_len = vertical_band ? h : w;
     int bands = (int)round(axis_len);
     bands = CLAMP(bands, 6, SHELF_REFLECTION_BANDS);
@@ -421,50 +432,29 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
 
     for (int i = 0; i < bands; i++) {
       double d0 = band_len * (double)i;
-      double d1 = d0 + band_len;
       double t = (d0 + band_len * 0.5) / axis_len; /* 0 = icon edge, 1 = far */
 
-      double alpha = self->intensity * pow(1.0 - t, 1.35);
+      double alpha = self->intensity * pow(1.0 - t, 1.1);
       if (alpha <= 0.001)
         continue;
 
-      /* Map the destination band back into source coordinates for clipping. */
-      graphene_rect_t clip;
-      if (vertical_band) {
-        if (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-          double y1 = sh - (d0 / h) * sh;
-          double y0 = sh - (d1 / h) * sh;
-          graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
-                             (float)(y1 - y0));
-        } else {
-          double y0 = (d0 / h) * sh;
-          double y1 = (d1 / h) * sh;
-          graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
-                             (float)(y1 - y0));
-        }
-      } else {
-        if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-          double x1 = sw - (d0 / w) * sw;
-          double x0 = sw - (d1 / w) * sw;
-          graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
-                             (float)sh);
-        } else {
-          double x0 = (d0 / w) * sw;
-          double x1 = (d1 / w) * sw;
-          graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
-                             (float)sh);
-        }
-      }
+      graphene_rect_t clip =
+          vertical_band
+              ? GRAPHENE_RECT_INIT(0.0f, (float)d0, (float)w, (float)band_len)
+              : GRAPHENE_RECT_INIT((float)d0, 0.0f, (float)band_len, (float)h);
 
       gtk_snapshot_push_clip(snapshot, &clip);
       gtk_snapshot_push_opacity(snapshot, alpha);
+      gtk_snapshot_save(snapshot);
+      gtk_snapshot_transform(snapshot, mirror);
       gdk_paintable_snapshot(self->paintable, snapshot, sw, sh);
-      gtk_snapshot_pop(snapshot);
-      gtk_snapshot_pop(snapshot);
+      gtk_snapshot_restore(snapshot);
+      gtk_snapshot_pop(snapshot); /* opacity */
+      gtk_snapshot_pop(snapshot); /* clip */
     }
 
-    gtk_snapshot_restore(snapshot);
     gtk_snapshot_pop(snapshot); /* blur */
+    gsk_transform_unref(mirror);
   }
 
   if (self->running)
@@ -503,7 +493,11 @@ static void lambdock_reflection_init(LambdockReflection *self) {
   self->blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
   self->intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
   self->running = FALSE;
-  self->has_shadow = TRUE;
+  /* The contact shadow is off: drawn through a linear gradient its fade ends up
+   * covering the whole band instead of the few pixels under the icon, which is
+   * exactly the flat grey strip a reflection must not have. The mirror alone is
+   * what the OS X dock shows. */
+  self->has_shadow = FALSE;
 
   gtk_widget_set_can_focus(GTK_WIDGET(self), FALSE);
   gtk_widget_set_can_target(GTK_WIDGET(self), FALSE);
@@ -837,13 +831,89 @@ static void lambdock_shelf_frame_init(LambdockShelfFrame *self) {
  * PUBLIC API
  * ============================================================================ */
 
+/**
+ * reflection_artwork_for:
+ * @source: The widget to mirror (normally the item's GtkImage).
+ *
+ * Returns the *artwork* behind an icon as a paintable, taking a new reference.
+ *
+ * A GtkImage usually holds an icon name rather than a paintable, so mirroring the
+ * widget (a GtkWidgetPaintable) is the only other option -- and that one depends
+ * on GTK having drawn the widget through its parent already, which it often has
+ * not when the dock is being built. Resolving the icon name (or gicon) against
+ * the icon theme gives the real picture immediately, at exactly the size the dock
+ * draws it.
+ *
+ * Returns: (transfer full) (nullable): the artwork, or NULL when the image holds
+ * something this helper does not understand.
+ */
+static GdkPaintable *reflection_artwork_for(GtkWidget *source) {
+  if (!GTK_IS_IMAGE(source))
+    return NULL;
+
+  GtkImage *image = GTK_IMAGE(source);
+  int size = gtk_image_get_pixel_size(image);
+  if (size <= 0)
+    size = DEFAULT_ICON_SIZE;
+
+  int scale = gtk_widget_get_scale_factor(source);
+  if (scale <= 0)
+    scale = 1;
+
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+
+  switch (gtk_image_get_storage_type(image)) {
+  case GTK_IMAGE_ICON_NAME: {
+    const char *name = gtk_image_get_icon_name(image);
+    if (name && *name != '\0' && theme) {
+      GtkIconPaintable *paintable =
+          gtk_icon_theme_lookup_icon(theme, name, NULL, size, scale,
+                                     GTK_TEXT_DIR_NONE, (GtkIconLookupFlags)0);
+      if (paintable)
+        return GDK_PAINTABLE(paintable);
+    }
+    break;
+  }
+  case GTK_IMAGE_GICON: {
+    GIcon *icon = gtk_image_get_gicon(image);
+    if (icon && theme) {
+      GtkIconPaintable *paintable = gtk_icon_theme_lookup_by_gicon(
+          theme, icon, size, scale, GTK_TEXT_DIR_NONE, (GtkIconLookupFlags)0);
+      if (paintable)
+        return GDK_PAINTABLE(paintable);
+    }
+    break;
+  }
+  case GTK_IMAGE_PAINTABLE: {
+    GdkPaintable *paintable = gtk_image_get_paintable(image);
+    if (paintable)
+      return g_object_ref(paintable);
+    break;
+  }
+  default:
+    break;
+  }
+
+  return NULL;
+}
+
 GtkWidget *shelf_reflection_new(GtkWidget *source) {
   LambdockReflection *self = g_object_new(LAMBDOCK_TYPE_REFLECTION, NULL);
 
   if (source && GTK_IS_WIDGET(source)) {
     self->source = source;
     g_object_add_weak_pointer(G_OBJECT(source), (gpointer *)&self->source);
-    self->paintable = gtk_widget_paintable_new(source);
+
+    /* Mirror the artwork itself, not the widget that shows it: see
+     * reflection_artwork_for(). */
+    self->paintable = reflection_artwork_for(source);
+    if (self->paintable) {
+      self->paintable_ready = TRUE;
+    } else {
+      self->paintable = gtk_widget_paintable_new(source);
+      self->paintable_ready = FALSE;
+    }
   }
 
   return GTK_WIDGET(self);

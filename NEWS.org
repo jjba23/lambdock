@@ -9,6 +9,22 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Fix the icon reflections. They were mirroring a `GtkWidgetPaintable` that had
+  been created before its icon was ever drawn, which reports a size but paints
+  nothing -- so the glass showed only the contact shadow, a flat grey strip where
+  a reflection should be. The mirror now resolves the icon's artwork from the icon
+  theme (icon name or gicon) and draws it at full scale, cropped by the band and
+  faded as it recedes, instead of squashing the whole icon into the band. The
+  contact shadow is gone with it: drawn through a linear gradient it covered the
+  whole band rather than the few pixels under the icon, which is exactly the grey
+  strip the reflections must not have.
+- The icons now sit where the OS X dock puts them: the front glass is measured
+  from the icons' bottom edge rather than counting the reflection band twice, so
+  their centre lands on the slab's top edge (and a dock with reflections no longer
+  floats its icons one band higher than the same dock without them).
+- The Mavericks theme's running-app dot is a light glow again, like the real one,
+  instead of a dark blue pill.
+
 - The CPU, RAM and temperature meters are now *gauges* instead of text: a ring
   drawn inside one icon slot that fills with the reading and goes green → amber →
   red as it climbs, with the value written in the middle ("42%", "54°C"). The

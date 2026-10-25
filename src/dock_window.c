@@ -772,14 +772,22 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_top(state->box, 0);
     gtk_widget_set_margin_bottom(state->box, 0);
 
-    /* Keep the icon stack off the outer edge by the outer glass thickness, so
-     * the reflections (and any front face) have room in front of the icons. */
-    LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, 0);
-    if (geometry.outer_px > 0) {
+    /* Keep the icons off the outer edge by the front glass thickness, so the
+     * mirrors (and any front face) have room in front of them. The reflection
+     * widget already occupies the band inside that glass, hence the difference:
+     * the icons' bottom edge ends up exactly `front` pixels from the screen
+     * edge, with the mirror in the glass below it. That is what puts the icons'
+     * centre on the slab's top edge, as in the OS X dock. */
+    LambdockShelfGeometry geometry =
+        lambdock_shelf_geometry_for(state, state->icon_size);
+    int outer_margin = geometry.outer_px - geometry.band_px;
+    if (outer_margin < 0)
+      outer_margin = 0;
+    if (outer_margin > 0) {
       if (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
-        gtk_widget_set_margin_top(state->box, geometry.outer_px);
+        gtk_widget_set_margin_top(state->box, outer_margin);
       else
-        gtk_widget_set_margin_bottom(state->box, geometry.outer_px);
+        gtk_widget_set_margin_bottom(state->box, outer_margin);
     }
 
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
@@ -820,12 +828,16 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_end(state->box, 0);
 
     /* Same on side docks. */
-    LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, 0);
-    if (geometry.outer_px > 0) {
+    LambdockShelfGeometry geometry =
+        lambdock_shelf_geometry_for(state, state->icon_size);
+    int outer_margin = geometry.outer_px - geometry.band_px;
+    if (outer_margin < 0)
+      outer_margin = 0;
+    if (outer_margin > 0) {
       if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
-        gtk_widget_set_margin_start(state->box, geometry.outer_px);
+        gtk_widget_set_margin_start(state->box, outer_margin);
       else
-        gtk_widget_set_margin_end(state->box, geometry.outer_px);
+        gtk_widget_set_margin_end(state->box, outer_margin);
     }
 
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
