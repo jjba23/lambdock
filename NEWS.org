@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.10.7 (2026-10-25)
 - Open stack popovers as panels instead of strips. A flow box's natural width is
   every entry on one line, and the popover was taking it: a folder of screenshots
   opened as a full-width strip one row tall with the grid cut off. The stack views
@@ -20,10 +25,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - Larger running-app indicators in the Mavericks themes: the dot on the glass is
   about half again as large, and so is the flat dock's CSS dot (20x7, 26x9 while
   hovered).
-
----------
-
-*[Released]*
 
 ** v0.10.6 (2026-10-25)
 - Finish the fix for the bouncing dock. v0.10.5 stopped believing the crossings
