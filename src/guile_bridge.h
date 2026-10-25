@@ -98,4 +98,16 @@ gboolean get_taskbar_config_for(const char *config_path);
  */
 gboolean get_show_window_titles_config_for(const char *config_path);
 
+/**
+ * get_shelf_config_for:
+ * @config_path: Path to the dock's configuration record (may be NULL).
+ * @out: Destination for the resolved shelf parameters (must not be NULL).
+ *
+ * Reads every `dock-shelf-*` / `dock-reflection*` value for @config_path and
+ * fills @out with clamped values. Missing getters, missing settings and
+ * non-numeric values fall back to lambdock_shelf_params_default(), so an old
+ * settings file keeps the classic flat dock.
+ */
+void get_shelf_config_for(const char *config_path, LambdockShelfParams *out);
+
 #endif // GUILE_BRIDGE_H

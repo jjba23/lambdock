@@ -69,6 +69,15 @@
                get-dock-track-windows?
                get-dock-mode
                get-dock-show-window-titles?
+               get-dock-special-mode
+               get-dock-shelf-tilt
+               get-dock-shelf-perspective
+               get-dock-shelf-cover
+               get-dock-shelf-floor
+               get-dock-shelf-padding
+               get-dock-reflection
+               get-dock-reflection-intensity
+               get-dock-reflection-blur
 
                ;; Setters
                set-dock-position!
@@ -81,6 +90,15 @@
                set-dock-track-windows!
                set-dock-mode!
                set-dock-show-window-titles!
+               set-dock-special-mode!
+               set-dock-shelf-tilt!
+               set-dock-shelf-perspective!
+               set-dock-shelf-cover!
+               set-dock-shelf-floor!
+               set-dock-shelf-padding!
+               set-dock-reflection!
+               set-dock-reflection-intensity!
+               set-dock-reflection-blur!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -99,7 +117,11 @@
 ;; =============================================================================
 
 (define* (load-dock-config! file-path)
-  "Loads a specific settings file in isolation and registers its configuration record."
+  "Loads a specific settings file in isolation and registers its configuration record.
+
+Shelf/reflection parameters are resolved in three layers, strongest first: an
+explicit setting in the file, the values implied by the selected
+`dock-special-mode` preset, and finally the built-in defaults (the plain dock)."
   (if (and file-path
            (file-exists? file-path))
       (begin
@@ -112,7 +134,20 @@
                                (let ((pair (or (assq key settings)
                                                (assq alt-key settings))))
                                  (if pair
-                                     (cdr pair) default-val)))))
+                                     (cdr pair) default-val))))
+                        ;; Selected special mode and the parameters it implies
+                        (special-mode (cfg 'dock-special-mode
+                                           'special-mode
+                                           'normal))
+                        (preset (preset-special-mode special-mode))
+                        ;; Shelf parameter lookup: explicit > preset > default
+                        (pcfg (lambda (key default-val)
+                                (let ((pair (or (assq (symbol-append 'dock- key)
+                                                      settings)
+                                                (assq key settings))))
+                                  (cond (pair (cdr pair))
+                                        ((assq key preset) => cdr)
+                                        (else default-val))))))
 
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
@@ -150,7 +185,19 @@
                                                 'mode 'dock)
                                     #:show-window-titles?
                                     (cfg 'dock-show-window-titles?
-                                         'show-window-titles? #f))))
+                                         'show-window-titles? #f)
+                                    #:special-mode special-mode
+                                    #:shelf-tilt (pcfg 'shelf-tilt 0)
+                                    #:shelf-perspective
+                                    (pcfg 'shelf-perspective 400)
+                                    #:shelf-cover (pcfg 'shelf-cover 1.0)
+                                    #:shelf-floor (pcfg 'shelf-floor 0)
+                                    #:shelf-padding (pcfg 'shelf-padding 24)
+                                    #:reflection (pcfg 'reflection 0.0)
+                                    #:reflection-intensity
+                                    (pcfg 'reflection-intensity 0.85)
+                                    #:reflection-blur
+                                    (pcfg 'reflection-blur 0.035))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

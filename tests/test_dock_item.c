@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "../src/lambdock.h"
+#include "../src/ui/shelf.h"
 #include "../src/ui/dock_item.h"
 #include <gtk/gtk.h>
 
@@ -383,10 +384,18 @@ static void test_create_dock_item(void) {
   /* Tooltip falls back to the display name. */
   g_assert_cmpstr(gtk_widget_get_tooltip_text(item->button), ==, "Terminal");
 
-  /* Popover is parented to the button and the button to the dock box. */
+  /* Popover is parented to the button; the button lives in its per-item
+   * container (which also hosts the glass-shelf reflection), and the container is
+   * appended to the dock box. */
   g_assert_nonnull(item->popover);
   g_assert_true(gtk_widget_get_parent(item->popover) == item->button);
-  g_assert_true(gtk_widget_get_parent(item->button) == state.box);
+  g_assert_nonnull(item->container);
+  g_assert_true(gtk_widget_get_parent(item->button) == item->container);
+  g_assert_true(gtk_widget_get_parent(item->container) == state.box);
+  g_assert_nonnull(item->reflection);
+  g_assert_true(shelf_reflection_is_reflection(item->reflection));
+  /* Reflections stay hidden (and take no room) until they are enabled. */
+  g_assert_false(gtk_widget_get_visible(item->reflection));
 
   g_assert_cmpint(g_list_length(state.dock_items), ==, 1);
   g_assert_true(state.dock_items->data == item);
@@ -439,7 +448,10 @@ static void test_create_dynamic_dock_item_no_poller(void) {
 
   g_assert_true(gtk_widget_has_css_class(item->button, "dynamic-item"));
   g_assert_true(gtk_widget_has_css_class(item->button, "flat"));
-  g_assert_true(gtk_widget_get_parent(item->button) == state.box);
+  g_assert_nonnull(item->container);
+  g_assert_true(gtk_widget_get_parent(item->button) == item->container);
+  g_assert_true(gtk_widget_get_parent(item->container) == state.box);
+  g_assert_true(shelf_reflection_is_reflection(item->reflection));
 
   /* The button holds a box containing the label. */
   GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));

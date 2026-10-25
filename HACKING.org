@@ -122,6 +122,7 @@ If you read nothing else, read this.
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
 | Change CSS scoping or theming              | =src/ui/theme_engine.c=                                        |
+| Change the glass shelf / reflections       | =src/ui/shelf.c= + =resources/css/shelf.css=                    |
 | Change icon lookup                         | =src/ui/icon_resolver.c=                                       |
 | Understand boot, glue or multi-dock        | =src/main.c=                                                   |
 | Add a test                                 | =tests/test_<unit>.c= or =tests/scheme/lambdock_tests.scm=     |
@@ -191,6 +192,7 @@ lambdock/
 │   ├── logger.h             # LOG_C_* colored logging macros
 │   └── ui/
 │       ├── dock_item.c/.h    # Item widgets, window association, free/clear, reload
+│       ├── shelf.c/.h        # Glass shelf: 3D frame projection + icon reflections
 │       ├── popover_menu.c/.h # Right-click/multi-window popover builder
 │       ├── theme_engine.c/.h # GResource CSS loading + per-instance selector scoping
 │       └── icon_resolver.c/.h# 6-stage icon fallback pipeline + icon theme setup
@@ -202,7 +204,7 @@ lambdock/
 │   ├── presets.scm          # preset-icons / preset-launchers alists + helpers
 │   └── logger.scm           # Scheme-side colored logging
 ├── resources/               # Embedded via GResource
-│   ├── css/*.css            # Built-in themes (+ taskbar.css modifier)
+│   ├── css/*.css            # Built-in themes (+ taskbar.css / shelf.css modifiers)
 │   ├── img/agnus-dei.*      # Logo
 │   └── lambdock.gresource.xml # What gets embedded
 ├── protocols/               # Bundled Wayland XML (fallback when wlr-protocols absent)
@@ -323,6 +325,8 @@ C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~:
 - =test_popover_menu= -- menu layouts for every window-count branch
 - =test_theme_engine= -- CSS selector scoping + provider lifecycle
 - =test_icon_resolver= -- resource/file/theme icon resolution
+- =test_shelf= -- shelf parameters, activation, reflection geometry, frame
+  delegation and item container ordering
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
@@ -830,6 +834,7 @@ pointer dies:
 | =guile_bridge.c=      | All C→Scheme config reads, item population, exclusion checks                     |
 | =toplevel_tracker.c=  | Raw Wayland registry/manager/handle listeners, per-window title/app_id/closed    |
 | =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
+| =ui/shelf.c=          | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections  |
 | =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
 | =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
 | =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
@@ -937,8 +942,62 @@ is why a user override still needs to target the dock's own classes.
 Only [[https://docs.gtk.org/gtk4/css-overview.html][GTK CSS]] applies here, not
 browser CSS; the properties are listed in
 [[https://docs.gtk.org/gtk4/css-properties.html][the GTK CSS property reference]].
-User-facing theming -- the twelve built-in themes and how to override them -- is in
+User-facing theming -- the thirteen built-in themes and how to override them -- is in
 [[file:README.org::#styling-and-theming][README: Styling & theming]].
+
+*** Modifiers vs. themes
+Modifier stylesheets are loaded *before* the base theme at the same provider
+priority and scoped under the same ~theme-<name>~ class, so they add a behavior
+(the taskbar layout, the glass shelf) to *any* theme while equal-specificity
+theme rules keep winning:
+
+| Modifier          | Loaded when                                       |
+|-------------------+---------------------------------------------------|
+| =css/taskbar.css= | ~dock-mode~ is ~'taskbar~ or window titles are on |
+| =css/shelf.css=   | ~lambdock_shelf_active()~ (see below)             |
+
+*** The glass shelf (one implementation, many looks)
+There is no "second dock". ~LambdockShelfParams~ (=src/lambdock.h=) describes the
+geometry and the dock always runs the same widgets:
+
+- ~tilt_deg~ / ~perspective~: how the capsule is projected away from the viewer.
+- ~cover~ / ~floor_px~ / ~padding_px~: capsule thickness and how much of the icon
+  the glass hides.
+- ~reflection_ratio~ / ~reflection_intensity~ / ~reflection_blur_ratio~: the
+  mirrored icon reflections.
+
+Geometry is derived, never hard-coded:
+
+#+begin_src c
+capsule_cross = round(icon * cover) + round(icon * reflection_ratio)
+                + floor_px + padding_px;
+overlay_cross = round(icon * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX
+                + round(icon * reflection_ratio) + floor_px;
+#+end_src
+
+With the defaults (cover 1, reflection 0, floor 0, padding 24) that is exactly the
+classic ~icon + 24~ capsule, so the flat dock is unaffected.
+
+- ~lambdock_shelf_params_default()~ returns the flat defaults and
+  ~lambdock_shelf_params_effective()~ also covers NULL/zero-initialised states.
+- ~lambdock_shelf_active()~ is the single switch used by the CSS classes, the
+  modifier stylesheet and the reflection widgets: it is TRUE when any parameter
+  deviates from the defaults.
+- ~LambdockShelfFrame~ (=ui/shelf.c=) wraps the themed capsule and re-renders it
+  through a projective =GskTransform= (~gsk_transform_rotate_3d~ +
+  ~gsk_transform_perspective~). GTK CSS transforms are affine only, which is why
+  the tilt cannot live in the stylesheet; with ~tilt == 0~ the frame is a plain
+  pass-through.
+- ~LambdockReflection~ (=ui/shelf.c=) paints each icon mirrored, gaussian blurred
+  and alpha-faded over the glass; ~apply_shelf_layout()~ shows/hides and sizes
+  them from the parameters and the fisheye state.
+- Scheme side: every parameter is a ~dock-*~ option plus a getter/setter, and
+  ~dock-special-mode~ only picks a preset from
+  ~special-mode-presets~ (=scheme/lambdock/presets.scm=). ~core.scm~ resolves
+  each value as *explicit setting > preset > default*.
+
+Real backdrop blur needs the compositor (a layer-shell surface cannot sample what
+is behind it); the frosted glass is drawn with gradients instead.
 
 ------------------
 

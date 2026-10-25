@@ -20,6 +20,7 @@
 #include "lambdock.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
+#include "ui/shelf.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
@@ -643,6 +644,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->taskbar = get_taskbar_config_for(state->config_path);
   state->show_window_titles =
       get_show_window_titles_config_for(state->config_path);
+  get_shelf_config_for(state->config_path, &state->shelf);
 
   state->auto_hide = get_autohide_config_for(state->config_path);
   state->track_windows = get_track_windows_config_for(state->config_path);
@@ -662,6 +664,14 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
   gtk_widget_add_css_class(bg_capsule, "lambdock-window");
   state->bg_capsule = bg_capsule;
+
+  /* Wrap the styled capsule in the shelf frame. With the default shelf
+   * parameters (no tilt) the frame is a pure pass-through, so the dock looks
+   * identical to a plain capsule. */
+  GtkWidget *bg_shelf = shelf_frame_new(bg_capsule);
+  state->bg_shelf = bg_shelf;
+  gtk_widget_set_overflow(bg_shelf, GTK_OVERFLOW_VISIBLE);
+
   apply_dock_mode_classes(state);
 
   GtkWidget *box = gtk_box_new(state->orientation, DOCK_BOX_SPACING_PX);
@@ -701,7 +711,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   gtk_size_group_add_widget(state->size_group, bg_capsule);
   gtk_size_group_add_widget(state->size_group, scrolled_window);
 
-  gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_capsule);
+  gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_shelf);
   gtk_overlay_add_overlay(GTK_OVERLAY(overlay), scrolled_window);
 
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);

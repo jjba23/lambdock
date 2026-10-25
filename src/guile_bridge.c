@@ -108,6 +108,47 @@ static gboolean get_guile_bool_for(const char *func_name, const char *path) {
   return scm_is_true(res) ? scm_to_bool(res) : FALSE;
 }
 
+/**
+ * get_guile_number_for:
+ * Calls a Scheme function returning a number for a path. Anything that is not
+ * a real number yields @fallback, so a broken/old Scheme side can never push
+ * garbage into the dock geometry.
+ */
+static double get_guile_number_for(const char *func_name, const char *path,
+                                   double fallback) {
+  SCM fn = scm_c_public_ref("lambdock core", func_name);
+  if (!scm_is_true(fn))
+    return fallback;
+
+  SCM res = (path && *path != '\0')
+                ? scm_call_1(fn, scm_from_utf8_string(path))
+                : scm_call_0(fn);
+
+  if (scm_is_real(res) && !scm_is_true(scm_nan_p(res)))
+    return scm_to_double(res);
+
+  return fallback;
+}
+
+/* --- Clamping helpers ------------------------------------------------------ */
+
+static double clamp_double(double value, double low, double high) {
+  if (value < low)
+    return low;
+  if (value > high)
+    return high;
+  return value;
+}
+
+static int clamp_int(double value, int low, int high) {
+  int v = (int)round(value);
+  if (v < low)
+    return low;
+  if (v > high)
+    return high;
+  return v;
+}
+
 /* =================================================================================
  * PUBLIC BRIDGE API
  * =================================================================================
@@ -166,6 +207,62 @@ gboolean get_taskbar_config_for(const char *config_path) {
 /** Returns TRUE when running app items should show their window title. */
 gboolean get_show_window_titles_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-show-window-titles?", config_path);
+}
+
+/**
+ * get_shelf_config_for:
+ * Resolves every shelf/reflection parameter for a dock instance.
+ *
+ * The Scheme side already merges "explicit setting > special-mode preset >
+ * default"; this function only clamps the results so that hand-written or
+ * hostile values (negative padding, absurd tilt, NaN...) can never break the
+ * layout maths.
+ */
+void get_shelf_config_for(const char *config_path, LambdockShelfParams *out) {
+  if (!out)
+    return;
+
+  LambdockShelfParams defaults = lambdock_shelf_params_default();
+  *out = defaults;
+
+  out->tilt_deg = clamp_double(
+      get_guile_number_for("get-dock-shelf-tilt", config_path,
+                           defaults.tilt_deg),
+      -SHELF_TILT_MAX_DEG, SHELF_TILT_MAX_DEG);
+
+  double perspective = get_guile_number_for("get-dock-shelf-perspective",
+                                            config_path, defaults.perspective);
+  out->perspective =
+      clamp_double(perspective, SHELF_PERSPECTIVE_MIN, SHELF_PERSPECTIVE_MAX);
+
+  out->cover = clamp_double(
+      get_guile_number_for("get-dock-shelf-cover", config_path, defaults.cover),
+      0.0, 1.0);
+
+  out->floor_px = clamp_int(
+      get_guile_number_for("get-dock-shelf-floor", config_path,
+                           (double)defaults.floor_px),
+      0, SHELF_EXTRA_MAX_PX);
+
+  out->padding_px = clamp_int(
+      get_guile_number_for("get-dock-shelf-padding", config_path,
+                           (double)defaults.padding_px),
+      0, SHELF_EXTRA_MAX_PX);
+
+  out->reflection_ratio = clamp_double(
+      get_guile_number_for("get-dock-reflection", config_path,
+                           defaults.reflection_ratio),
+      0.0, SHELF_REFLECTION_RATIO_MAX);
+
+  out->reflection_intensity = clamp_double(
+      get_guile_number_for("get-dock-reflection-intensity", config_path,
+                           defaults.reflection_intensity),
+      0.0, 1.0);
+
+  out->reflection_blur_ratio = clamp_double(
+      get_guile_number_for("get-dock-reflection-blur", config_path,
+                           defaults.reflection_blur_ratio),
+      0.0, SHELF_REFLECTION_BLUR_MAX);
 }
 
 /** Retrieves target monitor screen configuration string for a specific config

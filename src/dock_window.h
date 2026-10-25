@@ -120,6 +120,21 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 void update_dock_dimensions(LambdockState *state);
 
 /**
+ * dock_capsule_cross_dim:
+ * Returns the thickness requested for the background capsule along the dock's
+ * cross axis: the covered part of the icons, plus the reflection band, plus the
+ * glass floor, plus the configured capsule padding.
+ */
+int dock_capsule_cross_dim(const LambdockState *state);
+
+/**
+ * dock_cross_axis_dim:
+ * Returns the cross-axis size requested for the overlay surface: fisheye
+ * magnification headroom plus the reflection band and the glass floor.
+ */
+int dock_cross_axis_dim(const LambdockState *state);
+
+/**
  * apply_dock_mode_classes:
  * Toggles the `taskbar` CSS class on the background capsule so themes can
  * style full-width taskbar mode distinctly from the floating dock.

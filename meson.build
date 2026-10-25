@@ -249,6 +249,7 @@ sources = files(
   'src/ui/icon_resolver.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/shelf.c',
 )
 
 # Compiles and links the final binary application executable
@@ -279,13 +280,15 @@ full_app_sources = files(
   'src/ui/icon_resolver.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/shelf.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
 unit_tests = [
   {
     'id': 'theme_engine',
-    'extra_sources': [test_stubs, 'src/ui/theme_engine.c', lambdock_resources],
+    'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
+                      lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep],
   },
   {
@@ -303,6 +306,10 @@ unit_tests = [
   },
   {
     'id': 'dock_window',
+    'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'shelf',
     'extra_sources': full_test_sources,
   },
   {

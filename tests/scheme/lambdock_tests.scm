@@ -119,6 +119,8 @@
              'dock (get-dock-mode))
 (check-equal "fallback config does not show window titles"
              #f (get-dock-show-window-titles?))
+(check-equal "fallback config special mode is 'normal"
+             'normal (get-dock-special-mode))
 
 ;; =============================================================================
 ;; (lambdock loader) — config path resolution
@@ -156,6 +158,7 @@
 (define dock-monitor \"DP-1\")
 (define dock-mode 'taskbar)
 (define dock-show-window-titles? #t)
+(define dock-special-mode 'big-cat)
 (define dock-items (list (app-item #:name \"Terminal\"
                                    #:icon \"Alacritty\"
                                    #:exec \"alacritty\")))
@@ -178,6 +181,8 @@
              'taskbar (assq-ref %extracted 'dock-mode))
 (check-equal "extracted dock-show-window-titles? is #t"
              #t (assq-ref %extracted 'dock-show-window-titles?))
+(check-equal "extracted dock-special-mode is 'big-cat"
+             'big-cat (assq-ref %extracted 'dock-special-mode))
 (check-equal "extracted one dock item"
              1 (length (assq-ref %extracted 'dock-items)))
 
@@ -200,7 +205,8 @@
                  #:hover-animate? #f
                  #:track-windows? #f
                  #:mode 'taskbar
-                 #:show-window-titles? #t)
+                 #:show-window-titles? #t
+                 #:special-mode 'big-cat)
 
 (check-equal "config record is retrievable by path key"
              'left (get-dock-position %cfg-path))
@@ -226,6 +232,8 @@
              'taskbar (get-dock-mode %cfg-path))
 (check-equal "show-window-titles? getter"
              #t (get-dock-show-window-titles? %cfg-path))
+(check-equal "special-mode getter"
+             'big-cat (get-dock-special-mode %cfg-path))
 (check-equal "exclude-apps getter"
              '("daemon" "tracker") (get-dock-exclude-apps %cfg-path))
 
@@ -275,6 +283,14 @@
 (set-dock-show-window-titles! #f %cfg-path)
 (check-equal "set-dock-show-window-titles! updates the targeted config"
              #f (get-dock-show-window-titles? %cfg-path))
+
+(set-dock-special-mode! 'normal %cfg-path)
+(check-equal "set-dock-special-mode! updates the targeted config"
+             'normal (get-dock-special-mode %cfg-path))
+
+(set-dock-special-mode! 'big-cat %cfg-path)
+(check-equal "set-dock-special-mode! accepts 'big-cat"
+             'big-cat (get-dock-special-mode %cfg-path))
 
 ;; =============================================================================
 ;; (lambdock items) — record constructors and accessors
@@ -451,6 +467,96 @@
 (load-dock-config! (tmp-path "missing.scm"))
 (check-equal "load-dock-config! on a missing file leaves state intact"
              40 (get-dock-icon-size %core-cfg))
+
+;; =============================================================================
+;; Shelf parameters: one implementation, presets on top
+;; =============================================================================
+
+;; Defaults describe the plain flat dock.
+(configure-dock! #:config-path 'shelf-defaults)
+(check-equal "shelf defaults: tilt is 0 (flat)"
+             0 (get-dock-shelf-tilt 'shelf-defaults))
+(check-equal "shelf defaults: perspective"
+             400 (get-dock-shelf-perspective 'shelf-defaults))
+(check-equal "shelf defaults: the glass covers the whole icon"
+             1.0 (get-dock-shelf-cover 'shelf-defaults))
+(check-equal "shelf defaults: no glass floor"
+             0 (get-dock-shelf-floor 'shelf-defaults))
+(check-equal "shelf defaults: capsule padding"
+             24 (get-dock-shelf-padding 'shelf-defaults))
+(check-equal "shelf defaults: reflections are off"
+             0.0 (get-dock-reflection 'shelf-defaults))
+(check-equal "shelf defaults: reflection intensity"
+             0.85 (get-dock-reflection-intensity 'shelf-defaults))
+(check-equal "shelf defaults: reflection blur"
+             0.035 (get-dock-reflection-blur 'shelf-defaults))
+
+;; preset-special-mode: normal is empty, big-cat carries the Mavericks values,
+;; unknown symbols fall back to the flat dock.
+(check-equal "preset-special-mode 'normal is empty"
+             '() (preset-special-mode 'normal))
+(check-equal "preset-special-mode on an unknown mode is empty"
+             '() (preset-special-mode 'not-a-mode))
+(check-equal "preset-special-mode 'big-cat has 8 parameters"
+             8 (length (preset-special-mode 'big-cat)))
+(check-equal "preset-special-mode 'big-cat tilt"
+             14 (assq-ref (preset-special-mode 'big-cat) 'shelf-tilt))
+(check-equal "special-mode-presets lists the normal preset"
+             '() (assq-ref special-mode-presets 'normal))
+
+;; Loading a settings file that only selects the preset expands it.
+(define %preset-cfg (tmp-path "bigcat.scm"))
+(write-file %preset-cfg
+            "(define dock-special-mode 'big-cat)\n")
+(load-dock-config! %preset-cfg)
+(check-equal "preset expands: tilt"
+             14 (get-dock-shelf-tilt %preset-cfg))
+(check-equal "preset expands: cover"
+             0.58 (get-dock-shelf-cover %preset-cfg))
+(check-equal "preset expands: floor"
+             8 (get-dock-shelf-floor %preset-cfg))
+(check-equal "preset expands: padding"
+             0 (get-dock-shelf-padding %preset-cfg))
+(check-equal "preset expands: reflection"
+             0.52 (get-dock-reflection %preset-cfg))
+(check-equal "preset expands: blur"
+             0.035 (get-dock-reflection-blur %preset-cfg))
+
+;; Explicit parameters win over the preset, prefixed or not, and the remaining
+;; parameters still come from the preset.
+(define %override-cfg (tmp-path "bigcat-tweak.scm"))
+(write-file %override-cfg
+            "(define dock-special-mode 'big-cat)
+(define dock-shelf-tilt 4)
+(define shelf-perspective 900)
+(define reflection 0.2)
+")
+(load-dock-config! %override-cfg)
+(check-equal "explicit dock-shelf-tilt wins over the preset"
+             4 (get-dock-shelf-tilt %override-cfg))
+(check-equal "explicit unprefixed shelf-perspective wins over the preset"
+             900 (get-dock-shelf-perspective %override-cfg))
+(check-equal "explicit reflection wins over the preset"
+             0.2 (get-dock-reflection %override-cfg))
+(check-equal "untouched parameters still come from the preset"
+             8 (get-dock-shelf-floor %override-cfg))
+
+;; A file without the special mode ignores any preset values.
+(define %plain-cfg (tmp-path "plain.scm"))
+(write-file %plain-cfg "(define dock-icon-size 40)\n")
+(load-dock-config! %plain-cfg)
+(check-equal "no special mode keeps the flat defaults"
+             0 (get-dock-shelf-tilt %plain-cfg))
+(check-equal "no special mode keeps reflections off"
+             0.0 (get-dock-reflection %plain-cfg))
+
+;; Setters mutate only the targeted config.
+(set-dock-shelf-tilt! 21 %override-cfg)
+(check-equal "set-dock-shelf-tilt! updates the targeted config"
+             21 (get-dock-shelf-tilt %override-cfg))
+(set-dock-reflection! 0.75 %override-cfg)
+(check-equal "set-dock-reflection! updates the targeted config"
+             0.75 (get-dock-reflection %override-cfg))
 
 ;; =============================================================================
 ;; Summary

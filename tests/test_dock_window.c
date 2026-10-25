@@ -181,8 +181,112 @@ static void test_apply_dock_mode_classes(void) {
   g_object_unref(state.bg_capsule);
 }
 
-static void test_update_dock_dimensions_taskbar(void) {
+static void test_apply_dock_mode_classes_shelf(void) {
   LambdockState state = {0};
+  state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.window = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.shelf = lambdock_shelf_params_default();
+
+  /* Plain capsule: no shelf classes anywhere. */
+  apply_dock_mode_classes(&state);
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-mode"));
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-bottom"));
+  g_assert_false(gtk_widget_has_css_class(state.window, "shelf-mode"));
+
+  /* Any non-default shelf parameter tags both widgets plus the docked edge. */
+  state.shelf.tilt_deg = 14.0;
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "shelf-mode"));
+  g_assert_true(gtk_widget_has_css_class(state.window, "shelf-mode"));
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "shelf-bottom"));
+  g_assert_true(gtk_widget_has_css_class(state.window, "shelf-bottom"));
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-top"));
+
+  /* Switching the edge replaces the edge class instead of accumulating it. */
+  state.edge = GTK_LAYER_SHELL_EDGE_TOP;
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "shelf-top"));
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-bottom"));
+
+  state.edge = GTK_LAYER_SHELL_EDGE_LEFT;
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "shelf-left"));
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-top"));
+
+  /* Reflection-only shelf parameters count as active too. */
+  state.shelf = lambdock_shelf_params_default();
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.shelf.reflection_ratio = 0.5;
+  apply_dock_mode_classes(&state);
+  g_assert_true(gtk_widget_has_css_class(state.bg_capsule, "shelf-mode"));
+
+  /* Going back to the defaults removes every shelf class again. */
+  state.shelf = lambdock_shelf_params_default();
+  apply_dock_mode_classes(&state);
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-mode"));
+  g_assert_false(gtk_widget_has_css_class(state.bg_capsule, "shelf-bottom"));
+  g_assert_false(gtk_widget_has_css_class(state.window, "shelf-mode"));
+
+  g_object_ref_sink(state.bg_capsule);
+  g_object_unref(state.bg_capsule);
+  g_object_ref_sink(state.window);
+  g_object_unref(state.window);
+}
+
+static void test_update_dock_dimensions_shelf(void) {
+  LambdockState state = {0};
+  state.overlay = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  state.orientation = GTK_ORIENTATION_HORIZONTAL;
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.icon_size = 48;
+  state.shelf = lambdock_shelf_params_default();
+  state.shelf.tilt_deg = 14.0;
+  state.shelf.cover = 0.58;
+  state.shelf.floor_px = 8;
+  state.shelf.padding_px = 0;
+  state.shelf.reflection_ratio = 0.52;
+
+  update_dock_dimensions(&state);
+
+  int w = 0, h = 0;
+  gtk_widget_get_size_request(state.overlay, &w, &h);
+  g_assert_cmpint(h, ==, dock_cross_axis_dim(&state));
+  g_assert_cmpint(h, >, MAX_CROSS_DIM(48)); /* reflection band is reserved */
+
+  gtk_widget_get_size_request(state.bg_capsule, &w, &h);
+  g_assert_cmpint(h, ==, dock_capsule_cross_dim(&state));
+
+  /* The glass floor keeps the reflection band off the shelf's bottom edge. */
+  g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 8);
+
+  /* A top dock mirrors the floor margin and keeps the same dimensions. */
+  state.edge = GTK_LAYER_SHELL_EDGE_TOP;
+  update_dock_dimensions(&state);
+  g_assert_cmpint(gtk_widget_get_margin_top(state.box), ==, 8);
+  g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 0);
+
+  /* Back to the defaults restores the classic floating capsule dimensions. */
+  state.shelf = lambdock_shelf_params_default();
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  update_dock_dimensions(&state);
+  gtk_widget_get_size_request(state.bg_capsule, &w, &h);
+  g_assert_cmpint(h, ==, 48 + CAPSULE_PADDING_PX);
+  gtk_widget_get_size_request(state.overlay, &w, &h);
+  g_assert_cmpint(h, ==, MAX_CROSS_DIM(48));
+  g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 0);
+
+  g_object_ref_sink(state.overlay);
+  g_object_unref(state.overlay);
+  g_object_ref_sink(state.bg_capsule);
+  g_object_unref(state.bg_capsule);
+  g_object_ref_sink(state.box);
+  g_object_unref(state.box);
+}
+
+static void test_update_dock_dimensions_taskbar(void) {  LambdockState state = {0};
   state.overlay = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   state.bg_capsule = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -353,6 +457,10 @@ int main(int argc, char **argv) {
                   test_update_dock_dimensions_stale_monitor);
   g_test_add_func("/ui/dock_window/apply_dock_mode_classes",
                   test_apply_dock_mode_classes);
+  g_test_add_func("/ui/dock_window/apply_dock_mode_classes_shelf",
+                  test_apply_dock_mode_classes_shelf);
+  g_test_add_func("/ui/dock_window/dimensions_shelf",
+                  test_update_dock_dimensions_shelf);
   g_test_add_func("/ui/dock_window/dimensions_taskbar",
                   test_update_dock_dimensions_taskbar);
   g_test_add_func("/ui/dock_window/popover_closed", test_on_popover_closed);

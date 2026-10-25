@@ -19,6 +19,7 @@
 #include "../guile_bridge.h"     // Scheme/Guile configuration interface
 #include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
 #include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
+#include "shelf.h"               // Glass shelf reflections (icons on the glass)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
 #include "theme_engine.h" // CSS and theme engine utilities
@@ -53,65 +54,41 @@ void apply_dock_item_alignment(DockItem *item) {
     gtk_widget_set_size_request(item->button, base_sz, -1);
   }
 
+  GtkAlign halign = GTK_ALIGN_CENTER;
+  GtkAlign valign = GTK_ALIGN_CENTER;
+
+  if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+    valign = GTK_ALIGN_END;
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
+    valign = GTK_ALIGN_START;
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+    halign = GTK_ALIGN_START;
+  } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
+    halign = GTK_ALIGN_END;
+  }
+
+  gtk_widget_set_valign(item->button, valign);
+  gtk_widget_set_halign(item->button, halign);
+
+  /* The per-item container holds the button plus (when reflections are on)
+   * its glass shelf reflection, so it hugs the same dock edge as the button. */
+  if (item->container) {
+    gtk_widget_set_valign(item->container, valign);
+    gtk_widget_set_halign(item->container, halign);
+  }
+
   GtkWidget *child = NULL;
   if (GTK_IS_BUTTON(item->button)) {
     child = gtk_button_get_child(GTK_BUTTON(item->button));
   }
 
-  if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-    gtk_widget_set_valign(item->button, GTK_ALIGN_END);
-    gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    if (child) {
-      /* CENTER the child vertically within the 48px button container */
-      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-      if (GTK_IS_BOX(child)) {
-        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-             w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-        }
-      }
-    }
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-    gtk_widget_set_valign(item->button, GTK_ALIGN_START);
-    gtk_widget_set_halign(item->button, GTK_ALIGN_CENTER);
-    if (child) {
-      /* CENTER the child vertically within the 48px button container */
-      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-      if (GTK_IS_BOX(child)) {
-        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-             w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-        }
-      }
-    }
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-    gtk_widget_set_halign(item->button, GTK_ALIGN_START);
-    gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    if (child) {
-      /* CENTER the child horizontally within the 48px button container */
-      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-      if (GTK_IS_BOX(child)) {
-        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-             w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_halign(w, GTK_ALIGN_CENTER);
-        }
-      }
-    }
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-    gtk_widget_set_halign(item->button, GTK_ALIGN_END);
-    gtk_widget_set_valign(item->button, GTK_ALIGN_CENTER);
-    if (child) {
-      /* CENTER the child horizontally within the 48px button container */
-      gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-      gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-      if (GTK_IS_BOX(child)) {
-        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-             w = gtk_widget_get_next_sibling(w)) {
-          gtk_widget_set_halign(w, GTK_ALIGN_CENTER);
-        }
+  if (child) {
+    gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
+    if (GTK_IS_BOX(child)) {
+      for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+           w = gtk_widget_get_next_sibling(w)) {
+        gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
       }
     }
   }
@@ -296,6 +273,15 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_add_css_class(item->button, "flat");
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 
+  /* The icon can cast a mirrored, blurred reflection over the glass shelf.
+   * It stays hidden (and takes no room) while the reflection parameter is 0,
+   * so the flat dock is unaffected. */
+  if (image) {
+    item->reflection = shelf_reflection_new(image);
+    gtk_widget_set_visible(item->reflection, FALSE);
+  }
+  item->container = shelf_wrap_item(state, item->button, item->reflection);
+
   if (state) {
     apply_dock_item_alignment(item);
   }
@@ -321,8 +307,10 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
                    item);
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
-  if (state && state->box)
-    gtk_box_append(GTK_BOX(state->box), item->button);
+  if (state && state->box) {
+    GtkWidget *child = item->container ? item->container : item->button;
+    gtk_box_append(GTK_BOX(state->box), child);
+  }
 
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
@@ -356,12 +344,13 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   gtk_widget_set_valign(content_box,
                         GTK_ALIGN_CENTER); // Add explicit vertical centering
 
+  GtkWidget *image = NULL;
   if (icon && *icon != '\0') {
     GdkDisplay *display = gdk_display_get_default();
     GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
     int icon_sz =
         (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-    GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
+    image = create_image_for_icon(icon_theme, item->icon, icon_sz);
     gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
     gtk_box_append(GTK_BOX(content_box), image);
   }
@@ -376,6 +365,12 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   gtk_widget_add_css_class(item->button, "flat");
   gtk_widget_add_css_class(item->button, "dynamic-item");
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  if (image) {
+    item->reflection = shelf_reflection_new(image);
+    gtk_widget_set_visible(item->reflection, FALSE);
+  }
+  item->container = shelf_wrap_item(state, item->button, item->reflection);
 
   if (state) {
     apply_dock_item_alignment(item);
@@ -404,8 +399,10 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                    item);
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
-  if (state && state->box)
-    gtk_box_append(GTK_BOX(state->box), item->button);
+  if (state && state->box) {
+    GtkWidget *child = item->container ? item->container : item->button;
+    gtk_box_append(GTK_BOX(state->box), child);
+  }
 
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
@@ -461,6 +458,19 @@ void free_dock_item(DockItem *item) {
     if (parent && GTK_IS_BOX(parent))
       gtk_box_remove(GTK_BOX(parent), item->button);
     item->button = NULL;
+  }
+
+  /* Detach the per-item wrapper from the dock box, keeping a reference while
+   * it is unparented. The reflection (if any) is owned by the wrapper and is
+   * destroyed along with it. */
+  item->reflection = NULL;
+  if (item->container && GTK_IS_WIDGET(item->container)) {
+    g_object_ref_sink(item->container);
+    GtkWidget *container_parent = gtk_widget_get_parent(item->container);
+    if (container_parent && GTK_IS_BOX(container_parent))
+      gtk_box_remove(GTK_BOX(container_parent), item->container);
+    g_object_unref(item->container);
+    item->container = NULL;
   }
 
   for (GList *l = item->windows; l != NULL; l = l->next) {
@@ -699,8 +709,14 @@ DockItem *create_separator_dock_item(LambdockState *state,
     apply_dock_item_alignment(item);
   }
 
-  if (state && state->box)
-    gtk_box_append(GTK_BOX(state->box), item->button);
+  /* Separators carry no icon, so they only get the wrapper box (keeping the
+   * item list uniform); no reflection is created for them. */
+  item->container = shelf_wrap_item(state, item->button, NULL);
+
+  if (state && state->box) {
+    GtkWidget *child = item->container ? item->container : item->button;
+    gtk_box_append(GTK_BOX(state->box), child);
+  }
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
 
@@ -730,9 +746,11 @@ void reload_dock_instance(LambdockState *state) {
   // Mode flags must refresh before CSS reload so the taskbar modifier
   // stylesheet is (un)loaded to match.
   gboolean prev_taskbar = state->taskbar;
+  LambdockShelfParams prev_shelf = state->shelf;
   state->taskbar = get_taskbar_config_for(state->config_path);
   state->show_window_titles =
       get_show_window_titles_config_for(state->config_path);
+  get_shelf_config_for(state->config_path, &state->shelf);
 
   load_custom_css(state);
 
@@ -799,7 +817,8 @@ void reload_dock_instance(LambdockState *state) {
   }
 
   apply_dock_mode_classes(state);
-  if (state->taskbar != prev_taskbar) {
+  if (state->taskbar != prev_taskbar ||
+      memcmp(&state->shelf, &prev_shelf, sizeof(LambdockShelfParams)) != 0) {
     refresh_dock_mode(state);
   }
 
@@ -815,7 +834,7 @@ void reload_dock_instance(LambdockState *state) {
     }
   } else {
     gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window),
-                                 state->icon_size + CAPSULE_PADDING_PX);
+                                 dock_capsule_cross_dim(state));
     reveal_dock(state);
   }
 }

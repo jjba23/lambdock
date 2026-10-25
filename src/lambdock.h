@@ -46,6 +46,25 @@
 #define FISHEYE_MAX_SCALE 1.45
 #define FISHEYE_RADIUS_PX 140.0
 
+/* --- Glass shelf / reflection parameters (see LambdockShelfParams) --- */
+/* Number of alpha-faded bands used to draw the reflection falloff. */
+#define SHELF_REFLECTION_BANDS 40
+/* Hard limits used to keep user supplied parameters sane. */
+#define SHELF_TILT_MAX_DEG 45.0
+#define SHELF_PERSPECTIVE_MIN 50.0
+#define SHELF_PERSPECTIVE_MAX 5000.0
+#define SHELF_EXTRA_MAX_PX 200
+#define SHELF_REFLECTION_RATIO_MAX 2.0
+#define SHELF_REFLECTION_BLUR_MAX 0.25
+/* Built-in defaults: the plain, flat dock (i.e. the 'normal special mode). */
+#define SHELF_DEFAULT_TILT 0.0
+#define SHELF_DEFAULT_PERSPECTIVE 400.0
+#define SHELF_DEFAULT_COVER 1.0
+#define SHELF_DEFAULT_FLOOR_PX 0
+#define SHELF_DEFAULT_REFLECTION 0.0
+#define SHELF_DEFAULT_REFLECTION_INTENSITY 0.85
+#define SHELF_DEFAULT_REFLECTION_BLUR 0.035
+
 /* Auto-hide & Timer Constants */
 #define AUTOHIDE_TRIGGER_STRIP_PX 2
 #define AUTOHIDE_INITIAL_DELAY_MS 1000
@@ -93,6 +112,8 @@ typedef struct AppWindow {
  * @is_favorite: TRUE if pinned launcher configured from Scheme; FALSE if
  * dynamic running app.
  * @button: Pointer to the GTK 4 button widget rendered inside the dock layout.
+ * @container: Wrapper box holding @button and, if enabled, @reflection.
+ * @reflection: Mirrored glass-shelf reflection (shown when reflections are on).
  * @popover: Context menu GTK Popover widget attached to this dock button.
  * @windows: Pointer to GLib Doubly Linked List (GList*) storing active
  * AppWindow structs.
@@ -109,6 +130,8 @@ typedef struct DockItem {
   char *app_id;
   gboolean is_favorite;
   GtkWidget *button;
+  GtkWidget *container;  /* Wrapper box: [button] + [reflection] */
+  GtkWidget *reflection; /* Mirrored glass-shelf icon reflection */
   GtkWidget *popover;
   GList *windows;
   LambdockState *state;
@@ -120,12 +143,42 @@ typedef struct DockItem {
 } DockItem;
 
 /**
+ * LambdockShelfParams:
+ * Geometry of the dock's single implementation, the "glass shelf".
+ *
+ * There is no separate big-cat dock: the dock always runs the same widgets and
+ * these parameters decide how it looks. The defaults describe the plain
+ * floating capsule; the ~'big-cat~ special mode is just a preset of them (see
+ * =scheme/lambdock/presets.scm=).
+ *
+ * @tilt_deg: Shelf tilt away from the viewer, in degrees (0 = flat).
+ * @perspective: Projection distance in pixels (smaller = stronger 3D).
+ * @cover: Fraction (0..1) of the icon height hidden behind the shelf glass.
+ * @floor_px: Glass kept visible past the reflection band, in pixels.
+ * @padding_px: Capsule padding along the cross axis, in pixels.
+ * @reflection_ratio: Reflection band height / icon size (0 = no reflections).
+ * @reflection_intensity: Alpha of the reflection where it touches the icon.
+ * @reflection_blur_ratio: Gaussian blur radius / icon size.
+ */
+typedef struct LambdockShelfParams {
+  double tilt_deg;
+  double perspective;
+  double cover;
+  int floor_px;
+  int padding_px;
+  double reflection_ratio;
+  double reflection_intensity;
+  double reflection_blur_ratio;
+} LambdockShelfParams;
+
+/**
  * LambdockState:
  * Global application state structure passed across callbacks and modules.
  */
 struct LambdockState {
   GtkWidget *window;
   GtkWidget *overlay;         /* Main overlay container */
+  GtkWidget *bg_shelf;        /* 3D shelf wrapper around bg_capsule */
   GtkWidget *bg_capsule;      /* Capsule background box */
   GtkWidget *scrolled_window; /* Scroll viewport container for dock items */
   GtkWidget *box;             /* Icon container box */
@@ -137,6 +190,7 @@ struct LambdockState {
   gboolean hover_animate;
   gboolean taskbar;             /* Full-width bar instead of floating dock */
   gboolean show_window_titles;  /* Show window titles on running app items */
+  LambdockShelfParams shelf;    /* Glass shelf / reflection geometry */
   int icon_size;
   guint hide_timer_id;
   gboolean is_hidden;
@@ -166,7 +220,34 @@ struct LambdockState {
   /* Per instance CSS providers */
   GtkCssProvider *base_css_provider;
   GtkCssProvider *taskbar_css_provider; /* Loaded in taskbar / window titles */
+  GtkCssProvider *shelf_css_provider;   /* Loaded when the shelf is active */
   GtkCssProvider *user_css_provider;
 };
+
+/**
+ * lambdock_shelf_params_default:
+ * Returns the built-in shelf parameters, i.e. the plain flat dock.
+ */
+LambdockShelfParams lambdock_shelf_params_default(void);
+
+/**
+ * lambdock_shelf_params_effective:
+ * @state: Dock state (may be NULL).
+ *
+ * Returns the shelf parameters to use for @state, falling back to the built-in
+ * defaults for NULL or zero-initialised states (partially built docks, tests).
+ */
+LambdockShelfParams lambdock_shelf_params_effective(const LambdockState *state);
+
+/**
+ * lambdock_shelf_active:
+ * @state: Dock state (may be NULL).
+ *
+ * Returns TRUE when the shelf geometry differs from the plain flat capsule,
+ * which is what switches on the shelf CSS classes and the shelf modifier
+ * stylesheet. With the default parameters this is FALSE, so the classic dock is
+ * completely unaffected.
+ */
+gboolean lambdock_shelf_active(const LambdockState *state);
 
 #endif // LAMBDOCK_H

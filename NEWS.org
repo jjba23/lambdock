@@ -9,6 +9,20 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- One dock implementation with a parameterised glass shelf: `dock-shelf-tilt`,
+  `dock-shelf-perspective`, `dock-shelf-cover`, `dock-shelf-floor`,
+  `dock-shelf-padding`, `dock-reflection`, `dock-reflection-intensity` and
+  `dock-reflection-blur` (all defaulting to the classic flat capsule)
+- `dock-special-mode` now selects a *preset* of those parameters; `'big-cat`
+  gives the OS X Mavericks dock (14 degree projected shelf, 58% cover, glass
+  floor, mirrored/blurred/fading icon reflections)
+- Explicit shelf parameters override the preset, and every value is hot
+  reloadable through the REPL
+- Add the `'macos-mavericks` theme (the last 3D OS X dock)
+- Add `ui/shelf.c` (`LambdockShelfFrame` + `LambdockReflection`) with a unit
+  test suite; the shelf material ships as the scoped `css/shelf.css` modifier so
+  any theme can wear it
+
 ---------
 
 *[Released]*

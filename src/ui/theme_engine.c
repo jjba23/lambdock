@@ -171,6 +171,11 @@ void load_custom_css(LambdockState *state) {
         display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
     g_clear_object(&state->taskbar_css_provider);
   }
+  if (state->shelf_css_provider) {
+    gtk_style_context_remove_provider_for_display(
+        display, GTK_STYLE_PROVIDER(state->shelf_css_provider));
+    g_clear_object(&state->shelf_css_provider);
+  }
   if (state->user_css_provider) {
     gtk_style_context_remove_provider_for_display(
         display, GTK_STYLE_PROVIDER(state->user_css_provider));
@@ -199,6 +204,28 @@ void load_custom_css(LambdockState *state) {
           display, mod_css, theme_class,
           GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
       LOG_C_INFO("UI", "Loaded taskbar/window-title modifier for [%s]",
+                 state->config_path ? state->config_path : "default");
+      g_bytes_unref(mod);
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 1b. GLASS SHELF MODIFIER (loaded before the theme, like the taskbar
+  // modifier, so the shelf is styled for *any* active theme while theme rules
+  // keep winning on equal specificity). It only ships the glass material and
+  // the shelf-specific tweaks; the geometry comes from LambdockShelfParams.
+  // --------------------------------------------------------------------------
+  if (lambdock_shelf_active(state)) {
+    GBytes *mod = g_resources_lookup_data(
+        "/org/jointhefreeworld/lambdock/css/shelf.css",
+        G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+    if (mod) {
+      gsize mod_size = 0;
+      const char *mod_css = g_bytes_get_data(mod, &mod_size);
+      state->shelf_css_provider = create_scoped_provider(
+          display, mod_css, theme_class,
+          GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+      LOG_C_INFO("UI", "Loaded glass shelf modifier for [%s]",
                  state->config_path ? state->config_path : "default");
       g_bytes_unref(mod);
     }

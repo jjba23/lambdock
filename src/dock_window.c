@@ -19,6 +19,7 @@
 #include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
+#include "ui/shelf.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
 #include "ui/popover_menu.h"
@@ -26,6 +27,56 @@
 #include <glib/gi18n.h>
 #include <locale.h>
 #include <stdlib.h>
+
+/* =========================================================================
+ * CROSS-AXIS GEOMETRY (SHARED BY DIMENSIONS & AUTO-HIDE)
+ * ========================================================================= */
+
+/**
+ * shelf_reflection_band_dim:
+ * Height (in pixels) of the reflection band for the given icon size.
+ */
+static int shelf_reflection_band_dim(int icon_size, double reflection_ratio) {
+  int icon = (icon_size > 0) ? icon_size : DEFAULT_ICON_SIZE;
+  return (int)round((double)icon * reflection_ratio);
+}
+
+/**
+ * dock_capsule_cross_dim:
+ * Returns the capsule thickness for the current shelf parameters.
+ *
+ * The shelf glass is `cover` of the icon, plus the reflection band and the
+ * glass floor kept past it, plus the configured capsule padding. With the
+ * default parameters (cover 1, no reflections, no floor, padding 24) this is
+ * exactly the classic `icon + CAPSULE_PADDING_PX` capsule.
+ */
+int dock_capsule_cross_dim(const LambdockState *state) {
+  int icon =
+      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+  LambdockShelfParams params = lambdock_shelf_params_effective(state);
+
+  int covered = (int)round((double)icon * params.cover);
+
+  return covered + shelf_reflection_band_dim(icon, params.reflection_ratio) +
+         params.floor_px + params.padding_px;
+}
+
+/**
+ * dock_cross_axis_dim:
+ * Returns the cross-axis size requested for the overlay: enough headroom for
+ * the fisheye magnification, plus the reflection band and the glass floor.
+ */
+int dock_cross_axis_dim(const LambdockState *state) {
+  int icon =
+      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+  LambdockShelfParams params = lambdock_shelf_params_effective(state);
+
+  int dim = (int)(icon * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
+  dim += shelf_reflection_band_dim(icon, params.reflection_ratio);
+  dim += params.floor_px;
+
+  return dim;
+}
 
 /* =========================================================================
  * ANIMATION ENGINE & EASING FUNCTIONS
@@ -180,6 +231,10 @@ static void reset_dock_items_scale(LambdockState *state) {
       gtk_image_set_pixel_size(GTK_IMAGE(image), base_sz);
       gtk_widget_set_size_request(image, -1, -1);
     }
+
+    /* Keep the glass-shelf reflection at the base icon size too. */
+    if (item->reflection)
+      shelf_reflection_set_icon_size(item->reflection, base_sz);
   }
 }
 
@@ -237,6 +292,14 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
           } else {
             // Expand height along Y axis; preserve base_sz along X axis
             gtk_widget_set_size_request(item->button, base_sz, target_size);
+          }
+
+          // Mirror the magnified icon in its reflection: the copy grows along
+          // the dock axis but keeps the band thickness, so the row of icons
+          // does not shift up while hovering.
+          if (item->reflection && state->shelf.reflection_ratio > 0.0) {
+            int band = (int)round(base_size * state->shelf.reflection_ratio);
+            shelf_reflection_set_extent(item->reflection, target_size, band);
           }
         }
       }
@@ -320,8 +383,7 @@ void hide_dock(LambdockState *state) {
   // Ensure window_dim is deterministic even before initial GTK layout/mapping.
   // If GTK layout hasn't run yet after an orientation hot-reload, window_dim
   // can hold stale main-axis dimensions from the previous orientation.
-  int max_cross_dim =
-      (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
+  int max_cross_dim = dock_cross_axis_dim(state);
   if (window_dim <= 0 || window_dim > max_cross_dim + CROSS_DIM_TOLERANCE_PX) {
     window_dim = max_cross_dim;
   }
@@ -487,7 +549,7 @@ void setup_layer_shell_window(LambdockState *state) {
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(window, 0);
   } else {
-    gtk_layer_set_exclusive_zone(window, state->icon_size + CAPSULE_PADDING_PX);
+    gtk_layer_set_exclusive_zone(window, dock_capsule_cross_dim(state));
   }
 }
 
@@ -646,9 +708,8 @@ void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = state->icon_size + CAPSULE_PADDING_PX;
-  int max_cross_dim =
-      (int)(state->icon_size * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
+  int bg_fixed_dim = dock_capsule_cross_dim(state);
+  int max_cross_dim = dock_cross_axis_dim(state);
 
   GdkMonitor *mon = state->monitor;
   GdkDisplay *display = gdk_display_get_default();
@@ -720,6 +781,15 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_top(state->box, 0);
     gtk_widget_set_margin_bottom(state->box, 0);
 
+    /* Keep the configured strip of glass visible below/above the reflection
+     * band instead of letting it run into the shelf edge. */
+    if (state->shelf.floor_px > 0) {
+      if (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+        gtk_widget_set_margin_top(state->box, state->shelf.floor_px);
+      else
+        gtk_widget_set_margin_bottom(state->box, state->shelf.floor_px);
+    }
+
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
     gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
 
@@ -757,6 +827,14 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_start(state->box, 0);
     gtk_widget_set_margin_end(state->box, 0);
 
+    /* Keep the configured strip of glass visible past the reflection band. */
+    if (state->shelf.floor_px > 0) {
+      if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
+        gtk_widget_set_margin_start(state->box, state->shelf.floor_px);
+      else
+        gtk_widget_set_margin_end(state->box, state->shelf.floor_px);
+    }
+
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
     gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
 
@@ -787,22 +865,105 @@ void update_dock_dimensions(LambdockState *state) {
       gtk_widget_set_halign(state->box, GTK_ALIGN_END);
     }
   }
+
+  /* Size, show or hide the glass-shelf reflections so they always match the
+   * current icon size and shelf parameters. */
+  apply_shelf_layout(state);
+
+  /* The shelf wrapper is what the overlay actually positions, so mirror the
+   * capsule's alignment onto it (the capsule itself stays aligned for themes
+   * and for the size group). */
+  if (state->bg_shelf) {
+    gtk_widget_set_halign(state->bg_shelf,
+                          gtk_widget_get_halign(state->bg_capsule));
+    gtk_widget_set_valign(state->bg_shelf,
+                          gtk_widget_get_valign(state->bg_capsule));
+  }
 }
 
 /*
  * apply_dock_mode_classes:
  * Toggles the `taskbar` CSS class on the background capsule so themes can give
- * taskbar mode its own rectangular, edge-to-edge styling.
+ * taskbar mode its own rectangular, edge-to-edge styling, and the `shelf-*`
+ * classes that let any theme restyle the glass shelf.
  */
+static const char *shelf_edge_class(GtkLayerShellEdge edge) {
+  switch (edge) {
+  case GTK_LAYER_SHELL_EDGE_TOP:
+    return "shelf-top";
+  case GTK_LAYER_SHELL_EDGE_LEFT:
+    return "shelf-left";
+  case GTK_LAYER_SHELL_EDGE_RIGHT:
+    return "shelf-right";
+  case GTK_LAYER_SHELL_EDGE_BOTTOM:
+  default:
+    return "shelf-bottom";
+  }
+}
+
+/**
+ * shelf_tilt_for_edge:
+ * Sign of the shelf tilt: the edge touching the screen stays pinned while the
+ * inner edge recedes away from the viewer, so top/left docks tilt backwards.
+ */
+static double shelf_tilt_for_edge(GtkLayerShellEdge edge, double degrees) {
+  switch (edge) {
+  case GTK_LAYER_SHELL_EDGE_TOP:
+  case GTK_LAYER_SHELL_EDGE_LEFT:
+    return -degrees;
+  case GTK_LAYER_SHELL_EDGE_RIGHT:
+  case GTK_LAYER_SHELL_EDGE_BOTTOM:
+  default:
+    return degrees;
+  }
+}
+
+static void set_css_class(GtkWidget *widget, const char *name, gboolean enabled) {
+  if (!widget)
+    return;
+
+  if (enabled) {
+    if (!gtk_widget_has_css_class(widget, name))
+      gtk_widget_add_css_class(widget, name);
+  } else if (gtk_widget_has_css_class(widget, name)) {
+    gtk_widget_remove_css_class(widget, name);
+  }
+}
+
 void apply_dock_mode_classes(LambdockState *state) {
   if (!state || !state->bg_capsule)
     return;
 
-  if (state->taskbar) {
-    if (!gtk_widget_has_css_class(state->bg_capsule, "taskbar"))
-      gtk_widget_add_css_class(state->bg_capsule, "taskbar");
-  } else if (gtk_widget_has_css_class(state->bg_capsule, "taskbar")) {
-    gtk_widget_remove_css_class(state->bg_capsule, "taskbar");
+  set_css_class(state->bg_capsule, "taskbar", state->taskbar);
+
+  /* Shelf classes. They are set on both the window (so user CSS can target the
+   * whole dock) and the capsule (so the shelf itself, and the matching
+   * modifier stylesheet, can be styled per docked edge). They appear whenever
+   * the shelf parameters differ from the plain capsule. */
+  gboolean shelf_active = lambdock_shelf_active(state);
+  static const char *edge_classes[] = {"shelf-bottom", "shelf-top",
+                                       "shelf-left", "shelf-right"};
+  for (gsize i = 0; i < G_N_ELEMENTS(edge_classes); i++) {
+    set_css_class(state->bg_capsule, edge_classes[i], FALSE);
+    set_css_class(state->window, edge_classes[i], FALSE);
+  }
+
+  set_css_class(state->bg_capsule, "shelf-mode", shelf_active);
+  set_css_class(state->window, "shelf-mode", shelf_active);
+
+  if (shelf_active) {
+    const char *edge_class = shelf_edge_class(state->edge);
+    set_css_class(state->bg_capsule, edge_class, TRUE);
+    set_css_class(state->window, edge_class, TRUE);
+  }
+
+  /* Project the styled capsule onto the tilted plane described by the shelf
+   * parameters; a tilt of 0 leaves the frame as a pass-through. */
+  if (state->bg_shelf) {
+    shelf_frame_set_tilt(
+        state->bg_shelf, state->edge,
+        shelf_tilt_for_edge(state->edge, state->shelf.tilt_deg),
+        state->shelf.perspective);
   }
 }
 
@@ -854,6 +1015,11 @@ void destroy_dock_instance(LambdockState *state) {
       gtk_style_context_remove_provider_for_display(
           display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
       g_clear_object(&state->taskbar_css_provider);
+    }
+    if (state->shelf_css_provider) {
+      gtk_style_context_remove_provider_for_display(
+          display, GTK_STYLE_PROVIDER(state->shelf_css_provider));
+      g_clear_object(&state->shelf_css_provider);
     }
     if (state->user_css_provider) {
       gtk_style_context_remove_provider_for_display(
@@ -923,6 +1089,8 @@ void destroy_dock_instance(LambdockState *state) {
   if (state->window && GTK_IS_WINDOW(state->window)) {
     GtkWidget *win = state->window;
     state->window = NULL; // Nullify reference prior to GTK destruction
+    state->bg_shelf = NULL;
+    state->bg_capsule = NULL;
     gtk_layer_set_monitor(GTK_WINDOW(win), NULL);
     gtk_window_destroy(GTK_WINDOW(win));
   }
