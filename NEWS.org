@@ -15,6 +15,19 @@ Nothing yet.
 
 *[Released]*
 
+** v0.8.2 (2026-10-25)
+- Fix the build against GTK < 4.18: the mirror transform no longer uses
+  `gsk_transform_matrix_2d()`, which only recent GTK has
+- Link libm explicitly instead of relying on another library pulling it in, so
+  the binary and the tests link on stricter toolchains
+- Packaging: the Arch PKGBUILD, the Debian changelog and the openSUSE spec now
+  name 0.8.1/0.8.2 instead of 0.7.x (and the README's RPM examples no longer say
+  0.1.0)
+- Guix: the package wraps with GLib/GTK and depends on dconf,
+  gsettings-desktop-schemas, shared-mime-info and hicolor-icon-theme, so the dock
+  resolves the desktop's icon theme (and therefore app icons) instead of falling
+  back to Adwaita
+
 ** v0.8.1 (2026-10-25)
 - README: document the glass shelf properly -- every option with its default and
   clamped range, the geometry in one line, ten copy-pasteable recipes (flat,
