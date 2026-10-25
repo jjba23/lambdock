@@ -24,20 +24,57 @@
  * =========================================================================
  * THE GLASS SHELF
  * =========================================================================
- * lambdock has a single dock implementation. What used to be two modes ("a
- * normal dock" and "big-cat mode") is now one dock driven by
+ * The dock has no modes. It is one widget tree whose shape is described by
  * `LambdockShelfParams`:
  *
  *   - `LambdockShelfFrame` projects the themed capsule onto a tilted plane
  *     (a real GskTransform rotate + perspective, which GTK CSS cannot do), and
  *   - `LambdockReflection` paints a mirrored, blurred and alpha-faded copy of
- *     each icon on the glass.
+ *     each icon on the glass, plus the contact shadow and running indicator.
  *
- * With the default parameters (tilt 0, reflection 0, cover 1, padding = the
- * classic capsule padding) the frame is a transparent pass-through and the
- * reflections stay hidden, so the plain dock is exactly what it always was.
- * The `'big-cat` special mode is just a preset of those parameters.
+ * Geometry (all values in pixels, `icon` = icon size):
+ *
+ *   band   = round(icon * reflection_ratio)
+ *   outer  = max(front_px, band)          // glass on the screen-edge side
+ *   capsule = icon + margin_px + outer
+ *
+ * With the defaults (tilt 0, reflection 0, front 0, margin = capsule padding)
+ * that is exactly the classic `icon + 24px` capsule, the frame is a pass-through
+ * and the reflections stay hidden.
  */
+
+/**
+ * lambdock_shelf_geometry:
+ * Derived shelf geometry for a state and icon size.
+ *
+ * @band_px: Height of the reflection band (0 when reflections are off).
+ * @outer_px: Glass on the outer (screen edge) side of the icons.
+ * @capsule_px: Capsule thickness across the dock.
+ * @overhang_px: How far the icons stick out on the inner side (>= 0).
+ */
+typedef struct LambdockShelfGeometry {
+  int band_px;
+  int outer_px;
+  int capsule_px;
+  int overhang_px;
+} LambdockShelfGeometry;
+
+/**
+ * lambdock_shelf_geometry:
+ * Computes the derived geometry described above for @state (NULL is allowed and
+ * means "defaults") at the given icon size.
+ */
+LambdockShelfGeometry lambdock_shelf_geometry_for(const LambdockState *state,
+                                                  int icon_size);
+
+/**
+ * shelf_reflection_set_running:
+ * @reflection: A widget created by shelf_reflection_new().
+ * @running: TRUE when the item has at least one open window.
+ *
+ * Toggles the running-app glow dot drawn near the outer edge of the glass.
+ */
+void shelf_reflection_set_running(GtkWidget *reflection, gboolean running);
 
 /**
  * shelf_reflection_new:

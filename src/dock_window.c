@@ -33,47 +33,34 @@
  * ========================================================================= */
 
 /**
- * shelf_reflection_band_dim:
- * Height (in pixels) of the reflection band for the given icon size.
- */
-static int shelf_reflection_band_dim(int icon_size, double reflection_ratio) {
-  int icon = (icon_size > 0) ? icon_size : DEFAULT_ICON_SIZE;
-  return (int)round((double)icon * reflection_ratio);
-}
-
-/**
  * dock_capsule_cross_dim:
- * Returns the capsule thickness for the current shelf parameters.
+ * Returns the capsule thickness for the current shelf parameters:
  *
- * The shelf glass is `cover` of the icon, plus the reflection band and the
- * glass floor kept past it, plus the configured capsule padding. With the
- * default parameters (cover 1, no reflections, no floor, padding 24) this is
- * exactly the classic `icon + CAPSULE_PADDING_PX` capsule.
+ *   icon + margin (glass on the inner side of the icons)
+ *        + max(front, reflection band)   (glass on the outer side)
+ *
+ * With the defaults (margin = capsule padding, no front glass, no reflections)
+ * this is exactly the classic `icon + CAPSULE_PADDING_PX` capsule.
  */
 int dock_capsule_cross_dim(const LambdockState *state) {
   int icon =
       (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  LambdockShelfParams params = lambdock_shelf_params_effective(state);
 
-  int covered = (int)round((double)icon * params.cover);
-
-  return covered + shelf_reflection_band_dim(icon, params.reflection_ratio) +
-         params.floor_px + params.padding_px;
+  return lambdock_shelf_geometry_for(state, icon).capsule_px;
 }
 
 /**
  * dock_cross_axis_dim:
- * Returns the cross-axis size requested for the overlay: enough headroom for
- * the fisheye magnification, plus the reflection band and the glass floor.
+ * Returns the cross-axis size requested for the overlay: fisheye magnification
+ * headroom, plus the outer glass, plus any icon overhang past the inner edge.
  */
 int dock_cross_axis_dim(const LambdockState *state) {
   int icon =
       (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  LambdockShelfParams params = lambdock_shelf_params_effective(state);
+  LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, icon);
 
   int dim = (int)(icon * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
-  dim += shelf_reflection_band_dim(icon, params.reflection_ratio);
-  dim += params.floor_px;
+  dim += geometry.outer_px + geometry.overhang_px;
 
   return dim;
 }
@@ -297,9 +284,12 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
           // Mirror the magnified icon in its reflection: the copy grows along
           // the dock axis but keeps the band thickness, so the row of icons
           // does not shift up while hovering.
-          if (item->reflection && state->shelf.reflection_ratio > 0.0) {
-            int band = (int)round(base_size * state->shelf.reflection_ratio);
-            shelf_reflection_set_extent(item->reflection, target_size, band);
+          if (item->reflection && lambdock_shelf_active(state)) {
+            int band = (int)round(base_size *
+                                  lambdock_shelf_params_effective(state)
+                                      .reflection_ratio);
+            if (band > 0)
+              shelf_reflection_set_extent(item->reflection, target_size, band);
           }
         }
       }
@@ -781,13 +771,14 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_top(state->box, 0);
     gtk_widget_set_margin_bottom(state->box, 0);
 
-    /* Keep the configured strip of glass visible below/above the reflection
-     * band instead of letting it run into the shelf edge. */
-    if (state->shelf.floor_px > 0) {
+    /* Keep the icon stack off the outer edge by the outer glass thickness, so
+     * the reflections (and any front face) have room in front of the icons. */
+    LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, 0);
+    if (geometry.outer_px > 0) {
       if (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
-        gtk_widget_set_margin_top(state->box, state->shelf.floor_px);
+        gtk_widget_set_margin_top(state->box, geometry.outer_px);
       else
-        gtk_widget_set_margin_bottom(state->box, state->shelf.floor_px);
+        gtk_widget_set_margin_bottom(state->box, geometry.outer_px);
     }
 
     gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
@@ -827,12 +818,13 @@ void update_dock_dimensions(LambdockState *state) {
     gtk_widget_set_margin_start(state->box, 0);
     gtk_widget_set_margin_end(state->box, 0);
 
-    /* Keep the configured strip of glass visible past the reflection band. */
-    if (state->shelf.floor_px > 0) {
+    /* Same on side docks. */
+    LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, 0);
+    if (geometry.outer_px > 0) {
       if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
-        gtk_widget_set_margin_start(state->box, state->shelf.floor_px);
+        gtk_widget_set_margin_start(state->box, geometry.outer_px);
       else
-        gtk_widget_set_margin_end(state->box, state->shelf.floor_px);
+        gtk_widget_set_margin_end(state->box, geometry.outer_px);
     }
 
     gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
@@ -950,6 +942,15 @@ void apply_dock_mode_classes(LambdockState *state) {
 
   set_css_class(state->bg_capsule, "shelf-mode", shelf_active);
   set_css_class(state->window, "shelf-mode", shelf_active);
+
+  /* `shelf-mirror` means the glass actually shows icon reflections: the
+   * reflection widget then draws the running indicator itself, so the CSS one
+   * must stay quiet. */
+  gboolean mirroring =
+      shelf_active &&
+      lambdock_shelf_geometry_for(state, state->icon_size).band_px > 0;
+  set_css_class(state->bg_capsule, "shelf-mirror", mirroring);
+  set_css_class(state->window, "shelf-mirror", mirroring);
 
   if (shelf_active) {
     const char *edge_class = shelf_edge_class(state->edge);

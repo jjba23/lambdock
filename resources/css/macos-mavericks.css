@@ -17,16 +17,22 @@
 */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - MAC OS X 10.9 MAVERICKS DOCK
+ * LAMBDOCK STYLESHEET - MAC OS X 10.9 MAVERICKS
  * =========================================================================
- * The last of the "3D" OS X docks: a dark, frosted, blue-gray glass shelf with
- * a bright specular bevel on top, a deep shadow pooling at the bottom and
- * mirrored icon reflections on the glass.
+ * The last of the OS X "3D" docks: a light, polished platinum slab with a
+ * bright specular line along its outer edge, a slightly darker band for the
+ * slab's thickness, and icons mirrored onto the surface in front of them.
  *
- * Pair it with `(define dock-special-mode 'big-cat)` to get the tilted shelf,
- * the blurred reflections and the fisheye-aware shelf geometry; on its own it
- * still reads as a Mavericks capsule (a flat, frosted version of the same
- * material).
+ * The shelf geometry is not in here: it comes from the dock options
+ * (`dock-shelf-margin`, `dock-shelf-front`, `dock-reflection`, ...). This
+ * stylesheet is the material. Use it on its own for a flat light platinum
+ * capsule, or with
+ *
+ *   (define dock-shelf-margin -22)
+ *   (define dock-shelf-front 18)
+ *   (define dock-reflection 0.5)
+ *
+ * for the full Mavericks shelf.
  */
 
 /* -------------------------------------------------------------------------
@@ -37,32 +43,105 @@ window {
   background-color: transparent;
 }
 
-/* Dark frosted Mavericks glass shelf */
+/* Frosted platinum capsule (the flat dock; shelf mode overrides it below). */
 .lambdock-window {
-  border-radius: 12px 12px 22px 22px;
-  padding: 3px 12px 9px 12px;
-  margin: 0px 4px 4px 4px;
+  border-radius: 10px;
+  padding: 0;
+  margin: 0;
 
   background-image: linear-gradient(
     180deg,
-    rgba(244, 248, 255, 0.58) 0%,
-    rgba(206, 218, 235, 0.38) 8%,
-    rgba(120, 134, 160, 0.36) 46%,
-    rgba(72, 82, 103, 0.50) 72%,
-    rgba(33, 39, 52, 0.66) 100%
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
   );
 
-  /* Bright top bevel over a dark base rim */
-  border-top: 1px solid rgba(255, 255, 255, 0.80);
-  border-left: 1px solid rgba(255, 255, 255, 0.28);
-  border-right: 1px solid rgba(255, 255, 255, 0.28);
-  border-bottom: 1px solid rgba(16, 21, 31, 0.72);
+  border-top: 1px solid rgba(255, 255, 255, 0.95);
+  border-left: 1px solid rgba(255, 255, 255, 0.55);
+  border-right: 1px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(150, 165, 185, 0.75);
 
   box-shadow:
-    0 14px 30px rgba(0, 0, 0, 0.42),
-    0 3px 7px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.90),
-    inset 0 -18px 24px rgba(8, 12, 20, 0.22);
+    0 -8px 20px rgba(0, 0, 0, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -10px 18px rgba(130, 150, 175, 0.16);
+}
+
+/* -------------------------------------------------------------------------
+ * THE SHELF SLAB (dock-shelf-* in use)
+ * ------------------------------------------------------------------------- */
+
+.lambdock-window.shelf-mode {
+  border-radius: 8px 8px 16px 16px;
+
+  /* Bottom dock: 0deg points up, so the first stops are the outer edge. */
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.98);
+  border-left: 1px solid rgba(255, 255, 255, 0.55);
+  border-right: 1px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.85);
+
+  box-shadow:
+    0 -10px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 1.0),
+    inset 0 -20px 28px rgba(150, 172, 200, 0.12);
+}
+
+.lambdock-window.shelf-mode.shelf-top {
+  border-radius: 16px 16px 8px 8px;
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-left {
+  border-radius: 8px 16px 16px 8px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-right {
+  border-radius: 16px 8px 8px 16px;
+  background-image: linear-gradient(
+    270deg,
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
+  );
+}
+
+/* Full-width taskbar: same slab, square corners. */
+.lambdock-window.shelf-mode.taskbar {
+  border-radius: 0;
+  margin: 0;
 }
 
 /* -------------------------------------------------------------------------
@@ -73,51 +152,50 @@ button.flat {
   background: transparent;
   border: none;
   box-shadow: none;
-  padding: 2px 4px;
-  margin: 0px 3px;
+  padding: 2px 3px;
+  margin: 0px 2px;
   border-radius: 10px;
-  color: #f4f8ff;
+  color: #22262c;
 
-  /* Mavericks' magnification was smooth and slightly springy */
   transition: transform 220ms cubic-bezier(0.32, 1.42, 0.58, 1),
               background-color 150ms ease-out;
 }
 
 button.flat:hover {
-  background-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.32);
+  background-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 0 4px 10px rgba(60, 80, 110, 0.18);
 }
 
 button.flat:active {
-  background-color: rgba(255, 255, 255, 0.22);
+  background-color: rgba(255, 255, 255, 0.75);
   box-shadow: none;
 }
 
 /* Dynamic Item Labels */
 .dynamic-item-label {
-  color: #eef4fd;
+  color: #232830;
   font-weight: 600;
   font-size: 12px;
   padding: 0 2px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.70);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 button.flat:hover .dynamic-item-label {
-  color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+  color: #10141a;
 }
 
 /* -------------------------------------------------------------------------
- * RUNNING APP INDICATOR (Glowing Blue Dot)
- * ------------------------------------------------------------------------- */
+ * RUNNING APP INDICATOR
+ * -------------------------------------------------------------------------
+ * With reflections on, the reflection widget draws the white glow dot on the
+ * slab itself; this dot is for the flat variant. */
 
 button.running-app {
   background-image: radial-gradient(
     circle at center,
-    #ffffff 0%,
-    rgba(222, 242, 255, 1.0) 28%,
-    rgba(110, 180, 250, 0.80) 62%,
-    transparent 82%
+    rgba(70, 90, 120, 0.85) 0%,
+    rgba(90, 110, 140, 0.55) 45%,
+    transparent 80%
   );
   background-size: 14px 5px;
   background-position: center bottom;
@@ -127,23 +205,22 @@ button.running-app {
 button.running-app:hover {
   background-image: radial-gradient(
     circle at center,
-    #ffffff 0%,
-    rgba(236, 248, 255, 1.0) 32%,
-    rgba(140, 200, 255, 0.90) 66%,
-    transparent 86%
+    rgba(50, 70, 100, 0.95) 0%,
+    rgba(80, 105, 140, 0.60) 50%,
+    transparent 84%
   );
   background-size: 18px 6px;
   background-position: center bottom;
 }
 
 /* -------------------------------------------------------------------------
- * GLASS SEPARATOR GROOVE
+ * SEPARATOR GROOVE
  * ------------------------------------------------------------------------- */
 
 separator {
   margin: 6px 8px;
-  background-color: rgba(255, 255, 255, 0.55);
-  border-right: 1px solid rgba(60, 70, 88, 0.45);
+  background-color: rgba(120, 135, 155, 0.45);
+  border-right: 1px solid rgba(255, 255, 255, 0.70);
   min-width: 1px;
 }
 
@@ -180,8 +257,12 @@ popover button.flat {
 popover button.flat:hover {
   background-image: linear-gradient(
     180deg,
-    rgba(96, 158, 235, 0.95) 0%,
-    rgba(40, 96, 178, 0.95) 100%
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
   );
   color: #ffffff;
 }
@@ -189,11 +270,12 @@ popover button.flat:hover {
 window.about-dialog {
   background-image: linear-gradient(
     180deg,
-    rgba(244, 248, 255, 0.94) 0%,
-    rgba(206, 218, 235, 0.88) 8%,
-    rgba(120, 134, 160, 0.90) 46%,
-    rgba(72, 82, 103, 0.94) 72%,
-    rgba(33, 39, 52, 0.96) 100%
+    rgba(255, 255, 255, 1.00) 0px,
+    rgba(206, 219, 236, 0.96) 2px,
+    rgba(178, 195, 219, 0.94) 8px,
+    rgba(240, 246, 252, 0.97) 9px,
+    rgba(250, 252, 255, 0.98) 45%,
+    rgba(238, 243, 250, 0.97) 100%
   );
-  color: #ffffff;
+  color: #1c2026;
 }

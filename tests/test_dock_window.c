@@ -244,10 +244,9 @@ static void test_update_dock_dimensions_shelf(void) {
   state.icon_size = 48;
   state.shelf = lambdock_shelf_params_default();
   state.shelf.tilt_deg = 14.0;
-  state.shelf.cover = 0.58;
-  state.shelf.floor_px = 8;
-  state.shelf.padding_px = 0;
-  state.shelf.reflection_ratio = 0.52;
+  state.shelf.margin_px = -20;
+  state.shelf.front_px = 24;
+  state.shelf.reflection_ratio = 0.5;
 
   update_dock_dimensions(&state);
 
@@ -259,13 +258,16 @@ static void test_update_dock_dimensions_shelf(void) {
   gtk_widget_get_size_request(state.bg_capsule, &w, &h);
   g_assert_cmpint(h, ==, dock_capsule_cross_dim(&state));
 
-  /* The glass floor keeps the reflection band off the shelf's bottom edge. */
-  g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 8);
+  /* The outer glass (front face / reflection band) is kept in front of the
+   * icons, so the icon stack is offset from the shelf's outer edge. */
+  g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==,
+                  MAX(24, (int)round(48 * 0.5)));
 
-  /* A top dock mirrors the floor margin and keeps the same dimensions. */
+  /* A top dock mirrors that margin and keeps the same dimensions. */
   state.edge = GTK_LAYER_SHELL_EDGE_TOP;
   update_dock_dimensions(&state);
-  g_assert_cmpint(gtk_widget_get_margin_top(state.box), ==, 8);
+  g_assert_cmpint(gtk_widget_get_margin_top(state.box), ==,
+                  MAX(24, (int)round(48 * 0.5)));
   g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 0);
 
   /* Back to the defaults restores the classic floating capsule dimensions. */

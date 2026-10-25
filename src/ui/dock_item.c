@@ -611,6 +611,10 @@ void update_dock_item_status(DockItem *item) {
       gtk_widget_remove_css_class(item->button, "running-app");
   }
 
+  /* The glass shelf draws its own running indicator near the outer edge. */
+  if (item->reflection)
+    shelf_reflection_set_running(item->reflection, item->windows != NULL);
+
   /* Keep the window-title label in sync for app items (never for dynamic items,
    * whose label carries polled text, or separators). */
   if (!item->window_title_label || !item->label)

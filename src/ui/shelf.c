@@ -28,9 +28,8 @@ LambdockShelfParams lambdock_shelf_params_default(void) {
 
   params.tilt_deg = SHELF_DEFAULT_TILT;
   params.perspective = SHELF_DEFAULT_PERSPECTIVE;
-  params.cover = SHELF_DEFAULT_COVER;
-  params.floor_px = SHELF_DEFAULT_FLOOR_PX;
-  params.padding_px = CAPSULE_PADDING_PX;
+  params.margin_px = SHELF_DEFAULT_MARGIN_PX;
+  params.front_px = SHELF_DEFAULT_FRONT_PX;
   params.reflection_ratio = SHELF_DEFAULT_REFLECTION;
   params.reflection_intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
   params.reflection_blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
@@ -44,7 +43,7 @@ LambdockShelfParams lambdock_shelf_params_default(void) {
  *
  * A zero-initialised state (a partially built dock, a unit test) carries no
  * shelf configuration at all; it is treated as the plain dock rather than as a
- * capsule with zero padding, which would collapse the layout.
+ * capsule with zero margin, which would collapse the layout.
  */
 LambdockShelfParams lambdock_shelf_params_effective(const LambdockState *state) {
   if (!state)
@@ -52,9 +51,8 @@ LambdockShelfParams lambdock_shelf_params_effective(const LambdockState *state) 
 
   LambdockShelfParams params = state->shelf;
 
-  if (params.cover == 0.0 && params.padding_px == 0 &&
-      params.reflection_ratio == 0.0 && params.floor_px == 0 &&
-      params.tilt_deg == 0.0)
+  if (params.margin_px == 0 && params.front_px == 0 &&
+      params.reflection_ratio == 0.0 && params.tilt_deg == 0.0)
     return lambdock_shelf_params_default();
 
   return params;
@@ -68,40 +66,59 @@ gboolean lambdock_shelf_active(const LambdockState *state) {
   LambdockShelfParams params = lambdock_shelf_params_effective(state);
 
   return params.tilt_deg != defaults.tilt_deg ||
-         params.reflection_ratio > defaults.reflection_ratio ||
-         params.floor_px != defaults.floor_px ||
-         params.cover < defaults.cover ||
-         params.padding_px != defaults.padding_px;
+         params.margin_px != defaults.margin_px ||
+         params.front_px != defaults.front_px ||
+         params.reflection_ratio > defaults.reflection_ratio;
+}
+
+LambdockShelfGeometry lambdock_shelf_geometry_for(const LambdockState *state,
+                                                  int icon_size) {
+  LambdockShelfParams params = lambdock_shelf_params_effective(state);
+  int icon = (icon_size > 0) ? icon_size : DEFAULT_ICON_SIZE;
+
+  LambdockShelfGeometry geometry;
+  geometry.band_px = (int)round((double)icon * params.reflection_ratio);
+  if (geometry.band_px < 0)
+    geometry.band_px = 0;
+
+  geometry.outer_px = MAX(params.front_px, geometry.band_px);
+  geometry.capsule_px = icon + params.margin_px + geometry.outer_px;
+  if (geometry.capsule_px < 0)
+    geometry.capsule_px = 0;
+
+  geometry.overhang_px = MAX(0, -params.margin_px);
+
+  return geometry;
 }
 
 /* ============================================================================
  * LambdockReflection — mirrored, blurred, fading icon reflection
  * ============================================================================
  *
- * The widget paints a copy of another widget's rendering (its GtkWidgetPaintable)
- * that is:
+ * The widget paints, on the glass in front of one icon:
  *
- *   1. mirrored across the edge where the icon touches the glass shelf,
- *   2. squashed into the reflection band (LambdockShelfParams.reflection_ratio),
- *   3. blurred with a gaussian blur,
- *   4. faded out band by band with a power curve, from the icon outwards.
+ *   1. a soft contact shadow where the icon meets the shelf,
+ *   2. the icon itself, mirrored across that contact line, squashed into the
+ *      reflection band and blurred with a gaussian blur,
+ *   3. an alpha falloff (band by band, power curve) so it fades as it recedes,
+ *   4. the running-app glow dot near the outer edge of the glass.
  *
- * Steps 1-3 are a single mirror transform + blur node; the fade is drawn as
- * SHELF_REFLECTION_BANDS stacked semi-transparent bands whose alphas follow the
- * curve. The blur pass smooths the band boundaries back into a continuous
- * gradient.
+ * The fade is drawn as SHELF_REFLECTION_BANDS stacked semi-transparent bands;
+ * the blur pass smooths their boundaries back into a continuous gradient.
  */
 
 typedef struct _LambdockReflection {
   GtkWidget parent_instance;
 
-  GtkWidget *source;       /* Weak ref to the mirrored widget */
-  GdkPaintable *paintable; /* Rendering source (bound lazily) */
-  GtkLayerShellEdge edge;  /* Shelf edge: decides mirror + fade axis */
-  int icon_size;           /* Fallback size while the source is unsized */
-  double band_ratio;       /* Reflection band / icon size */
-  double blur_ratio;       /* Blur radius / icon size */
-  double intensity;        /* Alpha at the icon-side edge of the band */
+  GtkWidget *source;        /* Weak ref to the mirrored widget */
+  GdkPaintable *paintable;  /* Rendering source (bound lazily) */
+  GtkLayerShellEdge edge;   /* Shelf edge: decides mirror + fade axis */
+  int icon_size;            /* Fallback size while the source is unsized */
+  double band_ratio;        /* Reflection band / icon size */
+  double blur_ratio;        /* Blur radius / icon size */
+  double intensity;         /* Alpha at the icon-side edge of the band */
+  gboolean running;         /* Draw the running-app glow dot */
+  gboolean has_shadow;      /* Draw the contact shadow under the icon */
 } LambdockReflection;
 
 typedef struct _LambdockReflectionClass {
@@ -180,6 +197,117 @@ static int reflection_band_size(const LambdockReflection *self, int icon_size) {
 }
 
 /* ============================================================================
+ * REFLECTION DECORATIONS (contact shadow, running dot)
+ * ============================================================================ */
+
+/**
+ * reflection_edge_rect:
+ * Builds a gradient from the icon-side edge of the band towards its far edge
+ * (the mirror axis depends on the docked edge).
+ */
+static void reflection_axis_gradient(GtkSnapshot *snapshot, double w, double h,
+                                     gboolean vertical, gboolean from_begin,
+                                     double length,
+                                     const GskColorStop *stops, gsize n_stops) {
+  graphene_rect_t bounds;
+  graphene_point_t start;
+  graphene_point_t end;
+
+  if (vertical) {
+    graphene_rect_init(&bounds, 0.0f, 0.0f, (float)w, (float)h);
+    float y0 = from_begin ? 0.0f : (float)h;
+    float y1 = from_begin ? (float)length : (float)(h - length);
+    graphene_point_init(&start, (float)(w / 2.0), y0);
+    graphene_point_init(&end, (float)(w / 2.0), y1);
+  } else {
+    graphene_rect_init(&bounds, 0.0f, 0.0f, (float)w, (float)h);
+    float x0 = from_begin ? 0.0f : (float)w;
+    float x1 = from_begin ? (float)length : (float)(w - length);
+    graphene_point_init(&start, x0, (float)(h / 2.0));
+    graphene_point_init(&end, x1, (float)(h / 2.0));
+  }
+
+  gtk_snapshot_append_linear_gradient(snapshot, &bounds, &start, &end, stops,
+                                      n_stops);
+}
+
+/**
+ * reflection_paint_contact_shadow:
+ * Soft dark halo where the icon meets the glass, so the icon reads as resting
+ * on the shelf instead of floating above it.
+ */
+static void reflection_paint_contact_shadow(const LambdockReflection *self,
+                                            GtkSnapshot *snapshot, double w,
+                                            double h) {
+  gboolean vertical = reflection_is_vertical_band(self);
+  double axis_len = vertical ? h : w;
+  double shadow_len = MIN(axis_len * 0.8, MAX(5.0, axis_len * 0.45));
+  if (shadow_len <= 0.0)
+    return;
+
+  GskColorStop stops[3] = {
+      {(float)0.0, {0.05f, 0.07f, 0.10f, 0.18f}},
+      {(float)0.35, {0.05f, 0.07f, 0.10f, 0.10f}},
+      {(float)1.0, {0.05f, 0.07f, 0.10f, 0.0f}},
+  };
+
+  /* The icon-side edge is the beginning of the band for a bottom dock and the
+   * end for a top dock; side docks use the horizontal axis. */
+  reflection_axis_gradient(snapshot, w, h, vertical,
+                           self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM ||
+                               self->edge == GTK_LAYER_SHELL_EDGE_LEFT,
+                           shadow_len, stops, 3);
+}
+
+/**
+ * reflection_paint_running_dot:
+ * The small white glow the OS X dock showed near the outer edge of the glass
+ * for apps with open windows.
+ */
+static void reflection_paint_running_dot(const LambdockReflection *self,
+                                         GtkSnapshot *snapshot, double w,
+                                         double h) {
+  gboolean vertical = reflection_is_vertical_band(self);
+  double cross = vertical ? w : h;
+
+  double dot_cross = MAX(4.0, cross * 0.16);
+  double dot_along = MAX(3.0, dot_cross * 0.55);
+  double margin = 3.0;
+
+  double cx = w / 2.0;
+  double cy = h / 2.0;
+
+  if (vertical) {
+    cy = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) ? (h - dot_along - margin)
+                                                     : (dot_along + margin);
+  } else {
+    cx = (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) ? (w - dot_along - margin)
+                                                   : (dot_along + margin);
+  }
+
+  double radius_cross = MAX(dot_cross / 2.0, 2.0);
+  double radius_along = MAX(dot_along / 2.0, 2.0);
+
+  graphene_rect_t bounds = GRAPHENE_RECT_INIT(
+      (float)(cx - radius_cross), (float)(cy - radius_along),
+      (float)(radius_cross * 2.0), (float)(radius_along * 2.0));
+
+  GskColorStop stops[3] = {
+      {(float)0.0, {1.0f, 1.0f, 1.0f, 0.90f}},
+      {(float)0.45, {0.94f, 0.98f, 1.0f, 0.35f}},
+      {(float)1.0, {0.92f, 0.96f, 1.0f, 0.0f}},
+  };
+
+  graphene_point_t center;
+  graphene_point_init(&center, (float)cx, (float)cy);
+
+  gtk_snapshot_append_radial_gradient(snapshot, &bounds, &center,
+                                      (float)radius_cross,
+                                      (float)radius_along, 0.0f, 1.0f, stops,
+                                      3);
+}
+
+/* ============================================================================
  * GTK WIDGET VIRTUAL METHODS
  * ============================================================================ */
 
@@ -230,99 +358,108 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
 
   double w = (double)gtk_widget_get_width(widget);
   double h = (double)gtk_widget_get_height(widget);
-  if (w <= 0.0 || h <= 0.0 || !self->paintable)
-    return;
-
-  double sw = 0.0;
-  double sh = 0.0;
-  reflection_source_size(self, &sw, &sh);
-  if (sw <= 0.0 || sh <= 0.0)
+  if (w <= 0.0 || h <= 0.0)
     return;
 
   gboolean vertical_band = reflection_is_vertical_band(self);
 
-  /* Mirror + squash: map the source box onto the reflection band so that the
-   * edge touching the icon becomes the mirror plane. */
-  float sx = (float)(w / sw);
-  float sy = (float)(h / sh);
-  float tx = 0.0f;
-  float ty = 0.0f;
+  if (self->has_shadow)
+    reflection_paint_contact_shadow(self, snapshot, w, h);
 
-  if (vertical_band) {
-    if (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      /* Mirror about the icon's bottom edge: the shelf reflects downwards. */
-      sy = -sy;
-      ty = (float)h;
-    }
-  } else if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-    /* Mirror about the icon's right edge: the shelf reflects sideways. */
-    sx = -sx;
-    tx = (float)w;
-  }
+  double sw = 0.0;
+  double sh = 0.0;
+  reflection_source_size(self, &sw, &sh);
 
-  double blur_unit = vertical_band ? w : h;
-  double blur = blur_unit * self->blur_ratio;
-  if (blur < 0.5)
-    blur = 0.5;
+  if (self->paintable && sw > 0.0 && sh > 0.0) {
+    /* Mirror + squash: map the source box onto the reflection band so that the
+     * edge touching the icon becomes the mirror plane. */
+    float sx = (float)(w / sw);
+    float sy = (float)(h / sh);
+    float tx = 0.0f;
+    float ty = 0.0f;
 
-  gtk_snapshot_push_blur(snapshot, blur);
-
-  gtk_snapshot_save(snapshot);
-  gtk_snapshot_transform(
-      snapshot, gsk_transform_matrix_2d(NULL, sx, 0.0f, 0.0f, sy, tx, ty));
-
-  /* Draw the mirrored source as a stack of bands with a power-curve alpha
-   * falloff, so the reflection fades away as it recedes from the icon. */
-  const int bands = SHELF_REFLECTION_BANDS;
-  double axis_len = vertical_band ? h : w;
-  double band_len = axis_len / (double)bands;
-
-  for (int i = 0; i < bands; i++) {
-    double d0 = band_len * (double)i;
-    double d1 = d0 + band_len;
-    double t = (d0 + band_len * 0.5) / axis_len; /* 0 = icon edge, 1 = far */
-
-    double alpha = self->intensity * pow(1.0 - t, 1.35);
-    if (alpha <= 0.001)
-      continue;
-
-    /* Map the destination band back into source coordinates for clipping. */
-    graphene_rect_t clip;
     if (vertical_band) {
       if (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-        double y1 = sh - (d0 / h) * sh;
-        double y0 = sh - (d1 / h) * sh;
-        graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
-                           (float)(y1 - y0));
-      } else {
-        double y0 = (d0 / h) * sh;
-        double y1 = (d1 / h) * sh;
-        graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
-                           (float)(y1 - y0));
+        /* Mirror about the icon's bottom edge: the shelf reflects downwards. */
+        sy = -sy;
+        ty = (float)h;
       }
-    } else {
-      if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-        double x1 = sw - (d0 / w) * sw;
-        double x0 = sw - (d1 / w) * sw;
-        graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
-                           (float)sh);
-      } else {
-        double x0 = (d0 / w) * sw;
-        double x1 = (d1 / w) * sw;
-        graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
-                           (float)sh);
-      }
+    } else if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+      /* Mirror about the icon's right edge: the shelf reflects sideways. */
+      sx = -sx;
+      tx = (float)w;
     }
 
-    gtk_snapshot_push_clip(snapshot, &clip);
-    gtk_snapshot_push_opacity(snapshot, alpha);
-    gdk_paintable_snapshot(self->paintable, snapshot, sw, sh);
-    gtk_snapshot_pop(snapshot);
-    gtk_snapshot_pop(snapshot);
+    double blur_unit = vertical_band ? w : h;
+    double blur = blur_unit * self->blur_ratio;
+    if (blur < 0.5)
+      blur = 0.5;
+
+    gtk_snapshot_push_blur(snapshot, blur);
+
+    gtk_snapshot_save(snapshot);
+    gtk_snapshot_transform(
+        snapshot, gsk_transform_matrix_2d(NULL, sx, 0.0f, 0.0f, sy, tx, ty));
+
+    /* Draw the mirrored source as a stack of bands with a power-curve alpha
+     * falloff, so the reflection fades away as it recedes from the icon. The
+     * count follows the band height: sub-pixel bands would be quantised away
+     * and leave visible gaps. */
+    double axis_len = vertical_band ? h : w;
+    int bands = (int)round(axis_len);
+    bands = CLAMP(bands, 6, SHELF_REFLECTION_BANDS);
+    double band_len = axis_len / (double)bands;
+
+    for (int i = 0; i < bands; i++) {
+      double d0 = band_len * (double)i;
+      double d1 = d0 + band_len;
+      double t = (d0 + band_len * 0.5) / axis_len; /* 0 = icon edge, 1 = far */
+
+      double alpha = self->intensity * pow(1.0 - t, 1.35);
+      if (alpha <= 0.001)
+        continue;
+
+      /* Map the destination band back into source coordinates for clipping. */
+      graphene_rect_t clip;
+      if (vertical_band) {
+        if (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
+          double y1 = sh - (d0 / h) * sh;
+          double y0 = sh - (d1 / h) * sh;
+          graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
+                             (float)(y1 - y0));
+        } else {
+          double y0 = (d0 / h) * sh;
+          double y1 = (d1 / h) * sh;
+          graphene_rect_init(&clip, 0.0f, (float)y0, (float)sw,
+                             (float)(y1 - y0));
+        }
+      } else {
+        if (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
+          double x1 = sw - (d0 / w) * sw;
+          double x0 = sw - (d1 / w) * sw;
+          graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
+                             (float)sh);
+        } else {
+          double x0 = (d0 / w) * sw;
+          double x1 = (d1 / w) * sw;
+          graphene_rect_init(&clip, (float)x0, 0.0f, (float)(x1 - x0),
+                             (float)sh);
+        }
+      }
+
+      gtk_snapshot_push_clip(snapshot, &clip);
+      gtk_snapshot_push_opacity(snapshot, alpha);
+      gdk_paintable_snapshot(self->paintable, snapshot, sw, sh);
+      gtk_snapshot_pop(snapshot);
+      gtk_snapshot_pop(snapshot);
+    }
+
+    gtk_snapshot_restore(snapshot);
+    gtk_snapshot_pop(snapshot); /* blur */
   }
 
-  gtk_snapshot_restore(snapshot);
-  gtk_snapshot_pop(snapshot); /* blur */
+  if (self->running)
+    reflection_paint_running_dot(self, snapshot, w, h);
 }
 
 static void lambdock_reflection_dispose(GObject *object) {
@@ -356,9 +493,13 @@ static void lambdock_reflection_init(LambdockReflection *self) {
   self->band_ratio = SHELF_DEFAULT_REFLECTION;
   self->blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
   self->intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
+  self->running = FALSE;
+  self->has_shadow = TRUE;
 
   gtk_widget_set_can_focus(GTK_WIDGET(self), FALSE);
   gtk_widget_set_can_target(GTK_WIDGET(self), FALSE);
+  gtk_widget_set_halign(GTK_WIDGET(self), GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(GTK_WIDGET(self), GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(GTK_WIDGET(self), "shelf-reflection");
 }
 
@@ -366,8 +507,8 @@ static void lambdock_reflection_init(LambdockReflection *self) {
  * LambdockShelfFrame — projects the styled capsule onto a tilted 3D plane
  * ============================================================================
  *
- * GTK's CSS `transform` is affine only (no usable perspective()), so the tilted
- * shelf cannot be done from CSS. This container wraps the themed capsule box and
+ * GTK's CSS `transform` is affine only (no usable perspective()), so the tilt
+ * cannot be done from CSS. This container wraps the themed capsule box and
  * re-renders it through a real projective GskTransform, which gives the
  * trapezoidal shelf (narrower on the far side) while the icons keep standing
  * upright on top of it.
@@ -392,8 +533,8 @@ GType lambdock_shelf_frame_get_type(void);
 G_DEFINE_TYPE(LambdockShelfFrame, lambdock_shelf_frame, GTK_TYPE_WIDGET)
 
 #define LAMBDOCK_TYPE_SHELF_FRAME (lambdock_shelf_frame_get_type())
-#define LAMBDOCK_SHELF_FRAME(obj)                                            \
-  (G_TYPE_CHECK_INSTANCE_CAST((obj), LAMBDOCK_TYPE_SHELF_FRAME,              \
+#define LAMBDOCK_SHELF_FRAME(obj)                                             \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj), LAMBDOCK_TYPE_SHELF_FRAME,               \
                               LambdockShelfFrame))
 
 static GtkWidget *frame_child(GtkWidget *frame) {
@@ -579,6 +720,18 @@ void shelf_reflection_set_icon_size(GtkWidget *reflection, int icon_size) {
                               reflection_band_size(self, icon_size));
 }
 
+void shelf_reflection_set_running(GtkWidget *reflection, gboolean running) {
+  if (!shelf_reflection_is_reflection(reflection))
+    return;
+
+  LambdockReflection *self = LAMBDOCK_REFLECTION(reflection);
+  if (self->running == running)
+    return;
+
+  self->running = running;
+  gtk_widget_queue_draw(reflection);
+}
+
 gboolean shelf_reflection_is_reflection(gpointer widget) {
   return widget != NULL && GTK_IS_WIDGET(widget) &&
          G_TYPE_CHECK_INSTANCE_TYPE(widget, LAMBDOCK_TYPE_REFLECTION);
@@ -651,17 +804,18 @@ void apply_shelf_layout(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
-  const LambdockShelfParams *params = &state->shelf;
+  LambdockShelfParams params = lambdock_shelf_params_effective(state);
   int default_icon =
       (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  int base_band = (int)round((double)default_icon * params->reflection_ratio);
+  LambdockShelfGeometry geometry =
+      lambdock_shelf_geometry_for(state, default_icon);
 
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
     if (!item || !item->reflection)
       continue;
 
-    if (params->reflection_ratio <= 0.0 || base_band <= 0) {
+    if (geometry.band_px <= 0) {
       gtk_widget_set_visible(item->reflection, FALSE);
       continue;
     }
@@ -690,10 +844,11 @@ void apply_shelf_layout(LambdockState *state) {
     }
 
     shelf_reflection_configure(item->reflection, state->edge, icon_px,
-                               params->reflection_ratio,
-                               params->reflection_blur_ratio,
-                               params->reflection_intensity);
-    shelf_reflection_set_extent(item->reflection, icon_px, base_band);
+                               params.reflection_ratio,
+                               params.reflection_blur_ratio,
+                               params.reflection_intensity);
+    shelf_reflection_set_extent(item->reflection, icon_px, geometry.band_px);
+    shelf_reflection_set_running(item->reflection, item->windows != NULL);
     gtk_widget_set_visible(item->reflection, TRUE);
   }
 }

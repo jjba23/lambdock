@@ -22,23 +22,23 @@
 #include <gtk/gtk.h>
 
 #define BAND(ratio, size) ((int)round((size) * (ratio)))
+#define ICON 48
 
-/* The parameter set of the 'big-cat special mode (see scheme presets). */
-static LambdockShelfParams big_cat_params(void) {
+/* A "3D shelf" parameter set: icons overhang the glass, reflections in front. */
+static LambdockShelfParams shelf_params(void) {
   LambdockShelfParams p = lambdock_shelf_params_default();
-  p.tilt_deg = 14.0;
+  p.tilt_deg = 12.0;
   p.perspective = 400.0;
-  p.cover = 0.58;
-  p.floor_px = 8;
-  p.padding_px = 0;
-  p.reflection_ratio = 0.52;
-  p.reflection_intensity = 0.85;
-  p.reflection_blur_ratio = 0.035;
+  p.margin_px = -22;
+  p.front_px = 18;
+  p.reflection_ratio = 0.5;
+  p.reflection_intensity = 0.45;
+  p.reflection_blur_ratio = 0.06;
   return p;
 }
 
 /* ============================================================================
- * DEFAULTS & ACTIVATION
+ * DEFAULTS, ACTIVATION & DERIVED GEOMETRY
  * ============================================================================ */
 
 static void test_default_params(void) {
@@ -46,12 +46,11 @@ static void test_default_params(void) {
 
   g_assert_cmpfloat(p.tilt_deg, ==, 0.0);
   g_assert_cmpfloat(p.perspective, ==, 400.0);
-  g_assert_cmpfloat(p.cover, ==, 1.0);
-  g_assert_cmpint(p.floor_px, ==, 0);
-  g_assert_cmpint(p.padding_px, ==, CAPSULE_PADDING_PX);
+  g_assert_cmpint(p.margin_px, ==, CAPSULE_PADDING_PX);
+  g_assert_cmpint(p.front_px, ==, 0);
   g_assert_cmpfloat(p.reflection_ratio, ==, 0.0);
-  g_assert_cmpfloat(p.reflection_intensity, ==, 0.85);
-  g_assert_cmpfloat(p.reflection_blur_ratio, ==, 0.035);
+  g_assert_cmpfloat(p.reflection_intensity, ==, 0.55);
+  g_assert_cmpfloat(p.reflection_blur_ratio, ==, 0.05);
 }
 
 static void test_shelf_active(void) {
@@ -62,7 +61,7 @@ static void test_shelf_active(void) {
   g_assert_false(lambdock_shelf_active(&state));
   g_assert_false(lambdock_shelf_active(NULL));
 
-  /* Any deviation switches the shelf implementation on. */
+  /* Any geometric deviation switches the shelf implementation on. */
   state.shelf.tilt_deg = 5.0;
   g_assert_true(lambdock_shelf_active(&state));
   state.shelf = lambdock_shelf_params_default();
@@ -71,16 +70,48 @@ static void test_shelf_active(void) {
   g_assert_true(lambdock_shelf_active(&state));
   state.shelf = lambdock_shelf_params_default();
 
-  state.shelf.floor_px = 4;
+  state.shelf.front_px = 4;
   g_assert_true(lambdock_shelf_active(&state));
   state.shelf = lambdock_shelf_params_default();
 
-  state.shelf.cover = 0.9;
+  state.shelf.margin_px = 12;
   g_assert_true(lambdock_shelf_active(&state));
-  state.shelf = lambdock_shelf_params_default();
 
-  state.shelf.padding_px = 20;
-  g_assert_true(lambdock_shelf_active(&state));
+  /* A zero-initialised state means "defaults", never a zero-sized capsule. */
+  LambdockState zero = {0};
+  g_assert_false(lambdock_shelf_active(&zero));
+}
+
+static void test_geometry_helpers(void) {
+  LambdockState state = {0};
+  state.icon_size = ICON;
+
+  /* Defaults: capsule = icon + margin, no outer glass, no overhang. */
+  state.shelf = lambdock_shelf_params_default();
+  LambdockShelfGeometry g = lambdock_shelf_geometry_for(&state, ICON);
+  g_assert_cmpint(g.band_px, ==, 0);
+  g_assert_cmpint(g.outer_px, ==, 0);
+  g_assert_cmpint(g.capsule_px, ==, ICON + CAPSULE_PADDING_PX);
+  g_assert_cmpint(g.overhang_px, ==, 0);
+
+  /* Reflection band taller than the front glass wins the outer side. */
+  state.shelf = shelf_params(); /* -22 margin, 18 front, 0.5 reflection */
+  g = lambdock_shelf_geometry_for(&state, ICON);
+  g_assert_cmpint(g.band_px, ==, BAND(0.5, ICON));
+  g_assert_cmpint(g.outer_px, ==, MAX(18, BAND(0.5, ICON)));
+  g_assert_cmpint(g.capsule_px, ==, ICON - 22 + g.outer_px);
+  g_assert_cmpint(g.overhang_px, ==, 22);
+
+  /* A tall front face keeps the capsule taller than the reflection band. */
+  state.shelf.reflection_ratio = 0.2;
+  state.shelf.front_px = 40;
+  g = lambdock_shelf_geometry_for(&state, ICON);
+  g_assert_cmpint(g.band_px, ==, BAND(0.2, ICON));
+  g_assert_cmpint(g.outer_px, ==, 40);
+
+  /* NULL state means defaults; a zero icon size falls back to the default. */
+  g = lambdock_shelf_geometry_for(NULL, 0);
+  g_assert_cmpint(g.capsule_px, ==, DEFAULT_ICON_SIZE + CAPSULE_PADDING_PX);
 }
 
 /* ============================================================================
@@ -104,14 +135,16 @@ static void test_type_guards(void) {
   g_assert_false(shelf_reflection_is_reflection(frame));
 
   /* Setters must ignore NULL and foreign widgets. */
-  shelf_reflection_configure(NULL, GTK_LAYER_SHELL_EDGE_BOTTOM, 48, 0.5, 0.03,
+  shelf_reflection_configure(NULL, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5, 0.03,
                              0.8);
-  shelf_reflection_configure(box, GTK_LAYER_SHELL_EDGE_BOTTOM, 48, 0.5, 0.03,
+  shelf_reflection_configure(box, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5, 0.03,
                              0.8);
-  shelf_reflection_set_icon_size(NULL, 48);
-  shelf_reflection_set_icon_size(box, 48);
-  shelf_reflection_set_extent(NULL, 48, 24);
-  shelf_reflection_set_extent(box, 48, 24);
+  shelf_reflection_set_icon_size(NULL, ICON);
+  shelf_reflection_set_icon_size(box, ICON);
+  shelf_reflection_set_extent(NULL, ICON, 24);
+  shelf_reflection_set_extent(box, ICON, 24);
+  shelf_reflection_set_running(NULL, TRUE);
+  shelf_reflection_set_running(box, TRUE);
   shelf_frame_set_tilt(NULL, GTK_LAYER_SHELL_EDGE_BOTTOM, 12.0, 400.0);
   shelf_frame_set_tilt(box, GTK_LAYER_SHELL_EDGE_BOTTOM, 12.0, 400.0);
 
@@ -129,33 +162,31 @@ static void test_type_guards(void) {
 static void test_reflection_measure(void) {
   GtkWidget *reflection = shelf_reflection_new(NULL);
 
-  /* Nothing configured: the default (disabled) band ratio yields no band. */
-  big_cat_params();
-  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 48, 0.52,
-                             0.035, 0.85);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
 
   int minimum = -1;
   int natural = -1;
   gtk_widget_measure(reflection, GTK_ORIENTATION_HORIZONTAL, -1, &minimum,
                      &natural, NULL, NULL);
   g_assert_cmpint(minimum, ==, 0);
-  g_assert_cmpint(natural, ==, 48);
+  g_assert_cmpint(natural, ==, ICON);
 
   gtk_widget_measure(reflection, GTK_ORIENTATION_VERTICAL, -1, &minimum,
                      &natural, NULL, NULL);
   g_assert_cmpint(minimum, ==, 0);
-  g_assert_cmpint(natural, ==, BAND(0.52, 48));
+  g_assert_cmpint(natural, ==, BAND(0.5, ICON));
 
   /* A different icon size rescales the band. */
-  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 64, 0.52,
-                             0.035, 0.85);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 64, 0.5,
+                             0.05, 0.55);
   gtk_widget_measure(reflection, GTK_ORIENTATION_VERTICAL, -1, &minimum,
                      &natural, NULL, NULL);
-  g_assert_cmpint(natural, ==, BAND(0.52, 64));
+  g_assert_cmpint(natural, ==, BAND(0.5, 64));
 
   /* A different band ratio too. */
   shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 64, 0.25,
-                             0.035, 0.85);
+                             0.05, 0.55);
   gtk_widget_measure(reflection, GTK_ORIENTATION_VERTICAL, -1, &minimum,
                      &natural, NULL, NULL);
   g_assert_cmpint(natural, ==, BAND(0.25, 64));
@@ -168,37 +199,37 @@ static void test_reflection_size_request_per_edge(void) {
   GtkWidget *reflection = shelf_reflection_new(NULL);
 
   /* A bottom/top dock stacks the reflection vertically: icon-wide, band-tall. */
-  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 48, 0.52,
-                             0.035, 0.85);
-  shelf_reflection_set_icon_size(reflection, 48);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
+  shelf_reflection_set_icon_size(reflection, ICON);
 
   int width = 0;
   int height = 0;
   gtk_widget_get_size_request(reflection, &width, &height);
-  g_assert_cmpint(width, ==, 48);
-  g_assert_cmpint(height, ==, BAND(0.52, 48));
+  g_assert_cmpint(width, ==, ICON);
+  g_assert_cmpint(height, ==, BAND(0.5, ICON));
 
   /* A side dock mirrors sideways: band-wide, icon-tall. */
-  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_RIGHT, 48, 0.52,
-                             0.035, 0.85);
-  shelf_reflection_set_icon_size(reflection, 48);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_RIGHT, ICON, 0.5,
+                             0.05, 0.55);
+  shelf_reflection_set_icon_size(reflection, ICON);
 
   gtk_widget_get_size_request(reflection, &width, &height);
-  g_assert_cmpint(width, ==, BAND(0.52, 48));
-  g_assert_cmpint(height, ==, 48);
+  g_assert_cmpint(width, ==, BAND(0.5, ICON));
+  g_assert_cmpint(height, ==, ICON);
 
   /* Invalid sizes are ignored rather than clearing the request. */
   shelf_reflection_set_icon_size(reflection, 0);
   gtk_widget_get_size_request(reflection, &width, &height);
-  g_assert_cmpint(width, ==, BAND(0.52, 48));
+  g_assert_cmpint(width, ==, BAND(0.5, ICON));
 
   /* A fixed band thickness keeps the row stable while the icon magnifies. */
-  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, 48, 0.52,
-                             0.035, 0.85);
-  shelf_reflection_set_extent(reflection, 70, BAND(0.52, 48));
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
+  shelf_reflection_set_extent(reflection, 70, BAND(0.5, ICON));
   gtk_widget_get_size_request(reflection, &width, &height);
   g_assert_cmpint(width, ==, 70);
-  g_assert_cmpint(height, ==, BAND(0.52, 48));
+  g_assert_cmpint(height, ==, BAND(0.5, ICON));
 
   g_object_ref_sink(reflection);
   g_object_unref(reflection);
@@ -308,7 +339,7 @@ static void test_wrap_item_ordering(void) {
 
 static void test_apply_shelf_layout_toggles_visibility(void) {
   LambdockState state = {0};
-  state.icon_size = 48;
+  state.icon_size = ICON;
   state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
   state.orientation = GTK_ORIENTATION_HORIZONTAL;
   state.shelf = lambdock_shelf_params_default();
@@ -324,22 +355,22 @@ static void test_apply_shelf_layout_toggles_visibility(void) {
   apply_shelf_layout(&state);
   g_assert_false(gtk_widget_get_visible(item->reflection));
 
-  /* The 'big-cat preset turns the reflections on, sized from the icon. */
-  state.shelf = big_cat_params();
+  /* Reflections on: visible, sized from the icon and the band ratio. */
+  state.shelf = shelf_params();
   apply_shelf_layout(&state);
   g_assert_true(gtk_widget_get_visible(item->reflection));
 
   int width = 0;
   int height = 0;
   gtk_widget_get_size_request(item->reflection, &width, &height);
-  g_assert_cmpint(width, ==, 48);
-  g_assert_cmpint(height, ==, BAND(0.52, 48));
+  g_assert_cmpint(width, ==, ICON);
+  g_assert_cmpint(height, ==, BAND(0.5, ICON));
 
   /* A different ratio resizes the band without touching the icon size. */
   state.shelf.reflection_ratio = 0.25;
   apply_shelf_layout(&state);
   gtk_widget_get_size_request(item->reflection, &width, &height);
-  g_assert_cmpint(height, ==, BAND(0.25, 48));
+  g_assert_cmpint(height, ==, BAND(0.25, ICON));
 
   /* Turning reflections off hides them again. */
   state.shelf.reflection_ratio = 0.0;
@@ -359,36 +390,31 @@ static void test_apply_shelf_layout_toggles_visibility(void) {
 
 static void test_cross_dim_helpers(void) {
   LambdockState state = {0};
-  state.icon_size = 48;
+  state.icon_size = ICON;
   state.shelf = lambdock_shelf_params_default();
 
   /* Defaults keep the historic capsule/overlay dimensions. */
-  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, 48 + CAPSULE_PADDING_PX);
+  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, ICON + CAPSULE_PADDING_PX);
   g_assert_cmpint(dock_cross_axis_dim(&state), ==,
-                  (int)(48 * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX);
+                  (int)(ICON * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX);
 
-  /* The 'big-cat preset: glass covers 58% of the icon, plus the reflection
-   * band, the glass floor and no extra padding. */
-  state.shelf = big_cat_params();
+  /* The 3D shelf set: icons overhang, reflections sit in front. */
+  state.shelf = shelf_params();
 
-  int band = BAND(0.52, 48);
-  int expected_capsule = (int)round(48 * 0.58) + band + 8 + 0;
-  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, expected_capsule);
-  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, 61);
+  int band = BAND(0.5, ICON);
+  int outer = MAX(18, band);
+  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, ICON - 22 + outer);
+  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, 50);
 
   g_assert_cmpint(dock_cross_axis_dim(&state), ==,
-                  (int)(48 * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX +
-                      band + 8);
+                  (int)(ICON * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX +
+                      outer + 22);
 
-  /* The icons stick out of the glass: the covered part is less than an icon. */
-  g_assert_cmpint((int)round(48 * state.shelf.cover), <, 48);
-
-  /* Every parameter is honoured. */
+  /* Every parameter is honoured independently. */
+  state.shelf.margin_px = 0;
+  state.shelf.front_px = 40;
   state.shelf.reflection_ratio = 0.0;
-  state.shelf.floor_px = 0;
-  state.shelf.cover = 0.5;
-  state.shelf.padding_px = 10;
-  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, 24 + 0 + 0 + 10);
+  g_assert_cmpint(dock_capsule_cross_dim(&state), ==, ICON + 40);
 
   /* NULL and zero-sized states fall back to the default parameters. */
   g_assert_cmpint(dock_capsule_cross_dim(NULL), ==,
@@ -408,6 +434,7 @@ int main(int argc, char **argv) {
 
   g_test_add_func("/ui/shelf/default_params", test_default_params);
   g_test_add_func("/ui/shelf/shelf_active", test_shelf_active);
+  g_test_add_func("/ui/shelf/geometry_helpers", test_geometry_helpers);
   g_test_add_func("/ui/shelf/type_guards", test_type_guards);
   g_test_add_func("/ui/shelf/reflection_measure", test_reflection_measure);
   g_test_add_func("/ui/shelf/reflection_size_request",

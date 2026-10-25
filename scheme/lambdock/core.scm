@@ -69,12 +69,10 @@
                get-dock-track-windows?
                get-dock-mode
                get-dock-show-window-titles?
-               get-dock-special-mode
                get-dock-shelf-tilt
                get-dock-shelf-perspective
-               get-dock-shelf-cover
-               get-dock-shelf-floor
-               get-dock-shelf-padding
+               get-dock-shelf-margin
+               get-dock-shelf-front
                get-dock-reflection
                get-dock-reflection-intensity
                get-dock-reflection-blur
@@ -90,12 +88,10 @@
                set-dock-track-windows!
                set-dock-mode!
                set-dock-show-window-titles!
-               set-dock-special-mode!
                set-dock-shelf-tilt!
                set-dock-shelf-perspective!
-               set-dock-shelf-cover!
-               set-dock-shelf-floor!
-               set-dock-shelf-padding!
+               set-dock-shelf-margin!
+               set-dock-shelf-front!
                set-dock-reflection!
                set-dock-reflection-intensity!
                set-dock-reflection-blur!
@@ -119,9 +115,8 @@
 (define* (load-dock-config! file-path)
   "Loads a specific settings file in isolation and registers its configuration record.
 
-Shelf/reflection parameters are resolved in three layers, strongest first: an
-explicit setting in the file, the values implied by the selected
-`dock-special-mode` preset, and finally the built-in defaults (the plain dock)."
+Every shelf/reflection knob is an independent setting; anything you leave out
+keeps its default (the plain flat dock)."
   (if (and file-path
            (file-exists? file-path))
       (begin
@@ -134,20 +129,7 @@ explicit setting in the file, the values implied by the selected
                                (let ((pair (or (assq key settings)
                                                (assq alt-key settings))))
                                  (if pair
-                                     (cdr pair) default-val))))
-                        ;; Selected special mode and the parameters it implies
-                        (special-mode (cfg 'dock-special-mode
-                                           'special-mode
-                                           'normal))
-                        (preset (preset-special-mode special-mode))
-                        ;; Shelf parameter lookup: explicit > preset > default
-                        (pcfg (lambda (key default-val)
-                                (let ((pair (or (assq (symbol-append 'dock- key)
-                                                      settings)
-                                                (assq key settings))))
-                                  (cond (pair (cdr pair))
-                                        ((assq key preset) => cdr)
-                                        (else default-val))))))
+                                     (cdr pair) default-val)))))
 
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
@@ -186,18 +168,23 @@ explicit setting in the file, the values implied by the selected
                                     #:show-window-titles?
                                     (cfg 'dock-show-window-titles?
                                          'show-window-titles? #f)
-                                    #:special-mode special-mode
-                                    #:shelf-tilt (pcfg 'shelf-tilt 0)
+                                    #:shelf-tilt (cfg 'dock-shelf-tilt
+                                                      'shelf-tilt 0)
                                     #:shelf-perspective
-                                    (pcfg 'shelf-perspective 400)
-                                    #:shelf-cover (pcfg 'shelf-cover 1.0)
-                                    #:shelf-floor (pcfg 'shelf-floor 0)
-                                    #:shelf-padding (pcfg 'shelf-padding 24)
-                                    #:reflection (pcfg 'reflection 0.0)
+                                    (cfg 'dock-shelf-perspective
+                                         'shelf-perspective 400)
+                                    #:shelf-margin (cfg 'dock-shelf-margin
+                                                        'shelf-margin 24)
+                                    #:shelf-front (cfg 'dock-shelf-front
+                                                       'shelf-front 0)
+                                    #:reflection (cfg 'dock-reflection
+                                                      'reflection 0.0)
                                     #:reflection-intensity
-                                    (pcfg 'reflection-intensity 0.85)
+                                    (cfg 'dock-reflection-intensity
+                                         'reflection-intensity 0.55)
                                     #:reflection-blur
-                                    (pcfg 'reflection-blur 0.035))))
+                                    (cfg 'dock-reflection-blur
+                                         'reflection-blur 0.05))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

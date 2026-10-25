@@ -56,14 +56,14 @@
 #define SHELF_EXTRA_MAX_PX 200
 #define SHELF_REFLECTION_RATIO_MAX 2.0
 #define SHELF_REFLECTION_BLUR_MAX 0.25
-/* Built-in defaults: the plain, flat dock (i.e. the 'normal special mode). */
+/* Built-in defaults: the classic flat capsule. */
 #define SHELF_DEFAULT_TILT 0.0
 #define SHELF_DEFAULT_PERSPECTIVE 400.0
-#define SHELF_DEFAULT_COVER 1.0
-#define SHELF_DEFAULT_FLOOR_PX 0
+#define SHELF_DEFAULT_MARGIN_PX CAPSULE_PADDING_PX
+#define SHELF_DEFAULT_FRONT_PX 0
 #define SHELF_DEFAULT_REFLECTION 0.0
-#define SHELF_DEFAULT_REFLECTION_INTENSITY 0.85
-#define SHELF_DEFAULT_REFLECTION_BLUR 0.035
+#define SHELF_DEFAULT_REFLECTION_INTENSITY 0.55
+#define SHELF_DEFAULT_REFLECTION_BLUR 0.05
 
 /* Auto-hide & Timer Constants */
 #define AUTOHIDE_TRIGGER_STRIP_PX 2
@@ -144,18 +144,17 @@ typedef struct DockItem {
 
 /**
  * LambdockShelfParams:
- * Geometry of the dock's single implementation, the "glass shelf".
+ * Geometry of the dock's glass shelf.
  *
- * There is no separate big-cat dock: the dock always runs the same widgets and
- * these parameters decide how it looks. The defaults describe the plain
- * floating capsule; the ~'big-cat~ special mode is just a preset of them (see
- * =scheme/lambdock/presets.scm=).
+ * There are no dock modes: the dock always runs the same widgets and these
+ * numbers describe its shape. The defaults reproduce the classic flat capsule.
  *
  * @tilt_deg: Shelf tilt away from the viewer, in degrees (0 = flat).
  * @perspective: Projection distance in pixels (smaller = stronger 3D).
- * @cover: Fraction (0..1) of the icon height hidden behind the shelf glass.
- * @floor_px: Glass kept visible past the reflection band, in pixels.
- * @padding_px: Capsule padding along the cross axis, in pixels.
+ * @margin_px: Glass on the inner side of the icons (away from the screen edge).
+ * Negative values let the icons overhang the shelf, like the OS X 3D dock.
+ * @front_px: Glass on the outer side of the icons (the front face). The
+ * reflection band lives here when it is taller than this.
  * @reflection_ratio: Reflection band height / icon size (0 = no reflections).
  * @reflection_intensity: Alpha of the reflection where it touches the icon.
  * @reflection_blur_ratio: Gaussian blur radius / icon size.
@@ -163,9 +162,8 @@ typedef struct DockItem {
 typedef struct LambdockShelfParams {
   double tilt_deg;
   double perspective;
-  double cover;
-  int floor_px;
-  int padding_px;
+  int margin_px;
+  int front_px;
   double reflection_ratio;
   double reflection_intensity;
   double reflection_blur_ratio;

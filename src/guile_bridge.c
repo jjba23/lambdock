@@ -235,18 +235,15 @@ void get_shelf_config_for(const char *config_path, LambdockShelfParams *out) {
   out->perspective =
       clamp_double(perspective, SHELF_PERSPECTIVE_MIN, SHELF_PERSPECTIVE_MAX);
 
-  out->cover = clamp_double(
-      get_guile_number_for("get-dock-shelf-cover", config_path, defaults.cover),
-      0.0, 1.0);
+  /* The margin may be negative: that is how the icons overhang the shelf. */
+  out->margin_px = clamp_int(
+      get_guile_number_for("get-dock-shelf-margin", config_path,
+                           (double)defaults.margin_px),
+      -SHELF_EXTRA_MAX_PX, SHELF_EXTRA_MAX_PX);
 
-  out->floor_px = clamp_int(
-      get_guile_number_for("get-dock-shelf-floor", config_path,
-                           (double)defaults.floor_px),
-      0, SHELF_EXTRA_MAX_PX);
-
-  out->padding_px = clamp_int(
-      get_guile_number_for("get-dock-shelf-padding", config_path,
-                           (double)defaults.padding_px),
+  out->front_px = clamp_int(
+      get_guile_number_for("get-dock-shelf-front", config_path,
+                           (double)defaults.front_px),
       0, SHELF_EXTRA_MAX_PX);
 
   out->reflection_ratio = clamp_double(

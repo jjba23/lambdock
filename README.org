@@ -709,21 +709,15 @@ upgrading to newer ~lambdock~ versions. You can do this with
 ;; Show the focused window's title next to running app icons (Windows XP-style)
 (define dock-show-window-titles? #f)
 
-;; The dock is one implementation whose glass shelf is described by
-;; parameters. Every value below has a sensible default (the flat dock), so
-;; you only write the ones you want to change.
-(define dock-shelf-tilt 0)          ; shelf tilt in degrees (0 = flat)
-(define dock-shelf-cover 1.0)       ; fraction of the icon behind the glass
-(define dock-shelf-floor 0)         ; px of glass kept past the reflections
-(define dock-shelf-padding 24)      ; capsule padding across the dock
-(define dock-reflection 0)          ; reflection band / icon size (0 = off)
-;; (define dock-shelf-perspective 400)   ; projection distance, px
-;; (define dock-reflection-intensity 0.85)
-;; (define dock-reflection-blur 0.035)
-
-;; ...or just pick a ready-made preset (any explicit parameter above wins):
-;; 'normal (default) | 'big-cat (OS X Mavericks 3D glass shelf)
-(define dock-special-mode 'normal)
+;; The dock's glass shelf is described by plain numbers. Everything below has
+;; a sensible default (the flat capsule), so write only what you want to move.
+(define dock-shelf-tilt 0)       ; tilt of the shelf plane, degrees (0 = flat)
+(define dock-shelf-margin 24)    ; glass on the inner side of the icons, px
+(define dock-shelf-front 0)      ; glass on the outer side (front face), px
+(define dock-reflection 0)       ; reflection band / icon size (0 = off)
+;; (define dock-shelf-perspective 400)   ; projection distance for the tilt
+;; (define dock-reflection-intensity 0.55)
+;; (define dock-reflection-blur 0.05)
 
 ;; Application launchers list
 (define dock-items
@@ -758,15 +752,13 @@ nothing at all.
 | ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
 | ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
 | ~dock-mode~                   | ~'dock~                      | ~'dock~ (floating capsule) or ~'taskbar~ (full-width bar).                      |
-| ~dock-special-mode~           | ~'normal~                    | Shelf preset: ~'normal~ (flat) or ~'big-cat~ (Mavericks 3D dock).               |
-| ~dock-shelf-tilt~             | ~0~                          | Shelf tilt in degrees. 0 keeps the classic flat capsule.                        |
+| ~dock-shelf-tilt~             | ~0~                          | Tilt of the shelf plane in degrees. 0 keeps the classic flat capsule.           |
 | ~dock-shelf-perspective~      | ~400~                        | Projection distance in px for the tilt (smaller = stronger 3D).                 |
-| ~dock-shelf-cover~            | ~1.0~                        | Fraction (0..1) of the icon hidden behind the shelf glass.                      |
-| ~dock-shelf-floor~            | ~0~                          | Glass kept visible past the reflection band, in px.                             |
-| ~dock-shelf-padding~          | ~24~                         | Capsule padding across the dock, in px.                                         |
-| ~dock-reflection~             | ~0~                          | Reflection band height / icon size. 0 disables reflections.                     |
-| ~dock-reflection-intensity~   | ~0.85~                       | Alpha of the reflection where it touches the icon.                              |
-| ~dock-reflection-blur~        | ~0.035~                      | Gaussian blur radius / icon size for the reflections.                           |
+| ~dock-shelf-margin~           | ~24~                         | Glass on the inner side of the icons, in px. Negative lets them overhang.       |
+| ~dock-shelf-front~            | ~0~                          | Glass on the outer (screen edge) side: the front face, in px.                   |
+| ~dock-reflection~             | ~0~                          | Reflection band height / icon size. 0 disables the reflections.                 |
+| ~dock-reflection-intensity~   | ~0.55~                       | Alpha of the reflection where it touches the icon.                              |
+| ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections.                           |
 | ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
 | ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
 | ~dock-show-window-titles?~    | ~#f~                         | Show the focused window title next to running items (taskbar style).            |
@@ -793,12 +785,11 @@ your file and what you can call yourself from the REPL:
  ;; Shelf parameters (defaults shown): flat capsule
  #:shelf-tilt 0
  #:shelf-perspective 400
- #:shelf-cover 1.0
- #:shelf-floor 0
- #:shelf-padding 24
+ #:shelf-margin 24
+ #:shelf-front 0
  #:reflection 0
- #:reflection-intensity 0.85
- #:reflection-blur 0.035)
+ #:reflection-intensity 0.55
+ #:reflection-blur 0.05)
 #+end_src
 
 ** The dock DSL: items and presets
@@ -1076,8 +1067,9 @@ of them is a CSS file you are free to read, copy and argue with.
   with a stronger shadow and a small dock dot, echoing macOS 13/14.
 - *macOS Mavericks* 🍎 (~'macos-mavericks~): the last of the 3D OS X docks -- dark
   blue-gray frosted glass, a bright specular bevel and a glowing blue running
-  dot. Pair it with ~'big-cat~ (see [[#shelf][The glass shelf]]) for the tilted
-  shelf and the icon reflections.
+  dot. Pair it with a negative ~dock-shelf-margin~ and a
+  ~dock-reflection~ (see [[#shelf][The glass shelf]]) for the platinum slab with
+  mirrored icons.
 - *Windows XP (Luna)* 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised,
   beveled task buttons; running apps look pressed.
 
@@ -1166,85 +1158,89 @@ capsule and styles the title labels when needed.
 :CUSTOM_ID: shelf
 :END:
 
-~lambdock~ has *one* dock implementation. Its shape is described by a handful of
-parameters, so a flat capsule, a subtle 3D shelf and the Mac OS X 10.9
-*Mavericks* dock are all the same code with different numbers:
+~lambdock~ has *one* dock implementation. Its shape is described by plain
+numbers, so a flat capsule, a subtle 3D shelf and the Mac OS X 10.9 *Mavericks*
+dock are all the same code with different values. There are no modes and no
+presets: every knob is independent and has a default that keeps the classic
+flat capsule.
 
-| Parameter                  | Flat dock | Mavericks | What it does                                        |
-|----------------------------+-----------+-----------+-----------------------------------------------------|
-| ~dock-shelf-tilt~          | ~0~       | ~14~      | Tilt of the shelf plane, in degrees.                |
-| ~dock-shelf-perspective~   | ~400~     | ~400~     | Projection distance in px (smaller = stronger 3D).  |
-| ~dock-shelf-cover~         | ~1.0~     | ~0.58~    | Fraction of the icon hidden behind the glass.       |
-| ~dock-shelf-floor~         | ~0~       | ~8~       | Glass kept visible past the reflection band, px.    |
-| ~dock-shelf-padding~       | ~24~      | ~0~       | Capsule padding across the dock, px.                |
-| ~dock-reflection~          | ~0~       | ~0.52~    | Reflection band height / icon size (0 = off).       |
-| ~dock-reflection-intensity~| ~0.85~    | ~0.85~    | Alpha where the reflection touches the icon.        |
-| ~dock-reflection-blur~     | ~0.035~   | ~0.035~   | Gaussian blur radius / icon size.                   |
+| Parameter                  | Default | What it does                                                  |
+|----------------------------+---------+---------------------------------------------------------------|
+| ~dock-shelf-tilt~          | ~0~     | Tilt of the shelf plane, in degrees (0 = flat, orthographic). |
+| ~dock-shelf-perspective~   | ~400~   | Projection distance for the tilt, px (smaller = stronger 3D). |
+| ~dock-shelf-margin~        | ~24~    | Glass on the *inner* side of the icons, px. Can be negative.  |
+| ~dock-shelf-front~         | ~0~     | Glass on the *outer* side (the front face), px.               |
+| ~dock-reflection~          | ~0~     | Reflection band height / icon size (0 = no reflections).      |
+| ~dock-reflection-intensity~| ~0.55~  | Alpha of the reflection where it touches the icon.            |
+| ~dock-reflection-blur~     | ~0.05~  | Gaussian blur radius / icon size.                             |
 
-Because the flat dock is simply the default set of values, nothing changes until
-you ask for it. Layers resolve from strongest to weakest: *explicit setting* →
-*selected preset* → *built-in default*.
-
-*** Presets: ~dock-special-mode~
-Presets are just named parameter sets (~(preset-special-mode 'big-cat)~ returns
-the alist, and ~special-mode-presets~ holds them all):
+The capsule is sized from them, so the glass always matches the values you pick:
 
 #+begin_src scheme
-;; 'normal (default) -> the flat capsule, zero cost
-;; 'big-cat          -> OS X Mavericks 3D glass shelf
-(define dock-special-mode 'big-cat)
-
-;; The matching theme; every theme works on the shelf, this one is the faithful
-;; Mavericks glass.
-(define dock-theme 'macos-mavericks)
+band   = round(icon-size * dock-reflection)
+outer  = max(dock-shelf-front, band)      ; glass in front of the icons
+capsule = icon-size + dock-shelf-margin + outer
 #+end_src
 
-Explicit parameters still win over the preset, so you can start from Mavericks
-and tone it down:
+*** Reaching the Mavericks dock
+The OS X 10.9 dock is a light platinum slab that the icons overhang, with their
+reflections fading over the glass in front of them. That is exactly this:
 
 #+begin_src scheme
-(define dock-special-mode 'big-cat)
-(define dock-shelf-tilt 6)      ; shallower tilt than the preset
-(define dock-reflection 0.35)   ; subtler mirrors
-(define dock-reflection-blur 0.06)
+(define dock-theme 'macos-mavericks)  ; the platinum material
+
+(define dock-icon-size 48)
+(define dock-shelf-margin -22)        ; icons overhang the slab by 22px
+(define dock-shelf-front 18)          ; 18px of glass in front of them
+(define dock-reflection 0.28)         ; short, blurred mirror image
+(define dock-reflection-intensity 0.5)
+(define dock-reflection-blur 0.05)
+;; no tilt: the real dock is orthographic
+(define dock-shelf-tilt 0)
 #+end_src
 
-*** Recipes
+*** Other shapes to start from
 #+begin_src scheme
-;; 1. Classic flat dock (the default; nothing to write)
+;; 1. Classic flat dock: this is what you get when you say nothing.
 
-;; 2. A gentle, modern "shelf": a hint of tilt and short reflections
+;; 2. A gentle "shelf": a hint of tilt and short reflections
 (define dock-shelf-tilt 4)
 (define dock-shelf-perspective 900)
-(define dock-shelf-cover 0.75)
-(define dock-shelf-floor 4)
-(define dock-shelf-padding 12)
+(define dock-shelf-margin 8)
+(define dock-shelf-front 10)
 (define dock-reflection 0.25)
-(define dock-reflection-intensity 0.45)
+(define dock-reflection-intensity 0.35)
 
-;; 3. Only mirror the icons, keep the capsule flat and fully opaque
+;; 3. Only mirror the icons, keep the capsule flat and fully "glassy"
 (define dock-reflection 0.4)
+
+;; 4. A tall front face with no reflections (frosted plinth)
+(define dock-shelf-front 26)
+(define dock-reflection 0)
+
+;; 5. Icons floating above the shelf, reflections on the glass below
+(define dock-shelf-margin -32)
+(define dock-shelf-front 20)
+(define dock-reflection 0.35)
 #+end_src
 
-*** What the parameters physically do
+*** What happens under the hood
 - *Tilt* projects the themed capsule onto a plane that recedes from the screen
   edge; the icons stay upright on top of it. It is a real =GskTransform= (rotate
   + perspective) because GTK CSS transforms are affine only and would just
   squash the shelf.
-- *Cover / floor* decide how much of the icon the glass hides and how much glass
-  is left past the reflection. The capsule is sized as
-  ~icon × cover + reflection band + floor + padding~, so ~cover 1~ with no
-  reflections and ~padding 24~ is exactly the classic ~icon + 24px~ capsule.
-- *Reflection* paints a mirrored, gaussian-blurred copy that fades out as it
-  recedes over the glass; the band is ~icon × reflection~ tall and follows the
-  fisheye magnification sideways.
+- *Margin / front* place the icons in the glass: a negative margin lets them
+  overhang the inner edge, and the front face is the glass in front of them.
+- *Reflection* paints a mirrored, gaussian-blurred copy that fades out over the
+  front face, plus a soft contact shadow under the icon and the white running
+  indicator near the outer edge. The band is ~icon × reflection~ tall and
+  follows the fisheye magnification sideways.
 
-The look is theme-agnostic: the glass material ships as a modifier stylesheet
+Everything is theme-agnostic: the material ships as a modifier stylesheet
 (~resources/css/shelf.css~, scoped per theme) plus the ~shelf-*~ widget classes,
 so your theme keeps styling icons, fonts, popovers and running indicators while
-the shelf geometry comes from the parameters. Set everything back to the defaults
-(or ~dock-special-mode~ to ~'normal~) and the dock is pixel-identical to before,
-live, with no restart.
+the geometry comes from the numbers above. Set them back to their defaults and
+the dock is pixel-identical to before, live, with no restart.
 
 #+begin_note
 A Wayland layer-shell surface cannot read the pixels behind it, so a *real*

@@ -23,13 +23,11 @@
   #:export ( ;Alists
              preset-icons
             preset-launchers
-            special-mode-presets
 
             ;; Lookup & Convenience Functions
             preset-icon
             preset-launcher
-            preset-launchers-for
-            preset-special-mode))
+            preset-launchers-for))
 
 ;; =============================================================================
 ;; Lookup & Convenience Functions
@@ -56,43 +54,6 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
                       (log-warn "Presets"
                                 "No preset launcher found for key: ~a" k))
                     item)) target-keys)))
-
-(define (preset-special-mode key)
-  "Returns the shelf parameter alist for the special mode KEY (symbol).
-
-Special modes are just presets: every parameter below can also be set directly
-in the settings file, and an explicit setting always wins over the preset. An
-unknown mode or 'normal yields the empty alist, i.e. the flat dock."
-  (or (assq-ref special-mode-presets key) '()))
-
-;; =============================================================================
-;; Association List: Special Mode Presets (dock shelf / reflection parameters)
-;; =============================================================================
-;;
-;; One dock implementation, many looks: the parameters below describe the
-;; geometry of the glass shelf and the icon reflections. `normal` is the empty
-;; preset (flat capsule, no reflections); `big-cat` is the Mac OS X 10.9
-;; Mavericks 3D dock.
-;;
-;;   shelf-tilt            degrees the shelf is projected away from the viewer
-;;   shelf-perspective     projection distance in px (smaller = stronger 3D)
-;;   shelf-cover           fraction of the icon hidden behind the glass
-;;   shelf-floor           px of glass kept past the reflections
-;;   shelf-padding         cross-axis capsule padding in px
-;;   reflection            reflection band height / icon size (0 disables it)
-;;   reflection-intensity  alpha of the reflection where it touches the icon
-;;   reflection-blur       gaussian blur radius / icon size
-
-(define special-mode-presets
-  `((normal . ())
-    (big-cat . ((shelf-tilt . 14)
-                (shelf-perspective . 400)
-                (shelf-cover . 0.58)
-                (shelf-floor . 8)
-                (shelf-padding . 0)
-                (reflection . 0.52)
-                (reflection-intensity . 0.85)
-                (reflection-blur . 0.035)))))
 
 ;; =============================================================================
 ;; Association List: Preset Icons

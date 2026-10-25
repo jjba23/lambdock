@@ -956,45 +956,47 @@ theme rules keep winning:
 | =css/taskbar.css= | ~dock-mode~ is ~'taskbar~ or window titles are on |
 | =css/shelf.css=   | ~lambdock_shelf_active()~ (see below)             |
 
-*** The glass shelf (one implementation, many looks)
-There is no "second dock". ~LambdockShelfParams~ (=src/lambdock.h=) describes the
-geometry and the dock always runs the same widgets:
+*** The glass shelf (one implementation, no modes)
+There is no "second dock" and no preset layer. ~LambdockShelfParams~
+(=src/lambdock.h=) describes the shape and the dock always runs the same widgets:
 
 - ~tilt_deg~ / ~perspective~: how the capsule is projected away from the viewer.
-- ~cover~ / ~floor_px~ / ~padding_px~: capsule thickness and how much of the icon
-  the glass hides.
+- ~margin_px~ / ~front_px~: glass on the inner / outer side of the icons
+  (a negative margin makes the icons overhang the shelf).
 - ~reflection_ratio~ / ~reflection_intensity~ / ~reflection_blur_ratio~: the
   mirrored icon reflections.
 
-Geometry is derived, never hard-coded:
+Geometry is derived in ~lambdock_shelf_geometry_for()~ (=ui/shelf.c=):
 
 #+begin_src c
-capsule_cross = round(icon * cover) + round(icon * reflection_ratio)
-                + floor_px + padding_px;
-overlay_cross = round(icon * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX
-                + round(icon * reflection_ratio) + floor_px;
+band    = round(icon * reflection_ratio);
+outer   = MAX(front_px, band);
+capsule = icon + margin_px + outer;          /* dock_capsule_cross_dim() */
+overlay = icon * CROSS_DIM_SCALE_FACTOR + CROSS_DIM_PADDING_PX
+          + outer + MAX(0, -margin_px);      /* dock_cross_axis_dim() */
 #+end_src
 
-With the defaults (cover 1, reflection 0, floor 0, padding 24) that is exactly the
-classic ~icon + 24~ capsule, so the flat dock is unaffected.
+With the defaults (margin = 24, front 0, reflection 0) that is exactly the
+classic ~icon + 24~ capsule, so the flat dock is untouched.
 
 - ~lambdock_shelf_params_default()~ returns the flat defaults and
   ~lambdock_shelf_params_effective()~ also covers NULL/zero-initialised states.
-- ~lambdock_shelf_active()~ is the single switch used by the CSS classes, the
-  modifier stylesheet and the reflection widgets: it is TRUE when any parameter
-  deviates from the defaults.
+- ~lambdock_shelf_active()~ is the single switch used by the CSS classes
+  (~shelf-mode~, ~shelf-mirror~, ~shelf-<edge>~), the modifier stylesheet and
+  the reflection widgets: TRUE when any geometric parameter deviates.
 - ~LambdockShelfFrame~ (=ui/shelf.c=) wraps the themed capsule and re-renders it
   through a projective =GskTransform= (~gsk_transform_rotate_3d~ +
   ~gsk_transform_perspective~). GTK CSS transforms are affine only, which is why
   the tilt cannot live in the stylesheet; with ~tilt == 0~ the frame is a plain
   pass-through.
-- ~LambdockReflection~ (=ui/shelf.c=) paints each icon mirrored, gaussian blurred
-  and alpha-faded over the glass; ~apply_shelf_layout()~ shows/hides and sizes
-  them from the parameters and the fisheye state.
+- ~LambdockReflection~ (=ui/shelf.c=) paints, per item: the contact shadow under
+  the icon, the mirrored/blurred/faded copy, and the running-app glow dot near
+  the outer edge. The fade uses a number of bands proportional to the band
+  height (sub-pixel bands would be quantised away and leave gaps).
+- ~apply_shelf_layout()~ shows/hides and sizes those widgets from the parameters
+  and the fisheye state; ~update_dock_item_status()~ feeds the running dot.
 - Scheme side: every parameter is a ~dock-*~ option plus a getter/setter, and
-  ~dock-special-mode~ only picks a preset from
-  ~special-mode-presets~ (=scheme/lambdock/presets.scm=). ~core.scm~ resolves
-  each value as *explicit setting > preset > default*.
+  ~core.scm~ reads each one independently (no presets, no modes).
 
 Real backdrop blur needs the compositor (a layer-shell surface cannot sample what
 is behind it); the frosted glass is drawn with gradients instead.

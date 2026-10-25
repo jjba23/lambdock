@@ -41,12 +41,10 @@
             get-dock-track-windows?
             get-dock-mode
             get-dock-show-window-titles?
-            get-dock-special-mode
             get-dock-shelf-tilt
             get-dock-shelf-perspective
-            get-dock-shelf-cover
-            get-dock-shelf-floor
-            get-dock-shelf-padding
+            get-dock-shelf-margin
+            get-dock-shelf-front
             get-dock-reflection
             get-dock-reflection-intensity
             get-dock-reflection-blur
@@ -62,12 +60,10 @@
             set-dock-track-windows!
             set-dock-mode!
             set-dock-show-window-titles!
-            set-dock-special-mode!
             set-dock-shelf-tilt!
             set-dock-shelf-perspective!
-            set-dock-shelf-cover!
-            set-dock-shelf-floor!
-            set-dock-shelf-padding!
+            set-dock-shelf-margin!
+            set-dock-shelf-front!
             set-dock-reflection!
             set-dock-reflection-intensity!
             set-dock-reflection-blur!))
@@ -91,12 +87,10 @@
                     track-windows?
                     mode
                     show-window-titles?
-                    special-mode
                     shelf-tilt
                     shelf-perspective
-                    shelf-cover
-                    shelf-floor
-                    shelf-padding
+                    shelf-margin
+                    shelf-front
                     reflection
                     reflection-intensity
                     reflection-blur)
@@ -118,13 +112,11 @@
   (mode dock-config-mode set-dock-config-mode!)
   (show-window-titles? dock-config-show-window-titles?
                        set-dock-config-show-window-titles?!)
-  (special-mode dock-config-special-mode set-dock-config-special-mode!)
   (shelf-tilt dock-config-shelf-tilt set-dock-config-shelf-tilt!)
   (shelf-perspective dock-config-shelf-perspective
                      set-dock-config-shelf-perspective!)
-  (shelf-cover dock-config-shelf-cover set-dock-config-shelf-cover!)
-  (shelf-floor dock-config-shelf-floor set-dock-config-shelf-floor!)
-  (shelf-padding dock-config-shelf-padding set-dock-config-shelf-padding!)
+  (shelf-margin dock-config-shelf-margin set-dock-config-shelf-margin!)
+  (shelf-front dock-config-shelf-front set-dock-config-shelf-front!)
   (reflection dock-config-reflection set-dock-config-reflection!)
   (reflection-intensity dock-config-reflection-intensity
                         set-dock-config-reflection-intensity!)
@@ -151,15 +143,13 @@
                     #t
                     'dock
                     #f
-                    'normal
                     0       ; shelf-tilt (degrees)
                     400     ; shelf-perspective (px)
-                    1.0     ; shelf-cover (fraction of the icon behind glass)
-                    0       ; shelf-floor (px)
-                    24      ; shelf-padding (px, C's CAPSULE_PADDING_PX)
+                    24      ; shelf-margin (px, C's CAPSULE_PADDING_PX)
+                    0       ; shelf-front (px)
                     0.0     ; reflection (band height / icon size)
-                    0.85    ; reflection-intensity
-                    0.035)) ; reflection-blur (blur radius / icon size)
+                    0.55    ; reflection-intensity
+                    0.05))  ; reflection-blur (blur radius / icon size)
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -181,15 +171,13 @@
                           (track-windows? #t)
                           (mode 'dock)
                           (show-window-titles? #f)
-                          (special-mode 'normal)
                           (shelf-tilt 0)
                           (shelf-perspective 400)
-                          (shelf-cover 1.0)
-                          (shelf-floor 0)
-                          (shelf-padding 24)
+                          (shelf-margin 24)
+                          (shelf-front 0)
                           (reflection 0.0)
-                          (reflection-intensity 0.85)
-                          (reflection-blur 0.035))
+                          (reflection-intensity 0.55)
+                          (reflection-blur 0.05))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -205,12 +193,10 @@
                                track-windows?
                                mode
                                show-window-titles?
-                               special-mode
                                shelf-tilt
                                shelf-perspective
-                               shelf-cover
-                               shelf-floor
-                               shelf-padding
+                               shelf-margin
+                               shelf-front
                                reflection
                                reflection-intensity
                                reflection-blur)))
@@ -226,7 +212,7 @@
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, special-mode: ~a (tilt ~a, reflection ~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a)"
      config-path
      (if (list? items)
          (length items) 0)
@@ -237,8 +223,9 @@
      repl-socket-path
      track-windows?
      mode
-     special-mode
      shelf-tilt
+     shelf-margin
+     shelf-front
      reflection)))
 
 (define (get-dock-config key)
@@ -334,15 +321,9 @@
                                   (car args)))))
     (dock-config-show-window-titles? cfg)))
 
-(define (get-dock-special-mode . args)
-  (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
-    (dock-config-special-mode cfg)))
-
 ;; --- Shelf geometry / reflection parameters ---------------------------------
-;; These describe the single dock implementation: `normal` mode is simply the
-;; flat preset of these values.
+;; The dock has no modes: these numbers are its whole shape. The defaults
+;; describe the classic flat capsule.
 
 (define (get-dock-shelf-tilt . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -356,23 +337,17 @@
                                   (car args)))))
     (dock-config-shelf-perspective cfg)))
 
-(define (get-dock-shelf-cover . args)
+(define (get-dock-shelf-margin . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (dock-config-shelf-cover cfg)))
+    (dock-config-shelf-margin cfg)))
 
-(define (get-dock-shelf-floor . args)
+(define (get-dock-shelf-front . args)
   (let ((cfg (get-dock-config (if (null? args)
                                   'default
                                   (car args)))))
-    (dock-config-shelf-floor cfg)))
-
-(define (get-dock-shelf-padding . args)
-  (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
-    (dock-config-shelf-padding cfg)))
+    (dock-config-shelf-front cfg)))
 
 (define (get-dock-reflection . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -460,10 +435,6 @@
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-show-window-titles?! cfg val)) args))
 
-(define (set-dock-special-mode! val . args)
-  (apply-to-targets (lambda (cfg)
-                      (set-dock-config-special-mode! cfg val)) args))
-
 ;; --- Shelf geometry / reflection setters ------------------------------------
 
 (define (set-dock-shelf-tilt! val . args)
@@ -474,17 +445,13 @@
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-shelf-perspective! cfg val)) args))
 
-(define (set-dock-shelf-cover! val . args)
+(define (set-dock-shelf-margin! val . args)
   (apply-to-targets (lambda (cfg)
-                      (set-dock-config-shelf-cover! cfg val)) args))
+                      (set-dock-config-shelf-margin! cfg val)) args))
 
-(define (set-dock-shelf-floor! val . args)
+(define (set-dock-shelf-front! val . args)
   (apply-to-targets (lambda (cfg)
-                      (set-dock-config-shelf-floor! cfg val)) args))
-
-(define (set-dock-shelf-padding! val . args)
-  (apply-to-targets (lambda (cfg)
-                      (set-dock-config-shelf-padding! cfg val)) args))
+                      (set-dock-config-shelf-front! cfg val)) args))
 
 (define (set-dock-reflection! val . args)
   (apply-to-targets (lambda (cfg)
