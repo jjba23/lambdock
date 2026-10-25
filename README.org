@@ -1859,6 +1859,110 @@ Window tracking can be switched off entirely with ~dock-track-windows?~ for a
 dock that is purely a launcher, and specific applications can be kept out of the
 dock with ~dock-exclude-apps~.
 
+** Application Identity: App Ids, Desktop Entries and Names
+:PROPERTIES:
+:CUSTOM_ID: app-identity
+:END:
+
+Tracking a window means answering one question: which dock item is this? The only
+thing the compositor gives you is an application id (~xdg_toplevel.app_id~), and
+that id is whatever the toolkit set -- ~org.gnome.Nautilus~,
+~org.gnome.SystemMonitor~, ~wezterm~, ~google-chrome~, ~jetbrains-idea~,
+~Freebuff~, or sometimes nothing at all. It is not a name, and it is not an icon
+name either. ~lambdock~ resolves it against the applications actually installed on
+the machine, so the answer comes from the desktop file rather than from string
+guessing.
+
+*** The XDG desktop entry cache
+On first need, ~lambdock~ scans the freedesktop.org applications directories, in
+this order of precedence:
+
+1. =$XDG_DATA_HOME/applications= (=~/.local/share/applications=) -- your own
+   entries, and where JetBrains Toolbox, ~appimaged~ and friends install.
+2. The Flatpak exports, =$XDG_DATA_HOME/flatpak/exports/share= then
+   =/var/lib/flatpak/exports/share=, so a Flatpak wins over the distro package of
+   the same application.
+3. Every =$XDG_DATA_DIRS= entry (=/usr/share=, =/usr/local/share=, Guix and Nix
+   profiles, ...), which is where =/usr/share/applications/=.desktop files live.
+
+Each file's =[Desktop Entry]= group is parsed with the usual ~GKeyFile~
+localization, so ~Name[de]~ wins over ~Name~ in a German session, and the freedesktop
+field codes (~%f~, ~%U~, ~%i~, ...) are stripped out of ~Exec=~ so the command can
+be run as-is. The first file to provide an id wins, and =Hidden=true= or
+=NoDisplay=true= entries are dropped from the launcher list (though an override in
+your own directory still suppresses the system one, instead of resurfacing it).
+
+The result is kept in a cache: one array of entries plus a hash index, rebuilt
+whenever it is older than ~DESKTOP_CACHE_TTL_MS~ (60 seconds) or after
+~lambdock_desktop_cache_invalidate()~. Lookups are therefore a single hash probe
+on the hot path, but installing an application still shows up in the dock within a
+minute without a restart.
+
+*** Resolving an app id
+Every entry is indexed under all of the names an application can plausibly be
+reported as, so the match does not depend on the two sides spelling things the
+same way:
+
+- the desktop file's name (=org.gnome.SystemMonitor.desktop=) and its stem
+  (=org.gnome.SystemMonitor=);
+- ~StartupWMClass=~, the window class the application announces to the
+  compositor -- often the only link at all for Electron, Java and Flatpak apps;
+- the base name of the ~Exec=~ line (=idea= for the JetBrains entry, which is why
+  a pinned launcher running ~idea~ and a window reporting ~jetbrains-idea~ land on
+  the same item);
+- the last component of a reverse-DNS stem (=SystemMonitor=).
+
+All of these are compared case- and punctuation-insensitively (~org.gnome.Nautilus~,
+~org-gnome-nautilus~ and ~orggnomenautilus~ are one key), and a lookup that misses
+retries once without the vendor prefix, so ~SystemMonitor~ still finds
+~org.gnome.SystemMonitor~. A few real examples:
+
+| Compositor app id                      | Resolved from            | Desktop entry                              |
+|----------------------------------------+--------------------------+--------------------------------------------|
+| ~org.gnome.SystemMonitor~              | desktop id               | =org.gnome.SystemMonitor.desktop=          |
+| ~jetbrains-idea~                       | ~StartupWMClass=~        | =jetbrains-idea-<uuid>.desktop=            |
+| ~idea~                                 | ~Exec=~ base name        | =jetbrains-idea-<uuid>.desktop=            |
+| ~org.pulseaudio.pavucontrol~           | desktop id               | =org.pulseaudio.pavucontrol.desktop=       |
+| ~SystemMonitor~                        | vendor-prefix retry      | =org.gnome.SystemMonitor.desktop=          |
+
+A pinned launcher resolves the same way, from its own ~exec~, then its icon, then
+its ~app-id~, and remembers the entry it landed on. Matching compares those two
+canonical desktop ids first, which is what keeps a pinned launcher and its running
+window from appearing as two icons -- and keeps a pinned "Files" item tracking a
+window whose app id is ~org.gnome.Nautilus~ even though the item was written with
+~#:icon "nautilus"~.
+
+*** Names, and what to show when there is no desktop file
+Once an entry is found, the dock takes its ~Name=~ (localized), its ~Icon=~ and its
+~Exec=~ from it. That is the whole point: the item is called "System Monitor" and
+not ~org.gnome.SystemMonitor~, in the language of the session.
+
+Not every window has a desktop file (a self-built binary, a script, a Java
+launcher without an entry, a compositor reporting a debug id). Those still deserve
+a readable label, so the app id is turned into one: the =.desktop= suffix goes, the
+reverse-DNS vendor prefix goes, camel case and separators are split into words, and
+all-lowercase words are capitalised (acronyms are left alone).
+
+| App id                     | Derived name      |
+|----------------------------+-------------------|
+| ~org.gnome.SystemMonitor~  | System Monitor    |
+| ~google-chrome~            | Google Chrome     |
+| ~wezterm~                  | Wezterm           |
+| ~ZFSManager~               | ZFS Manager       |
+| ~Freebuff~                 | Freebuff          |
+
+The same idea saves the icon: if a configured icon name is not resolvable at all
+(not a resource, not a file, not in the icon theme, not a ~-symbolic~ sibling), the
+resolved entry's ~Icon=~ is used instead. A preset that names ~pavucontrol~ will
+therefore still draw the icon that actually exists,
+~org.pulseaudio.pavucontrol~. When there is no entry either, the app id itself is
+used as the icon name, since icon themes often name an icon after the application.
+
+All of this is the C side of the dock -- ~src/ui/desktop_entry.c~ -- and needs no
+configuration. The launchpad and the drag-and-drop of =.desktop= files onto the
+dock use the same parsed entries, so there is exactly one interpretation of what an
+application is.
+
 ------------------
 
 * Bi-Directionality of C and Guile Scheme

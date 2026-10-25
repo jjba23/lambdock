@@ -17,6 +17,7 @@
 
 #include "../src/lambdock.h"
 #include "../src/ui/shelf.h"
+#include "../src/ui/desktop_entry.h"
 #include "../src/ui/dock_item.h"
 #include <gtk/gtk.h>
 
@@ -423,6 +424,58 @@ static void test_create_dock_item_app_id_fallback(void) {
   g_list_free(state.dock_items);
 }
 
+/* A pinned launcher and the window it opens are usually spelled differently:
+ * the item is written by hand in settings.scm, the window reports whatever its
+ * toolkit sets. The desktop entry they both resolve to is what keeps them one
+ * item. */
+static void test_desktop_id_matching(void) {
+  const char *data_home = g_getenv("XDG_DATA_HOME");
+  g_assert_nonnull(data_home);
+
+  char *apps = g_build_filename(data_home, "applications", NULL);
+  char *path = g_build_filename(apps, "org.example.LambdockTest.desktop", NULL);
+  g_assert_true(g_file_set_contents(
+      path,
+      "[Desktop Entry]\n"
+      "Type=Application\n"
+      "Name=Example Runner\n"
+      "Exec=lambdock-test-runner %U\n"
+      "Icon=utilities-terminal\n"
+      "StartupWMClass=lambdock-test-class\n",
+      -1, NULL));
+  g_free(path);
+  g_free(apps);
+
+  lambdock_desktop_cache_invalidate();
+
+  LambdockState state = {0};
+  state.icon_size = 32;
+
+  /* No app id: a launcher written by hand from the application's command. */
+  DockItem *pinned = create_dock_item(&state, "Example Runner",
+                                      "utilities-terminal",
+                                      "lambdock-test-runner", NULL, TRUE, FALSE);
+  g_assert_nonnull(pinned);
+  g_assert_cmpstr(pinned->desktop_id, ==, "org.example.LambdockTest");
+
+  /* The window reports its WM class, which matches neither the app id nor the
+   * exec: the cached entry is the only link. */
+  g_assert_true(find_dock_item_by_app_id(&state, "lambdock-test-class") ==
+                pinned);
+  g_assert_true(find_dock_item_by_app_id(&state, "org.example.LambdockTest") ==
+                pinned);
+  g_assert_true(find_dock_item_by_app_id(&state, "org.example.LambdockTest.desktop") ==
+                pinned);
+
+  /* Another application's window must not be mistaken for it. */
+  g_assert_null(find_dock_item_by_app_id(&state, "org.example.SomethingElse"));
+
+  state.dock_items = g_list_remove(state.dock_items, pinned);
+  free_dock_item(pinned);
+  g_list_free(state.dock_items);
+}
+
+
 static void test_create_dynamic_dock_item_no_poller(void) {
   LambdockState state = {0};
   state.icon_size = 48;
@@ -603,6 +656,16 @@ static void test_apply_dock_item_alignment_edges(void) {
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
+  /* Point the desktop entry cache at a private applications directory *before*
+   * GLib caches the XDG paths, so the matching tests see only what they write.
+   * XDG_DATA_DIRS is left alone: the icon theme keeps working, and a lookup that
+   * falls through to an installed entry only ever adds matches. */
+  char *data_dir = g_dir_make_tmp("lambdock-xdg-XXXXXX", NULL);
+  char *apps_dir = g_build_filename(data_dir, "applications", NULL);
+  g_assert_cmpint(g_mkdir_with_parents(apps_dir, 0755), ==, 0);
+  g_free(apps_dir);
+  g_setenv("XDG_DATA_HOME", data_dir, TRUE);
+
   g_test_add_func("/ui/dock_item/find_by_app_id",
                   test_find_dock_item_by_app_id);
   g_test_add_func("/ui/dock_item/exec_matching", test_exec_matching);
@@ -621,6 +684,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/ui/dock_item/create_item", test_create_dock_item);
     g_test_add_func("/ui/dock_item/create_item_app_id_fallback",
                     test_create_dock_item_app_id_fallback);
+    g_test_add_func("/ui/dock_item/desktop_id_matching",
+                    test_desktop_id_matching);
     g_test_add_func("/ui/dock_item/create_dynamic_item",
                     test_create_dynamic_dock_item_no_poller);
     g_test_add_func("/ui/dock_item/free_releases_popover_slot",
@@ -633,5 +698,7 @@ int main(int argc, char **argv) {
     g_test_message("No display server detected. Running logic tests only.");
   }
 
-  return g_test_run();
+  int result = g_test_run();
+  g_free(data_dir);
+  return result;
 }

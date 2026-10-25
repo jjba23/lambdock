@@ -187,6 +187,7 @@ typedef struct DockItem {
   GtkWidget *meter;     /* Gauge shown for meter dynamic items */
   char *meter_unit;     /* Reading suffix: "%" or "°C" */
   double meter_max;     /* Reading that fills the gauge */
+  char *desktop_id;     /* Desktop entry this item resolves to (canonical id) */
 } DockItem;
 
 /**

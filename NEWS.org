@@ -9,6 +9,29 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Read the XDG desktop entry cache to match windows to dock items. A compositor's
+  app id and the desktop file of the application behind it rarely agree on
+  spelling (`org.gnome.Nautilus` vs. a pinned `nautilus` icon, `idea` vs.
+  `jetbrains-idea`, `wezterm`, `google-chrome`, ...), so the dock now indexes every
+  installed entry -- the user's `~/.local/share/applications`, the Flatpak
+  exports and every `$XDG_DATA_DIRS` directory -- under its desktop id, its
+  `StartupWMClass`, its executable's base name and the last component of a
+  reverse-DNS id, all compared case- and punctuation-insensitively. A pinned
+  launcher and its running window now share one item instead of showing up twice,
+  and a window whose app id needs the cache is created with the application's own
+  name, icon and command. The cache is rebuilt after a minute
+  (`DESKTOP_CACHE_TTL_MS`) or on demand (`lambdock_desktop_cache_invalidate()`).
+- Name and icon mapping for app ids. Items are labelled with the desktop entry's
+  localized `Name=` (`org.gnome.SystemMonitor` becomes "System Monitor"),
+  honouring `Name[xx]` for the session's language. Applications with no desktop
+  file at all -- self-built binaries, scripts, launchers -- get a derived name
+  instead of their raw id: the vendor prefix is dropped, camel case and dashes are
+  split into words and lower-case words are capitalised (`google-chrome` ->
+  "Google Chrome", `ZFSManager` -> "ZFS Manager"). A configured icon that cannot
+  be resolved from any source is replaced by the one the desktop entry names, which
+  is how a preset saying `pavucontrol` gets the icon that actually ships as
+  `org.pulseaudio.pavucontrol`.
+
 ---------
 
 *[Released]*

@@ -98,6 +98,21 @@ char *lambdock_exec_strip_field_codes(const char *exec) {
 }
 
 /* ============================================================================
+ * DESKTOP IDS
+ * ============================================================================
+ */
+
+static char *desktop_entry_stem(const char *id) {
+  if (!id)
+    return NULL;
+
+  if (g_str_has_suffix(id, ".desktop"))
+    return g_strndup(id, strlen(id) - strlen(".desktop"));
+
+  return g_strdup(id);
+}
+
+/* ============================================================================
  * PARSING
  * ============================================================================
  */
@@ -160,8 +175,24 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_data(const char *data,
 
   char *icon = g_key_file_get_string(kf, DESKTOP_GROUP, "Icon", NULL);
 
+  /* StartupWMClass may list several classes separated by semicolons; the first
+   * one is what compositors actually report. */
+  char *wm_class = g_key_file_get_string(kf, DESKTOP_GROUP, "StartupWMClass",
+                                         NULL);
+  if (wm_class && *wm_class != '\0') {
+    char **parts = g_strsplit(wm_class, ";", -1);
+    if (parts[0] && *parts[0] != '\0') {
+      g_free(wm_class);
+      wm_class = g_strdup(parts[0]);
+    }
+    g_strfreev(parts);
+  } else {
+    g_clear_pointer(&wm_class, g_free);
+  }
+
   LambdockDesktopEntry *entry = g_new0(LambdockDesktopEntry, 1);
   entry->id = g_strdup(id);
+  entry->stem = desktop_entry_stem(id);
   entry->name = name;
   entry->exec = exec;
   if (icon && *icon != '\0') {
@@ -170,6 +201,7 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_data(const char *data,
     entry->icon = g_strdup("application-x-executable");
     g_free(icon);
   }
+  entry->wm_class = wm_class;
   entry->no_display = key_file_flag(kf, "NoDisplay");
   entry->hidden = key_file_flag(kf, "Hidden");
 
@@ -198,9 +230,11 @@ void lambdock_desktop_entry_free(LambdockDesktopEntry *entry) {
     return;
 
   g_free(entry->id);
+  g_free(entry->stem);
   g_free(entry->name);
   g_free(entry->exec);
   g_free(entry->icon);
+  g_free(entry->wm_class);
   g_free(entry);
 }
 
@@ -310,6 +344,287 @@ GPtrArray *lambdock_desktop_entries_scan(void) {
 void lambdock_desktop_entries_free(GPtrArray *entries) {
   if (entries)
     g_ptr_array_free(entries, TRUE);
+}
+
+/* ============================================================================
+ * THE CACHE
+ * ============================================================================
+ *
+ * A window's app id and its desktop file rarely agree on spelling: the
+ * compositor reports "org.gnome.Nautilus" for a file called
+ * "org.gnome.Nautilus.desktop", but "wezterm", "firefox" or "SystemMonitor" for
+ * others. The cache indexes every entry under the names it could be reported
+ * as -- desktop id, StartupWMClass, executable base name, the last component of
+ * a reverse-DNS id, and a punctuation-insensitive form -- so a lookup is one
+ * hash probe instead of a heuristic.
+ */
+
+static GPtrArray *cache_entries = NULL;
+static GHashTable *cache_index = NULL;
+static gint64 cache_built_at = 0;
+
+static void cache_clear(void) {
+  g_clear_pointer(&cache_entries, g_ptr_array_unref);
+  g_clear_pointer(&cache_index, g_hash_table_unref);
+  cache_built_at = 0;
+}
+
+void lambdock_desktop_cache_invalidate(void) { cache_clear(); }
+
+/* Case- and punctuation-insensitive form: "org.gnome.Nautilus" and
+ * "org-gnome-nautilus" and "ORGGNOMENAUTILUS" all collapse to one key. */
+static char *normalize_key(const char *value) {
+  if (!value)
+    return NULL;
+
+  GString *out = g_string_new(NULL);
+  for (const char *p = value; *p != '\0'; p++) {
+    if (g_ascii_isalnum(*p))
+      g_string_append_c(out, g_ascii_tolower(*p));
+  }
+  return g_string_free(out, FALSE);
+}
+
+/* The last component of a reverse-DNS id: "org.gnome.SystemMonitor" -> the key
+ * for "SystemMonitor". Short single-component ids are returned unchanged. */
+static char *last_component(const char *value) {
+  if (!value)
+    return NULL;
+
+  const char *dot = strrchr(value, '.');
+  return g_strdup((dot && dot[1] != '\0') ? dot + 1 : value);
+}
+
+static void cache_index_add(GHashTable *index, const char *alias,
+                            LambdockDesktopEntry *entry) {
+  if (!alias || *alias == '\0')
+    return;
+
+  char *key = normalize_key(alias);
+  if (!key || *key == '\0') {
+    g_free(key);
+    return;
+  }
+
+  /* First one wins: the scan is already id-deduplicated and name-sorted, and an
+   * exact alias is inserted before the looser ones below. */
+  if (!g_hash_table_contains(index, key))
+    g_hash_table_insert(index, key, entry);
+  else
+    g_free(key);
+}
+
+static char *exec_base_name(const char *exec) {
+  if (!exec || *exec == '\0')
+    return NULL;
+
+  char **argv = g_strsplit_set(exec, " \t", -1);
+  char *base = NULL;
+  for (int i = 0; argv[i] != NULL && !base; i++) {
+    const char *token = argv[i];
+    if (*token == '\0' || g_str_has_prefix(token, "env=") ||
+        g_strcmp0(token, "env") == 0 || g_strcmp0(token, "flatpak") == 0 ||
+        g_strcmp0(token, "run") == 0 || g_str_has_prefix(token, "-"))
+      continue;
+    base = g_path_get_basename(token);
+  }
+  g_strfreev(argv);
+  return base;
+}
+
+static void cache_build(void) {
+  cache_clear();
+
+  cache_entries = lambdock_desktop_entries_scan();
+  cache_index = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+
+  for (guint i = 0; i < cache_entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(cache_entries, i);
+
+    cache_index_add(cache_index, entry->id, entry);
+    cache_index_add(cache_index, entry->stem, entry);
+    cache_index_add(cache_index, entry->wm_class, entry);
+
+    char *base = exec_base_name(entry->exec);
+    cache_index_add(cache_index, base, entry);
+    g_free(base);
+
+    char *tail = last_component(entry->stem);
+    cache_index_add(cache_index, tail, entry);
+    g_free(tail);
+  }
+
+  cache_built_at = g_get_monotonic_time();
+  LOG_C_INFO("UI", "Desktop entry cache built: %u applications, %u keys",
+             cache_entries->len, g_hash_table_size(cache_index));
+}
+
+static void cache_ensure(void) {
+  if (!cache_entries || !cache_index) {
+    cache_build();
+    return;
+  }
+
+  gint64 age_ms = (g_get_monotonic_time() - cache_built_at) / 1000;
+  if (age_ms > DESKTOP_CACHE_TTL_MS)
+    cache_build();
+}
+
+GPtrArray *lambdock_desktop_entries_cached(void) {
+  cache_ensure();
+  return cache_entries;
+}
+
+const LambdockDesktopEntry *lambdock_desktop_entry_lookup(const char *app_id) {
+  if (!app_id || *app_id == '\0')
+    return NULL;
+
+  cache_ensure();
+
+  char *key = normalize_key(app_id);
+  if (!key || *key == '\0') {
+    g_free(key);
+    return NULL;
+  }
+
+  const LambdockDesktopEntry *entry = g_hash_table_lookup(cache_index, key);
+  if (entry) {
+    g_free(key);
+    return entry;
+  }
+
+  /* One more try without a vendor prefix, so "SystemMonitor" still finds
+   * "org.gnome.SystemMonitor" when the compositor reports the short form. */
+  char *tail = last_component(app_id);
+  char *tail_key = normalize_key(tail);
+  g_free(tail);
+
+  if (tail_key && g_strcmp0(tail_key, key) != 0)
+    entry = g_hash_table_lookup(cache_index, tail_key);
+
+  g_free(tail_key);
+  g_free(key);
+  return entry;
+}
+
+/* ============================================================================
+ * NAMES FOR APP IDS
+ * ============================================================================
+ */
+
+/* Splits camel case and separators into words: "SystemMonitor" -> "System
+ * Monitor", "google-chrome" -> "google chrome", "ZFSManager" -> "ZFS Manager". */
+static GPtrArray *app_id_words(const char *value) {
+  GPtrArray *words = g_ptr_array_new_with_free_func(g_free);
+  if (!value || *value == '\0')
+    return words;
+
+  GString *word = g_string_new(NULL);
+  gunichar previous = 0;
+  const char *p = value;
+
+  while (*p != '\0') {
+    gunichar c = g_utf8_get_char(p);
+    const char *next_p = g_utf8_next_char(p);
+    gunichar next = (*next_p != '\0') ? g_utf8_get_char(next_p) : 0;
+
+    if (c == '-' || c == '_' || c == '.' || c == ' ' || c == '+') {
+      if (word->len > 0) {
+        g_ptr_array_add(words, g_strdup(word->str));
+        g_string_truncate(word, 0);
+      }
+      previous = 0;
+      p = next_p;
+      continue;
+    }
+
+    /* "System|Monitor" (lower then upper) and "ZFS|Manager" (the end of an
+     * acronym) both start a new word. */
+    if (word->len > 0 && previous != 0 && g_unichar_isupper(c) &&
+        (g_unichar_islower(previous) ||
+         (g_unichar_isupper(previous) && next != 0 &&
+          g_unichar_islower(next)))) {
+      g_ptr_array_add(words, g_strdup(word->str));
+      g_string_truncate(word, 0);
+    }
+
+    g_string_append_unichar(word, c);
+    previous = c;
+    p = next_p;
+  }
+
+  if (word->len > 0)
+    g_ptr_array_add(words, g_strdup(word->str));
+
+  g_string_free(word, TRUE);
+  return words;
+}
+
+char *lambdock_app_id_to_name(const char *app_id) {
+  if (!app_id || *app_id == '\0')
+    return NULL;
+
+  /* "org.gnome.SystemMonitor.desktop" is only ever a file name. */
+  char *stem = desktop_entry_stem(app_id);
+
+  /* Reverse-DNS ids carry the vendor, not the application: keep the last
+   * component. Ids without dots are already the application's name. */
+  char *tail = last_component(stem);
+  g_free(stem);
+
+  GPtrArray *words = app_id_words(tail);
+  g_free(tail);
+
+  GString *name = g_string_new(NULL);
+  for (guint i = 0; i < words->len; i++) {
+    const char *word = g_ptr_array_index(words, i);
+    gboolean all_lower = TRUE;
+    for (const char *p = word; *p != '\0'; p++) {
+      if (g_ascii_isupper(*p)) {
+        all_lower = FALSE;
+        break;
+      }
+    }
+
+    if (i > 0)
+      g_string_append_c(name, ' ');
+
+    if (all_lower && g_ascii_islower(word[0])) {
+      g_string_append_c(name, g_ascii_toupper(word[0]));
+      g_string_append(name, word + 1);
+    } else {
+      g_string_append(name, word);
+    }
+  }
+
+  g_ptr_array_unref(words);
+
+  char *result = g_string_free(name, FALSE);
+  if (*result == '\0') {
+    g_free(result);
+    return NULL;
+  }
+  return result;
+}
+
+char *lambdock_app_name_for(const char *app_id) {
+  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);
+  if (entry && entry->name && *entry->name != '\0')
+    return g_strdup(entry->name);
+
+  char *derived = lambdock_app_id_to_name(app_id);
+  if (derived)
+    return derived;
+
+  return (app_id && *app_id != '\0') ? g_strdup(app_id) : NULL;
+}
+
+char *lambdock_app_icon_for(const char *app_id) {
+  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);
+  if (entry && entry->icon && *entry->icon != '\0')
+    return g_strdup(entry->icon);
+
+  return (app_id && *app_id != '\0') ? g_strdup(app_id) : NULL;
 }
 
 /* ============================================================================

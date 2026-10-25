@@ -17,6 +17,7 @@
 
 #include "toplevel_tracker.h"
 #include "dock_window.h"
+#include "ui/desktop_entry.h"
 #include "guile_bridge.h"
 #include "logger.h"
 #include "ui/dock_item.h"
@@ -91,6 +92,42 @@ toplevel_handle_title(void *data,
   }
 }
 
+/**
+ * create_item_for_app_id:
+ * Builds the dock item for an application that is running but not pinned.
+ *
+ * The compositor gives an app id, which is not a name people want to read
+ * ("org.gnome.SystemMonitor") and not always an icon either. The desktop entry
+ * cache turns it into the application's localized name, icon and command; when
+ * there is no desktop file at all, the id itself is cleaned up into a name
+ * ("org.gnome.SystemMonitor" -> "System Monitor") and used as the icon lookup,
+ * since icon themes often name the icon after the app id.
+ */
+static DockItem *create_item_for_app_id(LambdockState *state,
+                                        const char *app_id) {
+  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);
+
+  char *name = entry ? g_strdup(entry->name) : lambdock_app_id_to_name(app_id);
+  char *icon = entry ? g_strdup(entry->icon) : g_strdup(app_id);
+  char *exec = (entry && entry->exec) ? g_strdup(entry->exec) : NULL;
+
+  if (entry) {
+    LOG_C_INFO("Tracker", "App id '%s' resolved to %s (%s)", app_id, entry->id,
+               entry->name);
+  } else {
+    LOG_C_INFO("Tracker", "App id '%s' has no desktop entry; showing it as '%s'",
+               app_id, name);
+  }
+
+  DockItem *item =
+      create_dock_item(state, name, icon, exec, app_id, FALSE, TRUE);
+
+  g_free(name);
+  g_free(icon);
+  g_free(exec);
+  return item;
+}
+
 static void
 toplevel_handle_app_id(void *data,
                        struct zwlr_foreign_toplevel_handle_v1 *handle,
@@ -143,7 +180,7 @@ toplevel_handle_app_id(void *data,
 
     DockItem *item = find_dock_item_by_app_id(state, app_id);
     if (!item) {
-      item = create_dock_item(state, app_id, app_id, NULL, app_id, FALSE, TRUE);
+      item = create_item_for_app_id(state, app_id);
     }
 
     AppWindow *win = dock_item_add_window(item, handle);
@@ -401,8 +438,7 @@ void sync_window_trackers(LambdockState *state) {
 
     DockItem *item = find_dock_item_by_app_id(state, top->app_id);
     if (!item) {
-      item = create_dock_item(state, top->app_id, top->app_id, NULL,
-                              top->app_id, FALSE, TRUE);
+      item = create_item_for_app_id(state, top->app_id);
     }
 
     dock_item_add_window(item, top->handle);

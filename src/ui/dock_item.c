@@ -20,6 +20,7 @@
 #include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
 #include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
 #include "shelf.h"               // Glass shelf reflections (icons on the glass)
+#include "desktop_entry.h" // XDG desktop entries (app id matching)
 #include "dock_dnd.h"            // Drag and drop (reorder, add, remove)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
 #include "launchpad.h"     // Full screen application grid
@@ -307,6 +308,61 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
  * ============================================================================
  */
 
+/**
+ * resolve_desktop_entry:
+ * Finds the desktop entry an item's launcher refers to, so the item can be
+ * matched to windows by the application's own identity instead of by the name
+ * the user happened to give it.
+ *
+ * The exec line is the most reliable hint (it is what the entry itself runs),
+ * then the icon (entries name their icon after the app), then the app id.
+ *
+ * Returns: (transfer none) (nullable): the entry, owned by the cache.
+ */
+static const LambdockDesktopEntry *resolve_desktop_entry(const char *exec,
+                                                        const char *icon,
+                                                        const char *app_id) {
+  const char *candidates[3] = {exec, icon, app_id};
+
+  for (int i = 0; i < 3; i++) {
+    if (!candidates[i] || *candidates[i] == '\0')
+      continue;
+
+    const LambdockDesktopEntry *entry =
+        lambdock_desktop_entry_lookup(candidates[i]);
+    if (entry && entry->stem)
+      return entry;
+  }
+
+  return NULL;
+}
+
+/**
+ * icon_is_resolvable:
+ * A quick check of whether an icon name will actually draw: a resource, a file
+ * on disk, an icon in the theme, or its symbolic sibling. It mirrors the first
+ * stages of create_image_for_icon(), and is only used to decide whether a
+ * desktop entry's icon is a better bet than a configured one.
+ */
+static gboolean icon_is_resolvable(GtkIconTheme *theme, const char *icon) {
+  if (!icon || *icon == '\0')
+    return FALSE;
+
+  if (g_str_has_prefix(icon, "resource://"))
+    return TRUE;
+
+  if (g_file_test(icon, G_FILE_TEST_EXISTS))
+    return TRUE;
+
+  if (theme && gtk_icon_theme_has_icon(theme, icon))
+    return TRUE;
+
+  char *symbolic = g_strdup_printf("%s-symbolic", icon);
+  gboolean resolvable = theme && gtk_icon_theme_has_icon(theme, symbolic);
+  g_free(symbolic);
+  return resolvable;
+}
+
 DockItem *create_dock_item(LambdockState *state, const char *name,
                            const char *icon, const char *exec,
                            const char *app_id, gboolean is_favorite,
@@ -325,6 +381,24 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 
   GdkDisplay *display = gdk_display_get_default();
   GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
+
+  /* The desktop entry behind this launcher gives the item its canonical
+   * identity, and a better icon when the configured one is not in the theme
+   * (a preset may name "pavucontrol" while the icon lives under
+   * "org.pulseaudio.pavucontrol"). */
+  const LambdockDesktopEntry *entry = resolve_desktop_entry(exec, icon, app_id);
+  if (entry && entry->stem)
+    item->desktop_id = g_strdup(entry->stem);
+
+  if (entry && entry->icon && *entry->icon != '\0' &&
+      !icon_is_resolvable(icon_theme, item->icon) &&
+      icon_is_resolvable(icon_theme, entry->icon)) {
+    LOG_C_INFO("UI", "Icon '%s' is not in the icon theme; using '%s' from %s",
+               item->icon, entry->icon, entry->id);
+    g_free(item->icon);
+    item->icon = g_strdup(entry->icon);
+  }
+
   int icon_sz =
       (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
@@ -645,6 +719,7 @@ void free_dock_item(DockItem *item) {
   g_free(item->stack_path);
   g_free(item->stack_view);
   g_free(item->meter_unit);
+  g_free(item->desktop_id);
 
   g_free(item);
 }
@@ -842,7 +917,43 @@ DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
 
     if (exec_matches_app_id(item->exec, app_id))
       return item;
+
+    if (item->desktop_id && g_ascii_strcasecmp(item->desktop_id, app_id) == 0)
+      return item;
   }
+
+  /* Nothing matched the raw id. The desktop entry behind it knows the names the
+   * application is actually installed under, so use those for a second pass:
+   * a pinned "Files" item (icon "nautilus") tracks a window whose app id is
+   * "org.gnome.Nautilus", and a pinned "Terminal" tracks "org.gnome.Terminal". */
+  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);
+  if (entry) {
+    for (GList *l = state->dock_items; l != NULL; l = l->next) {
+      DockItem *item = (DockItem *)l->data;
+
+      /* Both sides resolved to the same desktop file: this is the precise
+       * match, and the one that keeps a pinned launcher and a running window
+       * from showing up as two icons (a pinned "IntelliJ" whose exec is `idea`,
+       * and a window reporting app id `jetbrains-idea`, both land on
+       * jetbrains-idea-....desktop). */
+      if (item->desktop_id && entry->stem &&
+          g_ascii_strcasecmp(item->desktop_id, entry->stem) == 0)
+        return item;
+
+      if (item->app_id && (g_ascii_strcasecmp(item->app_id, entry->stem) == 0 ||
+                           g_ascii_strcasecmp(item->app_id, entry->id) == 0))
+        return item;
+
+      if (item->icon && entry->icon &&
+          g_ascii_strcasecmp(item->icon, entry->icon) == 0)
+        return item;
+
+      if (item->exec && entry->exec &&
+          exec_matches_app_id(entry->exec, item->exec))
+        return item;
+    }
+  }
+
   return NULL;
 }
 
