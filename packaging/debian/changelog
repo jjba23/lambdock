@@ -1,3 +1,11 @@
+lambdock (0.8.1-1) unstable; urgency=medium
+
+  * New upstream release: one dock implementation described by plain shelf
+    options (no special modes or presets), ten documented recipes including
+    the OS X Mavericks platinum slab, and mirrored icon reflections.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Sun, 25 Oct 2026 13:20:00 +0100
+
 lambdock (0.7.3-1) unstable; urgency=medium
 
   * Initial release. (Closes: #1143781)
