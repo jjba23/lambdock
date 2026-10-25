@@ -181,6 +181,24 @@ int get_icon_size_config_for(const char *config_path) {
   return DEFAULT_ICON_SIZE;
 }
 
+/**
+ * get_item_spacing_config_for:
+ * Reads `dock-item-spacing` (px between dock items) for a config path,
+ * clamped so a typo cannot collapse or explode the dock.
+ */
+int get_item_spacing_config_for(const char *config_path) {
+  SCM res = call_core_proc_with_path("get-dock-item-spacing", config_path);
+  if (scm_is_true(res) && (scm_is_integer(res) || scm_is_number(res))) {
+    int spacing = scm_to_int(res);
+    if (spacing < 0)
+      return 0;
+    if (spacing > 64)
+      return 64;
+    return spacing;
+  }
+  return DOCK_ITEM_SPACING_PX;
+}
+
 /** Checks if Guile REPL is enabled for a specific config path. */
 gboolean get_repl_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-enable-repl?", config_path);

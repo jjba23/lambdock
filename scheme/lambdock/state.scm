@@ -31,6 +31,7 @@
             get-dock-position
             get-dock-theme
             get-dock-icon-size
+            get-dock-item-spacing
             get-dock-auto-hide?
             get-dock-monitor
             get-dock-exclude-apps
@@ -53,6 +54,7 @@
             set-dock-position!
             set-dock-theme!
             set-dock-icon-size!
+            set-dock-item-spacing!
             set-dock-auto-hide!
             set-dock-show-when-clear!
             set-dock-monitor!
@@ -75,6 +77,7 @@
 (define-record-type <dock-config>
   (make-dock-config position
                     icon-size
+                    item-spacing
                     items
                     auto-hide?
                     show-when-clear?
@@ -97,6 +100,7 @@
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
+  (item-spacing dock-config-item-spacing set-dock-config-item-spacing!)
   (items dock-config-items set-dock-config-items!)
   (auto-hide? dock-config-auto-hide? set-dock-config-auto-hide?!)
   (show-when-clear? dock-config-show-when-clear?
@@ -131,6 +135,7 @@
 (define %default-fallback-config%
   (make-dock-config 'bottom
                     48
+                    4       ; item spacing (px between dock items)
                     '()
                     #f
                     #t
@@ -159,6 +164,7 @@
 (define* (configure-dock! #:key (config-path 'default)
                           (position 'bottom)
                           (icon-size 48)
+                          (item-spacing 4)
                           (items '())
                           (auto-hide? #f)
                           (show-when-clear? #t)
@@ -181,6 +187,7 @@
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
+                               item-spacing
                                items
                                auto-hide?
                                show-when-clear?
@@ -212,7 +219,7 @@
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a)"
      config-path
      (if (list? items)
          (length items) 0)
@@ -223,6 +230,8 @@
      repl-socket-path
      track-windows?
      mode
+     icon-size
+     item-spacing
      shelf-tilt
      shelf-margin
      shelf-front
@@ -260,6 +269,12 @@
                                   'default
                                   (car args)))))
     (dock-config-icon-size cfg)))
+
+(define (get-dock-item-spacing . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-item-spacing cfg)))
 
 (define (get-dock-auto-hide? . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -406,6 +421,10 @@
 (define (set-dock-icon-size! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-icon-size! cfg val)) args))
+
+(define (set-dock-item-spacing! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-item-spacing! cfg val)) args))
 
 (define (set-dock-auto-hide! val . args)
   (apply-to-targets (lambda (cfg)

@@ -59,6 +59,7 @@
                get-dock-position
                get-dock-theme
                get-dock-icon-size
+               get-dock-item-spacing
                get-dock-auto-hide?
                get-dock-show-when-clear?
                get-dock-monitor
@@ -81,6 +82,7 @@
                set-dock-position!
                set-dock-theme!
                set-dock-icon-size!
+               set-dock-item-spacing!
                set-dock-auto-hide!
                set-dock-show-when-clear!
                set-dock-monitor!
@@ -137,6 +139,8 @@ keeps its default (the plain flat dock)."
                                                     'bottom)
                                     #:icon-size (cfg 'dock-icon-size
                                                      'icon-size 48)
+                                    #:item-spacing (cfg 'dock-item-spacing
+                                                        'item-spacing 4)
                                     #:items (cfg 'dock-items
                                                  'items
                                                  '())

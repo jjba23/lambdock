@@ -389,6 +389,10 @@ cat > ~/.config/lambdock/settings.scm <<'EOF'
 (define dock-theme 'vanilla)
 (define dock-auto-hide? #t)
 (define dock-icon-size 48)
+
+;; Gap between dock items, in px. 4 is the OS X dock's (its icons are about
+;; 0.3 icons apart); the theme's own button padding/margins add to it.
+(define dock-item-spacing 4)
 (define dock-items
   (append (preset-launchers-for 'alacritty 'firefox 'emacs)
           (list (separator-item))
@@ -748,6 +752,7 @@ nothing at all.
 |-------------------------------+------------------------------+--------------------------------------------------------------------------------|
 | ~dock-position~               | ~'bottom~                    | Screen edge to attach to: ~'bottom~, ~'top~, ~'left~, ~'right~.                 |
 | ~dock-icon-size~              | ~48~                         | Icon pixel size.                                                               |
+| ~dock-item-spacing~           | ~4~                          | Gap between dock items in px (0 … 64). The theme's padding adds to it.          |
 | ~dock-items~                  | ~'()~                        | The item list -- launchers, separators and dynamic widgets, in order.          |
 | ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
 | ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
@@ -1152,6 +1157,41 @@ are not running stay icon-only, and titles are ellipsized when they get long.
 Combine either mode with any theme. The ~'windows-*~ and ~'macos-*~ themes
 include dedicated taskbar styling, and a generic taskbar modifier squares off the
 capsule and styles the title labels when needed.
+
+** Spacing and sizing: how far apart the icons sit
+:PROPERTIES:
+:CUSTOM_ID: spacing
+:END:
+
+Two numbers decide how the row of icons looks:
+
+| Option               | Default | What it does                          |
+|----------------------+---------+---------------------------------------|
+| ~dock-icon-size~     | ~48~    | How big each icon is drawn, in px.    |
+| ~dock-item-spacing~  | ~4~     | How much room sits between the items. |
+
+The *visible* gap is ~dock-item-spacing~ plus whatever the active theme gives
+its buttons as padding and margins, so it is the knob for the rhythm while the
+theme keeps control of the clickable area. As a reference, the OS X dock keeps
+its icons about ~0.3 × their size~ apart: 50px icons with ~15px between them,
+which is ~dock-icon-size 48~ + ~dock-item-spacing 4~ with a theme whose buttons
+add ~10px (the ~'macos-mavericks~ one does exactly that).
+
+#+begin_src scheme
+;; packed tight, icons almost touching
+(define dock-item-spacing 0)
+
+;; the default: the OS X rhythm
+(define dock-item-spacing 4)
+
+;; airy, for a big or wall-mounted screen
+(define dock-item-spacing 16)
+#+end_src
+
+Spacing is applied live: change it from the REPL with
+~(set-dock-item-spacing! 8)~ or in =settings.scm= and the row re-lays out
+immediately. It is also what makes a dock of many items scroll sooner or later,
+since the items have to fit on screen either way.
 
 ** The glass shelf: one dock, any shape 🐆
 :PROPERTIES:

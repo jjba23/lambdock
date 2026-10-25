@@ -651,6 +651,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
+  state->item_spacing = get_item_spacing_config_for(state->config_path);
 
   /* Load CSS theme AFTER window context is created */
   state->theme = get_theme_config_for(state->config_path);
@@ -674,7 +675,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   apply_dock_mode_classes(state);
 
-  GtkWidget *box = gtk_box_new(state->orientation, DOCK_BOX_SPACING_PX);
+  GtkWidget *box = gtk_box_new(state->orientation, state->item_spacing);
   gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
   state->box = box;
 

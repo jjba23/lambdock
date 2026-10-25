@@ -802,6 +802,10 @@ void reload_dock_instance(LambdockState *state) {
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
+  state->item_spacing = get_item_spacing_config_for(state->config_path);
+  if (state->box) {
+    gtk_box_set_spacing(GTK_BOX(state->box), state->item_spacing);
+  }
 
   // Clear pinned items and repopulate dock launcher layout first
   clear_favorite_dock_items(state);

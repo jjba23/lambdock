@@ -42,6 +42,12 @@ gboolean get_hover_animate_config_for(const char *config_path);
 int get_icon_size_config_for(const char *config_path);
 
 /**
+ * get_item_spacing_config_for:
+ * Reads `dock-item-spacing` (px between dock items, clamped to 0..64).
+ */
+int get_item_spacing_config_for(const char *config_path);
+
+/**
  * populate_dock_items_for:
  * @state: Pointer to main LambdockState structure.
  *

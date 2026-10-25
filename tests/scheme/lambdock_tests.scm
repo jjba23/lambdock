@@ -113,6 +113,8 @@
              'bottom (get-dock-position))
 (check-equal "fallback config icon size is 48"
              48 (get-dock-icon-size))
+(check-equal "fallback config item spacing is the Mavericks-like 4px"
+             4 (get-dock-item-spacing))
 (check-equal "fallback config is not auto-hiding"
              #f (get-dock-auto-hide?))
 (check-equal "fallback config mode is 'dock"
@@ -156,6 +158,7 @@
 (define dock-monitor \"DP-1\")
 (define dock-mode 'taskbar)
 (define dock-show-window-titles? #t)
+(define dock-item-spacing 9)
 (define dock-items (list (app-item #:name \"Terminal\"
                                    #:icon \"Alacritty\"
                                    #:exec \"alacritty\")))
@@ -178,6 +181,8 @@
              'taskbar (assq-ref %extracted 'dock-mode))
 (check-equal "extracted dock-show-window-titles? is #t"
              #t (assq-ref %extracted 'dock-show-window-titles?))
+(check-equal "extracted dock-item-spacing is 9"
+             9 (assq-ref %extracted 'dock-item-spacing))
 (check-equal "extracted one dock item"
              1 (length (assq-ref %extracted 'dock-items)))
 
@@ -189,6 +194,7 @@
 (configure-dock! #:config-path %cfg-path
                  #:position 'left
                  #:icon-size 64
+                 #:item-spacing 12
                  #:theme 'snow-leopard
                  #:monitor 'HDMI-1
                  #:items (list (app-item #:name "A" #:icon "a" #:exec "a"))
@@ -209,6 +215,8 @@
              'left (get-dock-position %cfg-path))
 (check-equal "getters accept the config path argument"
              64 (get-dock-icon-size %cfg-path))
+(check-equal "item-spacing getter"
+             12 (get-dock-item-spacing %cfg-path))
 (check-equal "theme getter returns the configured symbol"
              'snow-leopard (get-dock-theme %cfg-path))
 (check-equal "monitor getter returns the configured value"
@@ -256,6 +264,10 @@
 (set-dock-icon-size! 96 %cfg-path)
 (check-equal "set-dock-icon-size! updates the targeted config"
              96 (get-dock-icon-size %cfg-path))
+
+(set-dock-item-spacing! 2 %cfg-path)
+(check-equal "set-dock-item-spacing! updates the targeted config"
+             2 (get-dock-item-spacing %cfg-path))
 
 (set-dock-auto-hide! #f %cfg-path)
 (check-equal "set-dock-auto-hide! updates the targeted config"
