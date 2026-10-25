@@ -120,6 +120,20 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 void update_dock_dimensions(LambdockState *state);
 
 /**
+ * dock_is_settling:
+ * @state: Pointer to the dock state.
+ *
+ * Whether the dock is sliding, or has only just stopped. Crossings reported in
+ * that moment are echoes of the dock's own movement rather than the pointer
+ * moving, and auto-hide must not act on them: believing one hides the dock, which
+ * puts the revealing strip back under a pointer that never moved, which reveal it
+ * again -- the dock bounces at the screen edge.
+ *
+ * Returns: TRUE while crossings are echoes of the dock's movement.
+ */
+gboolean dock_is_settling(const LambdockState *state);
+
+/**
  * dock_capsule_cross_dim:
  * Returns the thickness requested for the background capsule along the dock's
  * cross axis: the covered part of the icons, plus the reflection band, plus the

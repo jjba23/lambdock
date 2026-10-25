@@ -118,6 +118,9 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
     gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge,
                          state->current_margin);
     state->tick_cb_id = 0;  // Reset callback ID
+    /* Crossings for a moment after this are echoes of the slide, not the
+     * pointer moving: see dock_is_settling(). */
+    state->margin_anim_end_us = g_get_monotonic_time();
     return G_SOURCE_REMOVE; // Stop frame tick callback loop
   }
 
@@ -149,6 +152,7 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
   state->start_margin = state->current_margin;
   state->target_margin = target_margin;
   state->anim_start_time = 0; // Reset timer anchor
+  state->margin_anim_end_us = 0;
 
   // Register frame tick callback if not currently active
   if (state->tick_cb_id == 0) {
@@ -330,6 +334,39 @@ void reveal_dock(LambdockState *state) {
   }
 }
 
+/* How long after a slide settles a pointer crossing is still treated as an echo
+ * of the slide itself. The crossings that make the dock bounce arrive within a
+ * frame or two of the animation stopping. */
+#define AUTO_HIDE_SETTLE_MS 300
+
+/**
+ * dock_is_settling:
+ * @state: Pointer to the dock state.
+ *
+ * Whether the dock is sliding, or has only just stopped.
+ *
+ * While the dock slides it moves under the pointer: a pointer that is not moving
+ * still ends up over a different part of the dock, or off it, and compositors
+ * report the crossings that follow from that as if the pointer had moved. Those
+ * reports are what used to bounce the dock at the screen edge -- a leave hides it,
+ * the strip comes back under the pointer, an enter reveals it, and round it goes.
+ *
+ * Returns: TRUE while crossings are echoes of the dock's own movement.
+ */
+gboolean dock_is_settling(const LambdockState *state) {
+  if (!state)
+    return FALSE;
+
+  if (state->tick_cb_id != 0)
+    return TRUE;
+
+  if (state->margin_anim_end_us == 0)
+    return FALSE;
+
+  gint64 settled_for_us = g_get_monotonic_time() - state->margin_anim_end_us;
+  return settled_for_us < (gint64)AUTO_HIDE_SETTLE_MS * 1000;
+}
+
 /**
  * on_hide_timeout:
  * Timer callback triggered after mouse-leave grace period expires.
@@ -339,8 +376,9 @@ void reveal_dock(LambdockState *state) {
  */
 static gboolean on_hide_timeout(gpointer user_data) {
   LambdockState *state = (LambdockState *)user_data;
-  hide_dock(state);
   state->hide_timer_id = 0;
+
+  hide_dock(state);
   return G_SOURCE_REMOVE;
 }
 
@@ -486,6 +524,17 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
   LambdockState *state = (LambdockState *)user_data;
 
   if (state) {
+    /* Crossings cannot be trusted while the dock slides under a pointer that is
+     * not moving -- the window moves, the pointer does not, and a compositor
+     * reports the pointer leaving a surface it is still on, right after the
+     * slide settles. Believing that one makes the dock hide, which puts the
+     * revealing strip back under the pointer, which reveals it again: the dock
+     * bounces at the edge forever. Only a crossing from a dock that has been
+     * sitting still counts. */
+    if (dock_is_settling(state)) {
+      return;
+    }
+
     /* A frame that is already queued must not magnify anything after the
      * pointer has left. */
     if (state->pointer_tick_id != 0 && state->window) {

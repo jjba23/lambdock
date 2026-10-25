@@ -447,6 +447,35 @@ static void test_reveal_dock_cancels_timer(void) {
 }
 
 /* ============================================================================
+ * AUTO-HIDE: CROSSINGS THAT ARE ECHOES OF THE DOCK ITSELF
+ * ============================================================================ */
+
+/* The dock slides under a pointer that is not moving, and every slide ends with
+ * the compositor reporting crossings that follow from the surface moving rather
+ * than from the pointer. Acting on those is what bounced the dock at the screen
+ * edge, so a settling dock's crossings have to be ignored -- but only for a
+ * moment: once it has been still for a while, a leave is the user leaving. */
+static void test_dock_is_settling(void) {
+  LambdockState state = {0};
+
+  g_assert_false(dock_is_settling(&state));
+  g_assert_false(dock_is_settling(NULL));
+
+  /* A slide in progress is always settling. */
+  state.tick_cb_id = 1;
+  g_assert_true(dock_is_settling(&state));
+  state.tick_cb_id = 0;
+
+  /* So is one that has just stopped... */
+  state.margin_anim_end_us = g_get_monotonic_time();
+  g_assert_true(dock_is_settling(&state));
+
+  /* ...but not one that stopped a while ago, or the dock would never hide. */
+  state.margin_anim_end_us = g_get_monotonic_time() - 5 * 1000 * 1000;
+  g_assert_false(dock_is_settling(&state));
+}
+
+/* ============================================================================
  * TEARDOWN
  * ============================================================================ */
 
@@ -516,6 +545,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/dock_window/hide_guards", test_hide_dock_guards);
   g_test_add_func("/ui/dock_window/reveal_cancels_timer",
                   test_reveal_dock_cancels_timer);
+  g_test_add_func("/ui/dock_window/dock_is_settling", test_dock_is_settling);
   g_test_add_func("/ui/dock_window/destroy_reentrancy",
                   test_destroy_dock_instance_reentrancy);
   g_test_add_func("/ui/dock_window/destroy_cleans_up",

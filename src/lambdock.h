@@ -265,6 +265,7 @@ struct LambdockState {
   int current_margin;
   int start_margin;
   int target_margin;
+  gint64 margin_anim_end_us; /* When the last slide stopped (0: never). */
   int active_popovers;
 
   /* Fisheye Hover State. Pointer events arrive faster than the display
@@ -276,6 +277,13 @@ struct LambdockState {
   double applied_pointer_x;
   double applied_pointer_y;
   gboolean pointer_applied;
+
+  /* Auto-hide: how far the pointer sits from the screen edge the dock hides
+   * into, in dock pixels. Unlike its position inside the window this does not
+   * change while the dock slides, so it says whether a pointer that is not
+   * moving is resting on the dock's revealing strip. */
+  double pointer_edge_gap;
+  gboolean pointer_edge_gap_valid;
 
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;

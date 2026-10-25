@@ -9,6 +9,16 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Fix the dock bouncing at the screen edge in auto-hide mode. A pointer resting on
+  the edge leaves the dock's revealing strip under it when the dock is in, and one
+  pixel past the window's far edge when the dock is out, because the revealed
+  window ends exactly there. The dock believed that last crossing, hid, found the
+  strip under the pointer again, revealed, and went round that loop for as long as
+  the pointer stayed put. Crossings that arrive while the dock is sliding -- or in
+  the moment just after it stops, when they are echoes of its own movement rather
+  than the pointer moving -- are now ignored, while a leave from a dock that has
+  been sitting still still hides it as before.
+
 ---------
 
 *[Released]*
