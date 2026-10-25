@@ -9,23 +9,26 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-- One dock implementation with a parameterised glass shelf: `dock-shelf-tilt`,
-  `dock-shelf-perspective`, `dock-shelf-cover`, `dock-shelf-floor`,
-  `dock-shelf-padding`, `dock-reflection`, `dock-reflection-intensity` and
-  `dock-reflection-blur` (all defaulting to the classic flat capsule)
-- `dock-special-mode` now selects a *preset* of those parameters; `'big-cat`
-  gives the OS X Mavericks dock (14 degree projected shelf, 58% cover, glass
-  floor, mirrored/blurred/fading icon reflections)
-- Explicit shelf parameters override the preset, and every value is hot
-  reloadable through the REPL
-- Add the `'macos-mavericks` theme (the last 3D OS X dock)
-- Add `ui/shelf.c` (`LambdockShelfFrame` + `LambdockReflection`) with a unit
-  test suite; the shelf material ships as the scoped `css/shelf.css` modifier so
-  any theme can wear it
+Nothing yet.
 
 ---------
 
 *[Released]*
+
+** v0.8.0 (2026-10-25)
+- One dock implementation described by plain numbers -- no modes, no presets:
+  `dock-shelf-tilt`, `dock-shelf-perspective`, `dock-shelf-margin`,
+  `dock-shelf-front`, `dock-reflection`, `dock-reflection-intensity` and
+  `dock-reflection-blur`. All default to the classic flat capsule.
+- `dock-shelf-margin` accepts negative values, which is how the OS X dock lets
+  its icons overhang the shelf; `dock-shelf-front` is the glass (front face) in
+  front of them.
+- Icon reflections now fade over the front face, with a soft contact shadow
+  under each icon and the white running-app glow dot near the outer edge
+- New light frosted `css/shelf.css` modifier plus a rewritten `'macos-mavericks`
+  theme (platinum slab, specular outer edge, bluish thickness band)
+- Add `ui/shelf.c` (`LambdockShelfFrame` + `LambdockReflection`) with a unit
+  test suite covering the derived geometry
 
 ** v0.7.5 (2026-10-22)
 - Add a pure-Scheme unit test suite (~tests/scheme~) covering state, items,
