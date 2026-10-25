@@ -13,6 +13,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.10.6 (2026-10-25)
+- Finish the fix for the bouncing dock. v0.10.5 stopped believing the crossings
+  that arrive the moment a slide stops, which slowed the bounce instead of ending
+  it: a pointer parked on the edge produces a fresh crossing every time the dock
+  settles. A leave is now only taken seriously when the dock is sitting still *and*
+  the pointer has moved since it arrived -- a pointer that has not moved cannot
+  have left -- so a stationary pointer keeps the dock out however long it rests
+  there, and moving away still hides it.
+
 ** v0.10.5 (2026-10-25)
 - Fix the dock bouncing at the screen edge in auto-hide mode. A pointer resting on
   the edge leaves the dock's revealing strip under it when the dock is in, and one
