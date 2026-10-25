@@ -13,6 +13,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.10.3 (2026-10-25)
+- Fix the icon zoom tests so the dock can be packaged again. They build widgets,
+  which a package build's sandbox has no display for, and GTK does not fail
+  politely there -- it crashed. They now report the "skipped" status the other UI
+  tests use, so a builder without a Wayland socket gets a clean run.
+
 ** v0.10.2 (2026-10-25)
 - Make the fish-eye magnification cheap and smooth. Hovering used to ask the icon
   theme for the artwork at every pixel size the pointer passed through, and every
