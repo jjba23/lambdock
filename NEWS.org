@@ -9,6 +9,19 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- `dock-capsule-padding`: how much room sits between the capsule's ends and the
+  first/last icon, in pixels (0 … 96, default 12). It was a compile-time
+  constant, which is why the dock's ends could not be matched to the OS X one;
+  the theme's own button padding still adds on top of it.
+- The shelf material is now measured rather than guessed: the slab is a wash that
+  is densest where it meets the screen edge (~0.74 alpha) and thins out towards
+  the icons (~0.38), with the 3px grey lip and the bright specular line the real
+  dock has along that edge. Over a dark wallpaper it reads as glass instead of as
+  a white bar, and it is defined once in the shelf modifier, so every theme that
+  wears the shelf gets it.
+- New theme `macos-mavericks-dark`: the same slab in smoked graphite, for dark
+  sessions. Same geometry knobs, same structure, its own material.
+
 - Fix the icon reflections. They were mirroring a `GtkWidgetPaintable` that had
   been created before its icon was ever drawn, which reports a size but paints
   nothing -- so the glass showed only the contact shadow, a flat grey strip where

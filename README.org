@@ -881,6 +881,7 @@ nothing at all.
 | ~dock-position~               | ~'bottom~                    | Screen edge to attach to: ~'bottom~, ~'top~, ~'left~, ~'right~.                 |
 | ~dock-icon-size~              | ~48~                         | Icon pixel size.                                                               |
 | ~dock-item-spacing~           | ~4~                          | Gap between dock items in px (0 … 64). The theme's padding adds to it.          |
+| ~dock-capsule-padding~        | ~12~                         | Room between the capsule's ends and the icons, in px (0 … 96). The theme's own button padding adds to it. |
 | ~dock-items~                  | ~'()~                        | The item list -- launchers, separators and dynamic widgets, in order.          |
 | ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
 | ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
@@ -1248,11 +1249,13 @@ of them is a CSS file you are free to read, copy and argue with.
   capsule with a white running dot, echoing macOS 11.
 - *macOS Ventura / Sonoma* 🍎 (~'macos-ventura~): darker, denser frosted capsule
   with a stronger shadow and a small dock dot, echoing macOS 13/14.
-- *macOS Mavericks* 🍎 (~'macos-mavericks~): the last of the 3D OS X docks -- dark
-  blue-gray frosted glass, a bright specular bevel and a glowing blue running
-  dot. Pair it with a negative ~dock-shelf-margin~ and a
-  ~dock-reflection~ (see [[#shelf][The glass shelf]]) for the platinum slab with
-  mirrored icons.
+- *macOS Mavericks* 🍎 (~'macos-mavericks~): the last of the 3D OS X docks -- the
+  platinum slab, with a bright specular line along the screen edge and a
+  translucent body that thins out towards the icons. Pair it with a negative
+  ~dock-shelf-margin~, a ~dock-shelf-flare~ and a ~dock-reflection~
+  (see [[#shelf][The glass shelf]]) for the full 3D shelf with mirrored icons. Its
+  dark sibling, ~'macos-mavericks-dark~, is the same slab in smoked graphite for
+  a dark session, with the same geometry.
 - *Windows XP (Luna)* 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised,
   beveled task buttons; running apps look pressed.
 
@@ -1341,12 +1344,18 @@ capsule and styles the title labels when needed.
 :CUSTOM_ID: spacing
 :END:
 
-Two numbers decide how the row of icons looks:
+Three numbers decide how the row of icons looks:
 
-| Option               | Default | What it does                          |
-|----------------------+---------+---------------------------------------|
-| ~dock-icon-size~     | ~48~    | How big each icon is drawn, in px.    |
-| ~dock-item-spacing~  | ~4~     | How much room sits between the items. |
+| Option                 | Default | What it does                                            |
+|------------------------+---------+----------------------------------------------------------|
+| ~dock-icon-size~       | ~48~    | How big each icon is drawn, in px.                       |
+| ~dock-item-spacing~    | ~4~     | How much room sits between the items.                    |
+| ~dock-capsule-padding~ | ~12~    | How much room sits between the capsule's ends and the first/last icon. |
+
+`dock-capsule-padding` is the *end* padding, the one that decides how much glass
+sticks out past the icons on either side. The OS X dock keeps it around ~0.25 ×
+the icon size (12px for 50px icons); with the theme's own button padding on top,
+~8~ at 48px icons lands there.
 
 The *visible* gap is ~dock-item-spacing~ plus whatever the active theme gives
 its buttons as padding and margins, so it is the knob for the rhythm while the
@@ -1367,9 +1376,17 @@ their ~6px~ / ~10px~ of padding plus the setting land right there.
 (define dock-item-spacing 16)
 #+end_src
 
-Spacing is applied live: change it from the REPL with
-~(set-dock-item-spacing! 8)~ or in =settings.scm= and the row re-lays out
-immediately. It is also what makes a dock of many items scroll sooner or later,
+#+begin_src scheme
+;; end padding: the OS X look (12px of glass past the first and last icon)
+(define dock-capsule-padding 8)   ; 8 here + ~4px of theme button padding
+
+;; flush: icons right up against the capsule's ends
+(define dock-capsule-padding 0)
+#+end_src
+
+Spacing and padding are applied live: change them from the REPL with
+~(set-dock-item-spacing! 8)~ / ~(set-dock-capsule-padding! 8)~ or in
+=settings.scm= and the row re-lays out immediately. It is also what makes a dock of many items scroll sooner or later,
 since the items have to fit on screen either way.
 
 ** The glass shelf: one dock, any shape 🐆
@@ -1463,20 +1480,30 @@ stays at 0:
 (define dock-theme 'macos-mavericks)   ; platinum slab material
 
 (define dock-icon-size 48)
-(define dock-shelf-margin -23)         ; icons overhang by 23px
-(define dock-shelf-front 19)           ; 19px of glass in front
-(define dock-reflection 0.38)          ; mirrors fill that glass
-(define dock-reflection-intensity 0.55)
-(define dock-reflection-blur 0.05)
-(define dock-shelf-flare 26)           ; wider at the screen edge: the 3D shelf
+(define dock-shelf-margin -24)         ; icons overhang by half an icon
+(define dock-shelf-front 24)           ; slab = 48px = exactly one icon
+(define dock-reflection 0.30)          ; mirror band inside that front glass
+(define dock-reflection-intensity 0.70)
+(define dock-reflection-blur 0.03)
+(define dock-shelf-flare 24)           ; wider at the screen edge: the 3D shelf
+(define dock-capsule-padding 8)        ; ~12px of glass past the end icons
 ;; tilt stays 0 - the real dock is orthographic, the flare does the keystone
 (define dock-shelf-tilt 0)
 #+end_src
 
+#+begin_src scheme
+;; ... and the same slab in smoked graphite
+(define dock-theme 'macos-mavericks-dark)
+#+end_src
+
 Those numbers are measured off a screenshot of the real 10.9 dock, scaled from
-its 50px icons to 48px: a 46px slab (0.92 icons), icons overhanging it by 0.48
-icons, a mirror band that fills the 19px of front glass, and sides that flare
-~27px per side (0.54 icons) towards the screen. ~dock-shelf-flare~ is what makes
+its 49px icons to 48px: a slab exactly one icon tall, icons overhanging it by
+half an icon (so their centre sits on the slab's top edge), a mirror band of
+~0.30 icons inside the 24px of front glass, ends padded by ~0.25 icons, and
+sides that flare ~0.5 icons per side towards the screen.
+
+For a dark session the same geometry works with
+~'macos-mavericks-dark~ -- swap the theme line and nothing else moved: ~dock-shelf-flare~ is what makes
 the silhouette look like a shelf rather than a rectangle: the edge lying on the
 screen keeps its width and the inner edge is pulled in, so the icons and their
 padding stay on the slab while its skirt spreads out. It works on all four
@@ -1621,7 +1648,8 @@ corners) is CSS, and it is theme-agnostic:
 | Where | What it styles |
 |-------+----------------|
 | =resources/css/shelf.css= | the generic light frosted slab, loaded for *any* theme while the shelf is active |
-| =resources/css/macos-mavericks.css= | the platinum slab: near-white surface, bluish thickness band, bright outer specular line |
+| =resources/css/macos-mavericks.css= | the platinum slab: a white wash that is densest at the screen edge (~0.74 alpha), thins towards the icons (~0.38), with a 3px grey lip and a bright specular line along that edge |
+| =resources/css/macos-mavericks-dark.css= | the same slab in smoked graphite, same structure and geometry |
 | =~/.config/lambdock/styles.css= | your overrides, loaded last at user priority |
 
 Classes you can hook into:

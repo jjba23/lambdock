@@ -50,26 +50,31 @@
   padding: 0;
   border-radius: 10px 10px 16px 16px;
 
-  /* 0deg = towards the top, so the first stops sit on the outer edge. */
+  /* The glass as a white wash over whatever is behind the dock: a 3px grey lip
+   * on the screen edge, a bright specular line, then a body that is most opaque
+   * where it meets that edge (~0.74) and most transparent at the inner edge
+   * (~0.38). The numbers come from measuring the OS X dock, and they are what
+   * keeps the slab reading as glass instead of as a white bar. 0deg points up,
+   * so the first stops are the outer edge. */
   background-image: linear-gradient(
     0deg,
-    rgba(255, 255, 255, 0.95) 0px,
-    rgba(219, 227, 237, 0.90) 1px,
-    rgba(186, 198, 214, 0.84) 5px,
-    rgba(238, 243, 249, 0.90) 6px,
-    rgba(250, 252, 255, 0.86) 18px,
-    rgba(219, 227, 236, 0.82) 100%
+    rgba(122, 131, 141, 0.46) 0px,
+    rgba(122, 131, 141, 0.46) 3px,
+    rgba(255, 255, 255, 0.96) 3px,
+    rgba(255, 255, 255, 0.78) 4px,
+    rgba(226, 234, 243, 0.66) 9px,
+    rgba(214, 225, 238, 0.52) 45%,
+    rgba(204, 216, 230, 0.38) 100%
   );
 
-  border-top: 1px solid rgba(255, 255, 255, 0.90);
-  border-left: 1px solid rgba(255, 255, 255, 0.45);
-  border-right: 1px solid rgba(255, 255, 255, 0.45);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.65);
+  border-top: 1px solid rgba(255, 255, 255, 0.38);
+  border-left: 1px solid rgba(178, 190, 205, 0.55);
+  border-right: 1px solid rgba(178, 190, 205, 0.55);
+  border-bottom: 1px solid rgba(140, 152, 166, 0.60);
 
   box-shadow:
-    0 -6px 18px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    inset 0 -14px 22px rgba(120, 140, 165, 0.16);
+    0 -8px 20px rgba(0, 0, 0, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 /* Top docks: the whole slab is mirrored around the horizontal axis. */
@@ -77,12 +82,13 @@
   border-radius: 16px 16px 10px 10px;
   background-image: linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.95) 0px,
-    rgba(219, 227, 237, 0.90) 1px,
-    rgba(186, 198, 214, 0.84) 5px,
-    rgba(238, 243, 249, 0.90) 6px,
-    rgba(250, 252, 255, 0.86) 18px,
-    rgba(219, 227, 236, 0.82) 100%
+    rgba(122, 131, 141, 0.46) 0px,
+    rgba(122, 131, 141, 0.46) 3px,
+    rgba(255, 255, 255, 0.96) 3px,
+    rgba(255, 255, 255, 0.78) 4px,
+    rgba(226, 234, 243, 0.66) 9px,
+    rgba(214, 225, 238, 0.52) 45%,
+    rgba(204, 216, 230, 0.38) 100%
   );
 }
 
@@ -91,12 +97,13 @@
   border-radius: 10px 16px 16px 10px;
   background-image: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.95) 0px,
-    rgba(219, 227, 237, 0.90) 1px,
-    rgba(186, 198, 214, 0.84) 5px,
-    rgba(238, 243, 249, 0.90) 6px,
-    rgba(250, 252, 255, 0.86) 18px,
-    rgba(219, 227, 236, 0.82) 100%
+    rgba(122, 131, 141, 0.46) 0px,
+    rgba(122, 131, 141, 0.46) 3px,
+    rgba(255, 255, 255, 0.96) 3px,
+    rgba(255, 255, 255, 0.78) 4px,
+    rgba(226, 234, 243, 0.66) 9px,
+    rgba(214, 225, 238, 0.52) 45%,
+    rgba(204, 216, 230, 0.38) 100%
   );
 }
 
@@ -104,12 +111,13 @@
   border-radius: 16px 10px 10px 16px;
   background-image: linear-gradient(
     270deg,
-    rgba(255, 255, 255, 0.95) 0px,
-    rgba(219, 227, 237, 0.90) 1px,
-    rgba(186, 198, 214, 0.84) 5px,
-    rgba(238, 243, 249, 0.90) 6px,
-    rgba(250, 252, 255, 0.86) 18px,
-    rgba(219, 227, 236, 0.82) 100%
+    rgba(122, 131, 141, 0.46) 0px,
+    rgba(122, 131, 141, 0.46) 3px,
+    rgba(255, 255, 255, 0.96) 3px,
+    rgba(255, 255, 255, 0.78) 4px,
+    rgba(226, 234, 243, 0.66) 9px,
+    rgba(214, 225, 238, 0.52) 45%,
+    rgba(204, 216, 230, 0.38) 100%
   );
 }
 
