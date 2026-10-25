@@ -1917,13 +1917,13 @@ All of these are compared case- and punctuation-insensitively (~org.gnome.Nautil
 retries once without the vendor prefix, so ~SystemMonitor~ still finds
 ~org.gnome.SystemMonitor~. A few real examples:
 
-| Compositor app id                      | Resolved from            | Desktop entry                              |
-|----------------------------------------+--------------------------+--------------------------------------------|
-| ~org.gnome.SystemMonitor~              | desktop id               | =org.gnome.SystemMonitor.desktop=          |
-| ~jetbrains-idea~                       | ~StartupWMClass=~        | =jetbrains-idea-<uuid>.desktop=            |
-| ~idea~                                 | ~Exec=~ base name        | =jetbrains-idea-<uuid>.desktop=            |
-| ~org.pulseaudio.pavucontrol~           | desktop id               | =org.pulseaudio.pavucontrol.desktop=       |
-| ~SystemMonitor~                        | vendor-prefix retry      | =org.gnome.SystemMonitor.desktop=          |
+| Compositor app id            | Resolved from       | Desktop entry                        |
+|------------------------------+---------------------+--------------------------------------|
+| ~org.gnome.SystemMonitor~    | desktop id          | =org.gnome.SystemMonitor.desktop=    |
+| ~jetbrains-idea~             | ~StartupWMClass=~   | =jetbrains-idea-<uuid>.desktop=      |
+| ~idea~                       | ~Exec=~ base name   | =jetbrains-idea-<uuid>.desktop=      |
+| ~org.pulseaudio.pavucontrol~ | desktop id          | =org.pulseaudio.pavucontrol.desktop= |
+| ~SystemMonitor~              | vendor-prefix retry | =org.gnome.SystemMonitor.desktop=    |
 
 A pinned launcher resolves the same way, from its own ~exec~, then its icon, then
 its ~app-id~, and remembers the entry it landed on. Matching compares those two
@@ -1943,13 +1943,13 @@ a readable label, so the app id is turned into one: the =.desktop= suffix goes, 
 reverse-DNS vendor prefix goes, camel case and separators are split into words, and
 all-lowercase words are capitalised (acronyms are left alone).
 
-| App id                     | Derived name      |
-|----------------------------+-------------------|
-| ~org.gnome.SystemMonitor~  | System Monitor    |
-| ~google-chrome~            | Google Chrome     |
-| ~wezterm~                  | Wezterm           |
-| ~ZFSManager~               | ZFS Manager       |
-| ~Freebuff~                 | Freebuff          |
+| App id                    | Derived name   |
+|---------------------------+----------------|
+| ~org.gnome.SystemMonitor~ | System Monitor |
+| ~google-chrome~           | Google Chrome  |
+| ~wezterm~                 | Wezterm        |
+| ~ZFSManager~              | ZFS Manager    |
+| ~Freebuff~                | Freebuff       |
 
 The same idea saves the icon: if a configured icon name is not resolvable at all
 (not a resource, not a file, not in the icon theme, not a ~-symbolic~ sibling), the
