@@ -9,6 +9,32 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Stacks: `(stack-item #:name "Downloads" #:path "~/Downloads" #:view-mode 'grid)`
+  turns a dock icon into a folder popover, macOS Downloads style. The popover
+  lists the folder (dot-files skipped, folders first, capped at 300 entries) in
+  one of three view modes: an icon `grid`, a `list` of rows, or a `fan` of tilted
+  cards painted by hand (GTK cannot rotate child widgets, so the fan snapshots
+  rounded cards and hit-tests the clicks by rotating the pointer back into each
+  card). The header shows the folder name, the item count and a button that opens
+  the folder; the view mode can be switched from the context menu and is
+  remembered per stack.
+- The launchpad: `(launchpad-item)` adds an icon that opens a full screen
+  layer-shell overlay with a search field and a grid of every installed
+  application, parsed from the XDG desktop entries (locale-aware `Name`, `Exec`
+  field codes stripped, `Hidden`/`NoDisplay` honoured, desktop ids deduplicated so
+  Flatpak exports override the identical system entry). The list is rescanned on
+  every open, `Escape` or a click on the backdrop closes it.
+- Drag and drop: reorder icons by dragging them along the dock, drag one out of
+  the dock to remove it, drop a `.desktop` file to add that application, or drop a
+  folder to add it as a stack. Everything is stored in
+  `$XDG_STATE_HOME/lambdock/layout-<settings>.scm` (order, removals, additions and
+  per-stack view modes) and replayed on top of the settings file, so a generated
+  configuration keeps working; `(dock-layout-reset! path)` forgets the overrides.
+- Context menus: "Remove from Dock" on every pinned item, plus view-mode switching
+  and "Open Folder" for stacks.
+- New theme independent overlay stylesheet (`resources/css/overlays.css`) for
+  stacks, the launchpad and the drag feedback, so they look right whatever dock
+  theme is active.
 - Add `dock-item-spacing` (default 4px) for the gap between dock items, plus
   `set-dock-item-spacing!` for live changes. The default reproduces the OS X
   dock's rhythm (icons about 0.3 x their size apart, counting the theme's button
@@ -16,6 +42,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - Fix the REPL setters: `reload-dock!` was being defined in `(guile-user)`
   instead of `(lambdock core)`, so `(set-dock-theme! ...)`,
   `(set-dock-icon-size! ...)` and friends never redrew the dock.
+- Tests: three new C suites (`desktop_entry`, `stack`, `dock_dnd`, 13 in total)
+  and 30 new Scheme assertions (163 in total) for the new item types and the dock
+  layout overrides. The C tests now run from the source root so they always
+  exercise the modules in this tree.
 
 ---------
 

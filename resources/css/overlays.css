@@ -1,0 +1,118 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK OVERLAYS - STACKS, LAUNCHPAD & DRAG FEEDBACK
+ * =========================================================================
+ * These widgets live outside the dock capsule (a stack's popover and the
+ * full screen launchpad), so their styling does not belong to any single theme.
+ * The selectors only use lambdock-specific class names and are loaded for the
+ * whole display, whatever theme the dock is using.
+ * ========================================================================= */
+
+/* -------------------------------------------------------------------------
+ * DRAG AND DROP FEEDBACK
+ * ------------------------------------------------------------------------- */
+
+button.flat.dragging {
+  opacity: 0.35;
+}
+
+/* -------------------------------------------------------------------------
+ * STACK POPOVER
+ * ------------------------------------------------------------------------- */
+
+.stack-popover {
+  min-width: 260px;
+}
+
+.stack-popover .title {
+  font-weight: bold;
+}
+
+.stack-scroll {
+  border: none;
+  background: transparent;
+}
+
+.stack-grid button.stack-entry {
+  padding: 6px;
+  border-radius: 10px;
+  min-width: 72px;
+}
+
+.stack-grid button.stack-entry:hover {
+  background-color: alpha(currentColor, 0.12);
+}
+
+.stack-grid button.stack-entry label {
+  font-size: 0.85em;
+}
+
+.stack-list button.stack-row {
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.stack-list button.stack-row:hover {
+  background-color: alpha(currentColor, 0.10);
+}
+
+.stack-view-active {
+  font-weight: bold;
+}
+
+/* -------------------------------------------------------------------------
+ * LAUNCHPAD
+ * ------------------------------------------------------------------------- */
+
+window.launchpad {
+  background-color: rgba(18, 18, 24, 0.78);
+  color: #f5f5f7;
+}
+
+.launchpad-search {
+  border-radius: 18px;
+  padding: 6px 14px;
+  background-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  font-size: 1.1em;
+}
+
+.launchpad-grid {
+  padding: 6px;
+}
+
+button.launchpad-tile {
+  padding: 10px;
+  border-radius: 14px;
+  min-width: 96px;
+  color: #f5f5f7;
+}
+
+button.launchpad-tile:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+button.launchpad-tile:active {
+  background-color: rgba(255, 255, 255, 0.22);
+}
+
+button.launchpad-tile label {
+  font-size: 0.9em;
+}

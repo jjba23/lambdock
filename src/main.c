@@ -21,8 +21,10 @@
 #include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui/shelf.h"
+#include "ui/dock_dnd.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
+#include "ui/launchpad.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
 #include <glib/gi18n.h>
@@ -752,6 +754,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
+  dock_dnd_setup(state);
 
   g_active_states = g_list_append(g_active_states, state);
 
@@ -772,6 +775,27 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 }
 
 /**
+ * load_overlay_css:
+ * Loads the theme independent overlay stylesheet (stack popovers, the
+ * launchpad and drag feedback) for the whole display. Overlays are not part of
+ * any dock capsule, so they must not be scoped to a theme class.
+ */
+static void load_overlay_css(void) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return;
+
+  GtkCssProvider *provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_resource(
+      provider, "/org/jointhefreeworld/lambdock/css/overlays.css");
+
+  gtk_style_context_add_provider_for_display(
+      display, GTK_STYLE_PROVIDER(provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  g_object_unref(provider);
+}
+
+/**
  * activate:
  * Core setup callback triggered when `GtkApplication` starts up.
  */
@@ -789,6 +813,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   // Initialize GTK desktop icon resolver
   setup_icon_theme();
+
+  // Theme independent styling for stacks, the launchpad and drag feedback
+  load_overlay_css();
 
   // --- Global Application Menu Actions ---
   GSimpleAction *about_action = g_simple_action_new("about", NULL);

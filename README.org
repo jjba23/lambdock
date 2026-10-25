@@ -288,6 +288,14 @@ tangible reality.
 - *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
   Scheme thunks you can replace with your own pollers; see
   [[#dynamic-widgets][Dynamic widgets]].
+- *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
+  as an icon grid, a list, or a mac-style fan of tilted cards; see [[#stacks][Stacks]].
+- *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
+  parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
+- *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
+  to remove it, drop a ~.desktop~ file to add an application or a folder to add a
+  stack -- and the layout survives restarts; see
+  [[#drag-and-drop][Rearranging the dock]].
 - *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
   as a floating capsule or a full-width taskbar with window titles.
 - *Free software*: GPL-3.0-or-later, with documentation under the GNU FDL v1.3 or
@@ -366,6 +374,125 @@ after a popover closes, 600 ms after the pointer leaves) so that a hasty
 mouse movement does not chase the dock away.  The hide/show is driven by
 =gtk_widget_add_tick_callback=, so it stays in step with your display's refresh
 rate, 60 Hz or 120 Hz or whatever your compositor gives it.
+
+** Stacks: a folder on the dock 📁
+:PROPERTIES:
+:CUSTOM_ID: stacks
+:END:
+
+A *stack* is a dock icon that opens the contents of a directory -- the macOS
+Downloads stack, except that you decide which folder it shows.  Add one with
+~stack-item~:
+
+#+begin_src scheme
+(define dock-items
+  (list (stack-item #:name "Downloads"   ; what the header and tooltip say
+                    #:path "~/Downloads" ; the folder to show ("~" is expanded)
+                    #:view-mode 'grid)   ; 'grid, 'list or 'fan
+        (stack-item #:name "Screenshots"
+                    #:path "~/Pictures/Screenshots"
+                    #:icon "folder-pictures"
+                    #:view-mode 'fan)))
+#+end_src
+
+| Keyword        | Default    | What it does                                        |
+|----------------+------------+-----------------------------------------------------|
+| ~#:name~       | ~"Stack"~  | Header of the popover and the tooltip.              |
+| ~#:path~       | ~""~       | Folder to list. A leading ~/~ is expanded to ~$HOME~. |
+| ~#:icon~       | ~"folder"~ | The icon of the dock item itself.                   |
+| ~#:view-mode~  | ~'grid~    | How the popover lays out the contents.              |
+
+Clicking the icon opens a popover with the folder's contents (hidden dot-files
+are skipped, folders come first, then names; at most 300 entries are listed so a
+gigantic directory cannot lock the UI up):
+
+- *grid*: a flow box of icon tiles, four to six per row, the default;
+- *list*: one row per entry with its content-type icon, close to a file
+  manager's list view;
+- *fan*: an arc of tilted cards, macOS style.  GTK cannot rotate child widgets,
+  so this view paints its cards itself (rounded rectangle, icon, name) and
+  hit-tests the click by rotating the pointer back into each card's frame.
+
+The header carries the folder name, how many items are inside and a button to
+open the folder in your file manager.  Right-clicking the stack switches the view
+mode (the choice is remembered per stack) or opens the folder.  Changing it from
+a config file is the same thing: ~(stack-item #:view-mode 'list ...)~.
+
+Empty folders are not an error: the popover says "This folder is empty".
+
+** The launchpad 🚀
+:PROPERTIES:
+:CUSTOM_ID: launchpad
+:END:
+
+One item puts every installed application one click (and half a keystroke) away:
+
+#+begin_src scheme
+(define dock-items
+  (list (launchpad-item)                          ; name: "Launchpad"
+        (launchpad-item #:name "Apps"             ; or your own label
+                        #:icon "view-app-grid-symbolic")))
+#+end_src
+
+Clicking it covers the screen with a layer-shell overlay: a search field, and
+below it every application found in the XDG application directories, sorted by
+name and shown as icon tiles.  Type to filter (the name and the command line are
+both searched), press *Enter* on a result... nothing else: click a tile to launch
+it, press *Escape* or click the backdrop to go back to whatever you were doing.
+
+Under the hood it parses the ~.desktop~ entries with ~GKeyFile~ (locale aware
+~Name~, ~Exec~ with the ~%f~ / ~%U~ / ~%i~ field codes stripped, ~Icon~), skips
+what the user or the distribution hid (~Hidden=true~, ~NoDisplay=true~) and
+deduplicates by desktop file name, so a Flatpak export overrides the identical
+system entry.  The list is rescanned every time the launchpad opens, so an app
+you just installed is there without restarting the dock.
+
+** Rearranging the dock with drag and drop 🖱️
+:PROPERTIES:
+:CUSTOM_ID: drag-and-drop
+:END:
+
+The dock is not a fixed row of icons: it is something you arrange.
+
+- *Reorder*: drag any icon along the dock and drop it where you want it.  The
+  item is inserted on the side of the icon you dropped over.
+- *Remove*: drag an icon *out* of the dock and let go anywhere that is not the
+  dock (the desktop, a window, empty space).  The icon goes away; nothing is
+  uninstalled, the app just leaves the dock.
+- *Add an application*: drag a ~.desktop~ file from your file manager onto the
+  dock and it becomes a launcher, using the entry's own name, icon and command.
+- *Add a stack*: drag a *folder* onto the dock and it becomes a stack showing that
+  folder.
+
+There are also two menu items for the impatient: right-click any item and pick
+*Remove from Dock*, and right-click a stack to change its view mode.
+
+Where do the changes go?  Your settings file stays the source of truth, so
+drag-and-drop writes a small override file next to the dock's state instead of
+rewriting (or fighting with) a configuration that other tools may generate:
+
+#+begin_src scheme
+;; ~/.local/state/lambdock/layout-settings.scm  (or $XDG_STATE_HOME/lambdock/)
+;; Written automatically by drag and drop in the dock.
+;; Delete this file to go back to the items in your settings file.
+((order "app:Firefox" "app:Terminal" "stack:Downloads")
+ (removed "app:Files")
+ (added ("app" "Slack" "slack" "slack --start" "")
+        ("stack" "Shots" "folder" "/home/you/Pictures/Shots" "grid"))
+ (views ("stack:Downloads" . list)))
+#+end_src
+
+It records four independent things: the item *order*, the items you dragged
+*out*, the items you dragged *in*, and per-stack *view modes*.  On the next start
+they are replayed on top of whatever the settings file says, so regenerating your
+configuration keeps working: new items appear, the ones you removed stay removed,
+and the stack you switched to a fan stays a fan.  Delete the file (or call
+~(dock-layout-reset! path)~ from the REPL) to go back to the pure configuration.
+
+Item identity is =kind:name= (the Scheme procedure ~dock-item-key~), which is why
+the file is readable and why two items with the same name and kind are treated as
+the same item.  Separators have no stable name, so they are not listed at all:
+they keep their place between their neighbours.
 
 ------------------
 
@@ -810,6 +937,8 @@ presets.
 | ~(app-item ...)~                | Record      | Custom application launcher definition              | ~#:name~, ~#:icon~, ~#:exec~, ~#:hover-animate?~                                                       |
 | ~(dynamic-item ...)~            | Record      | Dynamic polling widget showing live textual data    | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~                       |
 | ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
+| ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~, ~'fan~), ~#:hover-animate?~             |
+| ~(launchpad-item ...)~          | Record      | Opens the full-screen application grid              | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
 | ~(preset-launcher 'symbol)~     | Record      | Standard launcher resolved from the preset list      | Symbol (e.g. ~'emacs~, ~'alacritty~)                                                                    |
 | ~(preset-launchers-for 'a 'b)~  | List        | Batch helper returning a list of preset launchers    | Variadic list of symbols, or one list of symbols                                                       |
 | ~(preset-icon 'symbol)~         | String      | Resolves the default icon name for a given preset    | Symbol                                                                                                |
@@ -2011,15 +2140,19 @@ ninja -C build test
 #+end_src
 
 - *C tests* (~tests/test_*.c~): dock items, dock window, Guile bridge, popover
-  menu, theme engine, icon resolver and the glass shelf.  These build and
-  exercise real GTK widgets through Meson (~test_dock_item~, ~test_dock_window~,
-  ~test_popover_menu~, ~test_theme_engine~, ~test_icon_resolver~,
-  ~test_shelf~, ~test_guile_bridge~), so they catch GTK behaviour, not just
-  arithmetic.
+  menu, theme engine, icon resolver, the glass shelf, the desktop-entry parser,
+  stacks and drag and drop.  These build and exercise real GTK widgets through
+  Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
+  ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
+  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~), so they catch GTK
+  behaviour, not just arithmetic.  The stack tests cover the directory listing
+  (dot-files, ordering, missing folders) and the fan's rotation maths; the drag
+  and drop tests cover the drop-position arithmetic, the list reordering and the
+  item identity that the layout overrides are built on.
 - *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by
   [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]): the pure-Guile configuration engine -- state,
-  items, presets, loader and core -- with no display server and no C runtime
-  needed, so they are fast and easy to run in a loop.
+  items, presets, loader, layout overrides and core -- with no display server and
+  no C runtime needed, so they are fast and easy to run in a loop.
 
 The Nix package runs exactly this suite under
 [[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a

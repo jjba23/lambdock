@@ -20,6 +20,7 @@
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 format)
   #:use-module (lambdock logger)
+  #:use-module (lambdock layout)
   #:export ( ;Configuration Entry Point
              configure-dock!
             <dock-config>
@@ -247,10 +248,14 @@
 ;; =============================================================================
 
 (define (get-dock-items . args)
-  (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
-    (dock-config-items cfg)))
+  (let* ((key (if (null? args)
+                  'default
+                  (car args)))
+         (cfg (get-dock-config key)))
+    ;; Drag and drop edits (order, additions, removals, stack view modes) are
+    ;; replayed on top of the configured items, so the settings file stays the
+    ;; source of truth while the running dock remains freely rearrangeable.
+    (apply-dock-overrides (dock-config-items cfg) key)))
 
 (define (get-dock-position . args)
   (let ((cfg (get-dock-config (if (null? args)

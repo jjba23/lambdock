@@ -22,6 +22,7 @@
 #include "ui/shelf.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
+#include "ui/launchpad.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
 #include <glib/gi18n.h>
@@ -1033,6 +1034,10 @@ void destroy_dock_instance(LambdockState *state) {
     g_free(state->active_theme_class);
     state->active_theme_class = NULL;
   }
+
+  /* The launchpad is a global overlay that belongs to no single dock: take it
+   * down with the dock it was opened from (it is recreated lazily). */
+  lambdock_launchpad_shutdown();
 
   // Unregister from active global state list
   unregister_dock_state(state);

@@ -29,11 +29,16 @@
                         dock-item-poll-fn
                         dock-item-poll-interval
                         dock-item-hover-animate?
+                        dock-item-path
+                        dock-item-view-mode
+                        dock-item-key
 
                         ;; Generic Constructors
                         app-item
                         separator-item
                         dynamic-item
+                        stack-item
+                        launchpad-item
 
                         ;; Dynamic Item Helpers & Presets
                         get-used-ram-percent
@@ -51,7 +56,12 @@
 ;; Data Structures
 ;; =============================================================================
 
-;; Record type definition with accessors for polling logic and animation flags
+;; Record type definition with accessors for polling logic and animation flags.
+;;
+;; `path` and `view-mode` are only meaningful for stacks: a stack is a dock icon
+;; that shows the contents of a directory (like the macOS Downloads stack), and
+;; `view-mode` picks how those contents are laid out ('grid, 'list or 'fan).
+;; Every other item keeps them at "" / 'grid.
 (define-record-type <dock-item>
   (make-dock-item type
                   name
@@ -59,7 +69,9 @@
                   exec
                   poll-fn
                   poll-interval
-                  hover-animate?)
+                  hover-animate?
+                  path
+                  view-mode)
   dock-item?
   (type %dock-item-type)
   (name %dock-item-name)
@@ -67,7 +79,9 @@
   (exec %dock-item-exec)
   (poll-fn %dock-item-poll-fn)
   (poll-interval %dock-item-poll-interval)
-  (hover-animate? %dock-item-hover-animate?))
+  (hover-animate? %dock-item-hover-animate?)
+  (path %dock-item-path)
+  (view-mode %dock-item-view-mode))
 
 ;; Public procedure wrappers
 (define (dock-item-type item)
@@ -91,6 +105,18 @@
 (define (dock-item-hover-animate? item)
   (%dock-item-hover-animate? item))
 
+(define (dock-item-path item)
+  (%dock-item-path item))
+
+(define (dock-item-view-mode item)
+  (%dock-item-view-mode item))
+
+(define (dock-item-key item)
+  "Stable identifier of ITEM, used by the dock layout overrides to remember
+ordering, removals and additions across restarts. It matches the key the C side
+computes, so both halves of the dock agree on the identity of an item."
+  (format #f "~a:~a" (dock-item-type item) (dock-item-name item)))
+
 ;; Generic constructor for custom app launchers
 (define* (app-item #:key (name "Unknown")
                    (icon "application-x-executable")
@@ -102,7 +128,9 @@
                   exec
                   #f
                   0
-                  hover-animate?))
+                  hover-animate?
+                  ""
+                  'grid))
 
 ;; Generic constructor for separators
 (define (separator-item)
@@ -112,7 +140,9 @@
                   ""
                   #f
                   0
-                  #f))
+                  #f
+                  ""
+                  'grid))
 
 ;; Generic constructor for dynamic polling items
 (define* (dynamic-item #:key (name "Dynamic")
@@ -127,7 +157,43 @@
                   exec
                   poll-fn
                   poll-interval
-                  hover-animate?))
+                  hover-animate?
+                  ""
+                  'grid))
+
+;; A stack: a dock icon that opens a popover with the contents of a directory.
+;; `view-mode` is one of 'grid, 'list or 'fan and can be changed at runtime from
+;; the item's context menu.
+(define* (stack-item #:key (name "Stack")
+                     (icon "folder")
+                     (path "")
+                     (view-mode 'grid)
+                     (hover-animate? #t))
+  (make-dock-item 'stack
+                  name
+                  icon
+                  ""
+                  #f
+                  0
+                  hover-animate?
+                  path
+                  (if (memq view-mode '(grid list fan))
+                      view-mode
+                      'grid)))
+
+;; The launchpad: clicking it opens a full screen grid of installed apps.
+(define* (launchpad-item #:key (name "Launchpad")
+                         (icon "view-app-grid-symbolic")
+                         (hover-animate? #t))
+  (make-dock-item 'launchpad
+                  name
+                  icon
+                  ""
+                  #f
+                  0
+                  hover-animate?
+                  ""
+                  'grid))
 
 ;; =============================================================================
 ;; Dynamic Helper Procedures & Presets

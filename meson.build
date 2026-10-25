@@ -255,6 +255,10 @@ sources = files(
   'src/ui/icon_resolver.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/dock_dnd.c',
+  'src/ui/desktop_entry.c',
+  'src/ui/stack.c',
+  'src/ui/launchpad.c',
   'src/ui/shelf.c',
 )
 
@@ -286,6 +290,10 @@ full_app_sources = files(
   'src/ui/icon_resolver.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/dock_dnd.c',
+  'src/ui/desktop_entry.c',
+  'src/ui/stack.c',
+  'src/ui/launchpad.c',
   'src/ui/shelf.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
@@ -319,6 +327,19 @@ unit_tests = [
     'extra_sources': full_test_sources,
   },
   {
+    'id': 'desktop_entry',
+    'extra_sources': ['src/ui/desktop_entry.c'],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+  },
+  {
+    'id': 'stack',
+    'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'dock_dnd',
+    'extra_sources': full_test_sources,
+  },
+  {
     'id': 'guile_bridge',
     'name': 'guile_bridge_integration_tests',
     'extra_sources': full_test_sources,
@@ -337,7 +358,11 @@ foreach t : unit_tests
     include_directories: inc,
     dependencies: test_deps,
   )
-  test(test_name, exe, env: test_env)
+  # Run the C tests from the source root: the Guile bridge resolves its
+  # `scheme` load path relative to the working directory, so this makes the
+  # tests exercise the modules in this tree instead of a possibly stale copy
+  # installed under the system Guile site directory.
+  test(test_name, exe, env: test_env, workdir: meson.project_source_root())
 endforeach
 
 # ------------------------------------------------------------------------------

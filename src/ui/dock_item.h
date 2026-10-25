@@ -96,6 +96,61 @@ DockItem *create_separator_dock_item(LambdockState *state,
                                      GtkOrientation orientation);
 
 /**
+ * create_stack_dock_item:
+ * @state: Dock state the item belongs to.
+ * @name: Display name (usually the folder's base name).
+ * @icon: Icon name or path.
+ * @path: Folder whose contents the stack shows.
+ * @view: Initial view mode ("grid", "list" or "fan").
+ * @hover_animate: Whether the fisheye magnification applies.
+ *
+ * Creates a dock icon that opens a popover listing @path.
+ */
+DockItem *create_stack_dock_item(LambdockState *state, const char *name,
+                                 const char *icon, const char *path,
+                                 const char *view, gboolean hover_animate);
+
+/**
+ * create_launchpad_dock_item:
+ * Creates a dock icon that opens the full screen application grid.
+ */
+DockItem *create_launchpad_dock_item(LambdockState *state, const char *name,
+                                     const char *icon,
+                                     gboolean hover_animate);
+
+/**
+ * dock_item_key:
+ * @item: A dock item (may be NULL).
+ *
+ * Stable identity of an item, "kind:name", matching `(dock-item-key item)` on
+ * the Scheme side. The dock layout overrides use it to remember order, removals
+ * and additions across restarts.
+ *
+ * Returns: (transfer full) (nullable): the key, or NULL for a NULL item.
+ */
+char *dock_item_key(const DockItem *item);
+
+/**
+ * dock_item_kind_to_string:
+ * The Scheme-side name of @kind ("app", "dynamic", "separator", "stack",
+ * "launchpad").
+ */
+const char *dock_item_kind_to_string(LambdockItemKind kind);
+
+/**
+ * dock_item_from_widget:
+ * @widget: (nullable): any widget of a dock item (button or container).
+ *
+ * Looks the owning DockItem up from the widget's data, which is NULL once the
+ * item has been destroyed. Deferred callbacks (drag cancel, idle removal) use
+ * this instead of holding a raw DockItem pointer that a config reload may have
+ * freed in the meantime.
+ *
+ * Returns: (transfer none) (nullable): the live DockItem, if any.
+ */
+DockItem *dock_item_from_widget(GtkWidget *widget);
+
+/**
  * reload_dock_instance:
  * Hot-reloads layout, CSS themes, and pinned items on a running dock instance.
  */

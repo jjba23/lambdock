@@ -17,6 +17,11 @@
 
 #include "popover_menu.h"
 #include "../toplevel_tracker.h"
+#include "desktop_entry.h"
+#include "dock_dnd.h"
+#include "dock_item.h"
+#include "launchpad.h"
+#include "stack.h"
 #include <glib/gi18n.h>
 #include <locale.h>
 
@@ -170,6 +175,106 @@ static void on_popover_launch_clicked(DockItem *item) {
 }
 
 /* ============================================================================
+ * STACK / LAUNCHPAD / REMOVAL MENU ENTRIES
+ * ============================================================================
+ */
+
+/**
+ * StackViewAction:
+ * @item: The stack dock item whose view mode is being changed.
+ * @view: The view mode to switch to.
+ */
+typedef struct {
+  DockItem *item;
+  LambdockStackView view;
+} StackViewAction;
+
+static void free_stack_view_action(gpointer data, GClosure *closure) {
+  (void)closure;
+  g_free(data);
+}
+
+static void on_popover_stack_view(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  StackViewAction *action = (StackViewAction *)user_data;
+  if (!action || !action->item)
+    return;
+
+  lambdock_stack_set_view(action->item, action->view);
+
+  /* Rebuild the menu so the active marker follows the choice. */
+  populate_popover_menu(action->item);
+}
+
+static GtkWidget *stack_view_button(DockItem *item, LambdockStackView view,
+                                    const char *label) {
+  gboolean active = (lambdock_stack_view_from_string(item->stack_view) == view);
+
+  char *text = g_strdup_printf("%s %s", active ? "●" : "○", label);
+  GtkWidget *button = gtk_button_new_with_label(text);
+  g_free(text);
+
+  gtk_widget_add_css_class(button, "flat");
+  if (active)
+    gtk_widget_add_css_class(button, "stack-view-active");
+
+  StackViewAction *action = g_new0(StackViewAction, 1);
+  action->item = item;
+  action->view = view;
+  g_signal_connect_data(button, "clicked", G_CALLBACK(on_popover_stack_view),
+                        action, free_stack_view_action, 0);
+
+  return button;
+}
+
+static void on_popover_open_folder(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  lambdock_open_path(item->stack_path);
+
+  if (item->popover)
+    gtk_popover_popdown(GTK_POPOVER(item->popover));
+}
+
+static void on_popover_show_launchpad(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  if (item->popover)
+    gtk_popover_popdown(GTK_POPOVER(item->popover));
+
+  lambdock_launchpad_show(item->state);
+}
+
+static void on_popover_remove_item(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+
+  /* The item, its popover and this very button are about to be destroyed, so
+   * the actual removal happens from an idle callback. */
+  schedule_remove_dock_item(item);
+}
+
+/* Appends the shared trailing entry that unpins an item from the dock. */
+static void append_remove_entry(GtkWidget *vbox, DockItem *item) {
+  if (!item->is_favorite)
+    return;
+
+  gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  GtkWidget *button = gtk_button_new_with_label(_("Remove from Dock"));
+  gtk_widget_add_css_class(button, "flat");
+  gtk_widget_add_css_class(button, "destructive-action");
+  g_signal_connect(button, "clicked", G_CALLBACK(on_popover_remove_item), item);
+  gtk_box_append(GTK_BOX(vbox), button);
+}
+
+/* ============================================================================
  * POPOVER MENU UI GENERATOR & DYNAMIC REBUILDER
  * ============================================================================
  */
@@ -221,6 +326,47 @@ void populate_popover_menu(DockItem *item) {
                            "title"); // Apply CSS class `.title` for styling
   gtk_box_append(GTK_BOX(vbox), label);
   gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  // --------------------------------------------------------------------------
+  // Stack items: view mode switch + folder actions (no windows to list)
+  // --------------------------------------------------------------------------
+  if (item->kind == LAMBDOCK_ITEM_STACK) {
+    GtkWidget *views = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+    gtk_box_append(GTK_BOX(views),
+                   stack_view_button(item, LAMBDOCK_STACK_VIEW_GRID, _("Grid")));
+    gtk_box_append(GTK_BOX(views),
+                   stack_view_button(item, LAMBDOCK_STACK_VIEW_LIST, _("List")));
+    gtk_box_append(GTK_BOX(views),
+                   stack_view_button(item, LAMBDOCK_STACK_VIEW_FAN, _("Fan")));
+    gtk_box_append(GTK_BOX(vbox), views);
+
+    GtkWidget *btn_open = gtk_button_new_with_label(_("Open Folder"));
+    gtk_widget_add_css_class(btn_open, "flat");
+    g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_folder),
+                     item);
+    gtk_box_append(GTK_BOX(vbox), btn_open);
+
+    append_remove_entry(vbox, item);
+
+    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+    return;
+  }
+
+  // --------------------------------------------------------------------------
+  // Launchpad item: reopen the overlay, or unpin it
+  // --------------------------------------------------------------------------
+  if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
+    GtkWidget *btn_show = gtk_button_new_with_label(_("Show Launchpad"));
+    gtk_widget_add_css_class(btn_show, "flat");
+    g_signal_connect(btn_show, "clicked",
+                     G_CALLBACK(on_popover_show_launchpad), item);
+    gtk_box_append(GTK_BOX(vbox), btn_show);
+
+    append_remove_entry(vbox, item);
+
+    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+    return;
+  }
 
   // --------------------------------------------------------------------------
   // Open Application Window List Construction
@@ -326,5 +472,6 @@ void populate_popover_menu(DockItem *item) {
   }
 
   // Set built vertical box layout as active child container of the GTK popover
+  append_remove_entry(vbox, item);
   gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
 }

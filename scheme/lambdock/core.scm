@@ -24,6 +24,7 @@
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
   #:use-module (lambdock presets)
+  #:use-module (lambdock layout)
   #:use-module (system repl server)
   #:re-export ( ;Item structures
                 <dock-item>
@@ -35,9 +36,14 @@
                dock-item-poll-fn
                dock-item-poll-interval
                dock-item-hover-animate?
+               dock-item-path
+               dock-item-view-mode
+               dock-item-key
                app-item
                separator-item
                dynamic-item
+               stack-item
+               launchpad-item
                ;; Dynamic items
                get-used-ram-percent
                ram-item
@@ -107,7 +113,17 @@
                ;; Lookup & Convenience Functions
                preset-icon
                preset-launcher
-               preset-launchers-for)
+               preset-launchers-for
+
+               ;; Dock layout overrides (written by drag and drop)
+               dock-layout-path
+               dock-layout-ref
+               dock-layout-reset!
+               apply-dock-overrides
+               dock-layout-add!
+               dock-layout-remove!
+               dock-layout-set-order!
+               dock-layout-set-view!)
   #:export (init-dock! load-dock-config! start-repl!))
 
 ;; =============================================================================

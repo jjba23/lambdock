@@ -40,6 +40,10 @@ static const char *FAKE_MODULES =
     "            dock-item-type dock-item-name dock-item-icon dock-item-exec\n"
     "            dock-item-poll-fn dock-item-poll-interval\n"
     "            dock-item-hover-animate?\n"
+    "            dock-item-path dock-item-view-mode\n"
+    "            dock-layout-add! dock-layout-remove!\n"
+    "            dock-layout-set-order! dock-layout-set-view!\n"
+    "            get-layout-calls clear-layout-calls!\n"
     "            load-dock-config! init-dock! get-init-count get-loaded))\n"
     "(define (arg-or a) (if (pair? a) (car a) #f))\n"
     "(define (get-dock-auto-hide? . a) (equal? (arg-or a) \"auto\"))\n"
@@ -69,6 +73,10 @@ static const char *FAKE_MODULES =
     "        (vector 'app \"bad-app\" \"utilities-terminal\" \"bad\" #f 0 #t)\n"
     "        (vector 'dynamic \"Dyn\" \"appointment-new\" \"dyn\"\n"
     "                (lambda () \"TICK\") 111 #f)\n"
+    "        (vector 'stack \"Downloads\" \"folder\" \"\" #f 0 #t\n"
+    "                \"/tmp/downloads\" 'list)\n"
+    "        (vector 'launchpad \"Launchpad\" \"view-app-grid-symbolic\" \"\"\n"
+    "                #f 0 #t \"\" 'grid)\n"
     "        (vector 'separator \"\" \"\" \"\" #f 0 #f)))\n"
     "(define (dock-item-type v) (vector-ref v 0))\n"
     "(define (dock-item-name v) (vector-ref v 1))\n"
@@ -77,6 +85,21 @@ static const char *FAKE_MODULES =
     "(define (dock-item-poll-fn v) (vector-ref v 4))\n"
     "(define (dock-item-poll-interval v) (vector-ref v 5))\n"
     "(define (dock-item-hover-animate? v) (vector-ref v 6))\n"
+    "(define (dock-item-path v) (if (> (vector-length v) 7) (vector-ref v 7) \"\"))\n"
+    "(define (dock-item-view-mode v)\n"
+    "  (if (> (vector-length v) 8) (vector-ref v 8) 'grid))\n"
+    "(define %layout-calls '())\n"
+    "(define (dock-layout-add! path kind name icon arg view)\n"
+    "  (set! %layout-calls\n"
+    "        (cons (list 'add path kind name icon arg view) %layout-calls)))\n"
+    "(define (dock-layout-remove! path key)\n"
+    "  (set! %layout-calls (cons (list 'remove path key) %layout-calls)))\n"
+    "(define (dock-layout-set-order! path keys)\n"
+    "  (set! %layout-calls (cons (list 'order path keys) %layout-calls)))\n"
+    "(define (dock-layout-set-view! path key view)\n"
+    "  (set! %layout-calls (cons (list 'view path key view) %layout-calls)))\n"
+    "(define (get-layout-calls) (reverse %layout-calls))\n"
+    "(define (clear-layout-calls!) (set! %layout-calls '()))\n"
     "(define %init-count 0)\n"
     "(define (init-dock!) (set! %init-count (+ %init-count 1)))\n"
     "(define (get-init-count) %init-count)\n"
@@ -208,9 +231,9 @@ static void test_populate_dock_items(void) {
 
   populate_dock_items_for(&state);
 
-  /* The excluded "bad-app" launcher is skipped; app + dynamic + separator
-   * remain, in order. */
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 3);
+  /* The excluded "bad-app" launcher is skipped; app + dynamic + stack +
+   * launchpad + separator remain, in order. */
+  g_assert_cmpint(g_list_length(state.dock_items), ==, 5);
 
   DockItem *app = (DockItem *)g_list_nth_data(state.dock_items, 0);
   g_assert_nonnull(app);
@@ -235,7 +258,20 @@ static void test_populate_dock_items(void) {
   g_assert_true(gtk_widget_has_css_class(dyn->button, "dynamic-item"));
   g_assert_cmpint(dyn->poll_timer_id, >, 0);
 
-  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 2);
+  DockItem *stack = (DockItem *)g_list_nth_data(state.dock_items, 2);
+  g_assert_nonnull(stack);
+  g_assert_cmpint(stack->kind, ==, LAMBDOCK_ITEM_STACK);
+  g_assert_cmpstr(stack->stack_path, ==, "/tmp/downloads");
+  g_assert_cmpstr(stack->stack_view, ==, "list");
+  g_assert_true(gtk_widget_has_css_class(stack->button, "stack-item"));
+  g_assert_true(stack->is_favorite);
+
+  DockItem *launchpad = (DockItem *)g_list_nth_data(state.dock_items, 3);
+  g_assert_nonnull(launchpad);
+  g_assert_cmpint(launchpad->kind, ==, LAMBDOCK_ITEM_LAUNCHPAD);
+  g_assert_true(gtk_widget_has_css_class(launchpad->button, "launchpad-item"));
+
+  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 4);
   g_assert_nonnull(sep);
   g_assert_true(GTK_IS_SEPARATOR(sep->button));
   g_assert_true(sep->is_favorite);
@@ -260,6 +296,63 @@ static void test_populate_dock_items(void) {
   populate_dock_items_for(&nobox);
 }
 
+/* Evaluates an expression inside the fake (lambdock core) module, where the
+ * recorded layout calls live. */
+static SCM scheme_eval(const char *expression) {
+  SCM module = scm_c_resolve_module("lambdock core");
+  SCM previous = scm_set_current_module(module);
+  SCM result = scm_c_eval_string(expression);
+  scm_set_current_module(previous);
+  return result;
+}
+
+static gboolean scheme_true(const char *expression) {
+  return scm_is_true(scheme_eval(expression));
+}
+
+static void test_layout_bridge(void) {
+  scheme_eval("(clear-layout-calls!)");
+
+  /* Additions: NULL optional strings become empty strings. */
+  dock_layout_add_item("cfg", "app", "Slack", "slack", "slack --start", NULL);
+  g_assert_true(scheme_true(
+      "(equal? (get-layout-calls)"
+      "        (list (list 'add \"cfg\" \"app\" \"Slack\" \"slack\""
+      "                    \"slack --start\" \"\")))"));
+
+  scheme_eval("(clear-layout-calls!)");
+  dock_layout_remove_item("cfg", "app:Slack");
+  g_assert_true(scheme_true("(equal? (get-layout-calls)"
+                            "        (list (list 'remove \"cfg\" \"app:Slack\")))"));
+
+  /* Order: a GList of keys becomes a Scheme list, in order. */
+  scheme_eval("(clear-layout-calls!)");
+  GList *keys = NULL;
+  keys = g_list_append(keys, (gpointer)"app:A");
+  keys = g_list_append(keys, (gpointer)"stack:Downloads");
+  dock_layout_set_order("cfg", keys);
+  g_list_free(keys);
+  g_assert_true(scheme_true(
+      "(equal? (get-layout-calls)"
+      "        (list (list 'order \"cfg\" (list \"app:A\" \"stack:Downloads\"))))"));
+
+  /* Stack view modes travel as symbols, and default to 'grid. */
+  scheme_eval("(clear-layout-calls!)");
+  dock_layout_set_view("cfg", "stack:Downloads", "fan");
+  dock_layout_set_view("cfg", "stack:Other", NULL);
+  g_assert_true(scheme_true(
+      "(equal? (get-layout-calls)"
+      "        (list (list 'view \"cfg\" \"stack:Downloads\" 'fan)"
+      "              (list 'view \"cfg\" \"stack:Other\" 'grid)))"));
+
+  /* No config path means no Scheme call at all. */
+  scheme_eval("(clear-layout-calls!)");
+  dock_layout_add_item(NULL, "app", "X", "x", "x", NULL);
+  dock_layout_remove_item("cfg", NULL);
+  dock_layout_set_view("", "k", "list");
+  g_assert_true(scheme_true("(null? (get-layout-calls))"));
+}
+
 static void inner_test_guile_bridge(void *data, int argc, char **argv) {
   (void)data;
 
@@ -272,6 +365,7 @@ static void inner_test_guile_bridge(void *data, int argc, char **argv) {
   test_position_getter();
   test_is_app_excluded();
   test_reload_and_load_config();
+  test_layout_bridge();
 
   if (gtk_init_check()) {
     test_populate_dock_items();

@@ -22,6 +22,7 @@
 
 (use-modules (ice-9 format)
              (ice-9 regex)
+             (srfi srfi-1)
              (lambdock state)
              (lambdock items)
              (lambdock presets)
@@ -86,6 +87,10 @@
 (define (set-env name value)
   "Sets NAME to VALUE, or unsets it entirely when VALUE is #f."
   (if value (setenv name value) (unsetenv name)))
+
+;; Dock layout overrides live under XDG_STATE_HOME. Point it at the throwaway
+;; test root so the developer's real overrides can never leak into the tests.
+(setenv "XDG_STATE_HOME" (tmp-path "state"))
 
 (define (with-env bindings thunk)
   "Runs THUNK with an environment overlay, restoring the previous values."
@@ -550,6 +555,163 @@
 (set-dock-shelf-front! 30 %shelf-cfg)
 (check-equal "set-dock-shelf-front! updates the targeted config"
              30 (get-dock-shelf-front %shelf-cfg))
+
+
+;; =============================================================================
+;; Stacks, the launchpad and the dock layout overrides
+;; =============================================================================
+
+(define %stack (stack-item #:name "Downloads"
+                           #:path "~/Downloads"
+                           #:view-mode 'list))
+(check-equal "stack-item creates a stack item"
+             'stack (dock-item-type %stack))
+(check-equal "stack-item keeps its folder"
+             "~/Downloads" (dock-item-path %stack))
+(check-equal "stack-item keeps its view mode"
+             'list (dock-item-view-mode %stack))
+(check-equal "stack-item defaults to the folder icon"
+             "folder" (dock-item-icon %stack))
+(check-equal "stacks are keyed by kind and name"
+             "stack:Downloads" (dock-item-key %stack))
+
+(check-equal "an unknown stack view mode falls back to grid"
+             'grid (dock-item-view-mode (stack-item #:name "X"
+                                                    #:view-mode 'carousel)))
+(check-equal "the fan view mode is accepted"
+             'fan (dock-item-view-mode (stack-item #:name "X"
+                                                   #:view-mode 'fan)))
+
+(define %launchpad (launchpad-item))
+(check-equal "launchpad-item creates a launchpad"
+             'launchpad (dock-item-type %launchpad))
+(check-equal "launchpad items are keyed by kind and name"
+             "launchpad:Launchpad" (dock-item-key %launchpad))
+(check-equal "the launchpad defaults to the app grid icon"
+             "view-app-grid-symbolic" (dock-item-icon %launchpad))
+
+;; Plain app items carry no folder and the default view mode.
+(check-equal "app items have no folder"
+             "" (dock-item-path (app-item #:name "A")))
+(check-equal "app items use the grid view"
+             'grid (dock-item-view-mode (app-item #:name "A")))
+(check-equal "app item keys"
+             "app:A" (dock-item-key (app-item #:name "A")))
+
+;; --- layout overrides -------------------------------------------------------
+
+(define %layout-cfg (tmp-path "layout/settings.scm"))
+(define %layout-items
+  (list (app-item #:name "A" #:icon "a-icon" #:exec "a")
+        (app-item #:name "B" #:icon "b-icon" #:exec "b")
+        (separator-item)
+        (app-item #:name "C" #:icon "c-icon" #:exec "c")))
+
+(configure-dock! #:config-path %layout-cfg #:items %layout-items)
+
+(check-equal "the override file is named after the settings file"
+             (string-append (tmp-path "state")
+                            "/lambdock/layout-settings.scm")
+             (dock-layout-path %layout-cfg))
+
+(check-equal "without overrides the configured order is kept"
+             '("app:A" "app:B" "separator:" "app:C")
+             (map dock-item-key (get-dock-items %layout-cfg)))
+
+;; Reordering: C first, then A. Items the order does not mention (including the
+;; unnamed separator) keep their place after their predecessor.
+(dock-layout-set-order! %layout-cfg (list "app:C" "app:A"))
+(check-equal "set-order reorders and keeps separators in place"
+             '("app:C" "app:A" "app:B" "separator:")
+             (map dock-item-key (get-dock-items %layout-cfg)))
+
+;; Removal.
+(dock-layout-remove! %layout-cfg "app:B")
+(check-equal "remove drops an item from the dock"
+             '("app:C" "app:A" "separator:")
+             (map dock-item-key (get-dock-items %layout-cfg)))
+
+;; Addition.
+(dock-layout-add! %layout-cfg "app" "D" "d-icon" "d --start" "")
+(check-equal "add appends a droplet item"
+             '("app:C" "app:A" "separator:" "app:D")
+             (map dock-item-key (get-dock-items %layout-cfg)))
+(check-equal "the added item keeps its icon and command"
+             '("d-icon" "d --start")
+             (let ((item (car (reverse (get-dock-items %layout-cfg)))))
+               (list (dock-item-icon item) (dock-item-exec item))))
+
+;; A dropped folder becomes a stack.
+(dock-layout-add! %layout-cfg "stack" "Shots" "folder" "/tmp/shots" "list")
+(check-equal "add remembers stack folders"
+             "/tmp/shots"
+             (let ((item (car (reverse (get-dock-items %layout-cfg)))))
+               (dock-item-path item)))
+
+;; Per-stack view modes are remembered too.
+(dock-layout-set-view! %layout-cfg "stack:Shots" 'fan)
+(check-equal "set-view switches a stack's view mode"
+             'fan
+             (let ((item (car (reverse (get-dock-items %layout-cfg)))))
+               (dock-item-view-mode item)))
+
+;; The override file is real Scheme data, so it can be read back with `read`.
+(define %saved-layout
+  (call-with-input-file (dock-layout-path %layout-cfg) read))
+(check "the override file contains an alist"
+       (and (list? %saved-layout) (every pair? %saved-layout)))
+(check-equal "the saved order is stored"
+             '("app:C" "app:A")
+             (assq-ref %saved-layout 'order))
+(check-equal "the saved removals are stored"
+             '("app:B")
+             (assq-ref %saved-layout 'removed))
+(check-equal "the saved additions are stored"
+             '(("app" "D" "d-icon" "d --start" "")
+               ("stack" "Shots" "folder" "/tmp/shots" "list"))
+             (assq-ref %saved-layout 'added))
+(check-equal "the saved stack view mode is stored"
+             'fan
+             (assoc-ref (assq-ref %saved-layout 'views) "stack:Shots"))
+
+;; A hand written override file is applied on load: this is what makes the
+;; layout survive a restart.
+(define %preset-cfg (tmp-path "layout/preset-settings.scm"))
+(write-file (dock-layout-path %preset-cfg)
+            "((order \"app:Z\" \"app:A\")
+  (removed \"app:Skip\")
+  (added (\"app\" \"New\" \"new-icon\" \"new\" \"\"))
+  (views))
+")
+(configure-dock! #:config-path %preset-cfg
+                 #:items (list (app-item #:name "A" #:icon "a" #:exec "a")
+                               (app-item #:name "Skip" #:icon "s" #:exec "s")
+                               (app-item #:name "Z" #:icon "z" #:exec "z")))
+(check-equal "a stored layout is replayed on top of the settings file"
+             '("app:Z" "app:A" "app:New")
+             (map dock-item-key (get-dock-items %preset-cfg)))
+
+;; A broken override file must never take the dock down.
+(define %broken-cfg (tmp-path "layout/broken-settings.scm"))
+(write-file (dock-layout-path %broken-cfg) "(this is not (a layout")
+(configure-dock! #:config-path %broken-cfg
+                 #:items (list (app-item #:name "Only" #:icon "o" #:exec "o")))
+(check-equal "a malformed override file is ignored"
+             '("app:Only")
+             (map dock-item-key (get-dock-items %broken-cfg)))
+
+;; Resetting forgets everything again.
+(dock-layout-reset! %layout-cfg)
+(check-equal "reset restores the configured layout"
+             '("app:A" "app:B" "separator:" "app:C")
+             (map dock-item-key (get-dock-items %layout-cfg)))
+
+;; Paths that are not settings files keep the plain configured items.
+(check-equal "a symbol config key never reads overrides"
+             '("app:A")
+             (begin (configure-dock! #:config-path 'default
+                                     #:items (list (app-item #:name "A")))
+                    (map dock-item-key (get-dock-items))))
 
 ;; =============================================================================
 ;; Summary

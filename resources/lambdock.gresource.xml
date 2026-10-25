@@ -21,6 +21,8 @@
     <file>css/taskbar.css</file>
     <!-- Glass shelf modifier (loaded when the shelf parameters are in use) -->
     <file>css/shelf.css</file>
+    <!-- Theme independent overlays: stack popovers, launchpad, drag feedback -->
+    <file>css/overlays.css</file>
     <!-- Images -->
     <file>img/agnus-dei.svg</file>
     <file>img/agnus-dei.png</file>

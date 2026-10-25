@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "../src/lambdock.h"
+#include "../src/ui/stack.h"
 #include "../src/ui/popover_menu.h"
 #include <gtk/gtk.h>
 
@@ -252,6 +253,96 @@ static void test_popover_menu_rebuild(void) {
   free_item(item);
 }
 
+
+/* Collects the text of every label anywhere in the menu, in order. */
+static void collect_labels(GtkWidget *widget, GPtrArray *out) {
+  for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (GTK_IS_LABEL(child))
+      g_ptr_array_add(out, g_strdup(gtk_label_get_text(GTK_LABEL(child))));
+    collect_labels(child, out);
+  }
+}
+
+static gboolean labels_contain(GPtrArray *labels, const char *needle) {
+  for (guint i = 0; i < labels->len; i++) {
+    if (g_strcmp0(g_ptr_array_index(labels, i), needle) == 0)
+      return TRUE;
+  }
+  return FALSE;
+}
+
+static void test_popover_menu_stack(void) {
+  DockItem *item = new_item("Downloads", "Downloads", NULL);
+  item->kind = LAMBDOCK_ITEM_STACK;
+  item->is_favorite = TRUE;
+  item->stack_path = g_strdup("/tmp");
+  item->stack_view = g_strdup("list");
+
+  populate_popover_menu(item);
+
+  GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(item->popover)), labels);
+
+  /* Header, the three view modes (with the active one marked), the folder
+   * action and "Remove from Dock". */
+  g_assert_true(labels_contain(labels, "Downloads"));
+  /* The active view mode is marked with a filled circle, the others with an
+   * empty one (the item is on the list view). */
+  g_assert_true(labels_contain(labels, "\xe2\x97\x8b Grid"));
+  g_assert_true(labels_contain(labels, "\xe2\x97\x8f List"));
+  g_assert_true(labels_contain(labels, "\xe2\x97\x8b Fan"));
+  g_assert_true(labels_contain(labels, "Open Folder"));
+  g_assert_true(labels_contain(labels, "Remove from Dock"));
+
+  g_ptr_array_unref(labels);
+  g_free(item->stack_path);
+  g_free(item->stack_view);
+  item->stack_path = NULL;
+  item->stack_view = NULL;
+  free_item(item);
+}
+
+static void test_popover_menu_launchpad(void) {
+  DockItem *item = new_item("Launchpad", "Launchpad", NULL);
+  item->kind = LAMBDOCK_ITEM_LAUNCHPAD;
+  item->is_favorite = TRUE;
+
+  populate_popover_menu(item);
+
+  GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(item->popover)), labels);
+
+  g_assert_true(labels_contain(labels, "Show Launchpad"));
+  g_assert_true(labels_contain(labels, "Remove from Dock"));
+
+  g_ptr_array_unref(labels);
+  free_item(item);
+}
+
+static void test_popover_menu_remove_entry(void) {
+  /* Pinned items offer "Remove from Dock"; window-tracked (non-favourite) ones
+   * do not, because the dock did not create them. */
+  DockItem *pinned = new_item("Firefox", "firefox", "firefox");
+  pinned->is_favorite = TRUE;
+  populate_popover_menu(pinned);
+
+  GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(pinned->popover)), labels);
+  g_assert_true(labels_contain(labels, "Remove from Dock"));
+  g_ptr_array_unref(labels);
+  free_item(pinned);
+
+  DockItem *tracked = new_item("Firefox", "firefox", "firefox");
+  populate_popover_menu(tracked);
+
+  labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(tracked->popover)), labels);
+  g_assert_false(labels_contain(labels, "Remove from Dock"));
+  g_ptr_array_unref(labels);
+  free_item(tracked);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -274,6 +365,10 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/popover_menu/header_fallback",
                   test_popover_menu_header_fallback);
   g_test_add_func("/ui/popover_menu/rebuild", test_popover_menu_rebuild);
+  g_test_add_func("/ui/popover_menu/stack", test_popover_menu_stack);
+  g_test_add_func("/ui/popover_menu/launchpad", test_popover_menu_launchpad);
+  g_test_add_func("/ui/popover_menu/remove_entry",
+                  test_popover_menu_remove_entry);
 
   return g_test_run();
 }

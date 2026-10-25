@@ -383,6 +383,8 @@ void populate_dock_items_for(LambdockState *state) {
       scm_c_public_ref("lambdock core", "dock-item-poll-interval");
   SCM get_hover_animate_fn =
       scm_c_public_ref("lambdock core", "dock-item-hover-animate?");
+  SCM get_path_fn = scm_c_public_ref("lambdock core", "dock-item-path");
+  SCM get_view_fn = scm_c_public_ref("lambdock core", "dock-item-view-mode");
 
   GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                                   ? GTK_ORIENTATION_VERTICAL
@@ -440,9 +442,110 @@ void populate_dock_items_for(LambdockState *state) {
     } else if (g_strcmp0(type_str, "separator") == 0) {
       create_separator_dock_item(state, sep_orient);
       LOG_C_INFO("GuileBridge", "Created layout separator");
+    } else if (g_strcmp0(type_str, "stack") == 0) {
+      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
+      char *path = scm_to_c_string_or_null(scm_call_1(get_path_fn, item));
+      char *view = scm_to_c_string_or_null(scm_call_1(get_view_fn, item));
+
+      create_stack_dock_item(state, name, icon, path, view, hover_anim);
+
+      free(name);
+      free(icon);
+      free(path);
+      free(view);
+    } else if (g_strcmp0(type_str, "launchpad") == 0) {
+      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
+
+      create_launchpad_dock_item(state, name, icon, hover_anim);
+
+      free(name);
+      free(icon);
     }
 
     free(type_str);
     items_list = scm_cdr(items_list);
   }
+}
+
+/* =================================================================================
+ * DOCK LAYOUT OVERRIDES (drag and drop persistence)
+ * =================================================================================
+ * Drag and drop edits the *running* dock; these three calls hand the edit to
+ * `(lambdock layout)`, which records it in the override file and replays it over
+ * the configured items on the next load.
+ * =================================================================================
+ */
+
+static SCM scm_from_optional_string(const char *value) {
+  return (value && *value != '\0') ? scm_from_utf8_string(value)
+                                   : scm_from_utf8_string("");
+}
+
+void dock_layout_add_item(const char *config_path, const char *kind,
+                          const char *name, const char *icon, const char *arg,
+                          const char *view) {
+  if (!config_path || *config_path == '\0')
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "dock-layout-add!");
+  if (!scm_is_true(fn))
+    return;
+
+  SCM args =
+      scm_cons(scm_from_utf8_string(config_path),
+               scm_list_5(scm_from_optional_string(kind),
+                          scm_from_optional_string(name),
+                          scm_from_optional_string(icon),
+                          scm_from_optional_string(arg),
+                          scm_from_optional_string(view)));
+
+  scm_apply_0(fn, args);
+}
+
+void dock_layout_remove_item(const char *config_path, const char *key) {
+  if (!config_path || *config_path == '\0' || !key)
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "dock-layout-remove!");
+  if (!scm_is_true(fn))
+    return;
+
+  scm_call_2(fn, scm_from_utf8_string(config_path),
+             scm_from_utf8_string(key));
+}
+
+void dock_layout_set_order(const char *config_path, GList *keys) {
+  if (!config_path || *config_path == '\0')
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "dock-layout-set-order!");
+  if (!scm_is_true(fn))
+    return;
+
+  SCM list = SCM_EOL;
+  for (GList *l = keys; l != NULL; l = l->next) {
+    if (l->data)
+      list = scm_cons(scm_from_utf8_string((const char *)l->data), list);
+  }
+  list = scm_reverse_x(list, SCM_EOL);
+
+  scm_call_2(fn, scm_from_utf8_string(config_path), list);
+}
+
+void dock_layout_set_view(const char *config_path, const char *key,
+                          const char *view) {
+  if (!config_path || *config_path == '\0' || !key)
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "dock-layout-set-view!");
+  if (!scm_is_true(fn))
+    return;
+
+  SCM view_symbol = scm_string_to_symbol(
+      scm_from_utf8_string((view && *view != '\0') ? view : "grid"));
+
+  scm_call_3(fn, scm_from_utf8_string(config_path),
+             scm_from_utf8_string(key), view_symbol);
 }

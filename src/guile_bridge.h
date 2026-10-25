@@ -116,4 +116,40 @@ gboolean get_show_window_titles_config_for(const char *config_path);
  */
 void get_shelf_config_for(const char *config_path, LambdockShelfParams *out);
 
+/* =========================================================================
+ * DOCK LAYOUT OVERRIDES (drag and drop persistence)
+ * =========================================================================
+ * The dock is freely rearrangeable at runtime; these calls hand the edits to
+ * the Scheme `(lambdock layout)` module, which writes the override file and
+ * replays it on top of the configured items on the next load.
+ */
+
+/**
+ * dock_layout_add_item:
+ * Remembers an item dragged onto the dock. @arg is the exec line for app items
+ * and the folder path for stacks; @view is the stack view mode (may be NULL).
+ */
+void dock_layout_add_item(const char *config_path, const char *kind,
+                          const char *name, const char *icon, const char *arg,
+                          const char *view);
+
+/**
+ * dock_layout_remove_item:
+ * Remembers that @key (see dock_item_key()) was dragged out of the dock.
+ */
+void dock_layout_remove_item(const char *config_path, const char *key);
+
+/**
+ * dock_layout_set_order:
+ * Stores the left-to-right order of the dock as a GList of item keys.
+ */
+void dock_layout_set_order(const char *config_path, GList *keys);
+
+/**
+ * dock_layout_set_view:
+ * Stores the view mode ('grid', 'list' or 'fan') of a stack item.
+ */
+void dock_layout_set_view(const char *config_path, const char *key,
+                          const char *view);
+
 #endif // GUILE_BRIDGE_H

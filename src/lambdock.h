@@ -88,11 +88,34 @@
 #define RESOURCE_URI_PREFIX "resource://"
 #define RESOURCE_URI_PREFIX_LEN 11
 
+/* Drag and drop. Dock icons are dragged as a plain string with this prefix, so
+ * the dock can tell its own drags apart from text and file drops. */
+#define DOCK_DND_ITEM_PREFIX "lambdock-item:"
+
 /* Forward declaration of low-level Wayland foreign toplevel handle struct */
 struct zwlr_foreign_toplevel_handle_v1;
 
 /* Forward declaration of central application state structure */
 typedef struct LambdockState LambdockState;
+
+/**
+ * LambdockItemKind:
+ * @LAMBDOCK_ITEM_APP: A pinned application launcher (exec command line).
+ * @LAMBDOCK_ITEM_DYNAMIC: A polling text item (clock, CPU, battery...).
+ * @LAMBDOCK_ITEM_SEPARATOR: A visual divider.
+ * @LAMBDOCK_ITEM_STACK: A folder whose contents open in a popover.
+ * @LAMBDOCK_ITEM_LAUNCHPAD: Opens the full screen application grid.
+ *
+ * What a dock icon actually is. The kind decides the click behaviour and which
+ * extra fields of DockItem are meaningful.
+ */
+typedef enum {
+  LAMBDOCK_ITEM_APP = 0,
+  LAMBDOCK_ITEM_DYNAMIC,
+  LAMBDOCK_ITEM_SEPARATOR,
+  LAMBDOCK_ITEM_STACK,
+  LAMBDOCK_ITEM_LAUNCHPAD
+} LambdockItemKind;
 
 /**
  * AppWindow:
@@ -125,6 +148,10 @@ typedef struct AppWindow {
  * @poll_timer_id: GLib timeout source ID managing polling intervals.
  * @label: GtkLabel rendering text output for dynamic items.
  * @hover_animate: TRUE if hover fisheye magnification applies to this item.
+ * @kind: What the item is (app, dynamic, separator, stack, launchpad).
+ * @stack_path: Folder shown by a stack item (NULL otherwise).
+ * @stack_view: Stack view mode name ("grid", "list" or "fan").
+ * @dragging: TRUE while the user drags this item (guards the drop handlers).
  */
 typedef struct DockItem {
   char *name;
@@ -143,6 +170,10 @@ typedef struct DockItem {
   GtkWidget *label;
   gboolean window_title_label; /* TRUE when label shows a window title */
   gboolean hover_animate;
+  LambdockItemKind kind;
+  char *stack_path; /* Folder of a stack item */
+  char *stack_view; /* "grid" / "list" / "fan" */
+  gboolean dragging;
 } DockItem;
 
 /**

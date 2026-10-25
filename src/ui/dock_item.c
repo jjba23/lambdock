@@ -20,9 +20,63 @@
 #include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
 #include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
 #include "shelf.h"               // Glass shelf reflections (icons on the glass)
+#include "dock_dnd.h"            // Drag and drop (reorder, add, remove)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
+#include "launchpad.h"     // Full screen application grid
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
+#include "stack.h"         // Folder stacks (Downloads-style dock icons)
 #include "theme_engine.h" // CSS and theme engine utilities
+
+/* ============================================================================
+ * ITEM IDENTITY & WIDGET BACK POINTERS
+ * ============================================================================
+ */
+
+const char *dock_item_kind_to_string(LambdockItemKind kind) {
+  switch (kind) {
+  case LAMBDOCK_ITEM_DYNAMIC:
+    return "dynamic";
+  case LAMBDOCK_ITEM_SEPARATOR:
+    return "separator";
+  case LAMBDOCK_ITEM_STACK:
+    return "stack";
+  case LAMBDOCK_ITEM_LAUNCHPAD:
+    return "launchpad";
+  case LAMBDOCK_ITEM_APP:
+  default:
+    return "app";
+  }
+}
+
+char *dock_item_key(const DockItem *item) {
+  if (!item)
+    return NULL;
+  return g_strdup_printf("%s:%s", dock_item_kind_to_string(item->kind),
+                         item->name ? item->name : "");
+}
+
+/**
+ * dock_item_attach_data:
+ * Stores the owning DockItem on every widget of the item that deferred callbacks
+ * may hold on to, and clears it again in free_dock_item(). This is what makes
+ * drag-and-drop removals safe across hot reloads: the widget survives (it is
+ * referenced by the drag machinery) but the data becomes NULL when the item is
+ * destroyed, so the callback can bail out instead of touching freed memory.
+ */
+static void dock_item_attach_data(DockItem *item) {
+  if (!item)
+    return;
+  if (item->button)
+    g_object_set_data(G_OBJECT(item->button), "lambdock-item", item);
+  if (item->container)
+    g_object_set_data(G_OBJECT(item->container), "lambdock-item", item);
+}
+
+DockItem *dock_item_from_widget(GtkWidget *widget) {
+  if (!widget || !G_IS_OBJECT(widget))
+    return NULL;
+  return g_object_get_data(G_OBJECT(widget), "lambdock-item");
+}
 
 /* ============================================================================
  * ALIGNMENT HELPERS
@@ -118,6 +172,18 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   DockItem *item = (DockItem *)user_data;
   if (!item)
     return;
+
+  /* Stacks open a popover with their folder contents; the launchpad opens the
+   * full screen application grid. Neither has windows or a command to run. */
+  if (item->kind == LAMBDOCK_ITEM_STACK) {
+    lambdock_stack_show(item);
+    return;
+  }
+
+  if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
+    lambdock_launchpad_show(item->state);
+    return;
+  }
 
   if (item->windows != NULL) {
     if (g_list_length(item->windows) == 1) {
@@ -227,6 +293,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
                            gboolean hover_animate) {
   DockItem *item = g_new0(DockItem, 1);
   item->poll_fn = SCM_BOOL_F;
+  item->kind = LAMBDOCK_ITEM_APP;
 
   item->state = state;
   item->name = g_strdup(name);
@@ -307,6 +374,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
                    item);
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
+  dock_dnd_setup_item(item);
+
   if (state && state->box) {
     GtkWidget *child = item->container ? item->container : item->button;
     gtk_box_append(GTK_BOX(state->box), child);
@@ -314,6 +383,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
+
+  dock_item_attach_data(item);
 
   return item;
 }
@@ -324,6 +395,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                                    gboolean hover_animate) {
   DockItem *item = g_new0(DockItem, 1);
 
+  item->kind = LAMBDOCK_ITEM_DYNAMIC;
   item->state = state;
   item->name = g_strdup(name);
   item->icon = g_strdup(icon);
@@ -399,6 +471,8 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                    item);
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
 
+  dock_dnd_setup_item(item);
+
   if (state && state->box) {
     GtkWidget *child = item->container ? item->container : item->button;
     gtk_box_append(GTK_BOX(state->box), child);
@@ -406,6 +480,8 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
 
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
+
+  dock_item_attach_data(item);
 
   on_dynamic_item_poll(item);
 
@@ -426,6 +502,13 @@ void free_dock_item(DockItem *item) {
     g_source_remove(item->poll_timer_id);
     item->poll_timer_id = 0;
   }
+
+  /* Detach the back pointers first: deferred drag callbacks may still hold the
+   * widgets, and must see "no item" instead of a freed one. */
+  if (item->button)
+    g_object_set_data(G_OBJECT(item->button), "lambdock-item", NULL);
+  if (item->container)
+    g_object_set_data(G_OBJECT(item->container), "lambdock-item", NULL);
 
   // Unprotect Scheme procedure thunk
   if (item->poll_fn != SCM_BOOL_F &&
@@ -485,6 +568,8 @@ void free_dock_item(DockItem *item) {
   g_free(item->icon);
   g_free(item->exec);
   g_free(item->app_id);
+  g_free(item->stack_path);
+  g_free(item->stack_view);
 
   g_free(item);
 }
@@ -695,6 +780,7 @@ DockItem *create_separator_dock_item(LambdockState *state,
                                      GtkOrientation orientation) {
   DockItem *item = g_new0(DockItem, 1);
   item->poll_fn = SCM_BOOL_F;
+  item->kind = LAMBDOCK_ITEM_SEPARATOR;
   item->state = state;
   item->is_favorite = TRUE;
   item->hover_animate = FALSE;
@@ -724,6 +810,123 @@ DockItem *create_separator_dock_item(LambdockState *state,
   if (state)
     state->dock_items = g_list_append(state->dock_items, item);
 
+  dock_item_attach_data(item);
+
+  return item;
+}
+
+/* ============================================================================
+ * STACKS & THE LAUNCHPAD
+ * ============================================================================
+ */
+
+/* Creates the widget shell shared by the icon-only item kinds (stacks and the
+ * launchpad): button with the icon, context popover, right click menu, glass
+ * reflection, drag source and dock container. */
+static DockItem *create_icon_dock_item(LambdockState *state,
+                                       LambdockItemKind kind, const char *name,
+                                       const char *icon, gboolean hover_animate) {
+  DockItem *item = g_new0(DockItem, 1);
+  item->poll_fn = SCM_BOOL_F;
+  item->kind = kind;
+  item->state = state;
+  item->name = g_strdup(name);
+  item->icon = g_strdup(icon);
+  item->exec = g_strdup("");
+  item->app_id = g_strdup(name);
+  item->is_favorite = TRUE;
+  item->hover_animate = hover_animate;
+
+  GtkIconTheme *icon_theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+  int icon_sz =
+      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+
+  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
+  item->button = gtk_button_new();
+
+  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
+  if (image) {
+    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+    gtk_box_append(GTK_BOX(content_box), image);
+  }
+  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
+
+  gtk_widget_add_css_class(item->button, "flat");
+  gtk_widget_add_css_class(item->button,
+                           (kind == LAMBDOCK_ITEM_STACK) ? "stack-item"
+                                                         : "launchpad-item");
+  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+
+  if (image) {
+    item->reflection = shelf_reflection_new(image);
+    gtk_widget_set_visible(item->reflection, FALSE);
+  }
+  item->container = shelf_wrap_item(state, item->button, item->reflection);
+
+  if (state)
+    apply_dock_item_alignment(item);
+
+  if (item->name && *item->name != '\0')
+    gtk_widget_set_tooltip_text(item->button, item->name);
+
+  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
+                   item);
+
+  item->popover = gtk_popover_new();
+  gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
+  gtk_widget_set_parent(item->popover, item->button);
+  if (state)
+    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
+                     state);
+
+  GtkGesture *right_click = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
+                   item);
+  gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
+
+  dock_dnd_setup_item(item);
+
+  if (state && state->box) {
+    GtkWidget *child = item->container ? item->container : item->button;
+    gtk_box_append(GTK_BOX(state->box), child);
+  }
+  if (state)
+    state->dock_items = g_list_append(state->dock_items, item);
+
+  dock_item_attach_data(item);
+  return item;
+}
+
+DockItem *create_stack_dock_item(LambdockState *state, const char *name,
+                                 const char *icon, const char *path,
+                                 const char *view, gboolean hover_animate) {
+  DockItem *item = create_icon_dock_item(
+      state, LAMBDOCK_ITEM_STACK, name,
+      (icon && *icon != '\0') ? icon : "folder", hover_animate);
+
+  item->stack_path = g_strdup(path ? path : "");
+  item->stack_view =
+      g_strdup((view && *view != '\0') ? view : "grid");
+
+  LOG_C_INFO("UI", "Created stack item: %s (%s, %s view)",
+             item->name ? item->name : "stack", item->stack_path,
+             item->stack_view);
+  return item;
+}
+
+DockItem *create_launchpad_dock_item(LambdockState *state, const char *name,
+                                     const char *icon,
+                                     gboolean hover_animate) {
+  DockItem *item = create_icon_dock_item(
+      state, LAMBDOCK_ITEM_LAUNCHPAD, name,
+      (icon && *icon != '\0') ? icon : "view-app-grid-symbolic",
+      hover_animate);
+
+  LOG_C_INFO("UI", "Created launchpad item: %s", item->name ? item->name : "");
   return item;
 }
 
