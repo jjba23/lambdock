@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.10.0 (2026-10-25)
 - `dock-capsule-padding`: how much room sits between the capsule's ends and the
   first/last icon, in pixels (0 … 96, default 12). It was a compile-time
   constant, which is why the dock's ends could not be matched to the OS X one;
@@ -59,9 +64,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - Tests: a new `meter` C suite plus flare checks in the shelf suite (14 C suites in
   total) and 21 new Scheme assertions (184 in total).
 
----------
-
-*[Released]*
 
 ** v0.9.0 (2026-10-25)
 - Stacks: `(stack-item #:name "Downloads" #:path "~/Downloads" #:view-mode 'grid)`
