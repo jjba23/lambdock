@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.10.5 (2026-10-25)
 - Fix the dock bouncing at the screen edge in auto-hide mode. A pointer resting on
   the edge leaves the dock's revealing strip under it when the dock is in, and one
   pixel past the window's far edge when the dock is out, because the revealed
@@ -18,10 +23,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the moment just after it stops, when they are echoes of its own movement rather
   than the pointer moving -- are now ignored, while a leave from a dock that has
   been sitting still still hides it as before.
-
----------
-
-*[Released]*
 
 ** v0.10.4 (2026-10-25)
 - Draw dock separators on the glass when the dock is shaped. On a keystoned or
