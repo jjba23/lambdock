@@ -18,8 +18,6 @@
 #include "../src/ui/icon_zoom.h"
 #include <gtk/gtk.h>
 
-static gboolean have_display = FALSE;
-
 #define BASE_SIZE 48
 #define MAX_SIZE 70 /* ceil(48 * 1.45), what the dock asks for */
 
@@ -167,11 +165,6 @@ static graphene_rect_t snapshot_bounds(GtkWidget *parent, GtkWidget *child) {
 }
 
 static void test_painted_size(void) {
-  if (!have_display) {
-    g_test_skip("no display");
-    return;
-  }
-
   GtkWidget *window = gtk_window_new();
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   GtkWidget *zoom = make_zoom();
@@ -273,12 +266,18 @@ static void test_misuse(void) {
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
+  /* Every test here builds widgets, so there is nothing to test without a
+   * display: report the Meson "skipped" status like the other UI tests, which is
+   * what a package build in a sandbox (no Wayland socket) relies on. */
+  if (!gtk_init_check()) {
+    g_print("Skipping icon zoom tests: No display server available\n");
+    return 77;
+  }
+
   /* The dock runs on the GL renderer (main.c sets it the same way); the
    * geometry test below opens a real window, so it has to render exactly like
    * the dock and not depend on whichever renderer this environment would pick. */
   g_setenv("GSK_RENDERER", "gl", FALSE);
-
-  have_display = gtk_init_check();
 
   g_test_add_func("/ui/icon_zoom/scale_and_target", test_scale_and_target);
   g_test_add_func("/ui/icon_zoom/measure_follows_scale",
