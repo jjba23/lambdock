@@ -23,6 +23,7 @@
 #include "dock_dnd.h"            // Drag and drop (reorder, add, remove)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
 #include "launchpad.h"     // Full screen application grid
+#include "meter.h"         // Circular gauges for meter dynamic items
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
 #include "stack.h"         // Folder stacks (Downloads-style dock icons)
 #include "theme_engine.h" // CSS and theme engine utilities
@@ -268,6 +269,25 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
       scm_internal_catch(SCM_BOOL_T, call_guile_proc_safe,
                          (void *)item->poll_fn, handle_guile_proc_error, NULL);
 
+  /* Meter items read a number: it fills the ring and is written in the middle
+   * with the configured unit ("42%", "54°C"). */
+  if (item->meter && scm_is_number(res)) {
+    double value = scm_to_double(res);
+    double maximum = (item->meter_max > 0.0) ? item->meter_max : 100.0;
+    char *text = g_strdup_printf("%.0f%s", value,
+                                 item->meter_unit ? item->meter_unit : "");
+
+    lambdock_meter_set_value(item->meter, value / maximum, text);
+
+    char *tooltip = g_strdup_printf("%s: %s", item->name ? item->name : "",
+                                    text);
+    gtk_widget_set_tooltip_text(item->button, tooltip);
+
+    g_free(tooltip);
+    g_free(text);
+    return G_SOURCE_CONTINUE;
+  }
+
   if (scm_is_string(res)) {
     char *text = scm_to_utf8_string(res);
     if (text) {
@@ -493,6 +513,60 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   return item;
 }
 
+/**
+ * dock_item_enable_meter:
+ * Turns a dynamic item into a gauge: one widget that is both the "icon" and the
+ * reading, instead of an icon next to a changing string.
+ *
+ * The text label (and any icon) the item was built with is dropped, because the
+ * gauge carries the number itself; the poll callback then feeds it a number
+ * instead of a string.
+ */
+void dock_item_enable_meter(DockItem *item, const char *unit,
+                            double max_value) {
+  if (!item || !item->button)
+    return;
+
+  GtkWidget *content = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!content || !GTK_IS_BOX(content))
+    return;
+
+  /* Drop the text form: the label would otherwise keep a stale reading next to
+   * the gauge (and pointer to a widget that is about to be destroyed). */
+  item->label = NULL;
+  GtkWidget *child;
+  while ((child = gtk_widget_get_first_child(content)) != NULL)
+    gtk_box_remove(GTK_BOX(content), child);
+
+  /* A gauge has no icon to mirror on the shelf. */
+  if (item->reflection) {
+    GtkWidget *parent = gtk_widget_get_parent(item->reflection);
+    if (parent && GTK_IS_BOX(parent))
+      gtk_box_remove(GTK_BOX(parent), item->reflection);
+    else if (parent)
+      gtk_widget_unparent(item->reflection);
+    item->reflection = NULL;
+  }
+
+  int icon_size =
+      (item->state && item->state->icon_size > 0) ? item->state->icon_size
+                                                 : DEFAULT_ICON_SIZE;
+
+  GtkWidget *meter = lambdock_meter_new();
+  lambdock_meter_set_icon_size(meter, icon_size);
+  gtk_box_append(GTK_BOX(content), meter);
+
+  item->meter = meter;
+  g_free(item->meter_unit);
+  item->meter_unit = g_strdup(unit ? unit : "");
+  item->meter_max = (max_value > 0.0) ? max_value : 100.0;
+
+  gtk_widget_add_css_class(item->button, "dynamic-meter");
+
+  /* Paint the first reading now instead of after the first interval. */
+  on_dynamic_item_poll(item);
+}
+
 void free_dock_item(DockItem *item) {
   if (!item)
     return;
@@ -570,6 +644,7 @@ void free_dock_item(DockItem *item) {
   g_free(item->app_id);
   g_free(item->stack_path);
   g_free(item->stack_view);
+  g_free(item->meter_unit);
 
   g_free(item);
 }

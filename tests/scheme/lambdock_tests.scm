@@ -714,6 +714,77 @@
                     (map dock-item-key (get-dock-items))))
 
 ;; =============================================================================
+;; Meter items, the numeric poll helpers and the shelf flare
+;; =============================================================================
+
+(define %plain-dynamic (dynamic-item #:name "Plain"))
+(check-equal "dynamic items are text by default"
+             #f (dock-item-meter? %plain-dynamic))
+(check-equal "dynamic items have no unit by default"
+             "" (dock-item-unit %plain-dynamic))
+(check-equal "dynamic items fill at 100 by default"
+             100 (dock-item-max %plain-dynamic))
+
+(define %gauge (dynamic-item #:name "Gauge"
+                             #:poll-fn (lambda () 42)
+                             #:meter? #t
+                             #:unit "%"
+                             #:max 50))
+(check-equal "dynamic-item can be a meter"
+             #t (dock-item-meter? %gauge))
+(check-equal "a meter keeps its unit" "%" (dock-item-unit %gauge))
+(check-equal "a meter keeps its maximum" 50 (dock-item-max %gauge))
+(check-equal "a meter's poll function is the one it was given"
+             42 ((dock-item-poll-fn %gauge)))
+
+;; The presets are meters by default and read numbers, which is what the gauge
+;; needs; #:meter? #f falls back to the old text items.
+(define %ram (ram-item))
+(check-equal "ram-item is a meter by default" #t (dock-item-meter? %ram))
+(check-equal "ram-item uses percent" "%" (dock-item-unit %ram))
+(check-equal "ram-item fills at 100%" 100 (dock-item-max %ram))
+(check "ram-item's poller returns a number (or nothing)"
+       (let ((value ((dock-item-poll-fn %ram))))
+         (or (number? value) (not value))))
+
+(define %ram-text (ram-item #:meter? #f))
+(check-equal "ram-item can still be text"
+             #f (dock-item-meter? %ram-text))
+(check-matches "ram-item's text poller returns a RAM reading"
+               "^RAM " ((dock-item-poll-fn %ram-text)))
+
+(define %cpu (cpu-item))
+(check-equal "cpu-item is a meter by default" #t (dock-item-meter? %cpu))
+
+(define %temp (cpu-temp-item))
+(check-equal "cpu-temp-item is a meter by default" #t (dock-item-meter? %temp))
+(check-equal "cpu-temp-item shows degrees" "°C" (dock-item-unit %temp))
+
+;; Mixing the two forms is allowed: the meter knobs are independent of the poll
+;; function's return type.
+(check-equal "the clock stays a text item"
+             #f (dock-item-meter? (clock-item)))
+
+;; --- the shelf flare --------------------------------------------------------
+
+(define %flare-cfg (tmp-path "flare.scm"))
+(write-file %flare-cfg
+            "(define dock-shelf-flare 26)
+(define dock-shelf-margin -23)
+")
+(load-dock-config! %flare-cfg)
+(check-equal "the keystone lean is read from the config"
+             26 (get-dock-shelf-flare %flare-cfg))
+(check-equal "the flare is independent of the margin"
+             -23 (get-dock-shelf-margin %flare-cfg))
+(check-equal "an unset flare means a rectangular slab"
+             0 (get-dock-shelf-flare (tmp-path "no-flare.scm")))
+
+(set-dock-shelf-flare! 40 %flare-cfg)
+(check-equal "set-dock-shelf-flare! updates the targeted config"
+             40 (get-dock-shelf-flare %flare-cfg))
+
+;; =============================================================================
 ;; Summary
 ;; =============================================================================
 

@@ -278,6 +278,12 @@ void get_shelf_config_for(const char *config_path, LambdockShelfParams *out) {
       get_guile_number_for("get-dock-reflection-blur", config_path,
                            defaults.reflection_blur_ratio),
       0.0, SHELF_REFLECTION_BLUR_MAX);
+
+  /* The keystone lean, in pixels per side. */
+  out->flare_px = clamp_int(
+      get_guile_number_for("get-dock-shelf-flare", config_path,
+                           (double)defaults.flare_px),
+      -SHELF_FLARE_MAX_PX, SHELF_FLARE_MAX_PX);
 }
 
 /** Retrieves target monitor screen configuration string for a specific config
@@ -385,6 +391,9 @@ void populate_dock_items_for(LambdockState *state) {
       scm_c_public_ref("lambdock core", "dock-item-hover-animate?");
   SCM get_path_fn = scm_c_public_ref("lambdock core", "dock-item-path");
   SCM get_view_fn = scm_c_public_ref("lambdock core", "dock-item-view-mode");
+  SCM get_meter_fn = scm_c_public_ref("lambdock core", "dock-item-meter?");
+  SCM get_unit_fn = scm_c_public_ref("lambdock core", "dock-item-unit");
+  SCM get_max_fn = scm_c_public_ref("lambdock core", "dock-item-max");
 
   GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
                                   ? GTK_ORIENTATION_VERTICAL
@@ -429,8 +438,20 @@ void populate_dock_items_for(LambdockState *state) {
 
       if (!is_app_excluded(name, state->config_path) &&
           !is_app_excluded(exec, state->config_path)) {
-        create_dynamic_dock_item(state, name, icon, exec, poll_fn, interval_ms,
-                                 hover_anim);
+        DockItem *dynamic = create_dynamic_dock_item(
+            state, name, icon, exec, poll_fn, interval_ms, hover_anim);
+
+        /* Meter items draw a gauge instead of text: the poll function returns a
+         * number, which fills the ring up to `max' and is shown with `unit'. */
+        if (dynamic && scm_is_true(scm_call_1(get_meter_fn, item))) {
+          char *unit = scm_to_c_string_or_null(scm_call_1(get_unit_fn, item));
+          SCM max_scm = scm_call_1(get_max_fn, item);
+          double max_value = (scm_is_number(max_scm)) ? scm_to_double(max_scm)
+                                                      : 100.0;
+          dock_item_enable_meter(dynamic, unit, max_value);
+          free(unit);
+        }
+
         LOG_C_INFO(
             "GuileBridge", "Created dynamic item: %s (%s, poll interval: %dms)",
             name ? name : "unnamed", exec ? exec : "no-exec", interval_ms);

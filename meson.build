@@ -259,6 +259,7 @@ sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
+  'src/ui/meter.c',
   'src/ui/shelf.c',
 )
 
@@ -294,6 +295,7 @@ full_app_sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
+  'src/ui/meter.c',
   'src/ui/shelf.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
@@ -338,6 +340,11 @@ unit_tests = [
   {
     'id': 'dock_dnd',
     'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'meter',
+    'extra_sources': ['src/ui/meter.c', lambdock_resources],
+    'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep],
   },
   {
     'id': 'guile_bridge',

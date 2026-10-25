@@ -33,6 +33,7 @@ LambdockShelfParams lambdock_shelf_params_default(void) {
   params.reflection_ratio = SHELF_DEFAULT_REFLECTION;
   params.reflection_intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
   params.reflection_blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
+  params.flare_px = SHELF_DEFAULT_FLARE_PX;
 
   return params;
 }
@@ -52,7 +53,8 @@ LambdockShelfParams lambdock_shelf_params_effective(const LambdockState *state) 
   LambdockShelfParams params = state->shelf;
 
   if (params.margin_px == 0 && params.front_px == 0 &&
-      params.reflection_ratio == 0.0 && params.tilt_deg == 0.0)
+      params.reflection_ratio == 0.0 && params.tilt_deg == 0.0 &&
+      params.flare_px == 0)
     return lambdock_shelf_params_default();
 
   return params;
@@ -68,6 +70,7 @@ gboolean lambdock_shelf_active(const LambdockState *state) {
   return params.tilt_deg != defaults.tilt_deg ||
          params.margin_px != defaults.margin_px ||
          params.front_px != defaults.front_px ||
+         params.flare_px != defaults.flare_px ||
          params.reflection_ratio > defaults.reflection_ratio;
 }
 
@@ -519,8 +522,18 @@ static void lambdock_reflection_init(LambdockReflection *self) {
  * trapezoidal shelf (narrower on the far side) while the icons keep standing
  * upright on top of it.
  *
- * With `tilt == 0` it is a transparent pass-through, so the flat dock is
- * pixel-identical to the unwrapped capsule.
+ * Two independent projections live here:
+ *
+ *   - the *tilt*, a rotation away from the viewer around the docked edge, and
+ *   - the *flare*, a pure keystone that keeps the edge touching the screen at
+ *     full width and pulls the inner edge in by a number of pixels per side.
+ *
+ * The flare is the one that makes the OS X dock's silhouette: its slab is wider
+ * where it meets the screen than at the edge the icons overhang, which is what
+ * reads as a 3D shelf.
+ *
+ * With `tilt == 0` and `flare == 0` it is a transparent pass-through, so the
+ * flat dock is pixel-identical to the unwrapped capsule.
  */
 
 typedef struct _LambdockShelfFrame {
@@ -529,6 +542,7 @@ typedef struct _LambdockShelfFrame {
   GtkLayerShellEdge edge; /* Docked edge: tilt axis + pinned edge */
   double tilt;            /* Tilt angle in degrees (0 = disabled) */
   double perspective;     /* Projective distance in pixels */
+  int flare;              /* Keystone lean per side, in pixels */
 } LambdockShelfFrame;
 
 typedef struct _LambdockShelfFrameClass {
@@ -553,10 +567,23 @@ static void lambdock_shelf_frame_measure(GtkWidget *widget,
                                          int *natural, int *minimum_baseline,
                                          int *natural_baseline) {
   GtkWidget *child = frame_child(widget);
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(widget);
 
   if (child && gtk_widget_should_layout(child)) {
     gtk_widget_measure(child, orientation, for_size, minimum, natural,
                        minimum_baseline, natural_baseline);
+
+    /* The keystone widens the screen-side edge, so the frame has to reserve that
+     * much room across the dock or the flare would be clipped by the surface. */
+    gboolean horizontal =
+        (self->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+         self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+    gboolean cross_axis = (horizontal && orientation == GTK_ORIENTATION_HORIZONTAL) ||
+                          (!horizontal && orientation == GTK_ORIENTATION_VERTICAL);
+    if (cross_axis && self->flare > 0) {
+      *minimum += 2 * self->flare;
+      *natural += 2 * self->flare;
+    }
     return;
   }
 
@@ -571,8 +598,131 @@ static void lambdock_shelf_frame_measure(GtkWidget *widget,
 static void lambdock_shelf_frame_size_allocate(GtkWidget *widget, int width,
                                                int height, int baseline) {
   GtkWidget *child = frame_child(widget);
-  if (child && gtk_widget_should_layout(child))
-    gtk_widget_allocate(child, width, height, baseline, NULL);
+  if (!child || !gtk_widget_should_layout(child))
+    return;
+
+  LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(widget);
+  gboolean horizontal =
+      (self->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+       self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+
+  /* The child is the slab as the theme draws it: it keeps the dock's width on
+   * the inner edge, and the projection below spreads it out to fill the room
+   * reserved for the flare. */
+  int inset = (self->flare > 0) ? self->flare : 0;
+  GskTransform *offset = NULL;
+  if (inset > 0) {
+    graphene_point_t origin = horizontal
+                                  ? GRAPHENE_POINT_INIT((float)inset, 0.0f)
+                                  : GRAPHENE_POINT_INIT(0.0f, (float)inset);
+    offset = gsk_transform_translate(NULL, &origin);
+  }
+
+  /* gtk_widget_allocate() takes ownership of the transform. */
+  gtk_widget_allocate(child, horizontal ? width - 2 * inset : width,
+                      horizontal ? height : height - 2 * inset, baseline,
+                      offset);
+}
+
+/**
+ * shelf_frame_keystone:
+ * @width: Frame width in pixels.
+ * @height: Frame height in pixels.
+ * @horizontal: TRUE when the dock runs horizontally (top/bottom edge).
+ * @flare: Pixels the edge on the screen is wider than the inner edge, per side.
+ * @pinned_at_end: TRUE when the edge on the screen is the bottom/right one.
+ * @out: Destination matrix.
+ *
+ * Builds the keystone that gives the dock its OS X silhouette: the inner edge
+ * keeps the dock's width, and the edge lying on the screen is drawn @flare pixels
+ * wider per side, as if the slab were a shelf seen slightly from above.
+ *
+ * A keystone has to be a real projection -- a shear would slant both sides the
+ * same way, while this widens symmetrically around the middle -- so the matrix
+ * carries a `w` that depends on depth. It is written out directly instead of
+ * being composed from translate/project/translate, because translations do not
+ * commute with a projective row and the composed version drifts sideways.
+ *
+ * The mapping it builds, for a bottom dock (depth = y, cross = x, cx = width/2):
+ *
+ *   w(y) = 1 - c * y                    with c = (1 - pinned_scale) / height
+ *   x'   = (x - cx) / w(y) + cx         ->  (x - cx*c*y, y) / w(y)
+ *   y'   = y / w(y)
+ *
+ * so the top edge (y = 0, w = 1) is untouched and the bottom edge is magnified by
+ * 1 / pinned_scale around the centre line.
+ *
+ * Returns: TRUE when @out was filled in.
+ */
+static gboolean shelf_frame_keystone(int width, int height,
+                                     gboolean horizontal, int flare,
+                                     gboolean pinned_at_end,
+                                     graphene_matrix_t *out) {
+  double depth = horizontal ? (double)height : (double)width;
+  /* The frame reserves `2 * flare` on the cross axis for the widened edge, so the
+   * slab itself spans the rest. */
+  double cross = (horizontal ? (double)width : (double)height) - 2.0 * flare;
+
+  if (flare <= 0 || depth <= 0.0 || cross <= 0.0 || !out)
+    return FALSE;
+
+  /* Keep the slab at most 1.5x as wide at the screen edge: past that the
+   * projection folds in on itself. */
+  double max_flare = cross * 0.25;
+  double amount = MIN((double)flare, max_flare);
+
+  /* w on the edge that touches the screen; dividing by it magnifies that edge. */
+  double pinned_scale = (cross - 2.0 * amount) / cross;
+  double sweep = (1.0 - pinned_scale) / depth; /* d(w)/d(depth) */
+  double centre = (horizontal ? (double)width : (double)height) / 2.0;
+
+  /* Row 0 and 2 of the matrix: the cross coordinate picks up the projected
+   * offset, and (for a top/left dock) the constant part of w. */
+  double cross_from_depth = 0.0; /* the cross coordinate picks up depth */
+  double cross_constant = 0.0;
+  double w_from_depth;
+  double w_constant;
+
+  if (pinned_at_end) {
+    /* w(depth) = 1 - sweep * depth, so the far edge (depth 0) is untouched. */
+    cross_from_depth = -centre * sweep;
+    w_from_depth = -sweep;
+    w_constant = 1.0;
+  } else {
+    /* w(depth) = pinned_scale + sweep * depth, so the pinned edge (depth 0) is
+     * the magnified one. */
+    cross_constant = centre * (pinned_scale - 1.0);
+    cross_from_depth = centre * sweep;
+    w_from_depth = sweep;
+    w_constant = pinned_scale;
+  }
+
+  /* graphene stores matrices row-major and applies them to row vectors, so
+   * (x', y', w') = (x, y, 1) * M and the result is divided by w'. The `w' row is
+   * row 3; the cross coordinate is row 0 for a horizontal dock and row 1 for a
+   * vertical one, and it is the *column* of the depth axis that picks up the
+   * projection. */
+  float values[16] = {
+      1.0f, 0.0f, 0.0f, 0.0f, /* row 0: x */
+      0.0f, 1.0f, 0.0f, 0.0f, /* row 1: y */
+      0.0f, 0.0f, 1.0f, 0.0f, /* row 2: z */
+      0.0f, 0.0f, 0.0f, 1.0f, /* row 3: w */
+  };
+
+  if (horizontal) {
+    values[4] = (float)cross_from_depth;  /* m10: x picks up y */
+    values[12] = (float)cross_constant;   /* m30 */
+    values[7] = (float)w_from_depth;      /* m13: w picks up y */
+    values[15] = (float)w_constant;       /* m33 */
+  } else {
+    values[1] = (float)cross_from_depth;  /* m01: y picks up x */
+    values[13] = (float)cross_constant;   /* m31 */
+    values[3] = (float)w_from_depth;      /* m03: w picks up x */
+    values[15] = (float)w_constant;       /* m33 */
+  }
+
+  graphene_matrix_init_from_float(out, values);
+  return TRUE;
 }
 
 static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
@@ -583,7 +733,7 @@ static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
   if (!child || !gtk_widget_should_layout(child))
     return;
 
-  if (self->tilt == 0.0) {
+  if (self->tilt == 0.0 && self->flare == 0) {
     gtk_widget_snapshot_child(widget, child, snapshot);
     return;
   }
@@ -592,41 +742,64 @@ static void lambdock_shelf_frame_snapshot(GtkWidget *widget,
   double height = (double)gtk_widget_get_height(widget);
   gboolean depth_axis = (self->edge == GTK_LAYER_SHELL_EDGE_TOP ||
                          self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+  gboolean pinned_at_end = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM ||
+                            self->edge == GTK_LAYER_SHELL_EDGE_RIGHT);
 
-  /* Tilt around the docked edge: that edge stays pinned on screen while the
-   * inner edge recedes and is projected slightly narrower. */
-  graphene_point_t pivot;
-  switch (self->edge) {
-  case GTK_LAYER_SHELL_EDGE_TOP:
-    graphene_point_init(&pivot, (float)(width / 2.0), 0.0f);
-    break;
-  case GTK_LAYER_SHELL_EDGE_LEFT:
-    graphene_point_init(&pivot, 0.0f, (float)(height / 2.0));
-    break;
-  case GTK_LAYER_SHELL_EDGE_RIGHT:
-    graphene_point_init(&pivot, (float)width, (float)(height / 2.0));
-    break;
-  case GTK_LAYER_SHELL_EDGE_BOTTOM:
-  default:
-    graphene_point_init(&pivot, (float)(width / 2.0), (float)height);
-    break;
-  }
-
-  graphene_vec3_t axis;
-  if (depth_axis)
-    graphene_vec3_init(&axis, 1.0f, 0.0f, 0.0f);
-  else
-    graphene_vec3_init(&axis, 0.0f, 1.0f, 0.0f);
-
-  graphene_point_t origin = GRAPHENE_POINT_INIT(-pivot.x, -pivot.y);
-  GskTransform *transform = gsk_transform_translate(NULL, &origin);
-  transform = gsk_transform_rotate_3d(transform, self->tilt, &axis);
-  transform = gsk_transform_perspective(transform, (float)self->perspective);
-  transform = gsk_transform_translate(transform, &pivot);
+  /* Two independent projections, outermost first: the keystone (which gives the
+   * slab its trapezoid) and then the tilt (which tips it away from the
+   * viewer). */
+  graphene_matrix_t keystone;
+  gboolean has_keystone =
+      shelf_frame_keystone((int)width, (int)height, depth_axis, self->flare,
+                           pinned_at_end, &keystone);
 
   gtk_snapshot_save(snapshot);
-  gtk_snapshot_transform(snapshot, transform);
-  gtk_widget_snapshot_child(widget, child, snapshot);
+  if (has_keystone)
+    gtk_snapshot_transform(snapshot,
+                           gsk_transform_matrix(NULL, &keystone));
+
+  if (self->tilt != 0.0) {
+    /* Tilt around the docked edge: that edge stays pinned on screen while the
+     * inner edge recedes and is projected slightly narrower. */
+    graphene_point_t pivot;
+    switch (self->edge) {
+    case GTK_LAYER_SHELL_EDGE_TOP:
+      graphene_point_init(&pivot, (float)(width / 2.0), 0.0f);
+      break;
+    case GTK_LAYER_SHELL_EDGE_LEFT:
+      graphene_point_init(&pivot, 0.0f, (float)(height / 2.0));
+      break;
+    case GTK_LAYER_SHELL_EDGE_RIGHT:
+      graphene_point_init(&pivot, (float)width, (float)(height / 2.0));
+      break;
+    case GTK_LAYER_SHELL_EDGE_BOTTOM:
+    default:
+      graphene_point_init(&pivot, (float)(width / 2.0), (float)height);
+      break;
+    }
+
+    graphene_vec3_t axis;
+    if (depth_axis)
+      graphene_vec3_init(&axis, 1.0f, 0.0f, 0.0f);
+    else
+      graphene_vec3_init(&axis, 0.0f, 1.0f, 0.0f);
+
+    graphene_point_t origin = GRAPHENE_POINT_INIT(-pivot.x, -pivot.y);
+    GskTransform *transform = gsk_transform_translate(NULL, &origin);
+    transform = gsk_transform_rotate_3d(transform, self->tilt, &axis);
+    transform = gsk_transform_perspective(transform, (float)self->perspective);
+    transform = gsk_transform_translate(transform, &pivot);
+
+    gtk_snapshot_save(snapshot);
+    gtk_snapshot_transform(snapshot, transform);
+    gtk_widget_snapshot_child(widget, child, snapshot);
+    gtk_snapshot_restore(snapshot);
+
+    gsk_transform_unref(transform);
+  } else {
+    gtk_widget_snapshot_child(widget, child, snapshot);
+  }
+
   gtk_snapshot_restore(snapshot);
 }
 
@@ -754,16 +927,33 @@ GtkWidget *shelf_frame_new(GtkWidget *child) {
 
 void shelf_frame_set_tilt(GtkWidget *frame, GtkLayerShellEdge edge,
                           double degrees, double perspective) {
+  shelf_frame_set_shape(frame, edge, degrees, perspective,
+                        shelf_frame_is_frame(frame)
+                            ? LAMBDOCK_SHELF_FRAME(frame)->flare
+                            : 0);
+}
+
+void shelf_frame_set_shape(GtkWidget *frame, GtkLayerShellEdge edge,
+                           double degrees, double perspective, int flare_px) {
   if (!shelf_frame_is_frame(frame))
     return;
 
   LambdockShelfFrame *self = LAMBDOCK_SHELF_FRAME(frame);
+  gboolean geometry_changed = (self->edge != edge) || (self->flare != flare_px);
+  gboolean paint_changed = geometry_changed || (self->tilt != degrees);
+
   self->edge = edge;
   self->tilt = degrees;
+  self->flare = flare_px;
   if (perspective > 0.0)
     self->perspective = perspective;
 
-  gtk_widget_queue_draw(frame);
+  /* The flare reserves room in the layout, so a change in it has to re-measure;
+   * the tilt only changes how the same slab is painted. */
+  if (geometry_changed)
+    gtk_widget_queue_resize(frame);
+  else if (paint_changed)
+    gtk_widget_queue_draw(frame);
 }
 
 gboolean shelf_frame_is_frame(gpointer widget) {

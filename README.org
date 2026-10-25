@@ -286,7 +286,8 @@ tangible reality.
 - *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar
   exceeds available display dimensions.
 - *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
-  Scheme thunks you can replace with your own pollers; see
+  Scheme thunks you can replace with your own pollers. The meters are drawn as
+  icon-sized gauges that fill up and change colour, not as text; see
   [[#dynamic-widgets][Dynamic widgets]].
 - *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
   as an icon grid, a list, or a mac-style fan of tilted cards; see [[#stacks][Stacks]].
@@ -891,6 +892,7 @@ nothing at all.
 | ~dock-reflection~             | ~0~                          | Reflection band height / icon size. 0 disables the reflections.                 |
 | ~dock-reflection-intensity~   | ~0.55~                       | Alpha of the reflection where it touches the icon.                              |
 | ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections.                           |
+| ~dock-shelf-flare~            | ~0~                          | Keystone: px the slab is wider per side at the screen edge (-80 … 80).          |
 | ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
 | ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
 | ~dock-show-window-titles?~    | ~#f~                         | Show the focused window title next to running items (taskbar style).            |
@@ -935,7 +937,7 @@ presets.
 | Scheme Constructor / Procedure  | Return Type | Description                                        | Keyword Arguments                                                                                     |
 |---------------------------------+-------------+----------------------------------------------------+-------------------------------------------------------------------------------------------------------|
 | ~(app-item ...)~                | Record      | Custom application launcher definition              | ~#:name~, ~#:icon~, ~#:exec~, ~#:hover-animate?~                                                       |
-| ~(dynamic-item ...)~            | Record      | Dynamic polling widget showing live textual data    | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~                       |
+| ~(dynamic-item ...)~            | Record      | Dynamic polling widget: text, or a gauge with ~#:meter?~ | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~, ~#:meter?~, ~#:unit~, ~#:max~ |
 | ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
 | ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~, ~'fan~), ~#:hover-animate?~             |
 | ~(launchpad-item ...)~          | Record      | Opens the full-screen application grid              | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
@@ -948,17 +950,64 @@ presets.
 :CUSTOM_ID: dynamic-widgets
 :END:
 
-Dynamic items poll a Scheme thunk on the GTK main thread and print a string.
-~lambdock~ ships ready-made ones, each with a sane default exec action when you
-click it:
+Dynamic items poll a Scheme thunk on the GTK main thread. They come in two
+shapes, and the built-in presets pick the interesting one for you:
 
-| Preset             | Polls                                    | Default interval |
-|--------------------+------------------------------------------+------------------|
-| ~'clock~           | ~get-clock-text~ (day, date, time)       | 1 s              |
-| ~'ram~             | ~get-used-ram-percent~ (from /proc)      | 2 s              |
-| ~'cpu~             | ~get-cpu-percent~ (delta between polls)  | 2 s              |
-| ~'cpu-temp~        | ~get-cpu-temp~ (thermal zone)            | 3 s              |
-| ~'battery~         | ~get-battery-status~ (capacity, charging) | 5 s             |
+- *text items* print the string the thunk returns (the clock, the battery);
+- *gauges* draw the number the thunk returns as a ring that fills up inside the
+  icon slot -- the CPU, RAM and temperature presets -- with the colour going
+  green → amber → red as the value climbs, and the reading written in the middle
+  ("42%", "54°C"). At a glance across the room a ring size is far easier to read
+  than a string, and the dock stays a row of icons instead of a row of text.
+
+| Preset             | Polls                                    | Default interval | Shape    |
+|--------------------+------------------------------------------+------------------+----------|
+| ~'clock~           | ~get-clock-text~ (day, date, time)       | 1 s              | text     |
+| ~'ram~             | ~get-used-ram-value~ (from /proc)        | 2 s              | gauge    |
+| ~'cpu~             | ~get-cpu-value~ (delta between polls)    | 2 s              | gauge    |
+| ~'cpu-temp~        | ~get-cpu-temp-value~ (thermal zone)      | 3 s              | gauge    |
+| ~'battery~         | ~get-battery-status~ (capacity, charging) | 5 s             | text     |
+
+Each preset also has the text form of the same reading (~get-used-ram-percent~,
+~get-cpu-percent~, ~get-cpu-temp~) and takes ~#:meter? #f~ to use it:
+
+#+begin_src scheme
+(list (ram-item)              ; a ring that fills with the used RAM
+      (cpu-item)              ; a ring for the CPU load
+      (cpu-temp-item)         ; a ring filling from 0 to 100 °C
+      (cpu-item #:meter? #f)) ; ... and the old "CPU 42%" text item
+#+end_src
+
+Writing a gauge by hand is the same thunk plus three keywords: ~#:meter?~ makes
+the item a gauge, ~#:max~ is the value that fills the ring and ~#:unit~ is
+appended to the number. The thunk must return a *number* (or ~#f~ for "no
+reading"):
+
+#+begin_src scheme
+(define (get-swap-used)
+  (catch #t
+         (lambda ()
+           (let* ((line (call-with-input-file "/proc/swaps" read-line))
+                  (rest (call-with-input-file "/proc/swaps"
+                          (lambda (port)
+                            (read-line port)
+                            (read-line port)))))
+             (if rest (string->number (cadr (string-split rest #\space))) #f)))
+         (lambda _ #f)))
+
+(define dock-items
+  (list (dynamic-item #:name "Swap"
+                      #:exec "alacritty -e 'btop'"
+                      #:poll-fn get-swap-used
+                      #:poll-interval 5000
+                      #:meter? #t
+                      #:unit "%"
+                      #:max 4096)))       ; 4 GiB of swap fills the ring
+#+end_src
+
+The ring takes its text colour from the theme, so it reads correctly on the
+light platinum slab and on dark themes alike, and it is sized from
+~dock-icon-size~ like every other icon.
 
 Writing your own is one thunk.  Because the poller runs on the main thread, it
 must not block -- keep it to a cheap read, never a sleep:
@@ -1334,13 +1383,14 @@ numbers, so a flat capsule, a frosted plinth, a subtle 3D shelf and the Mac OS X
 and no presets: every knob is independent, and all of them default to the classic
 flat capsule, so a dock that says nothing looks exactly like it always did.
 
-*** The seven numbers
+*** The eight numbers
 | Parameter                   | Default | Range      | What it does                                                   |
 |-----------------------------+---------+------------+----------------------------------------------------------------|
 | ~dock-shelf-tilt~           | ~0~     | -45 … 45   | Tilt of the shelf plane in degrees. 0 = flat (orthographic).    |
 | ~dock-shelf-perspective~    | ~400~   | 50 … 5000  | Projection distance for the tilt, px (only used with a tilt).   |
 | ~dock-shelf-margin~         | ~24~    | -200 … 200 | Glass on the *inner* side of the icons, px. Negative = overhang.|
 | ~dock-shelf-front~          | ~0~     | 0 … 200    | Glass on the *outer* side (the front face), px.                 |
+| ~dock-shelf-flare~          | ~0~     | -80 … 80   | Keystone: how much wider the slab is at the *screen* edge, per side, px. 0 = a plain rectangle. |
 | ~dock-reflection~           | ~0~     | 0 … 2      | Reflection band height / icon size. 0 = no reflections.         |
 | ~dock-reflection-intensity~ | ~0.55~  | 0 … 1      | Alpha of the reflection where it touches the icon.              |
 | ~dock-reflection-blur~      | ~0.05~  | 0 … 0.25   | Gaussian blur radius / icon size.                               |
@@ -1365,6 +1415,8 @@ set from the ~(configure-dock! ...)~ keyword arguments (~#:shelf-margin~,
 band    = round(dock-icon-size * dock-reflection)
 outer   = max(dock-shelf-front, band)     ; glass in front of the icons
 capsule = dock-icon-size + dock-shelf-margin + outer
+;; and, across the dock:
+bottom edge = top edge + 2 * dock-shelf-flare
 #+end_src
 
 Three consequences worth remembering:
@@ -1411,14 +1463,24 @@ stays at 0:
 (define dock-theme 'macos-mavericks)   ; platinum slab material
 
 (define dock-icon-size 48)
-(define dock-shelf-margin -22)         ; icons overhang by 22px
-(define dock-shelf-front 18)           ; 18px of glass in front
-(define dock-reflection 0.28)          ; short blurred mirror
-(define dock-reflection-intensity 0.5)
+(define dock-shelf-margin -23)         ; icons overhang by 23px
+(define dock-shelf-front 19)           ; 19px of glass in front
+(define dock-reflection 0.38)          ; mirrors fill that glass
+(define dock-reflection-intensity 0.55)
 (define dock-reflection-blur 0.05)
-;; tilt stays 0 - the real dock is orthographic
+(define dock-shelf-flare 26)           ; wider at the screen edge: the 3D shelf
+;; tilt stays 0 - the real dock is orthographic, the flare does the keystone
 (define dock-shelf-tilt 0)
 #+end_src
+
+Those numbers are measured off a screenshot of the real 10.9 dock, scaled from
+its 50px icons to 48px: a 46px slab (0.92 icons), icons overhanging it by 0.48
+icons, a mirror band that fills the 19px of front glass, and sides that flare
+~27px per side (0.54 icons) towards the screen. ~dock-shelf-flare~ is what makes
+the silhouette look like a shelf rather than a rectangle: the edge lying on the
+screen keeps its width and the inner edge is pulled in, so the icons and their
+padding stay on the slab while its skirt spreads out. It works on all four
+edges, and it reserves the room it needs in the layout, so nothing gets clipped.
 
 Any other theme works with the same numbers; it just wears its own material
 instead of the platinum one (see [[#shelf-material][styling the material]]).
@@ -2144,8 +2206,8 @@ ninja -C build test
   stacks and drag and drop.  These build and exercise real GTK widgets through
   Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
   ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
-  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~), so they catch GTK
-  behaviour, not just arithmetic.  The stack tests cover the directory listing
+  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~), so they
+  catch GTK behaviour, not just arithmetic.  The stack tests cover the directory listing
   (dot-files, ordering, missing folders) and the fan's rotation maths; the drag
   and drop tests cover the drop-position arithmetic, the list reordering and the
   item identity that the layout overrides are built on.

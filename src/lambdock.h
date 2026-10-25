@@ -59,6 +59,8 @@
 #define SHELF_EXTRA_MAX_PX 200
 #define SHELF_REFLECTION_RATIO_MAX 2.0
 #define SHELF_REFLECTION_BLUR_MAX 0.25
+/* How far the keystone (flare) may lean the dock's silhouette, per side. */
+#define SHELF_FLARE_MAX_PX 80
 /* Built-in defaults: the classic flat capsule. */
 #define SHELF_DEFAULT_TILT 0.0
 #define SHELF_DEFAULT_PERSPECTIVE 400.0
@@ -67,6 +69,7 @@
 #define SHELF_DEFAULT_REFLECTION 0.0
 #define SHELF_DEFAULT_REFLECTION_INTENSITY 0.55
 #define SHELF_DEFAULT_REFLECTION_BLUR 0.05
+#define SHELF_DEFAULT_FLARE_PX 0
 
 /* Auto-hide & Timer Constants */
 #define AUTOHIDE_TRIGGER_STRIP_PX 2
@@ -152,6 +155,9 @@ typedef struct AppWindow {
  * @stack_path: Folder shown by a stack item (NULL otherwise).
  * @stack_view: Stack view mode name ("grid", "list" or "fan").
  * @dragging: TRUE while the user drags this item (guards the drop handlers).
+ * @meter: Circular gauge drawn instead of text for meter dynamic items.
+ * @meter_unit: Suffix of the gauge's reading ("%" or "°C").
+ * @meter_max: Value that fills the gauge (0..100 readings use 100).
  */
 typedef struct DockItem {
   char *name;
@@ -174,6 +180,9 @@ typedef struct DockItem {
   char *stack_path; /* Folder of a stack item */
   char *stack_view; /* "grid" / "list" / "fan" */
   gboolean dragging;
+  GtkWidget *meter;     /* Gauge shown for meter dynamic items */
+  char *meter_unit;     /* Reading suffix: "%" or "°C" */
+  double meter_max;     /* Reading that fills the gauge */
 } DockItem;
 
 /**
@@ -192,6 +201,10 @@ typedef struct DockItem {
  * @reflection_ratio: Reflection band height / icon size (0 = no reflections).
  * @reflection_intensity: Alpha of the reflection where it touches the icon.
  * @reflection_blur_ratio: Gaussian blur radius / icon size.
+ * @flare_px: How much wider the dock is at the screen edge than at the inner
+ * edge, in pixels per side. 0 keeps the slab rectangular; a positive value
+ * gives it the OS X dock's keystone silhouette (wider where it meets the
+ * screen), which is what makes the Mavericks slab look like a 3D shelf.
  */
 typedef struct LambdockShelfParams {
   double tilt_deg;
@@ -201,6 +214,7 @@ typedef struct LambdockShelfParams {
   double reflection_ratio;
   double reflection_intensity;
   double reflection_blur_ratio;
+  int flare_px;
 } LambdockShelfParams;
 
 /**

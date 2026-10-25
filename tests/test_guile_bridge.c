@@ -18,9 +18,11 @@
 #include "../src/guile_bridge.h"
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
+#include "../src/ui/meter.h"
 #include <glib.h>
 #include <gtk/gtk.h>
 #include <libguile.h>
+#include <string.h>
 
 /* A fake (lambdock core) module whose answers are keyed off the config-path
  * argument, so we can exercise every conversion/branch of the C bridge. */
@@ -41,6 +43,7 @@ static const char *FAKE_MODULES =
     "            dock-item-poll-fn dock-item-poll-interval\n"
     "            dock-item-hover-animate?\n"
     "            dock-item-path dock-item-view-mode\n"
+    "            dock-item-meter? dock-item-unit dock-item-max\n"
     "            dock-layout-add! dock-layout-remove!\n"
     "            dock-layout-set-order! dock-layout-set-view!\n"
     "            get-layout-calls clear-layout-calls!\n"
@@ -77,6 +80,8 @@ static const char *FAKE_MODULES =
     "                \"/tmp/downloads\" 'list)\n"
     "        (vector 'launchpad \"Launchpad\" \"view-app-grid-symbolic\" \"\"\n"
     "                #f 0 #t \"\" 'grid)\n"
+    "        (vector 'dynamic \"Gauge\" \"\" \"gauge\"\n"
+    "                (lambda () 42) 111 #f \"\" 'grid #t \"%\" 100)\n"
     "        (vector 'separator \"\" \"\" \"\" #f 0 #f)))\n"
     "(define (dock-item-type v) (vector-ref v 0))\n"
     "(define (dock-item-name v) (vector-ref v 1))\n"
@@ -88,6 +93,12 @@ static const char *FAKE_MODULES =
     "(define (dock-item-path v) (if (> (vector-length v) 7) (vector-ref v 7) \"\"))\n"
     "(define (dock-item-view-mode v)\n"
     "  (if (> (vector-length v) 8) (vector-ref v 8) 'grid))\n"
+    "(define (dock-item-meter? v)\n"
+    "  (if (> (vector-length v) 9) (vector-ref v 9) #f))\n"
+    "(define (dock-item-unit v)\n"
+    "  (if (> (vector-length v) 10) (vector-ref v 10) \"\"))\n"
+    "(define (dock-item-max v)\n"
+    "  (if (> (vector-length v) 11) (vector-ref v 11) 100))\n"
     "(define %layout-calls '())\n"
     "(define (dock-layout-add! path kind name icon arg view)\n"
     "  (set! %layout-calls\n"
@@ -232,8 +243,8 @@ static void test_populate_dock_items(void) {
   populate_dock_items_for(&state);
 
   /* The excluded "bad-app" launcher is skipped; app + dynamic + stack +
-   * launchpad + separator remain, in order. */
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 5);
+   * launchpad + meter + separator remain, in order. */
+  g_assert_cmpint(g_list_length(state.dock_items), ==, 6);
 
   DockItem *app = (DockItem *)g_list_nth_data(state.dock_items, 0);
   g_assert_nonnull(app);
@@ -271,7 +282,25 @@ static void test_populate_dock_items(void) {
   g_assert_cmpint(launchpad->kind, ==, LAMBDOCK_ITEM_LAUNCHPAD);
   g_assert_true(gtk_widget_has_css_class(launchpad->button, "launchpad-item"));
 
-  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 4);
+  /* A meter dynamic item is a gauge: the text form is dropped and the first
+   * reading is already on it (42 out of 100 with the "%" unit). */
+  DockItem *gauge = (DockItem *)g_list_nth_data(state.dock_items, 4);
+  g_assert_nonnull(gauge);
+  g_assert_cmpstr(gauge->name, ==, "Gauge");
+  g_assert_nonnull(gauge->meter);
+  g_assert_true(lambdock_meter_is_meter(gauge->meter));
+  g_assert_cmpfloat(lambdock_meter_fraction(gauge->meter), ==, 0.42);
+  g_assert_cmpstr(gauge->meter_unit, ==, "%");
+  g_assert_cmpfloat(gauge->meter_max, ==, 100.0);
+  g_assert_null(gauge->label);
+  g_assert_null(gauge->reflection);
+  {
+    const char *tooltip = gtk_widget_get_tooltip_text(gauge->button);
+    g_assert_nonnull(tooltip);
+    g_assert_true(strstr(tooltip, "42%") != NULL);
+  }
+
+  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 5);
   g_assert_nonnull(sep);
   g_assert_true(GTK_IS_SEPARATOR(sep->button));
   g_assert_true(sep->is_favorite);

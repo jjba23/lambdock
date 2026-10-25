@@ -959,13 +959,14 @@ void apply_dock_mode_classes(LambdockState *state) {
     set_css_class(state->window, edge_class, TRUE);
   }
 
-  /* Project the styled capsule onto the tilted plane described by the shelf
-   * parameters; a tilt of 0 leaves the frame as a pass-through. */
+  /* Project the styled capsule onto the shape described by the shelf
+   * parameters: the tilt, the keystone (flare) or both. With neither, the frame
+   * is a pass-through. */
   if (state->bg_shelf) {
-    shelf_frame_set_tilt(
-        state->bg_shelf, state->edge,
-        shelf_tilt_for_edge(state->edge, state->shelf.tilt_deg),
-        state->shelf.perspective);
+    shelf_frame_set_shape(state->bg_shelf, state->edge,
+                          shelf_tilt_for_edge(state->edge,
+                                              state->shelf.tilt_deg),
+                          state->shelf.perspective, state->shelf.flare_px);
   }
 }
 

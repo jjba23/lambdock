@@ -47,6 +47,18 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                                    gboolean hover_animate);
 
 /**
+ * dock_item_enable_meter:
+ * @item: A dynamic dock item.
+ * @unit: Reading suffix ("%" or "°C"), may be NULL.
+ * @max_value: Reading that fills the gauge (0 falls back to 100).
+ *
+ * Replaces the item's icon+text with a single gauge widget, so the reading is
+ * drawn as an icon that fills up. The poll function must then return a number;
+ * strings still go to the (now absent) label, which is simply ignored.
+ */
+void dock_item_enable_meter(DockItem *item, const char *unit, double max_value);
+
+/**
  * free_dock_item:
  * Unparents widgets, cleans child window trackers, cancels timers,
  * unprotects Scheme procedure objects, and deallocates DockItem memory.

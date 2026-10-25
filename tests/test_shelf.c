@@ -265,6 +265,63 @@ static void test_frame_measure_delegates_to_child(void) {
   g_object_unref(frame);
 }
 
+static void test_frame_reserves_room_for_the_flare(void) {
+  GtkWidget *child = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_size_request(child, 400, 44);
+
+  GtkWidget *frame = shelf_frame_new(child);
+  shelf_frame_set_shape(frame, GTK_LAYER_SHELL_EDGE_BOTTOM, 0.0, 400.0, 26);
+
+  /* The keystone widens the screen-side edge, so the frame asks for twice the
+   * flare on the cross axis (horizontal, for a top/bottom dock) and nothing on
+   * the main axis (vertical). */
+  int minimum = -1;
+  int natural = -1;
+  gtk_widget_measure(frame, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural,
+                     NULL, NULL);
+  g_assert_cmpint(natural, ==, 400 + 2 * 26);
+
+  gtk_widget_measure(frame, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural,
+                     NULL, NULL);
+  g_assert_cmpint(natural, ==, 44);
+
+  /* A side dock flares along the other axis. */
+  shelf_frame_set_shape(frame, GTK_LAYER_SHELL_EDGE_LEFT, 0.0, 400.0, 12);
+  gtk_widget_measure(frame, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural,
+                     NULL, NULL);
+  g_assert_cmpint(natural, ==, 400);
+  gtk_widget_measure(frame, GTK_ORIENTATION_VERTICAL, -1, &minimum, &natural,
+                     NULL, NULL);
+  g_assert_cmpint(natural, ==, 44 + 2 * 12);
+
+  /* No flare, no reservation. */
+  shelf_frame_set_shape(frame, GTK_LAYER_SHELL_EDGE_BOTTOM, 0.0, 400.0, 0);
+  gtk_widget_measure(frame, GTK_ORIENTATION_HORIZONTAL, -1, &minimum, &natural,
+                     NULL, NULL);
+  g_assert_cmpint(natural, ==, 400);
+
+  g_object_ref_sink(frame);
+  g_object_unref(frame);
+}
+
+static void test_flare_activates_the_shelf(void) {
+  LambdockState state = {0};
+  state.shelf = lambdock_shelf_params_default();
+  g_assert_false(lambdock_shelf_active(&state));
+
+  /* The keystone alone is enough to need the shelf: it changes the silhouette
+   * and therefore the material that has to go with it. */
+  state.shelf.flare_px = 20;
+  g_assert_true(lambdock_shelf_active(&state));
+
+  LambdockShelfParams params = lambdock_shelf_params_effective(&state);
+  g_assert_cmpint(params.flare_px, ==, 20);
+
+  /* A zero-initialised state still means "the plain capsule". */
+  LambdockState zero = {0};
+  g_assert_false(lambdock_shelf_active(&zero));
+}
+
 static void test_frame_without_child(void) {
   GtkWidget *frame = shelf_frame_new(NULL);
 
@@ -440,6 +497,10 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/shelf/reflection_size_request",
                   test_reflection_size_request_per_edge);
   g_test_add_func("/ui/shelf/frame_measure", test_frame_measure_delegates_to_child);
+  g_test_add_func("/ui/shelf/frame_flare_room",
+                  test_frame_reserves_room_for_the_flare);
+  g_test_add_func("/ui/shelf/flare_activates_shelf",
+                  test_flare_activates_the_shelf);
   g_test_add_func("/ui/shelf/frame_without_child", test_frame_without_child);
   g_test_add_func("/ui/shelf/wrap_item_ordering", test_wrap_item_ordering);
   g_test_add_func("/ui/shelf/layout_toggle",

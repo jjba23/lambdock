@@ -9,6 +9,27 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- The CPU, RAM and temperature meters are now *gauges* instead of text: a ring
+  drawn inside one icon slot that fills with the reading and goes green → amber →
+  red as it climbs, with the value written in the middle ("42%", "54°C"). The
+  drawing is a real stroked arc (GskPath with round caps), it takes its text colour
+  from the theme and its size from `dock-icon-size`, `ram-item`/`cpu-item`/
+  `cpu-temp-item` use it by default (`#:meter? #f` brings the old text form back),
+  and `dynamic-item` gained `#:meter?`, `#:unit` and `#:max` so hand-written
+  gauges are three keywords away. New numeric helpers: `get-used-ram-value`,
+  `get-cpu-value`, `get-cpu-temp-value` (the old string helpers still work and now
+  wrap them).
+- `dock-shelf-flare`: a keystone for the dock's silhouette. The edge lying on the
+  screen keeps its width and the inner edge is pulled in by that many pixels per
+  side, which is what makes the OS X dock's slab look like a 3D shelf instead of a
+  rectangle. It is a real projection (not a shear), it works on all four edges, and
+  the shelf frame reserves the room it needs so the flare is never clipped.
+- The README's Mavericks recipe now carries the numbers measured off the real 10.9
+  dock (a 0.92-icon slab, a 0.48-icon overhang, mirrors filling the front glass and
+  a 0.54-icon flare per side), and the shelf section documents the eighth knob.
+- Tests: a new `meter` C suite plus flare checks in the shelf suite (14 C suites in
+  total) and 21 new Scheme assertions (184 in total).
+
 ---------
 
 *[Released]*

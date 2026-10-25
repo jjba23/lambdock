@@ -38,6 +38,9 @@
                dock-item-hover-animate?
                dock-item-path
                dock-item-view-mode
+               dock-item-meter?
+               dock-item-unit
+               dock-item-max
                dock-item-key
                app-item
                separator-item
@@ -46,14 +49,17 @@
                launchpad-item
                ;; Dynamic items
                get-used-ram-percent
+               get-used-ram-value
                ram-item
                get-clock-text
                clock-item
                get-cpu-percent
+               get-cpu-value
                cpu-item
                get-battery-status
                battery-item
                get-cpu-temp
+               get-cpu-temp-value
                cpu-temp-item
 
                ;; Primary Configurator
@@ -83,6 +89,7 @@
                get-dock-reflection
                get-dock-reflection-intensity
                get-dock-reflection-blur
+               get-dock-shelf-flare
 
                ;; Setters
                set-dock-position!
@@ -103,6 +110,7 @@
                set-dock-reflection!
                set-dock-reflection-intensity!
                set-dock-reflection-blur!
+               set-dock-shelf-flare!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -204,7 +212,10 @@ keeps its default (the plain flat dock)."
                                          'reflection-intensity 0.55)
                                     #:reflection-blur
                                     (cfg 'dock-reflection-blur
-                                         'reflection-blur 0.05))))
+                                         'reflection-blur 0.05)
+                                    #:shelf-flare
+                                    (cfg 'dock-shelf-flare
+                                         'shelf-flare 0))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

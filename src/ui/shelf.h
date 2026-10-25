@@ -164,6 +164,23 @@ void shelf_frame_set_tilt(GtkWidget *frame, GtkLayerShellEdge edge,
                           double degrees, double perspective);
 
 /**
+ * shelf_frame_set_shape:
+ * @frame: A widget created by shelf_frame_new().
+ * @edge: Screen edge the dock is attached to (decides the tilt axis, the
+ * keystone direction and which edge stays pinned on screen).
+ * @degrees: Tilt angle. 0 disables the tilt projection.
+ * @perspective: Perspective distance in pixels (smaller = stronger 3D).
+ * @flare_px: How much narrower the inner edge is than the edge touching the
+ * screen, in pixels per side. 0 keeps the slab rectangular; a positive value
+ * gives it the OS X dock's keystone silhouette.
+ *
+ * Sets the whole shape of the shelf in one call. NULL and non-frame widgets are
+ * ignored.
+ */
+void shelf_frame_set_shape(GtkWidget *frame, GtkLayerShellEdge edge,
+                           double degrees, double perspective, int flare_px);
+
+/**
  * shelf_frame_is_frame:
  * @widget: Pointer to inspect (may be NULL).
  *

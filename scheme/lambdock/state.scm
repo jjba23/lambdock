@@ -50,6 +50,7 @@
             get-dock-reflection
             get-dock-reflection-intensity
             get-dock-reflection-blur
+            get-dock-shelf-flare
 
             ;; Setters
             set-dock-position!
@@ -69,7 +70,8 @@
             set-dock-shelf-front!
             set-dock-reflection!
             set-dock-reflection-intensity!
-            set-dock-reflection-blur!))
+            set-dock-reflection-blur!
+            set-dock-shelf-flare!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -97,7 +99,8 @@
                     shelf-front
                     reflection
                     reflection-intensity
-                    reflection-blur)
+                    reflection-blur
+                    shelf-flare)
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
@@ -126,7 +129,8 @@
   (reflection-intensity dock-config-reflection-intensity
                         set-dock-config-reflection-intensity!)
   (reflection-blur dock-config-reflection-blur
-                   set-dock-config-reflection-blur!))
+                   set-dock-config-reflection-blur!)
+  (shelf-flare dock-config-shelf-flare set-dock-config-shelf-flare!))
 
 ;; Global hashtable storing isolated <dock-config> records keyed by config path / symbol
 (define *dock-configs*
@@ -155,7 +159,8 @@
                     0       ; shelf-front (px)
                     0.0     ; reflection (band height / icon size)
                     0.55    ; reflection-intensity
-                    0.05))  ; reflection-blur (blur radius / icon size)
+                    0.05    ; reflection-blur (blur radius / icon size)
+                    0))     ; shelf-flare (keystone px per side)
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -184,7 +189,8 @@
                           (shelf-front 0)
                           (reflection 0.0)
                           (reflection-intensity 0.55)
-                          (reflection-blur 0.05))
+                          (reflection-blur 0.05)
+                          (shelf-flare 0))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -207,7 +213,8 @@
                                shelf-front
                                reflection
                                reflection-intensity
-                               reflection-blur)))
+                               reflection-blur
+                               shelf-flare)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
 
@@ -220,7 +227,7 @@
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a)"
+     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
      config-path
      (if (list? items)
          (length items) 0)
@@ -236,7 +243,8 @@
      shelf-tilt
      shelf-margin
      shelf-front
-     reflection)))
+     reflection
+     shelf-flare)))
 
 (define (get-dock-config key)
   (or (hash-ref *dock-configs* key #f)
@@ -387,6 +395,12 @@
                                   (car args)))))
     (dock-config-reflection-blur cfg)))
 
+(define (get-dock-shelf-flare . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-shelf-flare cfg)))
+
 ;; =============================================================================
 ;; Setters
 ;; =============================================================================
@@ -488,3 +502,7 @@
 (define (set-dock-reflection-blur! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-reflection-blur! cfg val)) args))
+
+(define (set-dock-shelf-flare! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-shelf-flare! cfg val)) args))

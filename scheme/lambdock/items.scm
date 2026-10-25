@@ -31,6 +31,9 @@
                         dock-item-hover-animate?
                         dock-item-path
                         dock-item-view-mode
+                        dock-item-meter?
+                        dock-item-unit
+                        dock-item-max
                         dock-item-key
 
                         ;; Generic Constructors
@@ -42,14 +45,17 @@
 
                         ;; Dynamic Item Helpers & Presets
                         get-used-ram-percent
+                        get-used-ram-value
                         ram-item
                         get-clock-text
                         clock-item
                         get-cpu-percent
+                        get-cpu-value
                         cpu-item
                         get-battery-status
                         battery-item
                         get-cpu-temp
+                        get-cpu-temp-value
                         cpu-temp-item))
 
 ;; =============================================================================
@@ -62,6 +68,10 @@
 ;; that shows the contents of a directory (like the macOS Downloads stack), and
 ;; `view-mode` picks how those contents are laid out ('grid, 'list or 'fan).
 ;; Every other item keeps them at "" / 'grid.
+;;
+;; `meter?`, `unit` and `max` describe dynamic items that are drawn as a gauge
+;; instead of as text: the poll function then returns a *number*, the gauge fills
+;; up to `max` and the reading is shown with `unit` appended ("%" or "°C").
 (define-record-type <dock-item>
   (make-dock-item type
                   name
@@ -71,7 +81,10 @@
                   poll-interval
                   hover-animate?
                   path
-                  view-mode)
+                  view-mode
+                  meter?
+                  unit
+                  max)
   dock-item?
   (type %dock-item-type)
   (name %dock-item-name)
@@ -81,7 +94,10 @@
   (poll-interval %dock-item-poll-interval)
   (hover-animate? %dock-item-hover-animate?)
   (path %dock-item-path)
-  (view-mode %dock-item-view-mode))
+  (view-mode %dock-item-view-mode)
+  (meter? %dock-item-meter?)
+  (unit %dock-item-unit)
+  (max %dock-item-max))
 
 ;; Public procedure wrappers
 (define (dock-item-type item)
@@ -111,6 +127,15 @@
 (define (dock-item-view-mode item)
   (%dock-item-view-mode item))
 
+(define (dock-item-meter? item)
+  (%dock-item-meter? item))
+
+(define (dock-item-unit item)
+  (%dock-item-unit item))
+
+(define (dock-item-max item)
+  (%dock-item-max item))
+
 (define (dock-item-key item)
   "Stable identifier of ITEM, used by the dock layout overrides to remember
 ordering, removals and additions across restarts. It matches the key the C side
@@ -130,7 +155,10 @@ computes, so both halves of the dock agree on the identity of an item."
                   0
                   hover-animate?
                   ""
-                  'grid))
+                  'grid
+                  #f
+                  ""
+                  100))
 
 ;; Generic constructor for separators
 (define (separator-item)
@@ -142,15 +170,25 @@ computes, so both halves of the dock agree on the identity of an item."
                   0
                   #f
                   ""
-                  'grid))
+                  'grid
+                  #f
+                  ""
+                  100))
 
-;; Generic constructor for dynamic polling items
+;; Generic constructor for dynamic polling items.
+;;
+;; With `#:meter? #t` the item is drawn as a gauge instead of as text: the poll
+;; function must then return a number, which fills the ring up to `#:max` and is
+;; written in the middle with `#:unit` appended.
 (define* (dynamic-item #:key (name "Dynamic")
                        (icon "")
                        (exec "")
                        (poll-fn #f)
                        (poll-interval 2000)
-                       (hover-animate? #t))
+                       (hover-animate? #t)
+                       (meter? #f)
+                       (unit "")
+                       (max 100))
   (make-dock-item 'dynamic
                   name
                   icon
@@ -159,7 +197,10 @@ computes, so both halves of the dock agree on the identity of an item."
                   poll-interval
                   hover-animate?
                   ""
-                  'grid))
+                  'grid
+                  meter?
+                  unit
+                  max))
 
 ;; A stack: a dock icon that opens a popover with the contents of a directory.
 ;; `view-mode` is one of 'grid, 'list or 'fan and can be changed at runtime from
@@ -179,7 +220,10 @@ computes, so both halves of the dock agree on the identity of an item."
                   path
                   (if (memq view-mode '(grid list fan))
                       view-mode
-                      'grid)))
+                      'grid)
+                  #f
+                  ""
+                  100))
 
 ;; The launchpad: clicking it opens a full screen grid of installed apps.
 (define* (launchpad-item #:key (name "Launchpad")
@@ -193,14 +237,20 @@ computes, so both halves of the dock agree on the identity of an item."
                   0
                   hover-animate?
                   ""
-                  'grid))
+                  'grid
+                  #f
+                  ""
+                  100))
 
 ;; =============================================================================
 ;; Dynamic Helper Procedures & Presets
 ;; =============================================================================
 
-(define (get-used-ram-percent)
-  "Parses /proc/meminfo and returns used system RAM as a percentage."
+(define (get-used-ram-value)
+  "Parses /proc/meminfo and returns used system RAM as a percentage (0-100).
+
+This is the number a meter item wants; `get-used-ram-percent' is the same
+reading formatted for a text item."
   (catch #t
          (lambda ()
            (call-with-input-file "/proc/meminfo"
@@ -220,9 +270,9 @@ computes, so both halves of the dock agree on the identity of an item."
                     (let* ((used (- mem-total mem-available))
                            (pct (inexact->exact (round (* (/ used mem-total)
                                                           100)))))
-                      (format #f "RAM ~a%" pct)))
+                      pct))
                    ((eof-object? line)
-                    "RAM N/A")
+                    #f)
                    ((string-prefix? "MemTotal:" line)
                     (loop (read-line port)
                           (parse-kb line) mem-available))
@@ -231,18 +281,30 @@ computes, so both halves of the dock agree on the identity of an item."
                           (parse-kb line)))
                    (else (loop (read-line port) mem-total mem-available)))))))
          (lambda _
-           "RAM N/A")))
+           #f)))
+
+(define (get-used-ram-percent)
+  "Used system RAM as a RAM 42% reading, for text items."
+  (let ((value (get-used-ram-value)))
+    (if value (format #f "RAM ~a%" value) "RAM N/A")))
 
 (define* (ram-item #:key (exec "alacritty -e 'btop'")
                    (poll-interval 2000)
-                   (hover-animate? #f))
-  "Preset builder for dynamic RAM monitoring item."
+                   (hover-animate? #f)
+                   (meter? #t))
+  "Preset builder for the RAM item.
+
+By default it is a gauge: a ring that fills with the used RAM and turns amber
+and then red as memory runs out. `#:meter? #f' gives the old text item."
   (dynamic-item #:name "RAM Usage"
                 #:icon #f
                 #:exec exec
-                #:poll-fn get-used-ram-percent
+                #:poll-fn (if meter? get-used-ram-value get-used-ram-percent)
                 #:poll-interval poll-interval
-                #:hover-animate? hover-animate?))
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit "%"
+                #:max 100))
 
 (define (get-clock-text)
   (strftime "%a %b %d  %H:%M"
@@ -290,8 +352,10 @@ computes, so both halves of the dock agree on the identity of an item."
          (lambda _
            #f)))
 
-(define (get-cpu-percent)
-  "Returns CPU usage percentage computed since the previous poll (non-blocking)."
+(define (get-cpu-value)
+  "CPU usage percentage since the previous poll (non-blocking), or #f.
+
+This is the number a meter item wants; `get-cpu-percent' wraps it as text."
   (let ((sample (read-cpu-counters))
         (previous (vector-ref %cpu-last-sample 0)))
     (vector-set! %cpu-last-sample 0 sample)
@@ -303,18 +367,29 @@ computes, so both halves of the dock agree on the identity of an item."
                (diff-idle (- idle2 idle1))
                (diff-total (- total2 total1)))
           (if (> diff-total 0)
-              (let ((pct (inexact->exact (round (* 100
-                                                   (- 1
-                                                      (/ diff-idle diff-total)))))))
-                (format #f "CPU ~a%" pct)) "CPU N/A")) "CPU N/A")))
+              (inexact->exact (round (* 100 (- 1 (/ diff-idle diff-total)))))
+              #f))
+        #f)))
 
-(define* (cpu-item #:key (hover-animate? #f))
+(define (get-cpu-percent)
+  "CPU usage as \"CPU 42%\", for text items."
+  (let ((value (get-cpu-value)))
+    (if value (format #f "CPU ~a%" value) "CPU N/A")))
+
+(define* (cpu-item #:key (hover-animate? #f)
+                   (meter? #t))
+  "Preset builder for the CPU usage item.
+
+By default it is a gauge; `#:meter? #f' gives the old text item."
   (dynamic-item #:name "CPU Usage"
                 #:icon #f
                 #:exec "alacritty -e 'btop'"
-                #:poll-fn get-cpu-percent
+                #:poll-fn (if meter? get-cpu-value get-cpu-percent)
                 #:poll-interval 2000
-                #:hover-animate? hover-animate?))
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit "%"
+                #:max 100))
 
 (define (get-battery-status)
   (catch #t
@@ -339,22 +414,34 @@ computes, so both halves of the dock agree on the identity of an item."
                 #:poll-interval 5000
                 #:hover-animate? hover-animate?))
 
-(define (get-cpu-temp)
+(define (get-cpu-temp-value)
+  "CPU temperature in degrees Celsius from the first thermal zone, or #f."
   (catch #t
          (lambda ()
            (call-with-input-file "/sys/class/thermal/thermal_zone0/temp"
              (lambda (port)
                (let ((raw (string->number (string-trim-both (read-line port)))))
-                 (if raw
-                     (format #f "~a°C"
-                             (round (/ raw 1000))) "Temp N/A")))))
+                 (and raw (round (/ raw 1000)))))))
          (lambda _
-           "Temp N/A")))
+           #f)))
 
-(define* (cpu-temp-item #:key (hover-animate? #f))
+(define (get-cpu-temp)
+  "CPU temperature as \"54°C\", for text items."
+  (let ((value (get-cpu-temp-value)))
+    (if value (format #f "~a°C" value) "Temp N/A")))
+
+(define* (cpu-temp-item #:key (hover-animate? #f)
+                        (meter? #t))
+  "Preset builder for the CPU temperature item.
+
+By default it is a gauge whose ring fills from 0 to 100 °C; `#:meter? #f' gives
+the old text item."
   (dynamic-item #:name "CPU Temp"
                 #:icon #f
                 #:exec "alacritty -e 'btop'"
-                #:poll-fn get-cpu-temp
+                #:poll-fn (if meter? get-cpu-temp-value get-cpu-temp)
                 #:poll-interval 3000
-                #:hover-animate? hover-animate?))
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit "°C"
+                #:max 100))
