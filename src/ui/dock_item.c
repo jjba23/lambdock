@@ -23,11 +23,40 @@
 #include "desktop_entry.h" // XDG desktop entries (app id matching)
 #include "dock_dnd.h"            // Drag and drop (reorder, add, remove)
 #include "icon_resolver.h" // Helper to load application icons from the system theme
+#include "icon_zoom.h"     // Fisheye magnification by transform, not re-raster
 #include "launchpad.h"     // Full screen application grid
 #include "meter.h"         // Circular gauges for meter dynamic items
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
 #include "stack.h"         // Folder stacks (Downloads-style dock icons)
 #include "theme_engine.h" // CSS and theme engine utilities
+
+/* ============================================================================
+ * FISHEYE ZOOM WRAPPER
+ * ============================================================================
+ */
+
+/**
+ * wrap_icon_for_zoom:
+ * @image: (transfer none): the icon to put in a dock item.
+ * @base_size: the icon size the dock lays out at rest.
+ *
+ * Wraps @image so the fisheye can magnify it by painting a transform instead of
+ * asking the icon theme for the artwork at every pixel size the pointer passes
+ * through (see icon_zoom.h).
+ *
+ * Returns: (transfer none) (nullable): the widget to append to the item's
+ * content box.
+ */
+static GtkWidget *wrap_icon_for_zoom(GtkWidget *image, int base_size) {
+  if (!image)
+    return NULL;
+
+  if (base_size <= 0)
+    base_size = DEFAULT_ICON_SIZE;
+
+  int max_size = (int)ceil((double)base_size * FISHEYE_MAX_SCALE);
+  return lambdock_icon_zoom_new(image, base_size, max_size);
+}
 
 /* ============================================================================
  * ITEM IDENTITY & WIDGET BACK POINTERS
@@ -55,6 +84,35 @@ char *dock_item_key(const DockItem *item) {
     return NULL;
   return g_strdup_printf("%s:%s", dock_item_kind_to_string(item->kind),
                          item->name ? item->name : "");
+}
+
+int dock_item_icon_size(DockItem *item) {
+  if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    return 0;
+
+  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!child)
+    return 0;
+
+  /* App and dynamic items hold their icon inside a zoom container; stacks, the
+   * launchpad and meter items put it straight in the content box. */
+  if (GTK_IS_BOX(child)) {
+    for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+         w = gtk_widget_get_next_sibling(w)) {
+      if (lambdock_icon_zoom_is_zoom(w))
+        return lambdock_icon_zoom_target_size(w);
+      if (GTK_IS_IMAGE(w) && gtk_image_get_pixel_size(GTK_IMAGE(w)) > 0)
+        return gtk_image_get_pixel_size(GTK_IMAGE(w));
+    }
+    return 0;
+  }
+
+  if (lambdock_icon_zoom_is_zoom(child))
+    return lambdock_icon_zoom_target_size(child);
+  if (GTK_IS_IMAGE(child) && gtk_image_get_pixel_size(GTK_IMAGE(child)) > 0)
+    return gtk_image_get_pixel_size(GTK_IMAGE(child));
+
+  return 0;
 }
 
 /**
@@ -414,8 +472,8 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
 
   if (image) {
-    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_box_append(GTK_BOX(content_box), image);
+    GtkWidget *zoom = wrap_icon_for_zoom(image, icon_sz);
+    gtk_box_append(GTK_BOX(content_box), zoom);
   }
 
   item->label = gtk_label_new(NULL);
@@ -518,7 +576,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
         (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
     image = create_image_for_icon(icon_theme, item->icon, icon_sz);
     gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_box_append(GTK_BOX(content_box), image);
+    gtk_box_append(GTK_BOX(content_box), wrap_icon_for_zoom(image, icon_sz));
   }
 
   item->label = gtk_label_new(name);
@@ -1035,7 +1093,7 @@ static DockItem *create_icon_dock_item(LambdockState *state,
   gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
   if (image) {
     gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_box_append(GTK_BOX(content_box), image);
+    gtk_box_append(GTK_BOX(content_box), wrap_icon_for_zoom(image, icon_sz));
   }
   gtk_button_set_child(GTK_BUTTON(item->button), content_box);
 

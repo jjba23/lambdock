@@ -150,6 +150,22 @@ char *dock_item_key(const DockItem *item);
 const char *dock_item_kind_to_string(LambdockItemKind kind);
 
 /**
+ * dock_item_icon_size:
+ * @item: A dock item (may be NULL).
+ *
+ * The size the item's icon is drawn at right now, in pixels: the magnified size
+ * while the fisheye is scaling it, the resting size otherwise.
+ *
+ * The glass-shelf reflection needs this to mirror the icon at the size it is
+ * actually shown, and it must not be read from the GtkImage's pixel size -- that
+ * one is whatever raster the icon is currently held at, not the size on screen
+ * (see icon_zoom.h).
+ *
+ * Returns: the icon size in pixels, or 0 when the item has no icon.
+ */
+int dock_item_icon_size(DockItem *item);
+
+/**
  * dock_item_from_widget:
  * @widget: (nullable): any widget of a dock item (button or container).
  *

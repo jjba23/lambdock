@@ -253,6 +253,7 @@ sources = files(
   'src/toplevel_tracker.c',
   'src/ui/theme_engine.c',
   'src/ui/icon_resolver.c',
+  'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
@@ -289,6 +290,7 @@ full_app_sources = files(
   'src/toplevel_tracker.c',
   'src/ui/theme_engine.c',
   'src/ui/icon_resolver.c',
+  'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
@@ -318,6 +320,11 @@ unit_tests = [
   {
     'id': 'icon_resolver',
     'extra_sources': ['src/ui/icon_resolver.c', lambdock_resources],
+    'deps': [gtk_dep, libm_dep],
+  },
+  {
+    'id': 'icon_zoom',
+    'extra_sources': ['src/ui/icon_zoom.c'],
     'deps': [gtk_dep, libm_dep],
   },
   {

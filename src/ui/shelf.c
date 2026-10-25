@@ -17,6 +17,7 @@
 
 #include "shelf.h"
 #include "../logger.h"
+#include "dock_item.h"
 #include <math.h>
 
 /* ============================================================================
@@ -1089,25 +1090,9 @@ void apply_shelf_layout(LambdockState *state) {
     /* Follow the current icon size so fisheye magnification is mirrored too,
      * but keep the band thickness tied to the *base* icon size: growing the
      * band would push the whole row of icons up while hovering. */
-    int icon_px = default_icon;
-    GtkWidget *image = NULL;
-    if (item->button && GTK_IS_BUTTON(item->button)) {
-      GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-      if (GTK_IS_IMAGE(child)) {
-        image = child;
-      } else if (GTK_IS_BOX(child)) {
-        for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-             w = gtk_widget_get_next_sibling(w)) {
-          if (GTK_IS_IMAGE(w)) {
-            image = w;
-            break;
-          }
-        }
-      }
-    }
-    if (image && gtk_image_get_pixel_size(GTK_IMAGE(image)) > 0) {
-      icon_px = gtk_image_get_pixel_size(GTK_IMAGE(image));
-    }
+    int icon_px = dock_item_icon_size(item);
+    if (icon_px <= 0)
+      icon_px = default_icon;
 
     shelf_reflection_configure(item->reflection, state->edge, icon_px,
                                params.reflection_ratio,

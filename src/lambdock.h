@@ -266,6 +266,16 @@ struct LambdockState {
   int target_margin;
   int active_popovers;
 
+  /* Fisheye Hover State. Pointer events arrive faster than the display
+   * refreshes, so the newest position is kept here and applied once per frame
+   * by `pointer_tick_id`; `applied_*` is what the icons are scaled to now. */
+  guint pointer_tick_id;
+  double pointer_x;
+  double pointer_y;
+  double applied_pointer_x;
+  double applied_pointer_y;
+  gboolean pointer_applied;
+
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;
   GList *window_trackers;

@@ -2100,6 +2100,18 @@ Also the fish-eye effect (~dock-hover-animate?~) uses a cosine bell curve scalin
 for smooth zooming and sizing: magnification peaks at 1.45x within a 140-pixel
 radius of the pointer, and each item can opt out with ~#:hover-animate? #f~.
 
+Magnifying does not re-render the icons. Asking an icon theme for an icon is not
+free -- every new pixel size means a fresh lookup, decode and resample of the
+artwork -- and the first version of this effect asked for one per icon for every
+size the pointer passed through, which is tens of milliseconds of work per frame
+and why hovering felt heavy. Now each icon is resolved at the two sizes that
+matter (how it rests, and how big it gets) and painted through a
+=GskTransform=, so magnification is a matrix on the GPU: a slow sweep across the
+whole dock costs about 6% of a core instead of about 40%, and the icon follows the
+pointer continuously rather than stepping through whole pixels. Pointer events are
+also applied once per frame rather than once per event, so a high-rate mouse
+cannot do the same work twice before it is ever drawn.
+
 Of course, you are also free to add CSS ~transform~ directives or other things to
 your liking, e.g.
 

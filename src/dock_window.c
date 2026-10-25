@@ -22,6 +22,7 @@
 #include "ui/shelf.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
+#include "ui/icon_zoom.h"
 #include "ui/launchpad.h"
 #include "ui/popover_menu.h"
 #include "ui/theme_engine.h"
@@ -161,29 +162,28 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
  * ========================================================================= */
 
 /**
- * get_item_image_widget:
- * Helper to locate the GtkImage widget inside a DockItem.
- * - For 'app items, the child of button is directly a GtkImage.
- * - For 'dynamic items, the child of button is a GtkBox holding an image +
- * label.
- * - For 'separator items, button is a GtkSeparator, returning NULL.
+ * get_item_zoom_widget:
+ * Locates the fisheye zoom container of a dock item, the widget that actually
+ * scales the icon while hovering.
+ *
+ * Returns: (transfer none) (nullable): the zoom widget, or NULL for items that
+ * have no icon (separators, meters).
  */
-static GtkWidget *get_item_image_widget(DockItem *item) {
+static GtkWidget *get_item_zoom_widget(DockItem *item) {
   if (!item || !item->button || !GTK_IS_BUTTON(item->button))
-    return NULL; // Bypasses separators automatically (GtkSeparator !=
-                 // GtkButton)
+    return NULL;
 
   GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
   if (!child)
     return NULL;
 
-  if (GTK_IS_IMAGE(child)) {
-    return child; // Standard 'app launcher item
-  } else if (GTK_IS_BOX(child)) {
-    // Dynamic item: iterate through container box children to find GtkImage
+  if (lambdock_icon_zoom_is_zoom(child))
+    return child;
+
+  if (GTK_IS_BOX(child)) {
     for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
          w = gtk_widget_get_next_sibling(w)) {
-      if (GTK_IS_IMAGE(w))
+      if (lambdock_icon_zoom_is_zoom(w))
         return w;
     }
   }
@@ -214,16 +214,19 @@ static void reset_dock_items_scale(LambdockState *state) {
       gtk_widget_set_size_request(item->button, base_sz, -1);
     }
 
-    GtkWidget *image = get_item_image_widget(item);
-    if (image) {
-      gtk_image_set_pixel_size(GTK_IMAGE(image), base_sz);
-      gtk_widget_set_size_request(image, -1, -1);
-    }
+    /* The icon itself is never re-rasterised: it rests at its base scale. */
+    GtkWidget *zoom = get_item_zoom_widget(item);
+    if (zoom)
+      lambdock_icon_zoom_set_scale(zoom, 1.0);
 
     /* Keep the glass-shelf reflection at the base icon size too. */
     if (item->reflection)
       shelf_reflection_set_icon_size(item->reflection, base_sz);
   }
+
+  /* The row is back at rest, so the next frame has to apply the pointer again
+   * even if it has not moved. */
+  state->pointer_applied = FALSE;
 }
 
 /**
@@ -268,32 +271,36 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
         scale = 1.0 + (max_scale - 1.0) * factor;
       }
 
-      int target_size = (int)(base_size * scale);
-      GtkWidget *image = get_item_image_widget(item);
+      int target_size = (int)lround(base_size * scale);
+      GtkWidget *zoom = get_item_zoom_widget(item);
 
-      if (image) {
-        if (gtk_image_get_pixel_size(GTK_IMAGE(image)) != target_size) {
-          gtk_image_set_pixel_size(GTK_IMAGE(image), target_size);
-          if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-            // Expand width along X axis; preserve base_sz along Y axis
-            gtk_widget_set_size_request(item->button, target_size, base_sz);
-          } else {
-            // Expand height along Y axis; preserve base_sz along X axis
-            gtk_widget_set_size_request(item->button, base_sz, target_size);
-          }
+      if (!zoom)
+        continue;
 
-          // Mirror the magnified icon in its reflection: the copy grows along
-          // the dock axis but keeps the band thickness, so the row of icons
-          // does not shift up while hovering.
-          if (item->reflection && lambdock_shelf_active(state)) {
-            int band = (int)round(base_size *
-                                  lambdock_shelf_params_effective(state)
-                                      .reflection_ratio);
-            if (band > 0)
-              shelf_reflection_set_extent(item->reflection, target_size, band);
-          }
+      if (lambdock_icon_zoom_target_size(zoom) != target_size) {
+        if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+          // Expand width along X axis; preserve base_sz along Y axis
+          gtk_widget_set_size_request(item->button, target_size, base_sz);
+        } else {
+          // Expand height along Y axis; preserve base_sz along X axis
+          gtk_widget_set_size_request(item->button, base_sz, target_size);
+        }
+
+        // Mirror the magnified icon in its reflection: the copy grows along
+        // the dock axis but keeps the band thickness, so the row of icons
+        // does not shift up while hovering.
+        if (item->reflection && lambdock_shelf_active(state)) {
+          int band = (int)round(base_size * lambdock_shelf_params_effective(state)
+                                               .reflection_ratio);
+          if (band > 0)
+            shelf_reflection_set_extent(item->reflection, target_size, band);
         }
       }
+
+      /* The layout steps in whole pixels, the icon does not: the zoom paints
+       * the artwork through a transform, so magnification follows the pointer
+       * continuously and costs no rasterisation at all. */
+      lambdock_icon_zoom_set_scale(zoom, scale);
     }
   }
 }
@@ -425,7 +432,47 @@ static void on_motion_enter(GtkEventControllerMotion *controller, double x,
   (void)x;
   (void)y;
   LambdockState *state = (LambdockState *)user_data;
+  state->pointer_applied = FALSE;
   reveal_dock(state);
+}
+
+/**
+ * on_hover_tick:
+ * GTK frame clock callback that applies the newest pointer position to the
+ * fisheye, once per frame.
+ *
+ * Motion events can arrive several times per frame (high-rate mice, libinput
+ * batching, a compositor that coalesces late), and every one of them used to
+ * resize the whole row of icons and repaint the dock. Applying only the latest
+ * position keeps the work proportional to the frame rate instead of to the event
+ * rate, and it does so right before the frame is laid out, so the icons are never
+ * a frame behind the pointer.
+ */
+static gboolean on_hover_tick(GtkWidget *widget, GdkFrameClock *frame_clock,
+                              gpointer user_data) {
+  (void)widget;
+  (void)frame_clock;
+
+  LambdockState *state = (LambdockState *)user_data;
+  if (!state)
+    return G_SOURCE_REMOVE;
+
+  state->pointer_tick_id = 0; // one-shot: the next motion schedules the next one
+
+  /* Nothing moved since the last frame (the pointer can repeat a position), so
+   * the icons are already right where they belong. */
+  if (state->pointer_applied &&
+      fabs(state->pointer_x - state->applied_pointer_x) < 1.0 &&
+      fabs(state->pointer_y - state->applied_pointer_y) < 1.0)
+    return G_SOURCE_REMOVE;
+
+  state->applied_pointer_x = state->pointer_x;
+  state->applied_pointer_y = state->pointer_y;
+  state->pointer_applied = TRUE;
+
+  update_dock_items_fisheye(state, state->pointer_x, state->pointer_y);
+
+  return G_SOURCE_REMOVE;
 }
 
 /**
@@ -439,6 +486,14 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
   LambdockState *state = (LambdockState *)user_data;
 
   if (state) {
+    /* A frame that is already queued must not magnify anything after the
+     * pointer has left. */
+    if (state->pointer_tick_id != 0 && state->window) {
+      gtk_widget_remove_tick_callback(state->window, state->pointer_tick_id);
+      state->pointer_tick_id = 0;
+    }
+    state->pointer_applied = FALSE;
+
     if (state->hover_animate) {
       reset_dock_items_scale(state);
     }
@@ -460,10 +515,18 @@ static void on_motion_notify(GtkEventControllerMotion *controller, double x,
                              double y, gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
-  if (state && state->hover_animate && !state->is_hidden &&
-      state->tick_cb_id == 0 && state->current_margin == 0) {
-    update_dock_items_fisheye(state, x, y);
-  }
+  if (!state || !state->hover_animate || state->is_hidden ||
+      state->tick_cb_id != 0 || state->current_margin != 0)
+    return;
+
+  /* Remember where the pointer is and let the frame clock do the work, at most
+   * once per frame. */
+  state->pointer_x = x;
+  state->pointer_y = y;
+
+  if (state->pointer_tick_id == 0 && state->window)
+    state->pointer_tick_id =
+        gtk_widget_add_tick_callback(state->window, on_hover_tick, state, NULL);
 }
 
 /**
