@@ -1,0 +1,275 @@
+/* lambdock
+
+ Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+ lambdock is free software : you can redistribute it and / or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+
+ lambdock is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY ; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+
+ You should have received a copy of the GNU General Public License
+ along with lambdock. If not, see <https://www.gnu.org/licenses/>.
+*/
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - MAC OS X 10.9 MAVERICKS, SMOKED GLASS
+ * =========================================================================
+ * The same dock as `macos-mavericks', for a dark session: smoked graphite in
+ * place of the platinum slab, with the same structure -- a lip along the screen
+ * edge, a specular line, and a body that is denser where it meets that edge and
+ * thins out towards the icons.
+ *
+ * Geometry does not live here. It comes from the dock options
+ * (`dock-shelf-margin`, `dock-shelf-front`, `dock-reflection`,
+ * `dock-shelf-flare`), which is why this file is only about the material.
+ */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* Smoked capsule (the flat dock; shelf mode overrides it below). */
+.lambdock-window {
+  border-radius: 10px;
+  padding: 0;
+  margin: 0;
+
+  background-image: linear-gradient(
+    180deg,
+    rgba(96, 106, 124, 0.90) 0px,
+    rgba(42, 47, 57, 0.92) 2px,
+    rgba(28, 32, 40, 0.94) 9px,
+    rgba(34, 38, 47, 0.92) 45%,
+    rgba(20, 23, 29, 0.94) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  border-left: 1px solid rgba(255, 255, 255, 0.10);
+  border-right: 1px solid rgba(255, 255, 255, 0.10);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.55);
+
+  box-shadow:
+    0 -8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.28);
+}
+
+/* -------------------------------------------------------------------------
+ * THE SHELF SLAB (dock-shelf-* in use)
+ * ------------------------------------------------------------------------- */
+
+.lambdock-window.shelf-mode {
+  border-radius: 8px 8px 16px 16px;
+
+  /* Same recipe as the platinum slab, in dark ink: a 3px lip on the screen
+   * edge, a specular line, then a body that is densest at that edge (~0.90) and
+   * thins towards the icons (~0.72), so the wallpaper still shows through.
+   * 0deg points up, so the first stops are the outer edge. */
+  background-image: linear-gradient(
+    0deg,
+    rgba(8, 10, 14, 0.92) 0px,
+    rgba(8, 10, 14, 0.92) 3px,
+    rgba(150, 162, 180, 0.55) 3px,
+    rgba(58, 65, 78, 0.86) 4px,
+    rgba(34, 39, 48, 0.90) 9px,
+    rgba(28, 32, 41, 0.82) 45%,
+    rgba(24, 28, 36, 0.72) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 1px solid rgba(0, 0, 0, 0.55);
+  border-right: 1px solid rgba(0, 0, 0, 0.55);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.75);
+
+  box-shadow:
+    0 -8px 20px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+}
+
+/* Top docks: the whole slab is mirrored around the horizontal axis. */
+.lambdock-window.shelf-mode.shelf-top {
+  border-radius: 16px 16px 8px 8px;
+  background-image: linear-gradient(
+    180deg,
+    rgba(8, 10, 14, 0.92) 0px,
+    rgba(8, 10, 14, 0.92) 3px,
+    rgba(150, 162, 180, 0.55) 3px,
+    rgba(58, 65, 78, 0.86) 4px,
+    rgba(34, 39, 48, 0.90) 9px,
+    rgba(28, 32, 41, 0.82) 45%,
+    rgba(24, 28, 36, 0.72) 100%
+  );
+}
+
+/* Side docks: the same slab, rotated 90 degrees. */
+.lambdock-window.shelf-mode.shelf-left {
+  border-radius: 8px 16px 16px 8px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(8, 10, 14, 0.92) 0px,
+    rgba(8, 10, 14, 0.92) 3px,
+    rgba(150, 162, 180, 0.55) 3px,
+    rgba(58, 65, 78, 0.86) 4px,
+    rgba(34, 39, 48, 0.90) 9px,
+    rgba(28, 32, 41, 0.82) 45%,
+    rgba(24, 28, 36, 0.72) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-right {
+  border-radius: 16px 8px 8px 16px;
+  background-image: linear-gradient(
+    270deg,
+    rgba(8, 10, 14, 0.92) 0px,
+    rgba(8, 10, 14, 0.92) 3px,
+    rgba(150, 162, 180, 0.55) 3px,
+    rgba(58, 65, 78, 0.86) 4px,
+    rgba(34, 39, 48, 0.90) 9px,
+    rgba(28, 32, 41, 0.82) 45%,
+    rgba(24, 28, 36, 0.72) 100%
+  );
+}
+
+/* Full-width taskbar: same slab, square corners. */
+.lambdock-window.shelf-mode.taskbar {
+  border-radius: 0;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------------------
+ * BUTTONS, ICONS & FISHEYE
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 3px;
+  margin: 0px 2px;
+  border-radius: 10px;
+  color: #e8edf5;
+
+  transition: transform 220ms cubic-bezier(0.32, 1.42, 0.58, 1),
+              background-color 150ms ease-out;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+button.flat:active {
+  background-color: rgba(255, 255, 255, 0.22);
+  box-shadow: none;
+}
+
+/* Dynamic Item Labels */
+.dynamic-item-label {
+  color: #e6ecf5;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
+}
+
+button.flat:hover .dynamic-item-label {
+  color: #ffffff;
+}
+
+/* -------------------------------------------------------------------------
+ * RUNNING APP INDICATOR
+ * -------------------------------------------------------------------------
+ * With reflections on, the reflection widget draws the glow dot on the glass
+ * itself; this dot is for the flat variant. */
+
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 0.90) 0%,
+    rgba(186, 208, 238, 0.65) 45%,
+    transparent 82%
+  );
+  background-size: 14px 5px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-image: radial-gradient(
+    circle at center,
+    rgba(255, 255, 255, 1.00) 0%,
+    rgba(205, 225, 250, 0.80) 50%,
+    transparent 86%
+  );
+  background-size: 18px 6px;
+  background-position: center bottom;
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR GROOVE
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 6px 8px;
+  background-color: rgba(255, 255, 255, 0.18);
+  border-right: 1px solid rgba(0, 0, 0, 0.45);
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * HUD POPOVER MENUS
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(18, 21, 27, 0.98);
+  color: #eef2f8;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.70),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: #d7e3f4;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #eef2f8;
+  border-radius: 5px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.20) 0%,
+    rgba(255, 255, 255, 0.10) 100%
+  );
+  color: #ffffff;
+}
+
+window.about-dialog {
+  background-image: linear-gradient(
+    180deg,
+    rgba(52, 58, 70, 0.98) 0px,
+    rgba(24, 27, 34, 0.99) 45%,
+    rgba(16, 18, 24, 1.00) 100%
+  );
+  color: #eef2f8;
+}

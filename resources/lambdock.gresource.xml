@@ -13,6 +13,7 @@
     <file>css/macos-big-sur.css</file>
     <file>css/macos-ventura.css</file>
     <file>css/macos-mavericks.css</file>
+    <file>css/macos-mavericks-dark.css</file>
     <!-- Windows-inspired themes -->
     <file>css/windows-xp.css</file>
     <file>css/windows-10.css</file>
