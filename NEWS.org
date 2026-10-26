@@ -13,6 +13,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.10.9 (2026-10-26)
+- Remove the preferences test's temporary directory when it finishes. Every
+  `meson test` run used to leave a `lambdock-prefs-test-*` directory behind,
+  including on the display-less path where the GTK half of the test is skipped.
+  Leftover directories also confused Guix's `install-license-files` phase,
+  which looks for a sibling whose name starts with the package name.
+
 ** v0.10.8 (2026-10-26)
 - Add a GTK4 preferences window. Right-click the dock and choose *Preferences…*
   to change auto-hide, hover magnification, window tracking, dock/taskbar mode,
