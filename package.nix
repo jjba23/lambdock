@@ -27,6 +27,8 @@
   xvfb-run,
   dbus,
   fontconfig,
+  hicolor-icon-theme,
+  adwaita-icon-theme,
   gtk4,
   gtk4-layer-shell,
   guile,
@@ -38,7 +40,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "0.10.9";
+  version = "0.10.10";
 
   strictDeps = true;
   __structuredAttrs = true;
@@ -70,6 +72,8 @@ stdenv.mkDerivation (finalAttrs: {
     xvfb-run
     dbus
     fontconfig
+    hicolor-icon-theme
+    adwaita-icon-theme
   ];
 
   checkPhase = ''
@@ -79,6 +83,8 @@ stdenv.mkDerivation (finalAttrs: {
     export HOME=$TMPDIR
     export XDG_RUNTIME_DIR=$TMPDIR
     export FONTCONFIG_FILE=${fontconfig.out}/etc/fonts/fonts.conf
+    # The dock-item tests resolve `utilities-terminal'; give them the themes.
+    export XDG_DATA_DIRS=${hicolor-icon-theme}/share:${adwaita-icon-theme}/share
 
     # Disable accessibility bus queries and force GTK to use X11 under Xvfb
     export GTK_A11Y=none

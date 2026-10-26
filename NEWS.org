@@ -13,6 +13,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.10.10 (2026-10-26)
+- Make the test suite pass in headless Nix builds. Xvfb has no EGL, so pin
+  `GSK_RENDERER=cairo` for the shelf and icon-zoom tests, and give the check
+  phase the hicolor and Adwaita icon themes so the dock-item tests can resolve
+  `utilities-terminal`.
+
 ** v0.10.9 (2026-10-26)
 - Remove the preferences test's temporary directory when it finishes. Every
   `meson test` run used to leave a `lambdock-prefs-test-*` directory behind,
