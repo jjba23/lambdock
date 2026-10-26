@@ -1527,7 +1527,7 @@ stays at 0:
 (define dock-theme 'macos-mavericks)   ; platinum slab material
 
 (define dock-icon-size 48)
-(define dock-shelf-margin -14)         ; icons overhang by half an icon
+(define dock-shelf-margin -18)         ; icons overhang by half an icon
 (define dock-shelf-front 24)           ; slab = 48px = exactly one icon
 (define dock-reflection 0.30)          ; mirror band inside that front glass
 (define dock-reflection-intensity 0.70)
