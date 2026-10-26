@@ -83,6 +83,8 @@ stdenv.mkDerivation (finalAttrs: {
     # Disable accessibility bus queries and force GTK to use X11 under Xvfb
     export GTK_A11Y=none
     export GDK_BACKEND=x11
+    # No EGL under Xvfb: use the software renderer for the GTK window tests.
+    export GSK_RENDERER=cairo
 
     # Start DBus session bus
     dbus-daemon --config-file=${dbus}/share/dbus-1/session.conf --fork --print-address 5 5>dbus_address
