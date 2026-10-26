@@ -258,6 +258,7 @@ sources = files(
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
+  'src/ui/app_actions.c',
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
@@ -304,6 +305,7 @@ full_app_sources = files(
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
+  'src/ui/app_actions.c',
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
@@ -382,6 +384,11 @@ unit_tests = [
   {
     'id': 'trash',
     'extra_sources': ['src/ui/trash.c'],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+  },
+  {
+    'id': 'app_actions',
+    'extra_sources': ['src/ui/app_actions.c', 'src/ui/desktop_entry.c'],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
   },
 ]

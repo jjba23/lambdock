@@ -2123,6 +2123,21 @@ from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
   multiple open instances opens a floating GTK Popover HUD.
 - *Popover Capabilities*: Select individual windows by title, close specific
   window instances, open a new window, or execute a "Close All Windows" command.
+- *App-specific entries*: the popover also carries the actions that belong to
+  the kind of application the item is. A browser gets *New Window* and *New
+  Private Window* (Firefox's ~--private-window~, Chrome/Chromium/Brave/Vivaldi's
+  ~--incognito~, Edge's ~--inprivate~, Opera's ~--private~); a running music
+  player gets *Play/Pause*, *Previous Track*, *Next Track* and *Stop Playback*,
+  sent over MPRIS. Applications are classified from their desktop entry's
+  ~Categories=~ (~WebBrowser~, ~Music~, ~Audio;Player~), with their id, name and
+  command line as the fallback, so a hand written Scheme item for Spotify is
+  understood as well as one that came from a desktop file.
+
+The playback controls are only there while the player is on the session bus
+(~org.mpris.MediaPlayer2.<instance>~), matched to the item by its app id or its
+name, so a pinned but closed player does not grow buttons that would do nothing.
+The window commands are always there, because launching a browser works whether
+it is running or not.
 
 Window tracking can be switched off entirely with ~dock-track-windows?~ for a
 dock that is purely a launcher, and specific applications can be kept out of the

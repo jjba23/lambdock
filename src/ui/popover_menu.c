@@ -18,6 +18,7 @@
 #include "popover_menu.h"
 #include "../logger.h"
 #include "../toplevel_tracker.h"
+#include "app_actions.h"
 #include "desktop_entry.h"
 #include "dock_dnd.h"
 #include "dock_item.h"
@@ -385,6 +386,140 @@ static void on_popover_empty_trash(GtkButton *btn, gpointer user_data) {
   g_object_unref(task);
 }
 
+/* ============================================================================
+ * APPLICATION-SPECIFIC MENU ENTRIES
+ * ============================================================================
+ */
+
+/**
+ * AppActionData:
+ * @item: The dock item the action belongs to.
+ * @action: Which action this button carries out.
+ * @music_bus: MPRIS bus name of the player to drive, or NULL for a launch.
+ */
+typedef struct {
+  DockItem *item;
+  LambdockAppAction action;
+  char *music_bus;
+} AppActionData;
+
+static void free_app_action_data(gpointer data, GClosure *closure) {
+  (void)closure;
+  AppActionData *action = (AppActionData *)data;
+  g_free(action->music_bus);
+  g_free(action);
+}
+
+/**
+ * on_popover_app_action:
+ * @btn: The menu button (unused).
+ * @user_data: The `AppActionData` of the entry.
+ *
+ * Runs one kind-specific action: a browser window command is spawned like any
+ * other launch, and a playback control is sent to the player over MPRIS.
+ */
+static void on_popover_app_action(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  AppActionData *action = (AppActionData *)user_data;
+  if (!action || !action->item)
+    return;
+
+  if (lambdock_app_action_is_music(action->action)) {
+    lambdock_app_music_invoke(action->music_bus, action->action);
+  } else {
+    char *command =
+        lambdock_app_action_command(action->item->exec, action->action);
+    if (command) {
+      GError *error = NULL;
+      if (!g_spawn_command_line_async(command, &error)) {
+        LOG_C_WARN("UI", "Failed to launch '%s': %s", command,
+                   error->message);
+        g_clear_error(&error);
+      }
+      g_free(command);
+    }
+  }
+
+  if (action->item->popover)
+    gtk_popover_popdown(GTK_POPOVER(action->item->popover));
+}
+
+/**
+ * item_app_actions:
+ * @item: An application item.
+ * @kind_out: (out) (nullable): the kind of application @item is.
+ * @music_bus_out: (out) (nullable): the running player's bus name, or NULL.
+ *
+ * The kind-specific actions the item offers. The desktop entry behind the item
+ * supplies the categories that classify it, and the session bus says whether a
+ * music player of that application is running.
+ *
+ * Returns: (transfer full): a GArray of LambdockAppAction (guint) values.
+ */
+static GArray *item_app_actions(DockItem *item, LambdockAppKind *kind_out,
+                                char **music_bus_out) {
+  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(
+      (item->desktop_id && *item->desktop_id != '\0') ? item->desktop_id
+                                                      : item->app_id);
+  const char *categories = entry ? entry->categories : NULL;
+  const char *app_id = (entry && entry->stem) ? entry->stem : item->app_id;
+  const char *name = (item->name && *item->name != '\0')
+                         ? item->name
+                         : (entry ? entry->name : NULL);
+
+  LambdockAppKind kind = lambdock_app_kind(app_id, name, item->exec, categories);
+  if (kind_out)
+    *kind_out = kind;
+
+  char *music_bus = NULL;
+  if (kind == LAMBDOCK_APP_KIND_MUSIC)
+    music_bus = lambdock_app_music_player_find(app_id, name);
+
+  GArray *actions =
+      lambdock_app_actions(app_id, name, item->exec, categories, music_bus);
+  if (music_bus_out)
+    *music_bus_out = music_bus;
+  else
+    g_free(music_bus);
+
+  return actions;
+}
+
+/**
+ * append_action_buttons:
+ * @vbox: The popover's vertical box, appended to.
+ * @item: The application item the actions belong to.
+ * @actions: Actions from item_app_actions().
+ * @music_bus: (nullable): the player's bus name, for the music actions.
+ *
+ * Adds the section that belongs to the kind of application the item is beneath
+ * a separator: a browser's new and private window commands, or a running music
+ * player's playback controls. Nothing is added when the list is empty.
+ */
+static void append_action_buttons(GtkWidget *vbox, DockItem *item,
+                                  GArray *actions, const char *music_bus) {
+  if (actions->len > 0) {
+    gtk_box_append(GTK_BOX(vbox),
+                   gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+    for (guint i = 0; i < actions->len; i++) {
+      LambdockAppAction chosen = (LambdockAppAction)g_array_index(actions,
+                                                                  guint, i);
+      GtkWidget *button =
+          gtk_button_new_with_label(lambdock_app_action_label(chosen));
+      gtk_widget_add_css_class(button, "flat");
+
+      AppActionData *data = g_new0(AppActionData, 1);
+      data->item = item;
+      data->action = chosen;
+      data->music_bus = music_bus ? g_strdup(music_bus) : NULL;
+      g_signal_connect_data(button, "clicked", G_CALLBACK(on_popover_app_action),
+                            data, free_app_action_data, 0);
+      gtk_box_append(GTK_BOX(vbox), button);
+    }
+  }
+}
+
 static void on_popover_remove_item(GtkButton *btn, gpointer user_data) {
   (void)btn;
   DockItem *item = (DockItem *)user_data;
@@ -536,6 +671,18 @@ void populate_popover_menu(DockItem *item) {
   }
 
   // --------------------------------------------------------------------------
+  // Kind-specific actions (browser windows, player controls)
+  //
+  // Computed before the window list because a browser's "New Window" entry
+  // replaces the generic "New Instance" one.
+  // --------------------------------------------------------------------------
+  GArray *app_actions = NULL;
+  LambdockAppKind app_kind = LAMBDOCK_APP_KIND_NONE;
+  char *music_bus = NULL;
+  if (item->kind == LAMBDOCK_ITEM_APP)
+    app_actions = item_app_actions(item, &app_kind, &music_bus);
+
+  // --------------------------------------------------------------------------
   // Open Application Window List Construction
   // --------------------------------------------------------------------------
   if (item->windows != NULL) {
@@ -602,8 +749,11 @@ void populate_popover_menu(DockItem *item) {
 
     // ------------------------------------------------------------------------
     // Option: "New Instance" (When app is already running)
+    //
+    // A browser gets "New Window" instead, in its own section below.
     // ------------------------------------------------------------------------
-    if (item->exec && *item->exec != '\0') {
+    if (item->exec && *item->exec != '\0' &&
+        app_kind != LAMBDOCK_APP_KIND_BROWSER) {
       GtkWidget *btn_launch = gtk_button_new_with_label(_("New Instance"));
       gtk_widget_add_css_class(btn_launch, "flat");
 
@@ -637,6 +787,11 @@ void populate_popover_menu(DockItem *item) {
                              G_CALLBACK(on_popover_launch_clicked), item);
     gtk_box_append(GTK_BOX(vbox), btn_launch);
   }
+
+  if (app_actions)
+    append_action_buttons(vbox, item, app_actions, music_bus);
+  g_clear_pointer(&app_actions, g_array_unref);
+  g_free(music_bus);
 
   // Set built vertical box layout as active child container of the GTK popover
   append_remove_entry(vbox, item);

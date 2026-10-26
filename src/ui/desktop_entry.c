@@ -190,6 +190,14 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_data(const char *data,
     g_clear_pointer(&wm_class, g_free);
   }
 
+  /* Categories= is a semicolon separated list of main and additional
+   * categories. It is kept as written; lambdock_desktop_entry_has_category()
+   * does the matching. */
+  char *categories = g_key_file_get_string(kf, DESKTOP_GROUP, "Categories",
+                                           NULL);
+  if (categories && *categories == '\0')
+    g_clear_pointer(&categories, g_free);
+
   LambdockDesktopEntry *entry = g_new0(LambdockDesktopEntry, 1);
   entry->id = g_strdup(id);
   entry->stem = desktop_entry_stem(id);
@@ -202,6 +210,7 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_data(const char *data,
     g_free(icon);
   }
   entry->wm_class = wm_class;
+  entry->categories = categories;
   entry->no_display = key_file_flag(kf, "NoDisplay");
   entry->hidden = key_file_flag(kf, "Hidden");
 
@@ -235,7 +244,23 @@ void lambdock_desktop_entry_free(LambdockDesktopEntry *entry) {
   g_free(entry->exec);
   g_free(entry->icon);
   g_free(entry->wm_class);
+  g_free(entry->categories);
   g_free(entry);
+}
+
+gboolean lambdock_desktop_entry_has_category(const LambdockDesktopEntry *entry,
+                                             const char *category) {
+  if (!entry || !entry->categories || !category || *category == '\0')
+    return FALSE;
+
+  char **parts = g_strsplit(entry->categories, ";", -1);
+  gboolean found = FALSE;
+  for (int i = 0; parts[i] != NULL && !found; i++) {
+    if (*parts[i] != '\0' && g_ascii_strcasecmp(parts[i], category) == 0)
+      found = TRUE;
+  }
+  g_strfreev(parts);
+  return found;
 }
 
 /* ============================================================================

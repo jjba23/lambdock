@@ -109,11 +109,14 @@ static void test_popover_menu_no_windows_with_exec(void) {
 
   populate_popover_menu(item);
 
-  g_assert_cmpint(menu_child_count(item), ==, 3);
+  /* header, sep, Launch Application, sep, New Window, New Private Window */
+  g_assert_cmpint(menu_child_count(item), ==, 6);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 2);
+  g_assert_cmpint(labels->len, ==, 4);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Launch Application");
+  g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Window");
+  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Private Window");
   g_ptr_array_unref(labels);
 
   free_item(item);
@@ -140,12 +143,14 @@ static void test_popover_menu_single_window(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, row, sep, New Instance */
-  g_assert_cmpint(menu_child_count(item), ==, 5);
+  /* header, sep, row, sep, New Window, Private Window. A browser's own
+   * "New Window" stands in for the generic "New Instance". */
+  g_assert_cmpint(menu_child_count(item), ==, 7);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 3);
+  g_assert_cmpint(labels->len, ==, 4);
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Mozilla Firefox");
-  g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Instance");
+  g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Window");
+  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Private Window");
   g_ptr_array_unref(labels);
 
   free_item(item);
@@ -158,15 +163,17 @@ static void test_popover_menu_multi_window(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, row, row, sep, New Instance, Close All Windows */
-  g_assert_cmpint(menu_child_count(item), ==, 7);
+  /* header, sep, row, row, sep, Close All Windows,
+   * sep, New Window, New Private Window */
+  g_assert_cmpint(menu_child_count(item), ==, 9);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 5);
+  g_assert_cmpint(labels->len, ==, 6);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Tab 1");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "Tab 2");
-  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Instance");
-  g_assert_cmpstr(g_ptr_array_index(labels, 4), ==, "Close All Windows");
+  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "Close All Windows");
+  g_assert_cmpstr(g_ptr_array_index(labels, 4), ==, "New Window");
+  g_assert_cmpstr(g_ptr_array_index(labels, 5), ==, "New Private Window");
   g_ptr_array_unref(labels);
 
   free_item(item);
@@ -235,13 +242,13 @@ static void test_popover_menu_rebuild(void) {
   add_window(item, "Only");
 
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 5);
+  g_assert_cmpint(menu_child_count(item), ==, 7);
 
   /* Rebuilding with more windows must fully replace the previous layout, not
    * append to it. */
   add_window(item, "Second");
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 7);
+  g_assert_cmpint(menu_child_count(item), ==, 9);
 
   /* Rebuilding again with no windows shrinks back down. */
   for (GList *l = item->windows; l != NULL; l = l->next)
@@ -250,10 +257,11 @@ static void test_popover_menu_rebuild(void) {
   item->windows = NULL;
 
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 3);
+  g_assert_cmpint(menu_child_count(item), ==, 6);
 
   free_item(item);
 }
+
 
 
 /* Collects the text of every label anywhere in the menu, in order. */
@@ -272,6 +280,32 @@ static gboolean labels_contain(GPtrArray *labels, const char *needle) {
       return TRUE;
   }
   return FALSE;
+}
+
+static void test_popover_menu_app_actions(void) {
+  /* A browser gets its window commands; an application of no kind gets the
+   * menu it always had. */
+  DockItem *browser = new_item("Firefox", "firefox", "firefox %u");
+  populate_popover_menu(browser);
+
+  GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(browser->popover)), labels);
+  g_assert_true(labels_contain(labels, "New Window"));
+  g_assert_true(labels_contain(labels, "New Private Window"));
+  g_ptr_array_unref(labels);
+  free_item(browser);
+
+  DockItem *other =
+      new_item("Calculator", "org.gnome.Calculator", "gnome-calculator");
+  populate_popover_menu(other);
+
+  labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(gtk_popover_get_child(GTK_POPOVER(other->popover)), labels);
+  g_assert_false(labels_contain(labels, "New Window"));
+  g_assert_false(labels_contain(labels, "New Private Window"));
+  g_assert_true(labels_contain(labels, "Launch Application"));
+  g_ptr_array_unref(labels);
+  free_item(other);
 }
 
 static void test_popover_menu_stack(void) {
@@ -488,6 +522,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/popover_menu/trash", test_popover_menu_trash);
   g_test_add_func("/ui/popover_menu/remove_entry",
                   test_popover_menu_remove_entry);
+  g_test_add_func("/ui/popover_menu/app_actions",
+                  test_popover_menu_app_actions);
 
   return g_test_run();
 }

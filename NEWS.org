@@ -8,6 +8,17 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+- The right-click menu now carries the actions that belong to the kind of
+  application the item is. Browsers get *New Window* and *New Private Window*
+  (Firefox's `--private-window`, Chrome/Chromium/Brave/Vivaldi's `--incognito`,
+  Edge's `--inprivate`, Opera's `--private`), and a running music player gets
+  *Play/Pause*, *Previous Track*, *Next Track* and *Stop Playback* over MPRIS.
+  Applications are classified from their desktop entry's `Categories=`
+  (`WebBrowser`, `Music`, `Audio;Player`), with their id, name and command line
+  as the fallback, so a hand written Scheme item for Spotify is understood as
+  well as one that came from a desktop file. Playback controls only appear while
+  the player is actually on the session bus, so a pinned but closed player does
+  not grow buttons that would do nothing.
 
 ---------
 

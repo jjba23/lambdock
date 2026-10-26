@@ -34,6 +34,8 @@
  * @wm_class: StartupWMClass= of the entry (first value), the window class the
  * application announces to the compositor. Often the only reliable link
  * between an app id and its desktop file.
+ * @categories: Categories= of the entry, semicolon separated and kept as
+ * written ("Network;WebBrowser;"). NULL when the file has none.
  * @no_display: NoDisplay=true (do not list it in launchers).
  * @hidden: Hidden=true (the user or the distribution removed it).
  *
@@ -49,6 +51,7 @@ typedef struct LambdockDesktopEntry {
   char *exec;
   char *icon;
   char *wm_class;
+  char *categories;
   gboolean no_display;
   gboolean hidden;
 } LambdockDesktopEntry;
@@ -82,6 +85,20 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_file(const char *path);
  * @entry: (nullable): entry to free.
  */
 void lambdock_desktop_entry_free(LambdockDesktopEntry *entry);
+
+/**
+ * lambdock_desktop_entry_has_category:
+ * @entry: (nullable): a desktop entry.
+ * @category: a freedesktop.org main category such as "WebBrowser" or "Music".
+ *
+ * Whether @entry lists @category, compared case-insensitively. The dock uses
+ * this to give an application the context-menu actions of its kind (a browser
+ * gets its private-window command, a player its playback controls).
+ *
+ * Returns: TRUE when the category is listed.
+ */
+gboolean lambdock_desktop_entry_has_category(const LambdockDesktopEntry *entry,
+                                             const char *category);
 
 /**
  * lambdock_exec_strip_field_codes:

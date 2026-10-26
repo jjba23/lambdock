@@ -290,11 +290,54 @@ static void test_parse_wm_class_and_stem(void) {
   g_assert_cmpstr(entry->stem, ==, "plain");
   g_assert_null(entry->wm_class);
   lambdock_desktop_entry_free(entry);
+}static void test_parse_categories(void) {
+  LambdockDesktopEntry *entry = lambdock_desktop_entry_new_from_data(
+      "[Desktop Entry]\n"
+      "Type=Application\n"
+      "Name=Firefox\n"
+      "Exec=firefox %u\n"
+      "Categories=Network;WebBrowser;\n",
+      "firefox.desktop");
+
+  g_assert_nonnull(entry);
+  g_assert_cmpstr(entry->categories, ==, "Network;WebBrowser;");
+  g_assert_true(lambdock_desktop_entry_has_category(entry, "WebBrowser"));
+  g_assert_true(lambdock_desktop_entry_has_category(entry, "webbrowser"));
+  g_assert_true(lambdock_desktop_entry_has_category(entry, "Network"));
+  g_assert_false(lambdock_desktop_entry_has_category(entry, "Music"));
+
+  /* An entry with no Categories= reports none, and matching a NULL entry or a
+   * NULL category is false rather than a crash. */
+  g_assert_false(lambdock_desktop_entry_has_category(entry, NULL));
+  g_assert_false(lambdock_desktop_entry_has_category(NULL, "Music"));
+  lambdock_desktop_entry_free(entry);
+
+  entry = lambdock_desktop_entry_new_from_data("[Desktop Entry]\n"
+                                               "Type=Application\n"
+                                               "Name=Plain\n"
+                                               "Exec=plain\n",
+                                               "plain.desktop");
+  g_assert_nonnull(entry);
+  g_assert_null(entry->categories);
+  g_assert_false(lambdock_desktop_entry_has_category(entry, "WebBrowser"));
+  lambdock_desktop_entry_free(entry);
+
+  /* An empty Categories= is the same as none. */
+  entry = lambdock_desktop_entry_new_from_data("[Desktop Entry]\n"
+                                               "Type=Application\n"
+                                               "Name=Empty\n"
+                                               "Exec=empty\n"
+                                               "Categories=\n",
+                                               "empty.desktop");
+  g_assert_nonnull(entry);
+  g_assert_null(entry->categories);
+  lambdock_desktop_entry_free(entry);
 }
 
 /* ============================================================================
  * NAMES FROM APP IDS
- * ============================================================================ */
+ * ============================================================================
+ */
 
 static void test_app_id_to_name(void) {
   struct {
@@ -527,6 +570,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/desktop_entry/parse_localized", test_parse_localized_name);
   g_test_add_func("/desktop_entry/parse_file", test_parse_file);
   g_test_add_func("/desktop_entry/wm_class", test_parse_wm_class_and_stem);
+  g_test_add_func("/desktop_entry/categories", test_parse_categories);
   g_test_add_func("/desktop_entry/app_id_to_name", test_app_id_to_name);
   g_test_add_data_func("/desktop_entry/scan", data_dir,
                        (GTestDataFunc)test_scan);
