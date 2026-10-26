@@ -9,6 +9,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+---------
+
+*[Released]*
+
+** v0.12.0 (2026-10-26)
 - Add a trash item. `(trash-item)` puts the desktop trash on the dock: the icon
   follows it (the theme's `user-trash` while empty, `user-trash-full` once it
   holds anything) and the tooltip says how many items it holds. Left click opens
@@ -25,10 +30,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - Cover it in tests: `tests/test_trash.c` for the layout, counting and emptying
   (in throwaway trash directories only), plus the trash item in the dock-item,
   popover-menu and Guile-bridge suites, and `trash-item` in the Scheme suite.
-
----------
-
-*[Released]*
 
 ** v0.10.10 (2026-10-26)
 - Make the test suite pass in headless Nix builds. Xvfb has no EGL, so pin
