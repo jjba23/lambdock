@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+
+---------
+
+*[Released]*
+
+** v0.13.2 (2026-10-26)
 - The right-click menu now carries the actions that belong to the kind of
   application the item is. Browsers get *New Window* and *New Private Window*
   (Firefox's `--private-window`, Chrome/Chromium/Brave/Vivaldi's `--incognito`,
@@ -19,10 +25,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   well as one that came from a desktop file. Playback controls only appear while
   the player is actually on the session bus, so a pinned but closed player does
   not grow buttons that would do nothing.
-
----------
-
-*[Released]*
 
 ** v0.13.1 (2026-10-26)
 - The container image builds again. The Dockerfile copies the sources it needs

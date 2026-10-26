@@ -1,3 +1,13 @@
+lambdock (0.13.2-1) unstable; urgency=medium
+
+  * New upstream release: the right-click menu of a dock item carries actions
+    that fit the application. Browsers get New Window and New Private Window
+    with the flag their family expects, and a running music player gets
+    Play/Pause, Previous, Next and Stop over MPRIS. The kind is read from the
+    desktop entry's Categories=, falling back to the id, name and command line.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 26 Oct 2026 20:30:00 +0100
+
 lambdock (0.13.1-1) unstable; urgency=medium
 
   * New upstream release: ship the desktop entry and AppStream metadata in the
