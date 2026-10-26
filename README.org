@@ -349,8 +349,10 @@ The protocol behind that list is described in
 :CUSTOM_ID: the-docks-own-menu
 :END:
 
-Right-clicking the dock background opens a small menu with *About lambdock*
-(the splash dialog with version, licence and a link to the source) and *Quit*.
+Right-clicking the dock background opens a small menu with *Preferences…*
+(the GUI settings window, see [[#preferences-window][the preferences window]]),
+*About lambdock* (the splash dialog with version, licence and a link to the
+source) and *Quit*.
 
 ** Scrolling a crowded dock
 :PROPERTIES:
@@ -1209,6 +1211,42 @@ Also, here is a small demo of hot-reload:
 #+begin_export html
 </details>
 #+end_export
+
+** Changing settings from the GUI (Preferences) 🎛️
+:PROPERTIES:
+:CUSTOM_ID: preferences-window
+:END:
+
+Right-click the dock and choose *Preferences…* to open a GTK4 settings window.
+It covers the settings people reach for most often, grouped the way the settings
+file groups them:
+
+- *Behaviour*: auto-hide, show when no windows, hover magnification, window
+  tracking, window titles, and dock vs taskbar mode.
+- *Layout & material*: icon size, item spacing, capsule padding, screen edge and
+  theme.
+- *Glass shelf*: icon overhang, front glass, reflection height/intensity/blur,
+  keystone flare, tilt and perspective.
+
+Every control applies immediately through the same ~set-dock-*!~ setters the
+[[#repl][REPL]] uses, so the dock redraws as you drag a slider (the apply is
+debounced so a drag is one edit, not one per pixel).
+
+*Your settings file is never modified.* GUI changes are written to a separate
+override file, next to the dock's drag-and-drop layout overrides:
+
+#+begin_src sh
+${XDG_STATE_HOME:-~/.local/state}/lambdock/preferences-<settings-stem>.scm
+#+end_src
+
+The loader layers that file on top of ~settings.scm~, which is what lets a
+generated settings file (an OS image, a dotfiles generator) be regenerated
+without losing the choices made in the window. Deleting the override file -- or
+pressing *Reset* in the window -- restores the settings file exactly.
+
+When several docks run (see [[#multi-config-and-multi-dock][multi-config]]), the
+menu item carries the settings path of the dock it was opened on, so the window
+edits that dock and not another one.
 
 ** Styling & theming 🎨
 :PROPERTIES:

@@ -159,4 +159,31 @@ void dock_layout_set_order(const char *config_path, GList *keys);
 void dock_layout_set_view(const char *config_path, const char *key,
                           const char *view);
 
+/* =========================================================================
+ * GUI PREFERENCES (written by the GTK Preferences window)
+ * =========================================================================
+ * Each call applies one setting to the dock identified by @config_path through
+ * the ordinary `set-dock-*!' setter and remembers it in the GUI preference
+ * override file, so a change made in the preferences window survives a restart
+ * without touching (or being lost to) the generated settings file.
+ *
+ * @key is the settings-file name, e.g. "dock-icon-size" or "dock-auto-hide?".
+ * A NULL or empty @config_path targets the default dock and is not persisted.
+ */
+
+void set_dock_setting_bool(const char *key, const char *config_path,
+                           gboolean value);
+void set_dock_setting_int(const char *key, const char *config_path, int value);
+void set_dock_setting_double(const char *key, const char *config_path,
+                             double value);
+void set_dock_setting_symbol(const char *key, const char *config_path,
+                             const char *value);
+
+/**
+ * reset_dock_preferences:
+ * Forgets every GUI override of @config_path. The caller is responsible for
+ * reloading the settings file afterwards.
+ */
+void reset_dock_preferences(const char *config_path);
+
 #endif // GUILE_BRIDGE_H

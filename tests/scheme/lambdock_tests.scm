@@ -27,6 +27,7 @@
              (lambdock items)
              (lambdock presets)
              (lambdock loader)
+             (lambdock prefs)
              (lambdock core))
 
 ;; =============================================================================
@@ -807,6 +808,73 @@
 ;; It is a layout knob, not a shelf knob: it works without any shelf geometry.
 (check-equal "the padding is independent of the shelf"
              0 (get-dock-shelf-flare %padding-cfg))
+
+;; =============================================================================
+;; (lambdock prefs) — GUI preference overrides
+;; =============================================================================
+
+(define %prefs-cfg (tmp-path "prefs.scm"))
+(write-file %prefs-cfg
+            "(define dock-icon-size 48)
+(define dock-auto-hide? #f)
+(define dock-theme 'vanilla)
+")
+(load-dock-config! %prefs-cfg)
+(check-equal "a fresh config starts from the settings file"
+             48 (get-dock-icon-size %prefs-cfg))
+(check-equal "a fresh config has no GUI overrides"
+             '() (dock-preferences-read %prefs-cfg))
+(check-matches "the override file is named after the settings file"
+               "preferences-prefs\\.scm$" (dock-preferences-path %prefs-cfg))
+
+;; A GUI edit updates the running dock immediately...
+(set-dock-preference! 'dock-icon-size 64 %prefs-cfg)
+(check-equal "set-dock-preference! applies the edit live"
+             64 (get-dock-icon-size %prefs-cfg))
+(check "set-dock-preference! writes the override file"
+       (file-exists? (dock-preferences-path %prefs-cfg)))
+(check-equal "the stored override is an alist of settings"
+             '((dock-icon-size . 64)) (dock-preferences-read %prefs-cfg))
+
+;; ...and survives reloading the generated settings file.
+(load-dock-config! %prefs-cfg)
+(check-equal "a GUI edit wins over the settings file on reload"
+             64 (get-dock-icon-size %prefs-cfg))
+
+(set-dock-preference! 'dock-auto-hide? #t %prefs-cfg)
+(set-dock-preference! 'dock-theme 'macos-mavericks %prefs-cfg)
+(check-equal "booleans are remembered" #t (get-dock-auto-hide? %prefs-cfg))
+(check-equal "symbols are remembered" 'macos-mavericks
+             (get-dock-theme %prefs-cfg))
+
+;; Editing the same key twice replaces its entry instead of piling up.
+(set-dock-preference! 'dock-icon-size 56 %prefs-cfg)
+(check-equal "one entry per edited key"
+             1 (length (filter (lambda (pair)
+                                 (eq? (car pair) 'dock-icon-size))
+                               (dock-preferences-read %prefs-cfg))))
+(check-equal "the newest value wins" 56 (get-dock-icon-size %prefs-cfg))
+
+;; apply-dock-preferences is what the loader consumes: the overrides are
+;; prepended to the settings alist, so `assq' finds them first.
+(define %apply-cfg (tmp-path "apply.scm"))
+(write-file %apply-cfg "(define dock-icon-size 48)\n")
+(load-dock-config! %apply-cfg)
+(reset-dock-preferences! %apply-cfg)
+(save-dock-preference! %apply-cfg 'dock-icon-size 72)
+(check-equal "apply-dock-preferences prepends the overrides"
+             '((dock-icon-size . 72) (icon-size . 48))
+             (apply-dock-preferences '((icon-size . 48)) %apply-cfg))
+
+;; reset forgets everything and the settings file takes over again.
+(reset-dock-preferences! %prefs-cfg)
+(check-not "reset removes the override file"
+           (file-exists? (dock-preferences-path %prefs-cfg)))
+(load-dock-config! %prefs-cfg)
+(check-equal "reset restores the settings file value"
+             48 (get-dock-icon-size %prefs-cfg))
+(check-equal "reset restores the settings file theme"
+             'vanilla (get-dock-theme %prefs-cfg))
 
 ;; =============================================================================
 ;; Summary

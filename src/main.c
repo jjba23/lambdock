@@ -26,6 +26,7 @@
 #include "ui/icon_resolver.h"
 #include "ui/launchpad.h"
 #include "ui/popover_menu.h"
+#include "ui/preferences.h"
 #include "ui/theme_engine.h"
 #include <glib/gi18n.h>
 #include <locale.h>
@@ -734,6 +735,17 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   populate_dock_items_for(state);
 
   GMenu *menu_model = g_menu_new();
+
+  /* Preferences carries the dock's settings path as its action target: with
+   * several settings files in use, the menu must open the pane for the dock it
+   * was right-clicked on, not for an arbitrary one. */
+  GMenuItem *prefs_item = g_menu_item_new(_("Preferences…"), NULL);
+  g_menu_item_set_action_and_target(prefs_item, "app.preferences", "s",
+                                    state->config_path ? state->config_path
+                                                       : "");
+  g_menu_append_item(menu_model, prefs_item);
+  g_object_unref(prefs_item);
+
   g_menu_append(menu_model, _("About Lambdock"), "app.about");
   g_menu_append(menu_model, _("Quit"), "app.quit");
 
@@ -830,6 +842,14 @@ static void activate(GtkApplication *app, gpointer user_data) {
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(quit_action));
   g_object_unref(quit_action); /* the action map holds its own reference */
 
+  /* Preferences takes the dock's settings path as a string target. */
+  GSimpleAction *prefs_action =
+      g_simple_action_new("preferences", G_VARIANT_TYPE_STRING);
+  g_signal_connect(prefs_action, "activate", G_CALLBACK(on_preferences_action),
+                   app);
+  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(prefs_action));
+  g_object_unref(prefs_action); /* the action map holds its own reference */
+
   // Reconcile disk state to spawn docks for all matching settings*.scm files,
   // or fallback if none
   sync_docks_with_disk(app);
@@ -847,6 +867,16 @@ static void activate(GtkApplication *app, gpointer user_data) {
  * ========================================================================= */
 
 /**
+ * on_app_shutdown:
+ * Releases the preferences windows when the application is tearing down.
+ */
+static void on_app_shutdown(GApplication *application, gpointer user_data) {
+  (void)application;
+  (void)user_data;
+  lambdock_preferences_shutdown();
+}
+
+/**
  * inner_main:
  * Continuation function invoked once the Guile Scheme interpreter environment
  * finishes booting up completely.
@@ -860,6 +890,7 @@ static void inner_main(void *data, int argc, char **argv) {
 
   // Connect GTK 'activate' signal to our setup function
   g_signal_connect(app, "activate", G_CALLBACK(activate), NULL);
+  g_signal_connect(app, "shutdown", G_CALLBACK(on_app_shutdown), NULL);
 
   // Hand execution over to GTK main loop (Blocks until application exits)
   g_application_run(G_APPLICATION(app), argc, argv);

@@ -1,3 +1,4 @@
 src/main.c
 src/dock_window.c
 src/ui/popover_menu.c
+src/ui/preferences.c

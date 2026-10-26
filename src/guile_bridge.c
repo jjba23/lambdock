@@ -588,3 +588,67 @@ void dock_layout_set_view(const char *config_path, const char *key,
   scm_call_3(fn, scm_from_utf8_string(config_path),
              scm_from_utf8_string(key), view_symbol);
 }
+
+/* =================================================================================
+ * GUI PREFERENCES (Preferences window)
+ * =================================================================================
+ * The GTK preferences pane never edits settings.scm: it asks `(lambdock prefs)`
+ * to apply the value to the running dock (through the ordinary setters) and to
+ * remember it in the GUI override file, which the loader layers on top of the
+ * settings file on the next start.
+ * =================================================================================
+ */
+
+/* The `default' symbol targets the fallback dock, which has no settings file
+ * and therefore nothing to persist against. */
+static SCM scm_from_preference_target(const char *config_path) {
+  if (config_path && *config_path != '\0')
+    return scm_from_utf8_string(config_path);
+  return scm_string_to_symbol(scm_from_utf8_string("default"));
+}
+
+static void call_set_preference(const char *key, SCM value,
+                                const char *config_path) {
+  if (!key || *key == '\0')
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "set-dock-preference!");
+  if (!scm_is_true(fn))
+    return;
+
+  SCM key_symbol = scm_string_to_symbol(scm_from_utf8_string(key));
+  scm_call_3(fn, key_symbol, value, scm_from_preference_target(config_path));
+}
+
+void set_dock_setting_bool(const char *key, const char *config_path,
+                           gboolean value) {
+  call_set_preference(key, scm_from_bool(value), config_path);
+}
+
+void set_dock_setting_int(const char *key, const char *config_path, int value) {
+  call_set_preference(key, scm_from_int(value), config_path);
+}
+
+void set_dock_setting_double(const char *key, const char *config_path,
+                             double value) {
+  call_set_preference(key, scm_from_double(value), config_path);
+}
+
+void set_dock_setting_symbol(const char *key, const char *config_path,
+                             const char *value) {
+  if (!value || *value == '\0')
+    return;
+  call_set_preference(
+      key, scm_string_to_symbol(scm_from_utf8_string(value)), config_path);
+}
+
+void reset_dock_preferences(const char *config_path) {
+  if (!config_path || *config_path == '\0')
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "reset-dock-preferences!");
+  if (!scm_is_true(fn))
+    return;
+
+  scm_call_1(fn, scm_from_utf8_string(config_path));
+}

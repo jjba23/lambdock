@@ -723,6 +723,16 @@ Getters (~get-dock-*~), and the setters in =state.scm=, are safe to call from th
 REPL because they only touch the Scheme hash table -- the setters end by calling
 ~trigger-ui-reload!~, which is where the hop back to the main thread happens.
 
+The GTK *Preferences* window (=src/ui/preferences.c=) is the other caller of the
+same setters. It runs on the main thread, so it can call them directly; each edit
+goes through the ~set-dock-preference!~ dispatch in =scheme/lambdock/prefs.scm=,
+which applies the ordinary setter and then records the value in a GUI override
+file under ~$XDG_STATE_HOME/lambdock~. ~load-dock-config!~ layers that file over
+the settings file, so a generated settings file can be regenerated without losing
+the choices made in the window. The debounced apply in =preferences.c= exists
+because a slider emits ~value-changed~ on every pixel and each edit rebuilds the
+dock.
+
 ------------------
 
 * Lifecycles
@@ -862,6 +872,7 @@ other side in [[file:README.org::#finding-icon-names][README: Finding icon names
 | =(lambdock loader)=  | ~resolve-dock-configuration~, ~get-config-path~                                    |
 | =(lambdock presets)= | ~preset-icons~, ~preset-launchers~, ~preset-icon~, ~preset-launcher~, ~preset-launchers-for~ |
 | =(lambdock logger)=  | ~log-debug/info/warn/error~                                                        |
+| =(lambdock prefs)=   | ~dock-preferences-path~, ~dock-preferences-read~, ~apply-dock-preferences~, ~save-dock-preference!~, ~set-dock-preference!~, ~reset-dock-preferences!~ |
 
 The setter side matters for the REPL: every ~set-dock-*!~ goes through
 ~apply-to-targets~ and ends with ~trigger-ui-reload!~, which is what turns a

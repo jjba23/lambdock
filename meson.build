@@ -263,6 +263,7 @@ sources = files(
   'src/ui/meter.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
+  'src/ui/preferences.c',
 )
 
 # Compiles and links the final binary application executable
@@ -301,6 +302,7 @@ full_app_sources = files(
   'src/ui/meter.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
+  'src/ui/preferences.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
@@ -358,6 +360,10 @@ unit_tests = [
   {
     'id': 'guile_bridge',
     'name': 'guile_bridge_integration_tests',
+    'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'preferences',
     'extra_sources': full_test_sources,
   },
 ]

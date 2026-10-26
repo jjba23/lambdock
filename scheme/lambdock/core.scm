@@ -25,6 +25,7 @@
   #:use-module (lambdock logger)
   #:use-module (lambdock presets)
   #:use-module (lambdock layout)
+  #:use-module (lambdock prefs)
   #:use-module (system repl server)
   #:re-export ( ;Item structures
                 <dock-item>
@@ -133,7 +134,13 @@
                dock-layout-add!
                dock-layout-remove!
                dock-layout-set-order!
-               dock-layout-set-view!)
+               dock-layout-set-view!
+
+               ;; GUI preference overrides (written by the Preferences window)
+               dock-preferences-path
+               dock-preferences-read
+               set-dock-preference!
+               reset-dock-preferences!)
   #:export (init-dock! load-dock-config! start-repl!))
 
 ;; =============================================================================
@@ -151,7 +158,13 @@ keeps its default (the plain flat dock)."
         (log-info "Core" "Loading user settings from: ~a" file-path)
         (catch #t
                (lambda ()
-                 (let* ((settings (resolve-dock-configuration file-path))
+                 (let* ((settings
+                         ;; GUI preference overrides are layered on top of the
+                         ;; settings file, so a regenerated settings file keeps
+                         ;; the choices made in the Preferences window.
+                         (apply-dock-preferences
+                          (resolve-dock-configuration file-path)
+                          file-path))
                         ;; Helper to lookup both 'dock-foo and 'foo
                         (cfg (lambda (key alt-key default-val)
                                (let ((pair (or (assq key settings)
