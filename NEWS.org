@@ -8,6 +8,17 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+- The trash item accepts files and folders dropped on it. The drop calls GIO's
+  `g_file_trash()`, so the file lands in the trash of its own filesystem, a name
+  that is already taken gets a fresh one instead of overwriting, and folders go
+  with everything inside them. It runs off the main loop like emptying does, and
+  the icon switches to its full artwork as soon as the files are in. The drop
+  target belongs to the trash item itself, so a file dropped there never becomes
+  a stack or an application in the dock.
+- Cover it in tests: `tests/test_trash.c` trashes files, folders and colliding
+  names into a throwaway trash (with `HOME` and `XDG_DATA_HOME` redirected so it
+  never touches the real one), and `test_dock_item` checks that the trash item
+  carries a file-list drop target.
 
 ---------
 

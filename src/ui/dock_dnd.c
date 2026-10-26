@@ -22,6 +22,7 @@
 #include "desktop_entry.h"
 #include "dock_item.h"
 #include "stack.h"
+#include "trash.h"
 
 /* ============================================================================
  * PURE LIST / GEOMETRY HELPERS
@@ -209,6 +210,143 @@ static gboolean on_drag_cancel(GtkDragSource *source, GdkDrag *drag,
   return FALSE;
 }
 
+/* ============================================================================
+ * DROPPING FILES ON THE TRASH
+ * ============================================================================
+ */
+
+/**
+ * TrashDropJob:
+ * @button: The trash item's button, referenced for as long as the job lives, so
+ * the item can be found when the drop finishes (a reload may have replaced it
+ * in the meantime).
+ * @files: The dropped files, each referenced.
+ */
+typedef struct {
+  GtkWidget *button;
+  GSList *files;
+} TrashDropJob;
+
+static void free_trash_drop_job(gpointer data) {
+  TrashDropJob *job = (TrashDropJob *)data;
+  g_clear_object(&job->button);
+  g_slist_free_full(job->files, g_object_unref);
+  g_free(job);
+}
+
+/* Trashing a folder, or a file GIO has to copy instead of renaming because its
+ * trash is on another filesystem, can take long enough to be noticed. It runs
+ * off the main thread for the same reason emptying the trash does: the dock
+ * must keep drawing (and auto-hiding) until it is done. */
+static void trash_dropped_files_in_thread(GTask *task, gpointer source_object,
+                                          gpointer task_data,
+                                          GCancellable *cancellable) {
+  (void)source_object;
+  (void)cancellable;
+
+  TrashDropJob *job = (TrashDropJob *)task_data;
+  guint trashed = 0;
+
+  for (GSList *l = job->files; l != NULL; l = l->next) {
+    GFile *file = G_FILE(l->data);
+    GError *error = NULL;
+
+    if (lambdock_trash_file(file, &error)) {
+      trashed++;
+    } else {
+      char *name = g_file_get_parse_name(file);
+      LOG_C_WARN("UI", "Could not trash '%s': %s", name,
+                 error ? error->message : "unknown error");
+      g_free(name);
+      g_clear_error(&error);
+    }
+  }
+
+  g_task_return_int(task, (gssize)trashed);
+}
+
+static void on_trash_drop_finished(GObject *source_object,
+                                    GAsyncResult *result, gpointer user_data) {
+  (void)source_object;
+  (void)user_data;
+
+  GTask *task = G_TASK(result);
+  GError *error = NULL;
+  gssize trashed = g_task_propagate_int(task, &error);
+
+  if (error) {
+    LOG_C_WARN("UI", "Trashing dropped files failed: %s", error->message);
+    g_clear_error(&error);
+  }
+
+  TrashDropJob *job = (TrashDropJob *)g_task_get_task_data(task);
+  if (!job || trashed <= 0)
+    return;
+
+  LOG_C_INFO("UI", "Trashed %" G_GSSIZE_FORMAT " of %u dropped item(s)",
+             trashed, g_slist_length(job->files));
+
+  DockItem *item = job->button ? dock_item_from_widget(job->button) : NULL;
+  if (item)
+    dock_item_refresh_trash(item);
+}
+
+static gboolean on_trash_drop(GtkDropTarget *target, const GValue *value,
+                              double x, double y, gpointer user_data) {
+  (void)target;
+  (void)x;
+  (void)y;
+
+  if (!G_VALUE_HOLDS(value, GDK_TYPE_FILE_LIST))
+    return FALSE;
+
+  GdkFileList *dropped = g_value_get_boxed(value);
+  if (!dropped)
+    return FALSE;
+
+  GSList *files = gdk_file_list_get_files(dropped);
+  if (!files)
+    return FALSE; /* An empty drag is not a drop the trash can take. */
+
+  GtkWidget *zone = GTK_WIDGET(user_data);
+  DockItem *item = dock_item_from_widget(zone);
+  if (!item || item->kind != LAMBDOCK_ITEM_TRASH || !item->button)
+    return FALSE;
+
+  TrashDropJob *job = g_new0(TrashDropJob, 1);
+  job->button = g_object_ref(item->button);
+  for (GSList *l = files; l != NULL; l = l->next)
+    job->files = g_slist_prepend(job->files, g_object_ref(l->data));
+  job->files = g_slist_reverse(job->files);
+
+  GTask *task = g_task_new(NULL, NULL, on_trash_drop_finished, NULL);
+  g_task_set_task_data(task, job, free_trash_drop_job);
+  g_task_run_in_thread(task, trash_dropped_files_in_thread);
+  g_object_unref(task);
+
+  return TRUE;
+}
+
+/* Makes a trash item accept files dragged onto it. The target sits on the item's
+ * whole container (reflection included), which is also what makes it win over
+ * the dock-wide target: GTK looks for a drop target from the widget under the
+ * pointer upwards, and the first one that accepts the payload gets the drop. A
+ * drag of a dock icon carries a string the trash ignores, so reordering across
+ * the trash still goes to the dock. */
+static void dock_dnd_setup_trash_drop(DockItem *item) {
+  if (!item || !item->button)
+    return;
+
+  GtkWidget *zone = item->container ? item->container : item->button;
+
+  /* COPY is accepted as well as MOVE: a file manager dragging from a read-only
+   * location may only offer COPY, and either way the file ends up trashed. */
+  GtkDropTarget *target = gtk_drop_target_new(
+      GDK_TYPE_FILE_LIST, GDK_ACTION_COPY | GDK_ACTION_MOVE);
+  g_signal_connect(target, "drop", G_CALLBACK(on_trash_drop), zone);
+  gtk_widget_add_controller(zone, GTK_EVENT_CONTROLLER(target));
+}
+
 void dock_dnd_setup_item(DockItem *item) {
   if (!item || !item->button)
     return;
@@ -222,6 +360,9 @@ void dock_dnd_setup_item(DockItem *item) {
   g_signal_connect(source, "drag-cancel", G_CALLBACK(on_drag_cancel), item);
 
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(source));
+
+  if (item->kind == LAMBDOCK_ITEM_TRASH)
+    dock_dnd_setup_trash_drop(item);
 }
 
 /* ============================================================================

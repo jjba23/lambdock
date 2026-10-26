@@ -329,7 +329,8 @@ C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~:
 - =test_shelf= -- shelf parameters, activation, reflection geometry, frame
   delegation and item container ordering
 - =test_trash= -- home/volume trash roots, counting, emptying (read-only
-  directories, orphans) and the item's full/empty states
+  directories, orphans), GIO trashing of dropped files and folders (name
+  collisions included) and the item's full/empty states
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
@@ -810,7 +811,9 @@ matters and is the canonical teardown sequence:
 - ~create_trash_dock_item~: an icon item whose artwork follows the trash, plus a
   refresh timer (~trash_timer_id~) that re-counts it. The counting and emptying
   live in =ui/trash.c=, against the freedesktop.org trash layout; nothing about
-  it is desktop-specific.
+  it is desktop-specific.  =ui/dock_dnd.c= gives the item a drop target for
+  file lists, which hands each dropped file to ~lambdock_trash_file()~ (GIO's
+  ~g_file_trash()~) on a worker thread.
 - Tracked (running-window) items created by the tracker use
   ~create_dock_item(..., is_favorite = FALSE, ...)~ and are removed automatically
   when their last window closes.
@@ -857,7 +860,7 @@ pointer dies:
 | =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
 | =ui/shelf.c=          | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections  |
 | =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
-| =ui/trash.c=          | Freedesktop.org trash: roots, counting, emptying, opening                        |
+| =ui/trash.c=          | Freedesktop.org trash: roots, count, empty, open, taking dropped files          |
 | =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
 | =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
 | =logger.h=            | ~LOG_C_DEBUG/INFO/WARN/ERROR~ macros                                              |

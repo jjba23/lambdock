@@ -22,6 +22,7 @@
 #include "../src/ui/trash.h"
 #include <gio/gio.h>
 #include <glib/gstdio.h>
+#include <string.h>
 #include <unistd.h>
 
 /* XDG_DATA_HOME for the whole binary; the home trash and its count depend on it. */
@@ -85,6 +86,20 @@ static void add_file(const char *root, const char *relative) {
   g_free(parent);
   g_free(path);
   g_free(files_dir);
+}
+
+/* How many entries DIR holds (a missing directory holds none). */
+static guint count_entries(const char *path) {
+  GDir *dir = g_dir_open(path, 0, NULL);
+  if (!dir)
+    return 0;
+
+  guint count = 0;
+  while (g_dir_read_name(dir) != NULL)
+    count++;
+
+  g_dir_close(dir);
+  return count;
 }
 
 /* TRUE when DIR contains no entries at all (missing counts as empty). */
@@ -243,12 +258,161 @@ static void test_empty_at_handles_read_only_directories(void) {
   g_free(root);
 }
 
+/* ============================================================================
+ * ADDING (WHAT A DROP ON THE TRASH ICON DOES)
+ * ============================================================================ */
+
+/* Trashes a file with lambdock_trash_file() and checks it arrived, with the
+ * metadata the specification requires, in the throwaway home trash. */
+static void test_trash_file_moves_it_into_the_home_trash(void) {
+  char *home = lambdock_trash_home_path();
+  lambdock_trash_empty_at(home);
+
+  char *work = g_dir_make_tmp("lambdock-trash-drop-XXXXXX", NULL);
+  g_assert_nonnull(work);
+  char *path = g_build_filename(work, "dropped.txt", NULL);
+  g_assert_true(g_file_set_contents(path, "dropped\n", -1, NULL));
+
+  GFile *file = g_file_new_for_path(path);
+  GError *error = NULL;
+  g_assert_true(lambdock_trash_file(file, &error));
+  g_assert_no_error(error);
+
+  /* The original is gone and GIO moved the file into the trash... */
+  g_assert_false(g_file_test(path, G_FILE_TEST_EXISTS));
+  char *trashed = g_build_filename(home, "files", "dropped.txt", NULL);
+  g_assert_true(g_file_test(trashed, G_FILE_TEST_IS_REGULAR));
+
+  /* ...with the Path/DeletionDate metadata every file manager reads. */
+  char *info = g_build_filename(home, "info", "dropped.txt.trashinfo", NULL);
+  char *contents = NULL;
+  g_assert_true(g_file_get_contents(info, &contents, NULL, NULL));
+  g_assert_nonnull(strstr(contents, "[Trash Info]"));
+  char *path_line = g_strconcat("Path=", path, "\n", NULL);
+  g_assert_nonnull(strstr(contents, path_line));
+  g_assert_nonnull(strstr(contents, "DeletionDate="));
+  g_assert_cmpuint(lambdock_trash_count_at(home), ==, 1);
+
+  g_free(path_line);
+  g_free(contents);
+  g_free(info);
+  g_free(trashed);
+  g_object_unref(file);
+
+  lambdock_trash_empty_at(home);
+  remove_tree(work);
+  g_free(path);
+  g_free(work);
+  g_free(home);
+}
+
+/* Dropping a folder takes the folder and everything inside it. */
+static void test_trash_file_trashes_a_folder(void) {
+  char *home = lambdock_trash_home_path();
+  lambdock_trash_empty_at(home);
+
+  char *work = g_dir_make_tmp("lambdock-trash-drop-XXXXXX", NULL);
+  g_assert_nonnull(work);
+  char *folder = g_build_filename(work, "folder", NULL);
+  char *nested = g_build_filename(folder, "nested.txt", NULL);
+  g_assert_cmpint(g_mkdir_with_parents(folder, 0700), ==, 0);
+  g_assert_true(g_file_set_contents(nested, "nested\n", -1, NULL));
+
+  GFile *file = g_file_new_for_path(folder);
+  GError *error = NULL;
+  g_assert_true(lambdock_trash_file(file, &error));
+  g_assert_no_error(error);
+
+  g_assert_false(g_file_test(folder, G_FILE_TEST_EXISTS));
+  char *trashed_nested =
+      g_build_filename(home, "files", "folder", "nested.txt", NULL);
+  g_assert_true(g_file_test(trashed_nested, G_FILE_TEST_IS_REGULAR));
+  g_assert_cmpuint(lambdock_trash_count_at(home), ==, 1);
+
+  g_free(trashed_nested);
+  g_object_unref(file);
+
+  lambdock_trash_empty_at(home);
+  remove_tree(work);
+  g_free(nested);
+  g_free(folder);
+  g_free(work);
+  g_free(home);
+}
+
+/* Two files with the same name are both kept: GIO gives the second one a fresh
+ * name instead of overwriting the first. */
+static void test_trash_file_keeps_colliding_names(void) {
+  char *home = lambdock_trash_home_path();
+  lambdock_trash_empty_at(home);
+
+  char *first_dir = g_dir_make_tmp("lambdock-trash-drop-a-XXXXXX", NULL);
+  char *second_dir = g_dir_make_tmp("lambdock-trash-drop-b-XXXXXX", NULL);
+  g_assert_nonnull(first_dir);
+  g_assert_nonnull(second_dir);
+
+  char *first = g_build_filename(first_dir, "same.txt", NULL);
+  char *second = g_build_filename(second_dir, "same.txt", NULL);
+  g_assert_true(g_file_set_contents(first, "first\n", -1, NULL));
+  g_assert_true(g_file_set_contents(second, "second\n", -1, NULL));
+
+  GFile *first_file = g_file_new_for_path(first);
+  GFile *second_file = g_file_new_for_path(second);
+  g_assert_true(lambdock_trash_file(first_file, NULL));
+  g_assert_true(lambdock_trash_file(second_file, NULL));
+
+  char *files_dir = g_build_filename(home, "files", NULL);
+  g_assert_cmpuint(lambdock_trash_count_at(home), ==, 2);
+  g_assert_cmpuint(count_entries(files_dir), ==, 2);
+
+  g_free(files_dir);
+  g_object_unref(second_file);
+  g_object_unref(first_file);
+
+  lambdock_trash_empty_at(home);
+  remove_tree(first_dir);
+  remove_tree(second_dir);
+  g_free(second);
+  g_free(first);
+  g_free(second_dir);
+  g_free(first_dir);
+  g_free(home);
+}
+
+static void test_trash_file_reports_failures(void) {
+  char *work = g_dir_make_tmp("lambdock-trash-drop-XXXXXX", NULL);
+  g_assert_nonnull(work);
+  char *path = g_build_filename(work, "gone.txt", NULL);
+
+  GFile *file = g_file_new_for_path(path);
+  GError *error = NULL;
+  g_assert_false(lambdock_trash_file(file, &error));
+  g_assert_nonnull(error);
+  g_clear_error(&error);
+
+  /* A missing GFile is refused before it reaches GIO. */
+  g_assert_false(lambdock_trash_file(NULL, &error));
+  g_assert_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT);
+  g_clear_error(&error);
+
+  g_object_unref(file);
+  remove_tree(work);
+  g_free(path);
+  g_free(work);
+}
+
 int main(int argc, char **argv) {
   /* g_get_user_data_dir() reads XDG_DATA_HOME once and caches it, so point it at
    * a throwaway directory before anything asks for it. */
   data_home = g_dir_make_tmp("lambdock-trash-home-XXXXXX", NULL);
   g_assert_nonnull(data_home);
   g_setenv("XDG_DATA_HOME", data_home, TRUE);
+  /* GIO only uses the home trash for files on the home filesystem, and refuses
+   * "system internal" volume mounts (a /tmp tmpfs or the build sandbox's
+   * filesystem, for instance). Pointing HOME at the same throwaway directory
+   * keeps the trashing tests on the ordinary home-trash path wherever the
+   * tests are built and run. */
+  g_setenv("HOME", data_home, TRUE);
 
   g_test_init(&argc, &argv, NULL);
 
@@ -260,6 +424,14 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/trash/empty_at", test_empty_at_removes_everything);
   g_test_add_func("/ui/trash/empty_at_read_only",
                   test_empty_at_handles_read_only_directories);
+  g_test_add_func("/ui/trash/trash_file",
+                  test_trash_file_moves_it_into_the_home_trash);
+  g_test_add_func("/ui/trash/trash_file_folder",
+                  test_trash_file_trashes_a_folder);
+  g_test_add_func("/ui/trash/trash_file_collision",
+                  test_trash_file_keeps_colliding_names);
+  g_test_add_func("/ui/trash/trash_file_failure",
+                  test_trash_file_reports_failures);
 
   int result = g_test_run();
 

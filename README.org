@@ -294,10 +294,10 @@ tangible reality.
 - *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
   parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
 - *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
-  an item count, opening it with a click and emptying it from its menu. It reads
-  and writes the freedesktop.org trash layout, not one desktop's private store,
-  so it works the same on GNOME, KDE, Xfce, Cinnamon and MATE; see
-  [[#trash][The trash]].
+  an item count, opening it with a click and emptying it from its menu, and taking
+  files dropped on it. It reads and writes the freedesktop.org trash layout, not
+  one desktop's private store, so it works the same on GNOME, KDE, Xfce, Cinnamon
+  and MATE; see [[#trash][The trash]].
 - *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
   to remove it, drop a ~.desktop~ file to add an application or a folder to add a
   stack -- and the layout survives restarts; see
@@ -497,16 +497,23 @@ shows up without restarting the dock.
   provides a handler for it, the home trash folder otherwise.
 - *Right click* shows how many items are in the trash, with *Open Trash* and
   *Empty Trash* (disabled when there is nothing to empty).
+- *Drop files or folders on it* moves them to the trash.  Folders go with
+  everything inside them, and a name that is already taken in the trash gets a
+  fresh one instead of overwriting anything.
 
 None of this is specific to one desktop.  The item reads and writes the trash the
 way the [[https://specifications.freedesktop.org/trash-spec/latest/][freedesktop.org
 Trash specification]] defines it: the home trash lives in
 =$XDG_DATA_HOME/Trash= (normally =~/.local/share/Trash=), and every mounted
 volume can have its own under =$topdir/.Trash/$uid= or =$topdir/.Trash-$uid=.
-The count and the empty action cover all of them, with no ~gio~, GVfs or
+The count and the empty action cover all of them, with no ~gio~ command, GVfs or
 GNOME/KDE helper involved, which is what makes the icon behave the same across
-GNOME, KDE, Xfce, Cinnamon, MATE and the rest.  Emptying runs off the main loop,
-so a trash with thousands of files does not freeze the dock while it is cleared.
+GNOME, KDE, Xfce, Cinnamon, MATE and the rest.  Dropped files are handed to
+GIO's ~g_file_trash()~ -- the library call, not a desktop service -- which
+implements that same specification: it picks the right volume's trash, writes
+the =*.trashinfo= entry and resolves name collisions.  Emptying and dropping both
+run off the main loop, so a trash with thousands of files does not freeze the
+dock while it is cleared or filled.
 
 ** Rearranging the dock with drag and drop 🖱️
 :PROPERTIES:
@@ -2481,7 +2488,8 @@ ninja -C build test
   ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
   ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The trash
   tests build throwaway trash directories and cover the freedesktop.org layout,
-  the count, emptying (including read-only directories and orphans) and the
+  the count, emptying (including read-only directories and orphans), moving
+  dropped files and folders in with GIO (including name collisions) and the
   item's full/empty states; the stack tests cover the directory listing
   (dot-files, ordering, missing folders) and the fan's rotation maths; the drag
   and drop tests cover the drop-position arithmetic, the list reordering and the

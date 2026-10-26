@@ -329,6 +329,27 @@ guint lambdock_trash_empty(void) {
 }
 
 /* ============================================================================
+ * ADDING
+ * ============================================================================
+ */
+
+gboolean lambdock_trash_file(GFile *file, GError **error) {
+  if (!file) {
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "No file to trash");
+    return FALSE;
+  }
+
+  /* GIO implements the same specification this module reads: it resolves the
+   * trash of the file's own filesystem (home or volume), writes the .trashinfo
+   * entry, moves the file -- copying it first when the two are on different
+   * filesystems -- and uniquifies a colliding name. Hand-rolling that from the
+   * layout above would mean reimplementing, and probably getting wrong, exactly
+   * the parts the specification spends its time on. */
+  return g_file_trash(file, NULL, error);
+}
+
+/* ============================================================================
  * OPENING
  * ============================================================================
  */

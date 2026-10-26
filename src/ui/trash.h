@@ -18,6 +18,7 @@
 #ifndef TRASH_H
 #define TRASH_H
 
+#include <gio/gio.h>
 #include <glib.h>
 
 /* How often a trash dock item re-counts the trash, in milliseconds. Deleting a
@@ -106,6 +107,26 @@ guint lambdock_trash_empty(void);
  * Returns: how many trashed items of @root were removed.
  */
 guint lambdock_trash_empty_at(const char *root);
+
+/**
+ * lambdock_trash_file:
+ * @file: A file or folder to move to the trash.
+ * @error: (optional): Where a failure is reported.
+ *
+ * Moves @file -- and, for a folder, everything below it -- to the user's trash
+ * using GIO's g_file_trash(), which implements the same freedesktop.org Trash
+ * specification this module reads: it picks the trash of the file's own
+ * filesystem, writes the `*.trashinfo` entry, gives a colliding name a fresh one
+ * instead of overwriting, and copies the file when its trash lives on another
+ * filesystem.
+ *
+ * Blocking: a large folder, or a file that has to be copied rather than
+ * renamed, takes as long as the data takes. The dock calls it from a worker
+ * thread; do the same anywhere else that has a main loop to keep responsive.
+ *
+ * Returns: TRUE when @file ended up in the trash.
+ */
+gboolean lambdock_trash_file(GFile *file, GError **error);
 
 /**
  * lambdock_trash_open:

@@ -59,6 +59,25 @@ static void free_plain_item(DockItem *item) {
   g_free(item);
 }
 
+/* Whether WIDGET carries a drop target that accepts TYPE, i.e. whether a drop
+ * with that payload lands on it. */
+static gboolean has_drop_target_for(GtkWidget *widget, GType type) {
+  GListModel *controllers = gtk_widget_observe_controllers(widget);
+  gboolean found = FALSE;
+
+  for (guint i = 0; i < g_list_model_get_n_items(controllers); i++) {
+    GtkEventController *controller = g_list_model_get_item(controllers, i);
+    if (GTK_IS_DROP_TARGET(controller) &&
+        gdk_content_formats_contain_gtype(
+            gtk_drop_target_get_formats(GTK_DROP_TARGET(controller)), type))
+      found = TRUE;
+    g_object_unref(controller);
+  }
+
+  g_object_unref(controllers);
+  return found;
+}
+
 /* ============================================================================
  * APP-ID / EXEC MATCHING
  * ============================================================================ */
@@ -354,6 +373,13 @@ static void test_create_trash_dock_item(void) {
 
   g_assert_cmpuint(item->trash_count, ==, volume_count + 1);
   g_assert_true(item->trash_full);
+
+  /* Files dropped on the icon are trashed: the item's container carries a drop
+   * target for file lists (and not for the dock's own item strings, which must
+   * keep reaching the dock so an icon can be reordered across the trash). */
+  g_assert_nonnull(item->container);
+  g_assert_true(has_drop_target_for(item->container, GDK_TYPE_FILE_LIST));
+  g_assert_false(has_drop_target_for(item->container, G_TYPE_STRING));
 
   char *key = dock_item_key(item);
   g_assert_cmpstr(key, ==, "trash:Trash");
