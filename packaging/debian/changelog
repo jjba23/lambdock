@@ -1,3 +1,13 @@
+lambdock (0.13.0-1) unstable; urgency=medium
+
+  * New upstream release: the dock is drivable by keyboard and readable by a
+    screen reader, with a reduce-motion setting; the stack fan is rebuilt and
+    shows live thumbnails in every view; the launchpad tiles and backdrop are
+    configurable; and the preferences window is roomier with exact-value spin
+    buttons.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 26 Oct 2026 18:50:00 +0100
+
 lambdock (0.8.1-1) unstable; urgency=medium
 
   * New upstream release: one dock implementation described by plain shelf

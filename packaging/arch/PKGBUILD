@@ -17,7 +17,7 @@
 
 # Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 pkgname=lambdock
-pkgver=0.8.1
+pkgver=0.13.0
 pkgrel=1
 pkgdesc="Wayland-native GTK4 dock customizable in Guile Scheme"
 arch=('x86_64' 'aarch64')
