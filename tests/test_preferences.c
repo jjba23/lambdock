@@ -23,6 +23,7 @@
 #include <libguile.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* Drives the real preferences form against the real Scheme modules: build the
  * content for a temporary settings file, flip a switch / drag a slider / pick a
@@ -50,6 +51,27 @@ static GtkWidget *find_by_key(GtkWidget *root, const char *key) {
 static gboolean quit_loop(gpointer data) {
   g_main_loop_quit((GMainLoop *)data);
   return G_SOURCE_REMOVE;
+}
+
+/* Removes the temporary tree the test created. Leaving a
+ * `lambdock-prefs-test-*' directory behind is not just untidy: Guix's
+ * install-license-files phase looks for a sibling directory whose name starts
+ * with the package name, and would mistake it for the source. */
+static void remove_tree(const char *path) {
+  GDir *dir = g_dir_open(path, 0, NULL);
+  if (dir != NULL) {
+    const char *name;
+    while ((name = g_dir_read_name(dir)) != NULL) {
+      char *child = g_build_filename(path, name, NULL);
+      if (g_file_test(child, G_FILE_TEST_IS_DIR))
+        remove_tree(child);
+      else
+        unlink(child);
+      g_free(child);
+    }
+    g_dir_close(dir);
+  }
+  rmdir(path);
 }
 
 /* Runs the default main context for MS milliseconds, which is long enough for
@@ -91,6 +113,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
 
   if (!gtk_init_check()) {
     g_test_message("No display server: skipping preferences widget tests.");
+    remove_tree(dir);
     g_free(config_path);
     g_free(dir);
     return;
@@ -159,6 +182,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
 
   free(prefs_path);
   gtk_window_destroy(GTK_WINDOW(window));
+  remove_tree(dir);
   g_free(config_path);
   g_free(dir);
 
