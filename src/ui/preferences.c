@@ -17,10 +17,12 @@
 
 #include "preferences.h"
 
+#include "../accessibility.h"
 #include "../dock_window.h"
 #include "../guile_bridge.h"
 #include "../logger.h"
 #include "dock_item.h"
+#include "launchpad.h"
 #include <glib/gi18n.h>
 
 /* =========================================================================
@@ -151,6 +153,26 @@ static void on_scale_changed(GtkRange *range, gpointer user_data) {
   schedule_apply(GTK_WIDGET(range));
 }
 
+/* Every numeric row carries a spin button next to its slider: the slider is for
+ * feeling a value out, the spin button is for typing the exact one (a 53 px
+ * icon, a 0.07 blur). They mirror each other, and the scale stays the keyed
+ * control so the debounced apply path is exactly the same for both. */
+static void on_spin_changed(GtkSpinButton *spin, gpointer user_data) {
+  GtkRange *range = GTK_RANGE(user_data);
+  double value = gtk_spin_button_get_value(spin);
+
+  if (fabs(gtk_range_get_value(range) - value) > 1e-9)
+    gtk_range_set_value(range, value);
+}
+
+static void on_scale_syncs_spin(GtkRange *range, gpointer user_data) {
+  GtkSpinButton *spin = GTK_SPIN_BUTTON(user_data);
+  double value = gtk_range_get_value(range);
+
+  if (fabs(gtk_spin_button_get_value(spin) - value) > 1e-9)
+    gtk_spin_button_set_value(spin, value);
+}
+
 static void on_dropdown_changed(GObject *object, GParamSpec *pspec,
                                 gpointer user_data) {
   (void)pspec;
@@ -174,9 +196,10 @@ static void pref_control_init(GtkWidget *control, const char *config_path,
 
 static GtkWidget *row_new(const char *title, const char *subtitle,
                           GtkWidget *control) {
-  GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-  gtk_widget_set_margin_top(row, 3);
-  gtk_widget_set_margin_bottom(row, 3);
+  GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 18);
+  gtk_widget_set_margin_top(row, 5);
+  gtk_widget_set_margin_bottom(row, 5);
+  gtk_widget_add_css_class(row, "pref-row");
 
   GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_widget_set_hexpand(text, TRUE);
@@ -204,13 +227,33 @@ static GtkWidget *row_new(const char *title, const char *subtitle,
   return row;
 }
 
-static GtkWidget *section_label(const char *text) {
-  GtkWidget *label = gtk_label_new(text);
-  gtk_widget_set_halign(label, GTK_ALIGN_START);
-  gtk_widget_set_margin_top(label, 14);
-  gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
-  gtk_widget_add_css_class(label, "heading");
-  return label;
+/* A section is a rounded card: the title, an optional one-line explanation and
+ * the rows it groups. Cards are what turn a long flat column of controls into
+ * something that can be scanned, and the spacing between them does the rest. */
+static GtkBox *section_new(GtkBox *parent, const char *title,
+                           const char *subtitle) {
+  GtkWidget *section = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+  gtk_widget_add_css_class(section, "pref-section");
+
+  GtkWidget *heading = gtk_label_new(title);
+  gtk_widget_set_halign(heading, GTK_ALIGN_START);
+  gtk_label_set_xalign(GTK_LABEL(heading), 0.0f);
+  gtk_widget_add_css_class(heading, "heading");
+  gtk_box_append(GTK_BOX(section), heading);
+
+  if (subtitle) {
+    GtkWidget *sub = gtk_label_new(subtitle);
+    gtk_widget_set_halign(sub, GTK_ALIGN_START);
+    gtk_label_set_xalign(GTK_LABEL(sub), 0.0f);
+    gtk_label_set_wrap(GTK_LABEL(sub), TRUE);
+    gtk_widget_add_css_class(sub, "dim-label");
+    gtk_widget_add_css_class(sub, "caption");
+    gtk_widget_set_margin_bottom(sub, 4);
+    gtk_box_append(GTK_BOX(section), sub);
+  }
+
+  gtk_box_append(parent, section);
+  return GTK_BOX(section);
 }
 
 static void add_switch(GtkBox *box, const char *config_path, const char *key,
@@ -218,6 +261,9 @@ static void add_switch(GtkBox *box, const char *config_path, const char *key,
                        gboolean value) {
   GtkWidget *sw = gtk_switch_new();
   gtk_switch_set_active(GTK_SWITCH(sw), value);
+  /* A bare GtkSwitch has no text of its own: without this a screen reader only
+   * says "switch, off" and the user cannot tell which setting it belongs to. */
+  lambdock_accessible_update(sw, title, subtitle);
   pref_control_init(sw, config_path, key, PREF_KIND_BOOL);
   g_signal_connect(sw, "notify::active", G_CALLBACK(on_switch_changed), NULL);
   gtk_box_append(box, row_new(title, subtitle, sw));
@@ -227,16 +273,47 @@ static void add_scale(GtkBox *box, const char *config_path, const char *key,
                       const char *title, const char *subtitle, double minimum,
                       double maximum, double step, double value,
                       PrefKind kind) {
+  int digits = (kind == PREF_KIND_INT) ? 0 : 2;
+
+  GtkWidget *control = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+  gtk_widget_set_valign(control, GTK_ALIGN_CENTER);
+
   GtkWidget *scale =
       gtk_scale_new_with_range(GTK_ORIENTATION_HORIZONTAL, minimum, maximum,
                                step);
-  gtk_scale_set_digits(GTK_SCALE(scale), kind == PREF_KIND_INT ? 0 : 2);
+  gtk_scale_set_digits(GTK_SCALE(scale), digits);
   gtk_scale_set_value_pos(GTK_SCALE(scale), GTK_POS_RIGHT);
   gtk_range_set_value(GTK_RANGE(scale), value);
-  gtk_widget_set_size_request(scale, 200, -1);
+  gtk_widget_set_size_request(scale, 180, -1);
+  gtk_widget_set_valign(scale, GTK_ALIGN_CENTER);
+
+  GtkWidget *spin = gtk_spin_button_new_with_range(minimum, maximum, step);
+  gtk_spin_button_set_digits(GTK_SPIN_BUTTON(spin), digits);
+  gtk_spin_button_set_numeric(GTK_SPIN_BUTTON(spin), TRUE);
+  gtk_spin_button_set_increments(GTK_SPIN_BUTTON(spin), step,
+                                 MAX(step, step * 10.0));
+  gtk_editable_set_width_chars(GTK_EDITABLE(spin), digits > 0 ? 6 : 5);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(spin), value);
+  gtk_widget_set_valign(spin, GTK_ALIGN_CENTER);
+  gtk_widget_set_tooltip_text(spin, _("Type an exact value"));
+
+  gtk_box_append(GTK_BOX(control), scale);
+  gtk_box_append(GTK_BOX(control), spin);
+
+  /* The slider and the exact-value field are one setting; both say which. */
+  lambdock_accessible_update(scale, title, subtitle);
+  char *spin_label = g_strdup_printf(_("%s, exact value"), title);
+  lambdock_accessible_update(spin, spin_label,
+                             _("Type a value, or use the arrow keys."));
+  g_free(spin_label);
+
   pref_control_init(scale, config_path, key, kind);
   g_signal_connect(scale, "value-changed", G_CALLBACK(on_scale_changed), NULL);
-  gtk_box_append(box, row_new(title, subtitle, scale));
+  g_signal_connect(scale, "value-changed", G_CALLBACK(on_scale_syncs_spin),
+                   spin);
+  g_signal_connect(spin, "value-changed", G_CALLBACK(on_spin_changed), scale);
+
+  gtk_box_append(box, row_new(title, subtitle, control));
 }
 
 static void free_symbols(gpointer data) {
@@ -275,6 +352,7 @@ static void add_symbol_dropdown(GtkBox *box, const char *config_path,
   if (selected < count)
     gtk_drop_down_set_selected(GTK_DROP_DOWN(dropdown), selected);
 
+  lambdock_accessible_update(dropdown, title, subtitle);
   pref_control_init(dropdown, config_path, key, PREF_KIND_SYMBOL);
   g_signal_connect(dropdown, "notify::selected",
                    G_CALLBACK(on_dropdown_changed), NULL);
@@ -320,106 +398,147 @@ static guint position_index(GtkLayerShellEdge edge) {
 }
 
 static GtkWidget *build_content(const char *config_path) {
-  GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 10);
-  gtk_widget_set_margin_start(content, 20);
-  gtk_widget_set_margin_end(content, 20);
-  gtk_widget_set_margin_top(content, 10);
-  gtk_widget_set_margin_bottom(content, 20);
+  GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 18);
+  gtk_widget_set_margin_start(content, 26);
+  gtk_widget_set_margin_end(content, 26);
+  gtk_widget_set_margin_top(content, 14);
+  gtk_widget_set_margin_bottom(content, 26);
   GtkBox *box = GTK_BOX(content);
 
   LambdockShelfParams shelf;
   get_shelf_config_for(config_path, &shelf);
 
   /* --- Behaviour ------------------------------------------------------- */
-  gtk_box_append(box, section_label(_("Behaviour")));
+  GtkBox *behaviour = section_new(
+      box, _("Behaviour"),
+      _("How the dock responds to windows, the pointer and the session."));
 
   add_switch(
-      box, config_path, "dock-auto-hide?", _("Auto-hide"),
+      behaviour, config_path, "dock-auto-hide?", _("Auto-hide"),
       _("Slide the dock away when the pointer leaves it."),
       get_autohide_config_for(config_path));
 
   add_switch(
-      box, config_path, "dock-show-when-clear?", _("Show when no windows"),
+      behaviour, config_path, "dock-show-when-clear?", _("Show when no windows"),
       _("Reveal the dock when the last window is closed."),
       get_show_when_clear_config_for(config_path));
 
-  add_switch(box, config_path, "dock-hover-animate?", _("Hover magnification"),
-             _("Grow the icon under the pointer."),
+  add_switch(behaviour, config_path, "dock-hover-animate?",
+             _("Hover magnification"), _("Grow the icon under the pointer."),
              get_hover_animate_config_for(config_path));
 
-  add_switch(box, config_path, "dock-track-windows?", _("Track windows"),
+  add_switch(behaviour, config_path, "dock-track-windows?", _("Track windows"),
              _("Show running indicators and window menus."),
              get_track_windows_config_for(config_path));
 
   add_switch(
-      box, config_path, "dock-show-window-titles?", _("Window titles"),
+      behaviour, config_path, "dock-show-window-titles?", _("Window titles"),
       _("Show window titles on running taskbar buttons."),
       get_show_window_titles_config_for(config_path));
 
-  add_symbol_dropdown(box, config_path, "dock-mode", _("Window mode"),
+  add_symbol_dropdown(behaviour, config_path, "dock-mode", _("Window mode"),
                       _("A floating dock or a full-width taskbar."),
                       k_mode_labels, k_mode_symbols,
                       get_taskbar_config_for(config_path) ? 1 : 0);
 
-  /* --- Layout & material ----------------------------------------------- */
-  gtk_box_append(box, section_label(_("Layout & material")));
+  /* --- Accessibility ---------------------------------------------------- */
+  GtkBox *accessibility = section_new(
+      box, _("Accessibility"),
+      _("Motion comfort. The desktop's own accessibility settings are "
+        "honoured too."));
 
-  add_scale(box, config_path, "dock-icon-size", _("Icon size"),
+  add_switch(accessibility, config_path, "dock-reduce-motion?",
+             _("Reduce motion"),
+             _("Skip the dock's slide and hover magnification. Also follows "
+               "the desktop's \"enable animations\" setting."),
+             get_reduce_motion_config_for(config_path));
+
+  /* --- Layout & material ----------------------------------------------- */
+  GtkBox *material = section_new(
+      box, _("Layout & material"),
+      _("Size, spacing, screen edge and the material the dock is dressed in."));
+
+  add_scale(material, config_path, "dock-icon-size", _("Icon size"),
             _("Pixel resolution of the launcher icons."), 16, 128, 2,
             get_icon_size_config_for(config_path), PREF_KIND_INT);
 
-  add_scale(box, config_path, "dock-item-spacing", _("Item spacing"),
+  add_scale(material, config_path, "dock-item-spacing", _("Item spacing"),
             _("Gap between icons, in pixels."), 0, 32, 1,
             get_item_spacing_config_for(config_path), PREF_KIND_INT);
 
-  add_scale(box, config_path, "dock-capsule-padding", _("Capsule padding"),
+  add_scale(material, config_path, "dock-capsule-padding", _("Capsule padding"),
             _("Room between the capsule's ends and the icons."), 0, 96, 1,
             get_capsule_padding_config_for(config_path), PREF_KIND_INT);
 
-  add_symbol_dropdown(box, config_path, "dock-position", _("Screen edge"),
+  add_symbol_dropdown(material, config_path, "dock-position", _("Screen edge"),
                       _("Which edge the dock is attached to."),
                       k_position_labels, k_position_symbols,
                       position_index(get_position_config_for(config_path)));
 
   char *theme = get_theme_config_for(config_path);
-  add_symbol_dropdown(box, config_path, "dock-theme", _("Theme"),
+  add_symbol_dropdown(material, config_path, "dock-theme", _("Theme"),
                       _("The material the dock is dressed in."), k_theme_labels,
                       k_theme_symbols, string_index(k_theme_symbols, theme));
   free(theme);
 
-  /* --- Glass shelf ------------------------------------------------------ */
-  gtk_box_append(box, section_label(_("Glass shelf")));
+  /* --- Launchpad -------------------------------------------------------- */
+  GtkBox *launchpad = section_new(
+      box, _("Launchpad"),
+      _("How the full screen application grid looks when this dock opens it."));
 
-  add_scale(box, config_path, "dock-shelf-margin", _("Icon overhang"),
+  add_scale(launchpad, config_path, "dock-launchpad-icon-size",
+            _("Icon size"),
+            _("Pixel size of an application icon in the grid."),
+            LAUNCHPAD_ICON_SIZE_MIN, LAUNCHPAD_ICON_SIZE_MAX, 2,
+            get_launchpad_icon_size_config_for(config_path), PREF_KIND_INT);
+
+  add_scale(launchpad, config_path, "dock-launchpad-columns", _("Columns"),
+            _("Tiles per row; 0 fits as many as the screen allows."),
+            0, LAUNCHPAD_COLUMNS_MAX, 1,
+            get_launchpad_columns_config_for(config_path), PREF_KIND_INT);
+
+  add_switch(launchpad, config_path, "dock-launchpad-blur?",
+             _("Frosted background"),
+             _("Translucent backdrop. Compositors that blur layer surfaces "
+               "(KWin by default, niri with a layer-rule) frost it; others "
+               "show a subtle tint."),
+             get_launchpad_blur_config_for(config_path));
+
+  /* --- Glass shelf ------------------------------------------------------ */
+  GtkBox *glass = section_new(
+      box, _("Glass shelf"),
+      _("The 3D slab, its overhang and the reflections on it."));
+
+  add_scale(glass, config_path, "dock-shelf-margin", _("Icon overhang"),
             _("Glass above the icons; negative lets them overhang the slab."),
             -200, 200, 1, shelf.margin_px, PREF_KIND_INT);
 
-  add_scale(box, config_path, "dock-shelf-front", _("Front glass"),
+  add_scale(glass, config_path, "dock-shelf-front", _("Front glass"),
             _("Glass in front of the icons, where the mirrors live."), 0, 200,
             1, shelf.front_px, PREF_KIND_INT);
 
-  add_scale(box, config_path, "dock-reflection", _("Reflection height"),
+  add_scale(glass, config_path, "dock-reflection", _("Reflection height"),
             _("Mirror band as a fraction of the icon size (0 = none)."), 0, 2,
             0.05, shelf.reflection_ratio, PREF_KIND_DOUBLE);
 
-  add_scale(box, config_path, "dock-reflection-intensity",
+  add_scale(glass, config_path, "dock-reflection-intensity",
             _("Reflection intensity"),
             _("Alpha of the mirror where it touches the icon."), 0, 1, 0.05,
             shelf.reflection_intensity, PREF_KIND_DOUBLE);
 
-  add_scale(box, config_path, "dock-reflection-blur", _("Reflection blur"),
+  add_scale(glass, config_path, "dock-reflection-blur", _("Reflection blur"),
             _("Blur radius as a fraction of the icon size."), 0, 0.25, 0.01,
             shelf.reflection_blur_ratio, PREF_KIND_DOUBLE);
 
-  add_scale(box, config_path, "dock-shelf-flare", _("Keystone flare"),
+  add_scale(glass, config_path, "dock-shelf-flare", _("Keystone flare"),
             _("How much wider the slab is at the screen edge, per side."), -80,
             80, 1, shelf.flare_px, PREF_KIND_INT);
 
-  add_scale(box, config_path, "dock-shelf-tilt", _("Shelf tilt"),
+  add_scale(glass, config_path, "dock-shelf-tilt", _("Shelf tilt"),
             _("Tilt away from the viewer, in degrees (0 = flat)."), 0,
             SHELF_TILT_MAX_DEG, 1, shelf.tilt_deg, PREF_KIND_DOUBLE);
 
-  add_scale(box, config_path, "dock-shelf-perspective", _("Shelf perspective"),
+  add_scale(glass, config_path, "dock-shelf-perspective", _("Shelf perspective"),
             _("Projection distance in pixels; smaller is a stronger 3D."),
             SHELF_PERSPECTIVE_MIN, SHELF_PERSPECTIVE_MAX, 10,
             shelf.perspective, PREF_KIND_DOUBLE);
@@ -434,6 +553,23 @@ GtkWidget *lambdock_preferences_content_for(const char *config_path) {
 /* =========================================================================
  * WINDOW LIFECYCLE
  * ========================================================================= */
+
+/* Escape closes the preferences window, as it does the launchpad and the
+ * stack popovers. */
+static gboolean on_prefs_key_pressed(GtkEventControllerKey *controller,
+                                     guint keyval, guint keycode,
+                                     GdkModifierType state,
+                                     gpointer user_data) {
+  (void)controller;
+  (void)keycode;
+  (void)state;
+
+  if (keyval != GDK_KEY_Escape)
+    return FALSE;
+
+  gtk_window_close(GTK_WINDOW(user_data));
+  return TRUE;
+}
 
 static void on_prefs_destroy(GtkWidget *window, gpointer user_data) {
   (void)user_data;
@@ -487,7 +623,7 @@ static void prefs_window_show(GtkApplication *app, const char *config_path) {
 
   GtkWidget *window = gtk_application_window_new(app);
   gtk_window_set_title(GTK_WINDOW(window), _("Lambdock Preferences"));
-  gtk_window_set_default_size(GTK_WINDOW(window), 620, 780);
+  gtk_window_set_default_size(GTK_WINDOW(window), 760, 860);
   gtk_window_set_hide_on_close(GTK_WINDOW(window), TRUE);
   gtk_widget_add_css_class(window, "lambdock-preferences");
   g_object_set_data_full(G_OBJECT(window), "lambdock-prefs-key", g_strdup(key),
@@ -513,6 +649,12 @@ static void prefs_window_show(GtkApplication *app, const char *config_path) {
                                 build_content(key));
   g_object_set_data(G_OBJECT(window), "lambdock-prefs-scrolled", scrolled);
   gtk_window_set_child(GTK_WINDOW(window), scrolled);
+
+  GtkEventController *keys = gtk_event_controller_key_new();
+  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_prefs_key_pressed),
+                   window);
+  gtk_widget_add_controller(window, keys);
 
   g_hash_table_insert(g_prefs_windows, g_strdup(key), window);
   g_signal_connect(window, "destroy", G_CALLBACK(on_prefs_destroy), NULL);

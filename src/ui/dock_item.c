@@ -16,6 +16,8 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_item.h" // Struct definitions for DockItem, LambdockState, AppWindow
+#include "../accessibility.h"    // Screen reader labels and motion preferences
+#include "../dock_window.h"      // Recording whether the dock is mid-animation
 #include "../guile_bridge.h"     // Scheme/Guile configuration interface
 #include "../logger.h"           // Logging macro utilities (e.g., LOG_C_INFO)
 #include "../toplevel_tracker.h" // Foreign window tracking via Wayland protocols
@@ -141,6 +143,371 @@ DockItem *dock_item_from_widget(GtkWidget *widget) {
   if (!widget || !G_IS_OBJECT(widget))
     return NULL;
   return g_object_get_data(G_OBJECT(widget), "lambdock-item");
+}
+
+/* ============================================================================
+ * ACCESSIBILITY (SCREEN READERS & KEYBOARD)
+ * ============================================================================
+ *
+ * A dock is a row of icons, which a screen reader sees as a row of unnamed
+ * buttons unless each one says what it is and what it currently does. The
+ * labels are rebuilt whenever the item's state changes (a window opened, the
+ * trash was filled, a reading arrived), and the arrow keys walk the row so the
+ * whole dock can be used without a pointer.
+ */
+
+/* What a screen reader should say about an app item besides its name. */
+static char *dock_item_running_text(const DockItem *item) {
+  guint count = item->windows ? g_list_length(item->windows) : 0;
+
+  if (count == 0)
+    return g_strdup(_("Not running"));
+
+  return g_strdup_printf(
+      ngettext("Running, %u window", "Running, %u windows", count), count);
+}
+
+void dock_item_update_accessible(DockItem *item) {
+  if (!item || !item->button || item->kind == LAMBDOCK_ITEM_SEPARATOR)
+    return;
+
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+  char *label = NULL;
+  char *description = NULL;
+
+  switch (item->kind) {
+  case LAMBDOCK_ITEM_STACK:
+    label = g_strdup_printf(_("%s, folder stack"), name ? name : _("Stack"));
+    description = g_strdup(_("Opens the folder's contents."));
+    break;
+  case LAMBDOCK_ITEM_LAUNCHPAD:
+    label = g_strdup(name ? name : _("Applications"));
+    description = g_strdup(_("Opens the application grid. Escape closes it."));
+    break;
+  case LAMBDOCK_ITEM_TRASH:
+    label = g_strdup(name ? name : _("Trash"));
+    if (item->trash_count > 0) {
+      char *count = g_strdup_printf(
+          ngettext("%u item in the trash", "%u items in the trash",
+                   item->trash_count),
+          item->trash_count);
+      description = g_strdup_printf(_("%s. Opens the trash."), count);
+      g_free(count);
+    } else {
+      description = g_strdup(_("The trash is empty. Opens the trash."));
+    }
+    break;
+  case LAMBDOCK_ITEM_DYNAMIC: {
+    const char *reading = gtk_widget_get_tooltip_text(item->button);
+    if (reading && *reading != '\0') {
+      /* Meter items already put "name: reading" in the tooltip. */
+      label = g_str_has_prefix(reading, name ? name : "")
+                  ? g_strdup(reading)
+                  : g_strdup_printf("%s: %s", name ? name : _("Reading"),
+                                    reading);
+    } else {
+      label = g_strdup(name ? name : _("Reading"));
+    }
+    description = g_strdup(_("Live reading from the dock."));
+    break;
+  }
+  case LAMBDOCK_ITEM_APP:
+  default:
+    label = g_strdup(name ? name : _("Application"));
+    description = dock_item_running_text(item);
+    break;
+  }
+
+  lambdock_accessible_update(item->button, label, description);
+  g_free(label);
+  g_free(description);
+}
+
+/* Separators are decoration: they must not take focus, and they have no
+ * keyboard actions. */
+static gboolean item_is_keyboard_reachable(const DockItem *item) {
+  return item && item->button && item->kind != LAMBDOCK_ITEM_SEPARATOR;
+}
+
+int lambdock_dock_item_count(const LambdockState *state) {
+  if (!state)
+    return 0;
+
+  int count = 0;
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    if (item_is_keyboard_reachable((const DockItem *)l->data))
+      count++;
+  }
+  return count;
+}
+
+DockItem *lambdock_dock_item_at_index(const LambdockState *state, int index) {
+  if (!state || index < 0)
+    return NULL;
+
+  int i = 0;
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item_is_keyboard_reachable(item))
+      continue;
+    if (i == index)
+      return item;
+    i++;
+  }
+  return NULL;
+}
+
+int lambdock_dock_item_index_of(const LambdockState *state,
+                                const DockItem *item) {
+  if (!state || !item)
+    return -1;
+
+  int i = 0;
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *candidate = (DockItem *)l->data;
+    if (!item_is_keyboard_reachable(candidate))
+      continue;
+    if (candidate == item)
+      return i;
+    i++;
+  }
+  return -1;
+}
+
+/* The item that currently holds the keyboard focus in this dock, looking through
+ * the button's children so a focused label still resolves to its item. */
+static DockItem *focused_dock_item(LambdockState *state) {
+  if (!state || !state->window || !GTK_IS_WINDOW(state->window))
+    return NULL;
+
+  GtkWidget *focus = gtk_window_get_focus(GTK_WINDOW(state->window));
+  for (GtkWidget *w = focus; w != NULL; w = gtk_widget_get_parent(w)) {
+    DockItem *item = dock_item_from_widget(w);
+    if (item)
+      return item;
+    if (w == state->window)
+      break;
+  }
+  return NULL;
+}
+
+DockItem *lambdock_dock_item_focused(LambdockState *state) {
+  return focused_dock_item(state);
+}
+
+gboolean lambdock_dock_item_focus_step(LambdockState *state, int delta) {
+  if (!state || delta == 0)
+    return FALSE;
+
+  int count = lambdock_dock_item_count(state);
+  if (count == 0)
+    return FALSE;
+
+  DockItem *current = focused_dock_item(state);
+  int index = current ? lambdock_dock_item_index_of(state, current)
+                      : (delta > 0 ? -1 : count);
+  int next = CLAMP(index + delta, 0, count - 1);
+
+  if (current && next == index)
+    return FALSE;
+
+  DockItem *target = lambdock_dock_item_at_index(state, next);
+  if (!target || !target->button)
+    return FALSE;
+
+  gtk_widget_grab_focus(target->button);
+  return TRUE;
+}
+
+gboolean lambdock_dock_item_focus_edge(LambdockState *state, gboolean last) {
+  int count = lambdock_dock_item_count(state);
+  if (count == 0)
+    return FALSE;
+
+  DockItem *target =
+      lambdock_dock_item_at_index(state, last ? count - 1 : 0);
+  if (!target || !target->button)
+    return FALSE;
+
+  gtk_widget_grab_focus(target->button);
+  return TRUE;
+}
+
+/* Lays the dock's child widgets out in the order of state->dock_items. */
+static void reorder_dock_widgets(LambdockState *state) {
+  if (!state || !state->box || !GTK_IS_BOX(state->box))
+    return;
+
+  GtkWidget *previous = NULL;
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    GtkWidget *child =
+        item->container ? item->container : item->button;
+    if (!child || gtk_widget_get_parent(child) != state->box)
+      continue;
+
+    gtk_box_reorder_child_after(GTK_BOX(state->box), child, previous);
+    previous = child;
+  }
+}
+
+gboolean lambdock_dock_item_move(LambdockState *state, DockItem *item,
+                                 int delta) {
+  if (!state || !item || delta == 0)
+    return FALSE;
+
+  int count = lambdock_dock_item_count(state);
+  int index = lambdock_dock_item_index_of(state, item);
+  int target = index + delta;
+  if (index < 0 || target < 0 || target >= count)
+    return FALSE;
+
+  DockItem *other = lambdock_dock_item_at_index(state, target);
+  if (!other)
+    return FALSE;
+
+  GList *link = g_list_find(state->dock_items, item);
+  GList *other_link = g_list_find(state->dock_items, other);
+  if (!link || !other_link)
+    return FALSE;
+
+  state->dock_items = g_list_delete_link(state->dock_items, link);
+  other_link = g_list_find(state->dock_items, other);
+  if (!other_link) {
+    /* The neighbour vanished from under us: put the item back rather than
+     * dropping it from the dock. */
+    state->dock_items = g_list_append(state->dock_items, item);
+    return FALSE;
+  }
+
+  state->dock_items = g_list_insert_before(
+      state->dock_items, delta > 0 ? other_link->next : other_link, item);
+
+  reorder_dock_widgets(state);
+  dock_dnd_persist_order(state);
+  return TRUE;
+}
+
+void lambdock_dock_item_show_menu(DockItem *item) {
+  if (!item || !item->popover || !item->state)
+    return;
+
+  if (gtk_widget_get_visible(item->popover)) {
+    gtk_popover_popdown(GTK_POPOVER(item->popover));
+    return;
+  }
+
+  populate_popover_menu(item);
+
+  if (!gtk_widget_get_visible(item->popover))
+    item->state->active_popovers++;
+
+  gtk_popover_popup(GTK_POPOVER(item->popover));
+}
+
+gboolean lambdock_dock_items_close_popovers(LambdockState *state) {
+  if (!state)
+    return FALSE;
+
+  gboolean closed = FALSE;
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (item && item->popover && gtk_widget_get_visible(item->popover)) {
+      gtk_popover_popdown(GTK_POPOVER(item->popover));
+      closed = TRUE;
+    }
+  }
+
+  if (state->popover && gtk_widget_get_visible(state->popover)) {
+    gtk_popover_popdown(GTK_POPOVER(state->popover));
+    closed = TRUE;
+  }
+
+  if (lambdock_launchpad_is_open()) {
+    lambdock_launchpad_hide();
+    closed = TRUE;
+  }
+
+  return closed;
+}
+
+gboolean lambdock_dock_items_handle_key(LambdockState *state, guint keyval,
+                                        GdkModifierType modifiers) {
+  if (!state)
+    return FALSE;
+
+  gboolean ctrl = (modifiers & GDK_CONTROL_MASK) != 0;
+  DockItem *focused = focused_dock_item(state);
+
+  if (keyval == GDK_KEY_Escape)
+    return lambdock_dock_items_close_popovers(state);
+
+  /* The Menu key and Shift+F10 are the keyboard's right click. */
+  if (keyval == GDK_KEY_Menu ||
+      (keyval == GDK_KEY_F10 && (modifiers & GDK_SHIFT_MASK) != 0)) {
+    if (!focused)
+      return FALSE;
+    lambdock_dock_item_show_menu(focused);
+    return TRUE;
+  }
+
+  int step = 0;
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    if (keyval == GDK_KEY_Left)
+      step = -1;
+    else if (keyval == GDK_KEY_Right)
+      step = 1;
+  } else {
+    if (keyval == GDK_KEY_Up)
+      step = -1;
+    else if (keyval == GDK_KEY_Down)
+      step = 1;
+  }
+
+  if (step != 0) {
+    /* Ctrl+arrow rearranges the dock, so the pointer drag is not the only way
+     * to move an icon. */
+    if (ctrl) {
+      if (!focused)
+        return FALSE;
+      return lambdock_dock_item_move(state, focused, step);
+    }
+    return lambdock_dock_item_focus_step(state, step);
+  }
+
+  if (keyval == GDK_KEY_Home)
+    return lambdock_dock_item_focus_edge(state, FALSE);
+  if (keyval == GDK_KEY_End)
+    return lambdock_dock_item_focus_edge(state, TRUE);
+
+  return FALSE;
+}
+
+static gboolean on_dock_key_pressed(GtkEventControllerKey *controller,
+                                    guint keyval, guint keycode,
+                                    GdkModifierType modifiers,
+                                    gpointer user_data) {
+  (void)controller;
+  (void)keycode;
+  return lambdock_dock_items_handle_key((LambdockState *)user_data, keyval,
+                                        modifiers);
+}
+
+void lambdock_dock_attach_key_navigation(GtkWidget *root, LambdockState *state) {
+  if (!root || !state)
+    return;
+
+  if (g_object_get_data(G_OBJECT(root), "lambdock-key-navigation"))
+    return;
+
+  GtkEventController *keys = gtk_event_controller_key_new();
+  /* Capture phase: the arrow keys must reach the dock before a child (a
+   * focused icon, the scroll view) consumes them as its own navigation. */
+  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_dock_key_pressed), state);
+  gtk_widget_add_controller(root, keys);
+  g_object_set_data(G_OBJECT(root), "lambdock-key-navigation",
+                    GINT_TO_POINTER(1));
 }
 
 /* ============================================================================
@@ -352,6 +719,7 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
     char *tooltip = g_strdup_printf("%s: %s", item->name ? item->name : "",
                                     text);
     gtk_widget_set_tooltip_text(item->button, tooltip);
+    dock_item_update_accessible(item);
 
     g_free(tooltip);
     g_free(text);
@@ -365,6 +733,7 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
         gtk_label_set_text(GTK_LABEL(item->label), text);
       }
       gtk_widget_set_tooltip_text(item->button, text);
+      dock_item_update_accessible(item);
       free(text);
     }
   }
@@ -475,6 +844,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
 
   item->button = gtk_button_new();
+  gtk_widget_add_css_class(item->button, "dock-item");
 
   /* App items host their icon and an (initially hidden) window-title label in
    * a horizontal box. The label is shown only when `show-window-titles?` is on
@@ -526,6 +896,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   item->popover = gtk_popover_new();
   gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
   gtk_widget_set_parent(item->popover, item->button);
+  lambdock_popover_close_on_escape(item->popover);
 
   g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
                    state);
@@ -548,6 +919,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
     state->dock_items = g_list_append(state->dock_items, item);
 
   dock_item_attach_data(item);
+  dock_item_update_accessible(item);
 
   return item;
 }
@@ -574,6 +946,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   }
 
   item->button = gtk_button_new();
+  gtk_widget_add_css_class(item->button, "dock-item");
 
   GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
   gtk_widget_set_valign(content_box,
@@ -621,6 +994,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   item->popover = gtk_popover_new();
   gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
   gtk_widget_set_parent(item->popover, item->button);
+  lambdock_popover_close_on_escape(item->popover);
 
   if (state) {
     g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
@@ -653,6 +1027,7 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
         g_timeout_add(interval_ms, on_dynamic_item_poll, item);
   }
 
+  dock_item_update_accessible(item);
   return item;
 }
 
@@ -925,6 +1300,10 @@ void update_dock_item_status(DockItem *item) {
   if (item->reflection)
     shelf_reflection_set_running(item->reflection, item->windows != NULL);
 
+  /* The running state is part of what a screen reader announces, so refresh the
+   * label before anything else can return early. */
+  dock_item_update_accessible(item);
+
   /* Keep the window-title label in sync for app items (never for dynamic items,
    * whose label carries polled text, or separators). */
   if (!item->window_title_label || !item->label)
@@ -1117,6 +1496,7 @@ static DockItem *create_icon_dock_item(LambdockState *state,
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
   item->icon_image = image;
   item->button = gtk_button_new();
+  gtk_widget_add_css_class(item->button, "dock-item");
 
   GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
   gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
@@ -1160,6 +1540,7 @@ static DockItem *create_icon_dock_item(LambdockState *state,
   item->popover = gtk_popover_new();
   gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
   gtk_widget_set_parent(item->popover, item->button);
+  lambdock_popover_close_on_escape(item->popover);
   if (state)
     g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
                      state);
@@ -1181,6 +1562,7 @@ static DockItem *create_icon_dock_item(LambdockState *state,
     state->dock_items = g_list_append(state->dock_items, item);
 
   dock_item_attach_data(item);
+  dock_item_update_accessible(item);
   return item;
 }
 
@@ -1285,6 +1667,8 @@ void dock_item_refresh_trash(DockItem *item) {
   if (item->button)
     gtk_widget_set_tooltip_text(item->button, tooltip);
   g_free(tooltip);
+
+  dock_item_update_accessible(item);
 }
 
 static gboolean on_trash_refresh(gpointer user_data) {
@@ -1386,6 +1770,7 @@ void reload_dock_instance(LambdockState *state) {
   state->track_windows = get_track_windows_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
+  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
   state->item_spacing = get_item_spacing_config_for(state->config_path);
   state->capsule_padding =
@@ -1418,6 +1803,9 @@ void reload_dock_instance(LambdockState *state) {
   }
 
   update_dock_dimensions(state);
+
+  /* A toggle from the preferences window takes effect on the running dock. */
+  dock_apply_motion_preference(state);
 
   if (state->auto_hide) {
     gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window), 0);

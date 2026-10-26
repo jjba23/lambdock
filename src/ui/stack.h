@@ -68,6 +68,19 @@ typedef struct LambdockStackEntry {
 GPtrArray *lambdock_stack_list_directory(const char *path);
 
 /**
+ * lambdock_stack_thumbnail_for_path:
+ * @path: A local file path.
+ * @size: Target width/height of the square thumbnail, in pixels.
+ *
+ * Decodes @path into a square, centre-cropped preview. Only real images are
+ * decoded: a directory, a non-image file, an unreadable file or an image above
+ * the size limits returns NULL, and the caller falls back to a file-type icon.
+ *
+ * Returns: (transfer full) (nullable): a square preview, or NULL.
+ */
+GdkPaintable *lambdock_stack_thumbnail_for_path(const char *path, int size);
+
+/**
  * lambdock_stack_entry_free:
  * @entry: (nullable): a single entry.
  */
@@ -95,7 +108,8 @@ const char *lambdock_stack_view_to_string(LambdockStackView view);
  *
  * Builds the widget that renders @entries in the requested view. Grid and list
  * views are scrollable containers of buttons; the fan view is a custom widget
- * that paints tilted cards and hit-tests them itself.
+ * that paints tilted cards and hit-tests them itself, wrapped in a horizontal
+ * scroller so a large folder stays reachable at a readable card size.
  *
  * Returns: (transfer none): the view widget.
  */
@@ -150,5 +164,25 @@ char *lambdock_stack_expand_path(const char *path);
 gboolean lambdock_stack_fan_contains(double x, double y, double cx, double cy,
                                      double angle_degrees, double width,
                                      double height);
+
+/**
+ * lambdock_stack_view_focus_step:
+ * @view: a stack grid (GtkFlowBox) or list (GtkBox) of entry buttons.
+ * @dx: how many entries to move sideways (-1, 0 or 1).
+ * @dy: how many rows to move (-1, 0 or 1).
+ *
+ * Moves the keyboard focus inside an open stack. The grid steps a whole row for
+ * Up/Down, using the columns it actually laid out; the list steps by one. With
+ * nothing focused, either direction starts at the first entry.
+ *
+ * Returns: TRUE when the focus moved (or was already at that end).
+ */
+gboolean lambdock_stack_view_focus_step(GtkWidget *view, int dx, int dy);
+
+/**
+ * lambdock_stack_view_focus_edge:
+ * Focuses the first (or, with @last, the last) entry of a stack view.
+ */
+gboolean lambdock_stack_view_focus_edge(GtkWidget *view, gboolean last);
 
 #endif // STACK_H

@@ -206,6 +206,109 @@ int dock_item_icon_size(DockItem *item);
 DockItem *dock_item_from_widget(GtkWidget *widget);
 
 /**
+ * dock_item_update_accessible:
+ * @item: a dock item (separators and NULL are ignored).
+ *
+ * Rebuilds the accessible label and description of the item's button: the
+ * application's name plus whether it is running, the stack's folder, the
+ * trash's contents or a dynamic item's current reading. Called whenever that
+ * state changes, so a screen reader always announces the truth.
+ */
+void dock_item_update_accessible(DockItem *item);
+
+/**
+ * lambdock_dock_item_count:
+ * Number of items the keyboard can reach: everything except separators.
+ */
+int lambdock_dock_item_count(const LambdockState *state);
+
+/**
+ * lambdock_dock_item_at_index / lambdock_dock_item_index_of:
+ * Translate between a dock's keyboard order (separators skipped) and its items.
+ */
+DockItem *lambdock_dock_item_at_index(const LambdockState *state, int index);
+int lambdock_dock_item_index_of(const LambdockState *state,
+                                const DockItem *item);
+
+/**
+ * lambdock_dock_item_focused:
+ * Returns: (transfer none) (nullable): the item holding the dock window's
+ * keyboard focus, if any.
+ */
+DockItem *lambdock_dock_item_focused(LambdockState *state);
+
+/**
+ * lambdock_dock_item_focus_step:
+ * Moves the keyboard focus @delta items along the dock, wrapping nothing: the
+ * first and last items are the ends of the row. With no item focused, a positive
+ * step focuses the first item and a negative one the last.
+ *
+ * Returns: TRUE when the focus moved.
+ */
+gboolean lambdock_dock_item_focus_step(LambdockState *state, int delta);
+
+/**
+ * lambdock_dock_item_focus_edge:
+ * Focuses the first (or, with @last, the last) item of the dock.
+ */
+gboolean lambdock_dock_item_focus_edge(LambdockState *state, gboolean last);
+
+/**
+ * lambdock_dock_item_move:
+ * @item: the focused item.
+ * @delta: -1 to move it one place towards the dock's start, +1 towards its end.
+ *
+ * Reorders the dock, its widgets and the stored layout, so icons can be
+ * rearranged with Ctrl+Arrow instead of a drag (which is hard for people with
+ * tremor or without a pointer).
+ *
+ * Returns: TRUE when the item moved.
+ */
+gboolean lambdock_dock_item_move(LambdockState *state, DockItem *item,
+                                 int delta);
+
+/**
+ * lambdock_dock_item_show_menu:
+ * Opens the item's context menu, or closes it when it is already open. This is
+ * the keyboard's right click (Menu key or Shift+F10).
+ */
+void lambdock_dock_item_show_menu(DockItem *item);
+
+/**
+ * lambdock_dock_items_close_popovers:
+ * Dismisses every open dock menu (including the background menu and the
+ * launchpad).
+ *
+ * Returns: TRUE when something was open and is now closed.
+ */
+gboolean lambdock_dock_items_close_popovers(LambdockState *state);
+
+/**
+ * lambdock_dock_items_handle_key:
+ * @state: the dock.
+ * @keyval: the pressed key.
+ * @modifiers: its modifier state.
+ *
+ * The dock's keyboard behaviour: Left/Right (Up/Down on a vertical dock) walk
+ * the icons, Home/End jump to the ends, Ctrl+Arrow rearranges them, Menu or
+ * Shift+F10 opens the focused item's context menu, and Escape closes whatever
+ * the dock has open. Enter and Space are handled by the focused button itself.
+ *
+ * Returns: TRUE when the key was used.
+ */
+gboolean lambdock_dock_items_handle_key(LambdockState *state, guint keyval,
+                                        GdkModifierType modifiers);
+
+/**
+ * lambdock_dock_attach_key_navigation:
+ * @root: the dock's window (or any widget whose focus should navigate the dock).
+ * @state: the dock the keys belong to.
+ *
+ * Installs the key controller once; calling it again is harmless.
+ */
+void lambdock_dock_attach_key_navigation(GtkWidget *root, LambdockState *state);
+
+/**
  * reload_dock_instance:
  * Hot-reloads layout, CSS themes, and pinned items on a running dock instance.
  */

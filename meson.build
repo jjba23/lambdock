@@ -248,6 +248,7 @@ inc = include_directories('src')
 # List of all C source code files needed to build the project
 sources = files(
   'src/main.c',
+  'src/accessibility.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -288,6 +289,7 @@ test_stubs = files('tests/test_stubs.c')
 
 # Shared non-main sources for tests requiring full application context
 full_app_sources = files(
+  'src/accessibility.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -348,6 +350,10 @@ unit_tests = [
   },
   {
     'id': 'stack',
+    'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'accessibility',
     'extra_sources': full_test_sources,
   },
   {

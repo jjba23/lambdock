@@ -372,24 +372,67 @@ static void ensure_home_trash(void) {
   g_free(home);
 }
 
+/* Launches a handler with one URI argument. File managers accept the trash URI
+ * on their command line (nautilus trash:///, dolphin trash:/, thunar trash:///),
+ * which is what makes the trash visible as the file manager's own trash view
+ * rather than as the hidden files directory behind it. */
+static gboolean launch_with_uri(GAppInfo *handler, const char *uri,
+                                GError **error) {
+  GList *uris = g_list_prepend(NULL, (gpointer)uri);
+  gboolean opened = g_app_info_launch_uris(handler, uris, NULL, error);
+  g_list_free(uris);
+  return opened;
+}
+
+/* Asks the application that handles folders -- the user's file manager -- to
+ * open trash:///. Distributions rarely register an x-scheme-handler/trash, so
+ * the URI's own default handler is often missing even though the file manager
+ * understands the URI perfectly well. */
+static gboolean open_with_directory_handler(GError **error) {
+  GAppInfo *handler = g_app_info_get_default_for_type("inode/directory", FALSE);
+  if (!handler)
+    return FALSE;
+
+  gboolean opened = FALSE;
+  if (g_app_info_supports_uris(handler))
+    opened = launch_with_uri(handler, "trash:///", error);
+
+  g_object_unref(handler);
+  return opened;
+}
+
 gboolean lambdock_trash_open(void) {
   ensure_home_trash();
 
   GError *error = NULL;
 
   /* trash:/// is what the file managers themselves show, and it covers volume
-   * trashes too. It needs GVfs, which desktops normally have. */
+   * trashes too. It needs a handler for the trash scheme, which not every
+   * desktop registers. */
   if (g_app_info_launch_default_for_uri("trash:///", NULL, &error))
     return TRUE;
 
   if (error) {
-    LOG_C_DEBUG("Trash", "No trash:// handler (%s); opening the home trash",
+    LOG_C_DEBUG("Trash", "No trash:// handler (%s); asking the file manager",
                 error->message);
     g_clear_error(&error);
   }
 
-  /* Without GVfs, the trash is just a directory: any file manager can open it
-   * as a path. */
+  /* The file manager is the application that handles folders; give it the trash
+   * URI directly. This is the path that works on desktops without GVfs, where
+   * trash:/// has no MIME handler but the file manager still knows the scheme. */
+  if (open_with_directory_handler(&error))
+    return TRUE;
+
+  if (error) {
+    LOG_C_DEBUG("Trash", "The folder handler could not open trash:/// (%s); "
+                          "opening the home trash",
+                error->message);
+    g_clear_error(&error);
+  }
+
+  /* Last resort: the trash is just a directory, and any file manager can open
+   * it as a path. */
   char *home = lambdock_trash_home_path();
   char *uri = g_filename_to_uri(home, NULL, &error);
   gboolean opened = FALSE;

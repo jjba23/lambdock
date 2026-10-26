@@ -215,7 +215,11 @@
                  #:show-window-titles? #t
                  #:shelf-tilt 12
                  #:shelf-margin -18
-                 #:reflection 0.4)
+                 #:reflection 0.4
+                 #:launchpad-icon-size 96
+                 #:launchpad-columns 6
+                 #:launchpad-blur? #t
+                 #:reduce-motion? #t)
 
 (check-equal "config record is retrievable by path key"
              'left (get-dock-position %cfg-path))
@@ -249,6 +253,14 @@
              -18 (get-dock-shelf-margin %cfg-path))
 (check-equal "reflection getter"
              0.4 (get-dock-reflection %cfg-path))
+(check-equal "launchpad icon size getter"
+             96 (get-dock-launchpad-icon-size %cfg-path))
+(check-equal "launchpad columns getter"
+             6 (get-dock-launchpad-columns %cfg-path))
+(check-equal "launchpad blur getter"
+             #t (get-dock-launchpad-blur? %cfg-path))
+(check-equal "reduce-motion? getter"
+             #t (get-dock-reduce-motion? %cfg-path))
 (check-equal "exclude-apps getter"
              '("daemon" "tracker") (get-dock-exclude-apps %cfg-path))
 
@@ -302,6 +314,25 @@
 (set-dock-show-window-titles! #f %cfg-path)
 (check-equal "set-dock-show-window-titles! updates the targeted config"
              #f (get-dock-show-window-titles? %cfg-path))
+
+(set-dock-launchpad-icon-size! 120 %cfg-path)
+(check-equal "set-dock-launchpad-icon-size! updates the targeted config"
+             120 (get-dock-launchpad-icon-size %cfg-path))
+
+(set-dock-launchpad-columns! 9 %cfg-path)
+(check-equal "set-dock-launchpad-columns! updates the targeted config"
+             9 (get-dock-launchpad-columns %cfg-path))
+
+(set-dock-launchpad-blur! #f %cfg-path)
+(check-equal "set-dock-launchpad-blur! updates the targeted config"
+             #f (get-dock-launchpad-blur? %cfg-path))
+
+(set-dock-reduce-motion! #t %cfg-path)
+(check-equal "set-dock-reduce-motion! updates the targeted config"
+             #t (get-dock-reduce-motion? %cfg-path))
+(set-dock-reduce-motion! #f %cfg-path)
+(check-equal "set-dock-reduce-motion! can be turned off again"
+             #f (get-dock-reduce-motion? %cfg-path))
 
 ;; =============================================================================
 ;; (lambdock items) — record constructors and accessors
@@ -822,6 +853,40 @@
 (check-equal "the padding is independent of the shelf"
              0 (get-dock-shelf-flare %padding-cfg))
 
+;; --- the launchpad -----------------------------------------------------------
+
+(check-equal "launchpad icon size defaults to 64"
+             64 (get-dock-launchpad-icon-size (tmp-path "no-launchpad.scm")))
+(check-equal "launchpad columns default to automatic"
+             0 (get-dock-launchpad-columns (tmp-path "no-launchpad.scm")))
+(check-equal "the launchpad is solid unless asked otherwise"
+             #f (get-dock-launchpad-blur? (tmp-path "no-launchpad.scm")))
+
+(define %launchpad-cfg (tmp-path "launchpad.scm"))
+(write-file %launchpad-cfg
+            "(define dock-launchpad-icon-size 80)
+(define dock-launchpad-columns 5)
+(define dock-launchpad-blur? #t)
+")
+(load-dock-config! %launchpad-cfg)
+(check-equal "the launchpad icon size is read from the config"
+             80 (get-dock-launchpad-icon-size %launchpad-cfg))
+(check-equal "the launchpad column count is read from the config"
+             5 (get-dock-launchpad-columns %launchpad-cfg))
+(check-equal "the frosted background is read from the config"
+             #t (get-dock-launchpad-blur? %launchpad-cfg))
+
+;; --- accessibility -----------------------------------------------------------
+
+(check-equal "motion is not reduced by default"
+             #f (get-dock-reduce-motion? (tmp-path "no-motion.scm")))
+
+(define %motion-cfg (tmp-path "motion.scm"))
+(write-file %motion-cfg "(define dock-reduce-motion? #t)\n")
+(load-dock-config! %motion-cfg)
+(check-equal "the reduced-motion flag is read from the config"
+             #t (get-dock-reduce-motion? %motion-cfg))
+
 ;; =============================================================================
 ;; (lambdock prefs) — GUI preference overrides
 ;; =============================================================================
@@ -859,6 +924,20 @@
 (check-equal "booleans are remembered" #t (get-dock-auto-hide? %prefs-cfg))
 (check-equal "symbols are remembered" 'macos-mavericks
              (get-dock-theme %prefs-cfg))
+
+(set-dock-preference! 'dock-launchpad-icon-size 112 %prefs-cfg)
+(set-dock-preference! 'dock-launchpad-columns 4 %prefs-cfg)
+(set-dock-preference! 'dock-launchpad-blur? #t %prefs-cfg)
+(check-equal "launchpad numbers are remembered"
+             112 (get-dock-launchpad-icon-size %prefs-cfg))
+(check-equal "launchpad columns are remembered"
+             4 (get-dock-launchpad-columns %prefs-cfg))
+(check-equal "the launchpad blur preference is remembered"
+             #t (get-dock-launchpad-blur? %prefs-cfg))
+
+(set-dock-preference! 'dock-reduce-motion? #t %prefs-cfg)
+(check-equal "the reduced-motion preference is remembered"
+             #t (get-dock-reduce-motion? %prefs-cfg))
 
 ;; Editing the same key twice replaces its entry instead of piling up.
 (set-dock-preference! 'dock-icon-size 56 %prefs-cfg)

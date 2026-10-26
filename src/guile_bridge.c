@@ -18,6 +18,7 @@
 #include "guile_bridge.h" // Header file defining function declarations and LambdockState
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
 #include "ui/dock_item.h" // Functions to create visual dock items and separators
+#include "ui/launchpad.h"  // Launchpad defaults and limits
 
 /**
  * setup_guile_load_path:
@@ -215,6 +216,28 @@ int get_capsule_padding_config_for(const char *config_path) {
     return padding;
   }
   return CAPSULE_MAIN_AXIS_PADDING_PX;
+}
+
+int get_launchpad_icon_size_config_for(const char *config_path) {
+  double size = get_guile_number_for("get-dock-launchpad-icon-size", config_path,
+                                     LAUNCHPAD_ICON_SIZE);
+  return clamp_int(size, LAUNCHPAD_ICON_SIZE_MIN, LAUNCHPAD_ICON_SIZE_MAX);
+}
+
+int get_launchpad_columns_config_for(const char *config_path) {
+  double value = get_guile_number_for("get-dock-launchpad-columns", config_path,
+                                      LAUNCHPAD_COLUMNS_AUTO);
+  if (value <= 0)
+    return LAUNCHPAD_COLUMNS_AUTO;
+  return clamp_int(value, LAUNCHPAD_COLUMNS_MIN, LAUNCHPAD_COLUMNS_MAX);
+}
+
+gboolean get_launchpad_blur_config_for(const char *config_path) {
+  return get_guile_bool_for("get-dock-launchpad-blur?", config_path);
+}
+
+gboolean get_reduce_motion_config_for(const char *config_path) {
+  return get_guile_bool_for("get-dock-reduce-motion?", config_path);
 }
 
 /** Checks if Guile REPL is enabled for a specific config path. */

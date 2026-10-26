@@ -29,4 +29,16 @@
  */
 void populate_popover_menu(DockItem *item);
 
+/**
+ * lambdock_popover_close_on_escape:
+ * @popover: A GtkPopover owned by a dock item.
+ *
+ * Makes Escape dismiss @popover. A popover only gets that behaviour from GTK
+ * while one of its own children holds the keyboard focus; when the click came
+ * from the dock, focus can stay on the dock button and Escape reaches the
+ * window instead. A capture-phase key controller on the popover closes it in
+ * both cases, and is safe to call more than once.
+ */
+void lambdock_popover_close_on_escape(GtkWidget *popover);
+
 #endif // POPOVER_MENU_H

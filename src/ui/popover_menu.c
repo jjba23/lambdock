@@ -67,6 +67,49 @@ static void free_action_data(gpointer data, GClosure *closure) {
 }
 
 /* ============================================================================
+ * ESCAPE DISMISSAL
+ * ============================================================================
+ */
+
+static gboolean on_popover_key_pressed(GtkEventControllerKey *controller,
+                                       guint keyval, guint keycode,
+                                       GdkModifierType state,
+                                       gpointer user_data) {
+  (void)controller;
+  (void)keycode;
+  (void)state;
+
+  if (keyval != GDK_KEY_Escape)
+    return FALSE;
+
+  GtkWidget *popover = GTK_WIDGET(user_data);
+  if (popover && gtk_widget_get_visible(popover))
+    gtk_popover_popdown(GTK_POPOVER(popover));
+
+  return TRUE;
+}
+
+void lambdock_popover_close_on_escape(GtkWidget *popover) {
+  if (!popover || !GTK_IS_POPOVER(popover))
+    return;
+
+  /* Called once per popover, at creation: a reload rebuilds menu contents but
+   * reuses the popover widget. */
+  if (g_object_get_data(G_OBJECT(popover), "lambdock-escape-close"))
+    return;
+
+  GtkEventController *keys = gtk_event_controller_key_new();
+  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_popover_key_pressed),
+                   popover);
+  g_object_set_data(G_OBJECT(keys), "lambdock-escape-close",
+                    GINT_TO_POINTER(1));
+  gtk_widget_add_controller(popover, keys);
+  g_object_set_data(G_OBJECT(popover), "lambdock-escape-close",
+                    GINT_TO_POINTER(1));
+}
+
+/* ============================================================================
  * SIGNAL CALLBACK HANDLERS (POPOVER BUTTON ACTIONS)
  * ============================================================================
  */

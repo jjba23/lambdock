@@ -123,6 +123,35 @@ gboolean get_show_window_titles_config_for(const char *config_path);
  */
 void get_shelf_config_for(const char *config_path, LambdockShelfParams *out);
 
+/**
+ * get_launchpad_icon_size_config_for:
+ * Reads `dock-launchpad-icon-size` (pixel size of a launchpad tile icon),
+ * clamped to the range the grid can lay out.
+ */
+int get_launchpad_icon_size_config_for(const char *config_path);
+
+/**
+ * get_launchpad_columns_config_for:
+ * Reads `dock-launchpad-columns`: 0 means "fit the screen", 3..14 is a fixed
+ * number of tiles per row.
+ */
+int get_launchpad_columns_config_for(const char *config_path);
+
+/**
+ * get_launchpad_blur_config_for:
+ * Returns TRUE when the launchpad should ask for a frosted, translucent
+ * backdrop instead of its solid one.
+ */
+gboolean get_launchpad_blur_config_for(const char *config_path);
+
+/**
+ * get_reduce_motion_config_for:
+ * Returns TRUE when the dock itself asks for reduced motion; the desktop's
+ * `gtk-enable-animations` setting is checked separately, so either one is
+ * enough to stop the slide and fisheye animations.
+ */
+gboolean get_reduce_motion_config_for(const char *config_path);
+
 /* =========================================================================
  * DOCK LAYOUT OVERRIDES (drag and drop persistence)
  * =========================================================================

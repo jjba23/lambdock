@@ -150,7 +150,11 @@ static void test_load_custom_css_switching(void) {
 
   load_custom_css(&state);
   g_assert_true(gtk_widget_has_css_class(state.window, "theme-vanilla"));
-  GtkCssProvider *first = state.base_css_provider;
+  /* Hold a reference so the new provider cannot reuse the old object's address:
+   * pointer identity is the point of this assertion, and the allocator is free
+   * to hand the just-freed block straight back. */
+  GtkCssProvider *first =
+      state.base_css_provider ? g_object_ref(state.base_css_provider) : NULL;
   g_assert_nonnull(first);
 
   /* Switching themes must drop the previous class and provider. */
@@ -172,6 +176,7 @@ static void test_load_custom_css_switching(void) {
   g_free(state.active_theme_class);
   g_object_ref_sink(state.window);
   g_object_unref(state.window);
+  g_object_unref(first);
 }
 
 static void test_load_custom_css_none(void) {

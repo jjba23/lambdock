@@ -22,6 +22,15 @@
 
 /* Icon size of a launchpad tile, in pixels. */
 #define LAUNCHPAD_ICON_SIZE 64
+#define LAUNCHPAD_ICON_SIZE_MIN 32
+#define LAUNCHPAD_ICON_SIZE_MAX 160
+
+/* Tiles per row. 0 lets the launcher choose from the screen width, which is
+ * what a display of any size wants; a fixed number is for people who want the
+ * same grid everywhere. */
+#define LAUNCHPAD_COLUMNS_AUTO 0
+#define LAUNCHPAD_COLUMNS_MIN 3
+#define LAUNCHPAD_COLUMNS_MAX 14
 
 /**
  * lambdock_launchpad_show:
@@ -30,7 +39,10 @@
  * Shows the launchpad: a full screen layer-shell overlay with a search field and
  * a grid of every installed application, macOS Launchpad style. The window is
  * created on first use and reused afterwards; the application list is rescanned
- * on every show so freshly installed apps appear.
+ * on every show so freshly installed apps appear. The tile size, column count
+ * and frosted background are resolved from @state's dock settings on each show.
+ *
+ * Escape, the close button and a click on the backdrop all hide it.
  */
 void lambdock_launchpad_show(LambdockState *state);
 

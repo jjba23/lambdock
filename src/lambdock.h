@@ -252,6 +252,7 @@ struct LambdockState {
   gboolean show_when_clear;
   gboolean track_windows; /* <-- Track open Wayland foreign windows */
   gboolean hover_animate;
+  gboolean reduce_motion;       /* Disable slide/fisheye animations (accessibility) */
   gboolean taskbar;             /* Full-width bar instead of floating dock */
   gboolean show_window_titles;  /* Show window titles on running app items */
   LambdockShelfParams shelf;    /* Glass shelf / reflection geometry */

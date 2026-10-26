@@ -195,7 +195,11 @@ settings file, can have GUI edits for the session but nowhere to keep them."
     (dock-reflection . set-dock-reflection!)
     (dock-reflection-intensity . set-dock-reflection-intensity!)
     (dock-reflection-blur . set-dock-reflection-blur!)
-    (dock-shelf-flare . set-dock-shelf-flare!)))
+    (dock-shelf-flare . set-dock-shelf-flare!)
+    (dock-launchpad-icon-size . set-dock-launchpad-icon-size!)
+    (dock-launchpad-columns . set-dock-launchpad-columns!)
+    (dock-launchpad-blur? . set-dock-launchpad-blur!)
+    (dock-reduce-motion? . set-dock-reduce-motion!)))
 
 (define (set-dock-preference! key value config-path)
   "Applies one GUI edit: updates the running dock and remembers it.

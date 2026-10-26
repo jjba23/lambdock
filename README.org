@@ -302,6 +302,12 @@ tangible reality.
   to remove it, drop a ~.desktop~ file to add an application or a folder to add a
   stack -- and the layout survives restarts; see
   [[#drag-and-drop][Rearranging the dock]].
+- *Keyboard and screen reader friendly* ♿: the whole dock, its menus, stacks and
+  the launchpad can be driven from the keyboard (arrows, Home/End, Menu,
+  Ctrl+Arrow to rearrange), every icon announces its name and state, focus rings
+  are visible, and reduced motion is honoured -- both from the dock's own setting
+  and from the desktop's accessibility preferences; see
+  [[#accessibility][Keyboard and accessibility]].
 - *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
   as a floating capsule or a full-width taskbar with window titles.
 - *Free software*: GPL-3.0-or-later, with documentation under the GNU FDL v1.3 or
@@ -423,17 +429,29 @@ Clicking the icon opens a popover with the folder's contents (hidden dot-files
 are skipped, folders come first, then names; at most 300 entries are listed so a
 gigantic directory cannot lock the UI up):
 
-- *grid*: a flow box of icon tiles, four to six per row, the default;
+- *grid*: a flow box of tiles, four to seven per row, the default;
 - *list*: one row per entry with its content-type icon, close to a file
   manager's list view;
 - *fan*: an arc of tilted cards, macOS style.  GTK cannot rotate child widgets,
-  so this view paints its cards itself (rounded rectangle, icon, name) and
-  hit-tests the click by rotating the pointer back into each card's frame.
+  so this view paints its cards itself (rounded rectangle, preview, name) and
+  hit-tests the click by rotating the pointer back into each card's frame.  The
+  centre card stands upright, the outer ones lean and sink away from it, and the
+  card under the pointer comes to the front with its full name printed above the
+  fan.  A fan with more cards than fit scrolls sideways instead of shrinking
+  every card into a sliver; it shows at most 16 cards and a note says so, since
+  the folder itself is one click away in the header.
+
+In every view, an image file shows a live, centre-cropped thumbnail of its
+contents instead of a generic type icon.  Thumbnails are decoded in the
+background, one at a time, so opening a folder of large photos does not stall
+the dock; closing the popover stops the remaining work.
 
 The header carries the folder name, how many items are inside and a button to
-open the folder in your file manager.  Right-clicking the stack switches the view
-mode (the choice is remembered per stack) or opens the folder.  Changing it from
-a config file is the same thing: ~(stack-item #:view-mode 'list ...)~.
+open the folder in your file manager.  Clicking any entry opens it and dismisses
+the popover, so the file manager or application is not left underneath the
+panel.  Right-clicking the stack switches the view mode (the choice is remembered
+per stack) or opens the folder.  Changing it from a config file is the same
+thing: ~(stack-item #:view-mode 'list ...)~.
 
 Empty folders are not an error: the popover says "This folder is empty".
 
@@ -455,7 +473,39 @@ Clicking it covers the screen with a layer-shell overlay: a search field, and
 below it every application found in the XDG application directories, sorted by
 name and shown as icon tiles.  Type to filter (the name and the command line are
 both searched), press *Enter* on a result... nothing else: click a tile to launch
-it, press *Escape* or click the backdrop to go back to whatever you were doing.
+it, press *Escape*, click the *X* in the top right corner or click the backdrop
+to go back to whatever you were doing.
+
+Its appearance follows the settings of the dock that opened it:
+
+| Option                       | Default | What it does                                             |
+|------------------------------+---------+-----------------------------------------------------------|
+| ~dock-launchpad-icon-size~   | ~64~    | Pixel size of an application icon in the grid (32 … 160). |
+| ~dock-launchpad-columns~     | ~0~     | Tiles per row. 0 fits as many as the screen allows; 3 … 14 is an upper bound (the grid still shrinks to fit). |
+| ~dock-launchpad-blur?~       | ~#f~    | Frosted, translucent background instead of the solid one. |
+
+#+begin_src scheme
+(define dock-launchpad-icon-size 80)
+(define dock-launchpad-columns 6)
+(define dock-launchpad-blur? #t)
+#+end_src
+
+A real blur of what is *behind* the launchpad is the compositor's job, and
+almost every Wayland compositor can do it for translucent layer surfaces.  KWin
+blurs them by default.  On niri, add a layer rule matching the launchpad's
+namespace:
+
+#+begin_src kdl
+layer-rule {
+  match namespace="^lambdock-launchpad$"
+  background-effect {
+    blur true
+  }
+}
+#+end_src
+
+Without such a rule the option still gives a lighter, tinted glass backdrop,
+just not a blurred one.
 
 Under the hood it parses the ~.desktop~ entries with ~GKeyFile~ (locale aware
 ~Name~, ~Exec~ with the ~%f~ / ~%U~ / ~%i~ field codes stripped, ~Icon~), skips
@@ -494,7 +544,9 @@ The item re-counts every two seconds, so a file deleted from any other program
 shows up without restarting the dock.
 
 - *Left click* opens the trash in your file manager: ~trash:///~ when your desktop
-  provides a handler for it, the home trash folder otherwise.
+  provides a handler for it, then the folder-handling file manager with that URI
+  (the usual case, because most distributions never register an
+  ~x-scheme-handler/trash~), then the home trash folder as a last resort.
 - *Right click* shows how many items are in the trash, with *Open Trash* and
   *Empty Trash* (disabled when there is nothing to empty).
 - *Drop files or folders on it* moves them to the trash.  Folders go with
@@ -561,6 +613,75 @@ Item identity is =kind:name= (the Scheme procedure ~dock-item-key~), which is wh
 the file is readable and why two items with the same name and kind are treated as
 the same item.  Separators have no stable name, so they are not listed at all:
 they keep their place between their neighbours.
+
+** Keyboard and accessibility ♿
+:PROPERTIES:
+:CUSTOM_ID: accessibility
+:END:
+
+A dock is easy to think of as a mouse-first object.  It does not have to be: every
+pointer action on the dock has a keyboard equivalent, and every icon says out loud
+what it is.
+
+*** Keyboard
+
+- *Tab* moves the focus into the dock.  The dock is a layer-shell surface, so it
+  asks the compositor for the keyboard on demand; clicking the dock, or a
+  compositor shortcut that focuses layer surfaces, hands it over.
+- *Left/Right* walk the icons on a horizontal dock, *Up/Down* on a side dock.
+  *Home* and *End* jump to the first and last icon.
+- *Enter* or *Space* activates the focused icon, exactly like a click: it starts
+  the application, focuses its window, opens the stack, the launchpad or the trash.
+- *Menu* or *Shift+F10* opens the focused icon's context menu: the keyboard's
+  right click.
+- *Ctrl+Left/Right* (Ctrl+Up/Down on a side dock) moves the focused icon along the
+  dock, so rearranging it does not require a drag.  The new order is stored in the
+  same layout override file drag and drop writes.
+- *Escape* closes whatever the dock has open: a context menu, a stack popover or
+  the launchpad.
+- In the launchpad, typing goes to the search field, *Down* enters the grid, the
+  arrows move by tile, and *Enter* launches.  *Return* in the search field launches
+  the first match.
+- In a stack, the arrows move between entries (a whole row at a time in the grid
+  view) and *Enter* opens the entry.  The fan is painted rather than made of
+  widgets, so it keeps the arrows itself: *Home*/*End* and *Left*/*Right* choose a
+  card, *Enter* opens it.
+- The preferences window closes with *Escape*, and every slider has a spin button
+  next to it for typing an exact value.
+
+*** Screen readers
+
+Every dock icon has an accessible name and description, refreshed whenever that
+state changes:
+
+- "Terminal, Running, 2 windows" -- or "Not running";
+- "Projects, folder stack" for a stack;
+- "Trash, 3 items in the trash" for the trash;
+- "Clock: 14:05" for a dynamic item or a meter reading.
+
+Launchpad tiles ("Firefox. Application. Press Enter to open."), stack entries
+("report.pdf. File.") and every preference control ("Reduce motion", "Icon size")
+are labelled too.  When the focus moves to a control, a screen reader reads it; when
+the fan's selection moves, the new card's name and position are announced (on GTK
+4.14 and newer, which is where announcements appeared).
+
+Keyboard focus is drawn as a visible ring on dock icons, launchpad tiles, stack
+entries and preference controls, and only for keyboard focus (~:focus-visible~),
+so a mouse click keeps the untouched look.
+
+*** Reduced motion
+
+~dock-reduce-motion?~ (Preferences → *Accessibility* → *Reduce motion*) turns off
+the dock's slide animation and its fish-eye magnification.  The dock still gets out
+of the way and still responds to the pointer, it just does it in one step instead
+of animating.  Turning animations off in the desktop's own accessibility settings
+has the same effect -- ~lambdock~ watches the toolkit's ~gtk-enable-animations~
+setting, so a change there applies to the running dock immediately, not at the
+next start.
+
+#+begin_src scheme
+(define dock-reduce-motion? #t)
+#+end_src
 
 ------------------
 
@@ -961,6 +1082,10 @@ nothing at all.
 | ~dock-reflection-intensity~   | ~0.55~                       | Alpha of the reflection where it touches the icon.                              |
 | ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections.                           |
 | ~dock-shelf-flare~            | ~0~                          | Keystone: px the slab is wider per side at the screen edge (-80 … 80).          |
+| ~dock-launchpad-icon-size~    | ~64~                         | Icon pixel size inside the launchpad grid (32 … 160).                          |
+| ~dock-launchpad-columns~      | ~0~                          | Launchpad tiles per row; 0 fits the screen, 3 … 14 is an upper bound.          |
+| ~dock-launchpad-blur?~        | ~#f~                         | Frosted, translucent launchpad backdrop (see [[#launchpad][The launchpad]]).                  |
+| ~dock-reduce-motion?~         | ~#f~                         | Turn off the slide and fish-eye animations (see [[#accessibility][accessibility]]).             |
 | ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
 | ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
 | ~dock-show-window-titles?~    | ~#f~                         | Show the focused window title next to running items (taskbar style).            |
@@ -991,7 +1116,13 @@ your file and what you can call yourself from the REPL:
  #:shelf-front 0
  #:reflection 0
  #:reflection-intensity 0.55
- #:reflection-blur 0.05)
+ #:reflection-blur 0.05
+ ;; Launchpad
+ #:launchpad-icon-size 64
+ #:launchpad-columns 0
+ #:launchpad-blur? #f
+ ;; Accessibility
+ #:reduce-motion? #f)
 #+end_src
 
 ** The dock DSL: items and presets
@@ -1280,6 +1411,7 @@ file groups them:
 
 - *Behaviour*: auto-hide, show when no windows, hover magnification, window
   tracking, window titles, and dock vs taskbar mode.
+- *Accessibility*: reduce motion (see [[#accessibility][Keyboard and accessibility]]).
 - *Layout & material*: icon size, item spacing, capsule padding, screen edge and
   theme.
 - *Glass shelf*: icon overhang, front glass, reflection height/intensity/blur,
@@ -1287,7 +1419,9 @@ file groups them:
 
 Every control applies immediately through the same ~set-dock-*!~ setters the
 [[#repl][REPL]] uses, so the dock redraws as you drag a slider (the apply is
-debounced so a drag is one edit, not one per pixel).
+debounced so a drag is one edit, not one per pixel).  Each slider also has a spin
+button beside it for typing an exact value -- a 53 px icon, a 0.07 blur -- and the
+window closes with *Escape*.
 
 *Your settings file is never modified.* GUI changes are written to a separate
 override file, next to the dock's drag-and-drop layout overrides:

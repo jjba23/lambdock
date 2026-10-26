@@ -133,8 +133,10 @@ gboolean lambdock_trash_file(GFile *file, GError **error);
  *
  * Opens the trash in the desktop's file manager. `trash:///` is tried first, so
  * GNOME Files, Dolphin, Thunar and the other GVfs-based managers show the same
- * view they show themselves; when nothing handles that URI (a desktop without
- * GVfs), the home trash directory is opened instead.
+ * view they show themselves. Most distributions do not register a handler for
+ * that scheme, so the application that handles folders (the file manager) is
+ * then asked to open the URI directly; when neither works, the home trash
+ * directory is opened instead.
  *
  * Returns: TRUE when a handler could be launched.
  */

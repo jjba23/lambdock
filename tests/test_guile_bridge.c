@@ -18,6 +18,7 @@
 #include "../src/guile_bridge.h"
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
+#include "../src/ui/launchpad.h"
 #include "../src/ui/meter.h"
 #include <glib.h>
 #include <gtk/gtk.h>
@@ -38,6 +39,9 @@ static const char *FAKE_MODULES =
     "            get-dock-monitor\n"
     "            get-dock-position\n"
     "            get-dock-exclude-apps\n"
+    "            get-dock-launchpad-icon-size\n"
+    "            get-dock-launchpad-columns\n"
+    "            get-dock-launchpad-blur?\n"
     "            get-dock-items\n"
     "            dock-item-type dock-item-name dock-item-icon dock-item-exec\n"
     "            dock-item-poll-fn dock-item-poll-interval\n"
@@ -71,6 +75,19 @@ static const char *FAKE_MODULES =
     "        (else 'bottom)))\n"
     "(define (get-dock-exclude-apps . a)\n"
     "  (list 'bad-app \"TRACKER-DAEMON\" 42 \"\" 'empty-sym))\n"
+    "(define (get-dock-launchpad-icon-size . a)\n"
+    "  (cond ((equal? (arg-or a) \"launch-big\") 120)\n"
+    "        ((equal? (arg-or a) \"launch-tiny\") 2)\n"
+    "        ((equal? (arg-or a) \"junk\") \"not-a-number\")\n"
+    "        (else 64)))\n"
+    "(define (get-dock-launchpad-columns . a)\n"
+    "  (cond ((equal? (arg-or a) \"cols\") 5)\n"
+    "        ((equal? (arg-or a) \"cols-low\") 1)\n"
+    "        ((equal? (arg-or a) \"cols-zero\") 0)\n"
+    "        ((equal? (arg-or a) \"junk\") \"not-a-number\")\n"
+    "        (else 0)))\n"
+    "(define (get-dock-launchpad-blur? . a)\n"
+    "  (equal? (arg-or a) \"frost\"))\n"
     "(define (get-dock-items . a)\n"
     "  (list (vector 'app \"Good\" \"utilities-terminal\" \"good\" #f 0 #t)\n"
     "        (vector 'app \"bad-app\" \"utilities-terminal\" \"bad\" #f 0 #t)\n"
@@ -162,6 +179,30 @@ static void test_int_getters(void) {
   /* Non-numeric results also fall back to the default. */
   g_assert_cmpint(get_icon_size_config_for("junk"), ==, DEFAULT_ICON_SIZE);
   g_assert_cmpint(get_icon_size_config_for(NULL), ==, 48);
+}
+
+/* The launchpad settings are read through the same bridge and clamped so a typo
+ * cannot make the grid unreadable. */
+static void test_launchpad_config_getters(void) {
+  g_assert_cmpint(get_launchpad_icon_size_config_for("launch-big"), ==, 120);
+  g_assert_cmpint(get_launchpad_icon_size_config_for("launch-tiny"), ==,
+                  LAUNCHPAD_ICON_SIZE_MIN);
+  g_assert_cmpint(get_launchpad_icon_size_config_for("junk"), ==,
+                  LAUNCHPAD_ICON_SIZE);
+  g_assert_cmpint(get_launchpad_icon_size_config_for(NULL), ==,
+                  LAUNCHPAD_ICON_SIZE);
+
+  g_assert_cmpint(get_launchpad_columns_config_for("cols"), ==, 5);
+  g_assert_cmpint(get_launchpad_columns_config_for("cols-low"), ==,
+                  LAUNCHPAD_COLUMNS_MIN);
+  g_assert_cmpint(get_launchpad_columns_config_for("cols-zero"), ==,
+                  LAUNCHPAD_COLUMNS_AUTO);
+  g_assert_cmpint(get_launchpad_columns_config_for(NULL), ==,
+                  LAUNCHPAD_COLUMNS_AUTO);
+
+  g_assert_true(get_launchpad_blur_config_for("frost"));
+  g_assert_false(get_launchpad_blur_config_for("solid"));
+  g_assert_false(get_launchpad_blur_config_for(NULL));
 }
 
 static void test_string_getters(void) {
@@ -399,6 +440,7 @@ static void inner_test_guile_bridge(void *data, int argc, char **argv) {
 
   test_boolean_getters();
   test_int_getters();
+  test_launchpad_config_getters();
   test_string_getters();
   test_position_getter();
   test_is_app_excluded();

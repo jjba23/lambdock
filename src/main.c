@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
+#include "accessibility.h"
 #include "guile_bridge.h"
 #include "lambdock.h"
 #include "logger.h"
@@ -650,6 +651,9 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   GtkWidget *window = gtk_application_window_new(app);
   state->window = window;
+  /* A window without a title is announced as an unnamed frame; name the dock so
+   * a screen reader says what surface the focus just landed on. */
+  gtk_window_set_title(GTK_WINDOW(window), _("Lambdock dock"));
 
   /* Resolve mode flags BEFORE loading CSS so the taskbar modifier stylesheet is
    * applied when taskbar mode or window titles are enabled. */
@@ -662,6 +666,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->track_windows = get_track_windows_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
+  state->reduce_motion =
+      get_reduce_motion_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
   state->item_spacing = get_item_spacing_config_for(state->config_path);
   state->capsule_padding =
@@ -755,6 +761,7 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 
   gtk_widget_set_parent(popover, window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+  lambdock_popover_close_on_escape(popover);
   state->popover = popover;
 
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
@@ -769,6 +776,13 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
   dock_dnd_setup(state);
+
+  /* Keyboard access: arrows walk the icons, Menu opens their context menu,
+   * Escape closes whatever the dock has open, Ctrl+Arrow rearranges them. */
+  lambdock_dock_attach_key_navigation(window, state);
+
+  /* A dock that starts with reduced motion must not run a first slide. */
+  dock_apply_motion_preference(state);
 
   g_active_states = g_list_append(g_active_states, state);
 
@@ -786,6 +800,22 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   } else {
     schedule_initial_autohide(state);
   }
+}
+
+/**
+ * on_system_motion_changed:
+ * The desktop's "reduce motion" (GTK's `gtk-enable-animations`) can change
+ * while the dock is running; every dock re-reads it so the next slide or hover
+ * is immediate instead of animated.
+ */
+static void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
+                                     gpointer user_data) {
+  (void)settings;
+  (void)pspec;
+  (void)user_data;
+
+  for (GList *l = g_active_states; l != NULL; l = l->next)
+    dock_apply_motion_preference((LambdockState *)l->data);
 }
 
 /**
@@ -830,6 +860,9 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
   // Theme independent styling for stacks, the launchpad and drag feedback
   load_overlay_css();
+
+  // Follow the desktop's reduced-motion setting while the dock runs
+  lambdock_watch_system_motion(G_CALLBACK(on_system_motion_changed), NULL);
 
   // --- Global Application Menu Actions ---
   GSimpleAction *about_action = g_simple_action_new("about", NULL);

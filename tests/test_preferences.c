@@ -48,6 +48,25 @@ static GtkWidget *find_by_key(GtkWidget *root, const char *key) {
   return NULL;
 }
 
+/* The numeric spin button sits beside its slider in the same control box; the
+ * slider is the keyed widget, so this is how the test reaches the precise
+ * input that pairs with it. */
+static GtkWidget *spin_for(GtkWidget *scale) {
+  if (!scale)
+    return NULL;
+
+  GtkWidget *parent = gtk_widget_get_parent(scale);
+  if (!parent)
+    return NULL;
+
+  for (GtkWidget *child = gtk_widget_get_first_child(parent); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (GTK_IS_SPIN_BUTTON(child))
+      return child;
+  }
+  return NULL;
+}
+
 static gboolean quit_loop(gpointer data) {
   g_main_loop_quit((GMainLoop *)data);
   return G_SOURCE_REMOVE;
@@ -133,6 +152,18 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   pump_main_loop(400);
   g_assert_cmpint(get_icon_size_config_for(config_path), ==, 64);
 
+  /* Every numeric row has a spin button for an exact value, including one that
+   * the slider's step (2 px here) never produces. It starts in sync with the
+   * slider and drives the very same apply path. */
+  GtkWidget *icon_spin = spin_for(icon_size);
+  g_assert_nonnull(icon_spin);
+  g_assert_true(GTK_IS_SPIN_BUTTON(icon_spin));
+  g_assert_cmpfloat_with_epsilon(gtk_spin_button_get_value(GTK_SPIN_BUTTON(icon_spin)),
+                                 64.0, 1e-9);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(icon_spin), 63.0);
+  pump_main_loop(400);
+  g_assert_cmpint(get_icon_size_config_for(config_path), ==, 63);
+
   /* The auto-hide checkbox is a boolean control. */
   GtkWidget *auto_hide = find_by_key(content, "dock-auto-hide?");
   g_assert_nonnull(auto_hide);
@@ -140,6 +171,26 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   gtk_switch_set_active(GTK_SWITCH(auto_hide), TRUE);
   pump_main_loop(400);
   g_assert_true(get_autohide_config_for(config_path));
+
+  /* A switch has no text of its own, so the form labels it for screen readers,
+   * and the accessibility section carries its own reduced-motion switch. */
+  g_assert_null(gtk_test_accessible_check_property(
+      GTK_ACCESSIBLE(auto_hide), GTK_ACCESSIBLE_PROPERTY_LABEL, "Auto-hide"));
+  g_assert_null(gtk_test_accessible_check_property(
+      GTK_ACCESSIBLE(icon_size), GTK_ACCESSIBLE_PROPERTY_LABEL, "Icon size"));
+  g_assert_null(gtk_test_accessible_check_property(
+      GTK_ACCESSIBLE(icon_spin), GTK_ACCESSIBLE_PROPERTY_LABEL,
+      "Icon size, exact value"));
+
+  GtkWidget *reduce_motion = find_by_key(content, "dock-reduce-motion?");
+  g_assert_nonnull(reduce_motion);
+  g_assert_true(GTK_IS_SWITCH(reduce_motion));
+  g_assert_null(gtk_test_accessible_check_property(
+      GTK_ACCESSIBLE(reduce_motion), GTK_ACCESSIBLE_PROPERTY_LABEL,
+      "Reduce motion"));
+  gtk_switch_set_active(GTK_SWITCH(reduce_motion), TRUE);
+  pump_main_loop(400);
+  g_assert_true(get_reduce_motion_config_for(config_path));
 
   /* The theme dropdown carries a symbol. Index 9 is macOS Mavericks in the
    * form's theme list. */
@@ -162,6 +213,19 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   get_shelf_config_for(config_path, &shelf);
   g_assert_cmpfloat_with_epsilon(shelf.reflection_ratio, 0.3, 1e-6);
 
+  /* The launchpad section is wired to the launchpad settings too. */
+  GtkWidget *launchpad_icon = find_by_key(content, "dock-launchpad-icon-size");
+  g_assert_nonnull(launchpad_icon);
+  gtk_range_set_value(GTK_RANGE(launchpad_icon), 96.0);
+  pump_main_loop(400);
+  g_assert_cmpint(get_launchpad_icon_size_config_for(config_path), ==, 96);
+
+  GtkWidget *launchpad_blur = find_by_key(content, "dock-launchpad-blur?");
+  g_assert_nonnull(launchpad_blur);
+  gtk_switch_set_active(GTK_SWITCH(launchpad_blur), TRUE);
+  pump_main_loop(400);
+  g_assert_true(get_launchpad_blur_config_for(config_path));
+
   /* Every edit was remembered in the GUI override file. */
   SCM path_fn = scm_c_public_ref("lambdock core", "dock-preferences-path");
   SCM path_scm = scm_call_1(path_fn, scm_from_utf8_string(config_path));
@@ -172,6 +236,9 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   g_assert_nonnull(strstr(contents, "dock-auto-hide?"));
   g_assert_nonnull(strstr(contents, "dock-theme"));
   g_assert_nonnull(strstr(contents, "dock-reflection"));
+  g_assert_nonnull(strstr(contents, "dock-launchpad-icon-size"));
+  g_assert_nonnull(strstr(contents, "dock-launchpad-blur?"));
+  g_assert_nonnull(strstr(contents, "dock-reduce-motion?"));
   g_free(contents);
 
   /* Reset forgets the overrides; reloading restores the settings file. */

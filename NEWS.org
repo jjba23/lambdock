@@ -8,6 +8,56 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+- Accessibility and keyboard pass. The dock can be driven without a pointer:
+  Left/Right (Up/Down on a side dock) walk the icons, Home/End jump to the ends,
+  Enter/Space activate, Menu or Shift+F10 opens the context menu, Escape closes
+  whatever is open, and Ctrl+Arrow rearranges the icons (and stores the new order
+  like a drag does). Stack grids, lists and the fan take the arrow keys too, the
+  launchpad grid moves by tile with Down/Enter from the search field, and the
+  preferences window closes with Escape. The dock's layer surface now asks the
+  compositor for the keyboard on demand, without which none of this was
+  reachable.
+- Screen reader support: every dock icon has an accessible name and description
+  that follow its state ("Terminal, Running, 2 windows", "Projects, folder
+  stack", "Trash, 3 items in the trash"), as do launchpad tiles, stack entries
+  and preference controls. The stack fan announces the selected card and its
+  position, and keyboard focus is drawn with a visible ring on the dock, the
+  launchpad, the stacks and the preferences window.
+- Reduced motion: the new `dock-reduce-motion?` setting (Preferences →
+  Accessibility) stops the dock's slide and fish-eye animations; the desktop's
+  own `gtk-enable-animations` accessibility setting is honoured too, and changes
+  there take effect on the running dock immediately.
+- Left-clicking the trash now reliably lands in the file manager's trash view.
+  The previous code only tried a handler for the `trash:///` scheme, which most
+  distributions do not register; it now also hands the URI to the application
+  that handles folders (the user's file manager), and only falls back to the
+  home trash directory when neither can open it.
+- Rework the stack fan. The cards form a real arc with the centre card upright,
+  the hovered card comes to the front with its full name printed above the fan,
+  the card and text colours follow the theme instead of assuming a light
+  background, and a wide fan scrolls sideways instead of collapsing into
+  unreadable slivers. Image files now show a live thumbnail of their contents in
+  every view -- fan cards, grid tiles and list rows -- centre-cropped to a
+  square; other files keep their file-type icon. Thumbnails decode on a worker
+  thread, one at a time, so opening a folder of large photos neither stalls the
+  dock nor holds a dozen decoded images in memory, and closing the popover stops
+  the remaining decodes. The stack grid and list views are larger too: bigger
+  icons, two-line names and roomier rows.
+- Clicking an entry in a stack popover now dismisses the popover once the entry
+  has been opened, instead of leaving the panel over the file manager or
+  application it just launched.
+- Escape now closes stack popovers even when focus is still on the dock icon,
+  not only when a popover child has the keyboard focus.
+- The launchpad gets a close button in the top-right corner, Escape works while
+  the search field has focus, and it can be configured from `settings.scm` or
+  the preferences window: `dock-launchpad-icon-size`, `dock-launchpad-columns`
+  and `dock-launchpad-blur?` for a frosted, translucent backdrop (blurred by
+  compositors that blur layer surfaces; a scoped layer rule is documented in the
+  README).
+- The preferences window is easier to read: each group is a rounded card with a
+  short explanation, spacing between sections is wider, and every numeric row
+  has a spin button beside its slider so an exact value (a 53px icon, a 0.07
+  blur) can be typed instead of approximated by dragging.
 
 ---------
 

@@ -120,6 +120,16 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 void update_dock_dimensions(LambdockState *state);
 
 /**
+ * dock_apply_motion_preference:
+ * @state: Pointer to the dock state.
+ *
+ * Honours the dock's reduced-motion setting and the desktop's animation
+ * setting on a running dock: a slide in flight is finished immediately, icons
+ * return to their resting size and the fisheye is stopped.
+ */
+void dock_apply_motion_preference(LambdockState *state);
+
+/**
  * dock_is_settling:
  * @state: Pointer to the dock state.
  *

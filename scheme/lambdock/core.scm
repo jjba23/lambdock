@@ -93,6 +93,10 @@
                get-dock-reflection-intensity
                get-dock-reflection-blur
                get-dock-shelf-flare
+               get-dock-launchpad-icon-size
+               get-dock-launchpad-columns
+               get-dock-launchpad-blur?
+               get-dock-reduce-motion?
 
                ;; Setters
                set-dock-position!
@@ -115,6 +119,10 @@
                set-dock-reflection-intensity!
                set-dock-reflection-blur!
                set-dock-shelf-flare!
+               set-dock-launchpad-icon-size!
+               set-dock-launchpad-columns!
+               set-dock-launchpad-blur!
+               set-dock-reduce-motion!
 
                ;; Config Loader
                resolve-dock-configuration
@@ -233,7 +241,19 @@ keeps its default (the plain flat dock)."
                                          'reflection-blur 0.05)
                                     #:shelf-flare
                                     (cfg 'dock-shelf-flare
-                                         'shelf-flare 0))))
+                                         'shelf-flare 0)
+                                    #:launchpad-icon-size
+                                    (cfg 'dock-launchpad-icon-size
+                                         'launchpad-icon-size 64)
+                                    #:launchpad-columns
+                                    (cfg 'dock-launchpad-columns
+                                         'launchpad-columns 0)
+                                    #:launchpad-blur?
+                                    (cfg 'dock-launchpad-blur?
+                                         'launchpad-blur? #f)
+                                    #:reduce-motion?
+                                    (cfg 'dock-reduce-motion?
+                                         'reduce-motion? #f))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

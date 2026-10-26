@@ -398,6 +398,67 @@ static void test_popover_menu_remove_entry(void) {
   free_item(tracked);
 }
 
+static guint key_controller_count(GtkWidget *popover) {
+  GListModel *controllers = gtk_widget_observe_controllers(popover);
+  guint count = 0;
+
+  for (guint i = 0; i < g_list_model_get_n_items(controllers); i++) {
+    GtkEventController *controller = g_list_model_get_item(controllers, i);
+    if (GTK_IS_EVENT_CONTROLLER_KEY(controller))
+      count++;
+    g_object_unref(controller);
+  }
+
+  g_object_unref(controllers);
+  return count;
+}
+
+/* The helper adds one Escape controller (popovers already carry GTK's own), is
+ * idempotent, and the added controller consumes Escape without swallowing every
+ * other key. */
+static void test_popover_escape_controller(void) {
+  GtkWidget *popover = gtk_popover_new();
+  g_object_ref_sink(popover);
+
+  guint before = key_controller_count(popover);
+  lambdock_popover_close_on_escape(popover);
+  g_assert_cmpuint(key_controller_count(popover), ==, before + 1);
+
+  /* Calling it again must not stack a second controller. */
+  lambdock_popover_close_on_escape(popover);
+  g_assert_cmpuint(key_controller_count(popover), ==, before + 1);
+
+  GListModel *controllers = gtk_widget_observe_controllers(popover);
+  GtkEventController *escape_controller = NULL;
+
+  for (guint i = 0; i < g_list_model_get_n_items(controllers); i++) {
+    GtkEventController *controller = g_list_model_get_item(controllers, i);
+    if (g_object_get_data(G_OBJECT(controller), "lambdock-escape-close")) {
+      escape_controller = controller;
+      break;
+    }
+    g_object_unref(controller);
+  }
+  g_object_unref(controllers);
+
+  /* Do not poke GTK's own popover key controller here: without a mapped
+   * popover surface it has nothing to pop down. */
+  g_assert_nonnull(escape_controller);
+
+  gboolean handled = FALSE;
+  g_signal_emit_by_name(escape_controller, "key-pressed", GDK_KEY_Escape, 0,
+                        (GdkModifierType)0, &handled);
+  g_assert_true(handled);
+
+  handled = FALSE;
+  g_signal_emit_by_name(escape_controller, "key-pressed", GDK_KEY_a, 0,
+                        (GdkModifierType)0, &handled);
+  g_assert_false(handled);
+
+  g_object_unref(escape_controller);
+  g_object_unref(popover);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -406,6 +467,8 @@ int main(int argc, char **argv) {
     return 77;
   }
 
+  g_test_add_func("/ui/popover_menu/escape_controller",
+                  test_popover_escape_controller);
   g_test_add_func("/ui/popover_menu/guards", test_popover_menu_guards);
   g_test_add_func("/ui/popover_menu/no_windows_with_exec",
                   test_popover_menu_no_windows_with_exec);

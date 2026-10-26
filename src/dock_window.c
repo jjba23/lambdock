@@ -16,6 +16,7 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
+#include "accessibility.h"
 #include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
@@ -144,10 +145,35 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
  * @param state Pointer to LambdockState.
  * @param target_margin Target layer shell margin (in pixels).
  */
+/* gtk_layer_set_margin() only means something on a layer-shell surface: the
+ * preferences window and the test fixtures build ordinary windows. */
+static void set_window_margin(LambdockState *state, int margin) {
+  if (!state || !state->window || !GTK_IS_WINDOW(state->window))
+    return;
+  if (gtk_layer_is_layer_window(GTK_WINDOW(state->window)))
+    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, margin);
+}
+
 static void start_margin_animation(LambdockState *state, int target_margin) {
   // Ignore if already positioned at target
   if (state->current_margin == target_margin)
     return;
+
+  /* Reduced motion: the dock still has to get out of the way (or come back),
+   * it just does it in one step instead of sliding. */
+  if (!lambdock_animations_enabled(state)) {
+    if (state->tick_cb_id != 0) {
+      gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+      state->tick_cb_id = 0;
+    }
+    state->start_margin = target_margin;
+    state->current_margin = target_margin;
+    state->target_margin = target_margin;
+    state->anim_start_time = 0;
+    state->margin_anim_end_us = g_get_monotonic_time();
+    set_window_margin(state, target_margin);
+    return;
+  }
 
   state->start_margin = state->current_margin;
   state->target_margin = target_margin;
@@ -234,6 +260,38 @@ static void reset_dock_items_scale(LambdockState *state) {
 }
 
 /**
+ * dock_apply_motion_preference:
+ * @state: the dock whose motion setting (and the desktop's) should be honoured.
+ *
+ * Called when the dock reloads its settings and when the desktop's animation
+ * setting changes. With motion reduced, a slide already in flight is finished
+ * immediately, icons are put back at their resting size and the fisheye is
+ * stopped; nothing is animated until motion is allowed again.
+ */
+void dock_apply_motion_preference(LambdockState *state) {
+  if (!state || !state->window || !GTK_IS_WINDOW(state->window))
+    return;
+
+  if (lambdock_animations_enabled(state))
+    return;
+
+  if (state->tick_cb_id != 0) {
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+    state->tick_cb_id = 0;
+  }
+
+  state->current_margin = state->target_margin;
+  set_window_margin(state, state->current_margin);
+
+  if (state->pointer_tick_id != 0) {
+    gtk_widget_remove_tick_callback(state->window, state->pointer_tick_id);
+    state->pointer_tick_id = 0;
+  }
+
+  reset_dock_items_scale(state);
+}
+
+/**
  * update_dock_items_fisheye:
  * Computes fisheye magnification for dock icons based on current
  * cursor coordinates relative to dock item centers.
@@ -242,7 +300,8 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
                                       double y) {
   // Do not run hover magnification if disabled, hidden, or animating slide
   if (!state || !state->dock_items || !state->hover_animate ||
-      state->is_hidden || state->tick_cb_id != 0 || state->current_margin != 0)
+      !lambdock_animations_enabled(state) || state->is_hidden ||
+      state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
   int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
@@ -625,6 +684,13 @@ void setup_layer_shell_window(LambdockState *state) {
   // Initialize GTK Layer Shell integration for window
   gtk_layer_init_for_window(window);
   gtk_layer_set_namespace(window, "lambdock");
+
+  /* Layer surfaces get no keyboard by default, which would leave the dock
+   * unreachable for keyboard-only users: icons could not be tabbed to, and
+   * Escape would never reach an open stack. On-demand keeps the compositor in
+   * charge while letting a click (or a compositor shortcut) hand the dock the
+   * keyboard. */
+  gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 
   // Assign window to specific GdkMonitor output if specified
   if (state->monitor != NULL) {

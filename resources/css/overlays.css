@@ -38,7 +38,7 @@ button.flat.dragging {
  * ------------------------------------------------------------------------- */
 
 .stack-popover {
-  min-width: 440px;
+  min-width: 560px;
 }
 
 .stack-popover .title {
@@ -51,9 +51,10 @@ button.flat.dragging {
 }
 
 .stack-grid button.stack-entry {
-  padding: 8px;
-  border-radius: 12px;
-  min-width: 92px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  min-width: 116px;
+  min-height: 96px;
 }
 
 .stack-grid button.stack-entry:hover {
@@ -61,12 +62,17 @@ button.flat.dragging {
 }
 
 .stack-grid button.stack-entry label {
-  font-size: 0.85em;
+  font-size: 0.9em;
 }
 
 .stack-list button.stack-row {
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  min-height: 36px;
+}
+
+.stack-list button.stack-row label {
+  font-size: 0.95em;
 }
 
 .stack-list button.stack-row:hover {
@@ -78,6 +84,25 @@ button.flat.dragging {
 }
 
 /* -------------------------------------------------------------------------
+ * PREFERENCES
+ * ------------------------------------------------------------------------- */
+
+.lambdock-preferences .pref-section {
+  padding: 18px 20px 20px;
+  border-radius: 16px;
+  background-color: alpha(currentColor, 0.045);
+  border: 1px solid alpha(currentColor, 0.07);
+}
+
+.lambdock-preferences .pref-section .heading {
+  font-size: 1.05em;
+}
+
+.lambdock-preferences .pref-row {
+  min-height: 32px;
+}
+
+/* -------------------------------------------------------------------------
  * LAUNCHPAD
  * ------------------------------------------------------------------------- */
 
@@ -86,22 +111,70 @@ window.launchpad {
   color: #f5f5f7;
 }
 
+/* The surface fills the overlay. In frosted mode the window itself becomes
+ * transparent and this layer carries the tint, so a compositor that blurs
+ * translucent surfaces (KWin does it by default, niri via a layer-rule matching
+ * the "lambdock-launchpad" namespace) shows the desktop through frosted glass
+ * instead of a flat slab. */
+window.launchpad .launchpad-surface {
+  background-color: transparent;
+}
+
+window.launchpad.launchpad-frosted {
+  background-color: transparent;
+}
+
+window.launchpad.launchpad-frosted .launchpad-surface {
+  background-color: rgba(18, 18, 24, 0.50);
+  background-image: linear-gradient(to bottom,
+                                    rgba(255, 255, 255, 0.09),
+                                    rgba(255, 255, 255, 0.01));
+}
+
+.launchpad-top {
+  min-height: 38px;
+}
+
+.launchpad-title {
+  font-size: 1.15em;
+  font-weight: bold;
+  opacity: 0.85;
+}
+
+button.launchpad-close {
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 19px;
+  background-color: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+button.launchpad-close:hover {
+  background-color: rgba(255, 255, 255, 0.24);
+}
+
+button.launchpad-close:active {
+  background-color: rgba(255, 255, 255, 0.32);
+}
+
 .launchpad-search {
-  border-radius: 18px;
-  padding: 6px 14px;
+  border-radius: 22px;
+  padding: 8px 18px;
+  min-height: 32px;
   background-color: rgba(255, 255, 255, 0.14);
   color: #ffffff;
   font-size: 1.1em;
 }
 
 .launchpad-grid {
-  padding: 6px;
+  padding: 8px;
 }
 
 button.launchpad-tile {
-  padding: 10px;
-  border-radius: 14px;
-  min-width: 96px;
+  padding: 14px 12px;
+  border-radius: 16px;
+  min-width: 120px;
   color: #f5f5f7;
 }
 
@@ -114,5 +187,30 @@ button.launchpad-tile:active {
 }
 
 button.launchpad-tile label {
-  font-size: 0.9em;
+  font-size: 0.92em;
+}
+
+/* -------------------------------------------------------------------------
+ * KEYBOARD FOCUS
+ * -------------------------------------------------------------------------
+ * Dock icons, launchpad tiles and stack entries are flat buttons, and most
+ * themes draw flat buttons without any focus indicator. The ring is drawn only
+ * for :focus-visible, i.e. for keyboard and screen reader users, so a pointer
+ * click keeps the untouched look.
+ * ------------------------------------------------------------------------- */
+
+button.dock-item:focus-visible,
+button.launchpad-tile:focus-visible,
+button.launchpad-close:focus-visible,
+button.stack-entry:focus-visible,
+button.stack-row:focus-visible {
+  box-shadow: inset 0 0 0 2px alpha(currentColor, 0.9);
+}
+
+.lambdock-preferences button:focus-visible,
+.lambdock-preferences switch:focus-visible,
+.lambdock-preferences scale:focus-visible,
+.lambdock-preferences spinbutton:focus-visible,
+.lambdock-preferences dropdown:focus-visible {
+  box-shadow: inset 0 0 0 2px alpha(currentColor, 0.75);
 }

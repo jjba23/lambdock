@@ -52,6 +52,10 @@
             get-dock-reflection-intensity
             get-dock-reflection-blur
             get-dock-shelf-flare
+            get-dock-launchpad-icon-size
+            get-dock-launchpad-columns
+            get-dock-launchpad-blur?
+            get-dock-reduce-motion?
 
             ;; Setters
             set-dock-position!
@@ -73,7 +77,11 @@
             set-dock-reflection!
             set-dock-reflection-intensity!
             set-dock-reflection-blur!
-            set-dock-shelf-flare!))
+            set-dock-shelf-flare!
+            set-dock-launchpad-icon-size!
+            set-dock-launchpad-columns!
+            set-dock-launchpad-blur!
+            set-dock-reduce-motion!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -103,7 +111,11 @@
                     reflection
                     reflection-intensity
                     reflection-blur
-                    shelf-flare)
+                    shelf-flare
+                    launchpad-icon-size
+                    launchpad-columns
+                    launchpad-blur?
+                    reduce-motion?)
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
@@ -135,7 +147,15 @@
                         set-dock-config-reflection-intensity!)
   (reflection-blur dock-config-reflection-blur
                    set-dock-config-reflection-blur!)
-  (shelf-flare dock-config-shelf-flare set-dock-config-shelf-flare!))
+  (shelf-flare dock-config-shelf-flare set-dock-config-shelf-flare!)
+  (launchpad-icon-size dock-config-launchpad-icon-size
+                       set-dock-config-launchpad-icon-size!)
+  (launchpad-columns dock-config-launchpad-columns
+                     set-dock-config-launchpad-columns!)
+  (launchpad-blur? dock-config-launchpad-blur?
+                   set-dock-config-launchpad-blur?!)
+  (reduce-motion? dock-config-reduce-motion?
+                  set-dock-config-reduce-motion?!))
 
 ;; Global hashtable storing isolated <dock-config> records keyed by config path / symbol
 (define *dock-configs*
@@ -166,7 +186,11 @@
                     0.0     ; reflection (band height / icon size)
                     0.55    ; reflection-intensity
                     0.05    ; reflection-blur (blur radius / icon size)
-                    0))     ; shelf-flare (keystone px per side)
+                    0       ; shelf-flare (keystone px per side)
+                    64      ; launchpad-icon-size (px)
+                    0       ; launchpad-columns (0 = fit the screen)
+                    #f      ; launchpad-blur? (frosted backdrop)
+                    #f))    ; reduce-motion? (disable animations)
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -197,7 +221,11 @@
                           (reflection 0.0)
                           (reflection-intensity 0.55)
                           (reflection-blur 0.05)
-                          (shelf-flare 0))
+                          (shelf-flare 0)
+                          (launchpad-icon-size 64)
+                          (launchpad-columns 0)
+                          (launchpad-blur? #f)
+                          (reduce-motion? #f))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -222,7 +250,11 @@
                                reflection
                                reflection-intensity
                                reflection-blur
-                               shelf-flare)))
+                               shelf-flare
+                               launchpad-icon-size
+                               launchpad-columns
+                               launchpad-blur?
+                               reduce-motion?)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
 
@@ -416,6 +448,38 @@
                                   (car args)))))
     (dock-config-shelf-flare cfg)))
 
+;; --- Launchpad ---------------------------------------------------------------
+;; The launchpad is one screen for the whole dock, but its appearance follows
+;; the settings of the dock instance that opened it.
+
+(define (get-dock-launchpad-icon-size . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-launchpad-icon-size cfg)))
+
+(define (get-dock-launchpad-columns . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-launchpad-columns cfg)))
+
+(define (get-dock-launchpad-blur? . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-launchpad-blur? cfg)))
+
+;; --- Accessibility -----------------------------------------------------------
+;; Motion is reduced when this is on, and also when the desktop itself has
+;; animations turned off (the C side checks both).
+
+(define (get-dock-reduce-motion? . args)
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-reduce-motion? cfg)))
+
 ;; =============================================================================
 ;; Setters
 ;; =============================================================================
@@ -525,3 +589,23 @@
 (define (set-dock-shelf-flare! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-shelf-flare! cfg val)) args))
+
+;; --- Launchpad ---------------------------------------------------------------
+
+(define (set-dock-launchpad-icon-size! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-launchpad-icon-size! cfg val)) args))
+
+(define (set-dock-launchpad-columns! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-launchpad-columns! cfg val)) args))
+
+(define (set-dock-launchpad-blur! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-launchpad-blur?! cfg val)) args))
+
+;; --- Accessibility -----------------------------------------------------------
+
+(define (set-dock-reduce-motion! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-reduce-motion?! cfg val)) args))
