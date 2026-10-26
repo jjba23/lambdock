@@ -16,7 +16,7 @@
 #
 
 Name:           lambdock
-Version:        0.13.0
+Version:        0.13.1
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        GPL-3.0-or-later
@@ -78,6 +78,8 @@ Wayfire, Niri, and other compatible compositors.
 %{_datadir}/guile/site/3.0/lambdock
 
 %changelog
+* Mon Oct 26 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.1
+- Copy data/ into the container build so the image builds again
 * Mon Oct 26 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.0
 - Keyboard and screen-reader accessibility with a reduce-motion setting
 - Rebuilt stack fan with live thumbnails in the fan, grid and list views

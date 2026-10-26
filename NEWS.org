@@ -13,6 +13,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v0.13.1 (2026-10-26)
+- The container image builds again. The Dockerfile copies the sources it needs
+  one directory at a time and `data/` was never among them, so `meson setup` in
+  the build stage failed with "File data/org.jointhefreeworld.lambdock.desktop
+  does not exist" from the moment the desktop entry and the AppStream metadata
+  became part of the build -- which is why Docker Hub had been sitting at
+  v0.7.4. With `data/` copied, the image builds, runs its test suite and
+  installs the same desktop entry and AppStream data as an ordinary build.
+
 ** v0.13.0 (2026-10-26)
 - Accessibility and keyboard pass. The dock can be driven without a pointer:
   Left/Right (Up/Down on a side dock) walk the icons, Home/End jump to the ends,

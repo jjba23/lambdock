@@ -858,14 +858,14 @@ rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
 
 Then you should get the RPM files successfully generated:
 #+begin_src shell
-~/rpmbuild/RPMS/x86_64/lambdock-0.13.0-0.x86_64.rpm
-~/rpmbuild/SRPMS/lambdock-0.13.0-0.src.rpm
+~/rpmbuild/RPMS/x86_64/lambdock-0.13.1-0.x86_64.rpm
+~/rpmbuild/SRPMS/lambdock-0.13.1-0.src.rpm
 #+end_src
 
 Test the resulting package. Install it:
 
 #+begin_src shell
-sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.13.0-0.x86_64.rpm
+sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.13.1-0.x86_64.rpm
 #+end_src
 
 Then you can run ~lambdock~.

@@ -1,3 +1,10 @@
+lambdock (0.13.1-1) unstable; urgency=medium
+
+  * New upstream release: ship the desktop entry and AppStream metadata in the
+    container build, which had been failing before it could produce an image.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 26 Oct 2026 19:20:00 +0100
+
 lambdock (0.13.0-1) unstable; urgency=medium
 
   * New upstream release: the dock is drivable by keyboard and readable by a
