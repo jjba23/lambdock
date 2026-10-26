@@ -344,7 +344,7 @@ suite the way ~maak test~ does:
 maak test                      # whole suite, pinned Guix env, virtual display
 
 # the same by hand, from a shell that has the packages of manifest.scm
-GTK_A11Y=none GDK_BACKEND=x11 \
+GTK_A11Y=test GDK_BACKEND=x11 \
   xvfb-run -a -s "-screen 0 1024x768x24" meson test -C build --print-errorlogs
 #+end_src
 
@@ -356,6 +356,13 @@ Four caveats, in the order they bit us:
   icon theme -- *before* that check, and [[https://docs.gtk.org/glib/testing.html][g_test]]
   makes GLib warnings fatal. In a headless shell six of the seven C tests
   therefore abort with ~SIGTRAP~ instead of skipping. Hence ~xvfb-run~.
+- *Accessibility needs a backend.* The accessible-name assertions read labels
+  back through ~gtk_test_accessible_check_property()~, which aborts with
+  ~gtk_at_context_get_accessible_property: assertion 'GTK_IS_AT_CONTEXT (self)'
+  failed~ when GTK has no AT context. There is no a11y bus on a CI runner, so
+  ~GTK_A11Y=test~ (GTK's own test backend) is exported by ~meson.build~, ~maak
+  test~ and the Nix ~checkPhase~; the tests then check the real labels instead
+  of skipping.
 - *An icon theme is required.* =test_dock_item= and =test_guile_bridge= build
   items whose icon is ~utilities-terminal~, resolved through ~GtkIconTheme~, and
   they treat the "falling back to =application-x-executable=" warning as a

@@ -86,8 +86,9 @@ stdenv.mkDerivation (finalAttrs: {
     # The dock-item tests resolve `utilities-terminal'; give them the themes.
     export XDG_DATA_DIRS=${hicolor-icon-theme}/share:${adwaita-icon-theme}/share
 
-    # Disable accessibility bus queries and force GTK to use X11 under Xvfb
-    export GTK_A11Y=none
+    # Use GTK's test accessibility backend -- there is no a11y bus here, and the
+    # accessible-name assertions need an AT context -- and force X11 under Xvfb
+    export GTK_A11Y=test
     export GDK_BACKEND=x11
     # No EGL under Xvfb: use the software renderer for the GTK window tests.
     export GSK_RENDERER=cairo

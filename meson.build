@@ -21,7 +21,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '0.12.1',
+  version: '0.13.0',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -284,6 +284,11 @@ executable('lambdock',
 # Test Suite Configuration
 # ------------------------------------------------------------------------------
 test_env = environment()
+# The accessibility tests read labels back with `gtk_test_accessible_*()', which
+# needs a GtkATContext. GTK's "test" backend provides one without an
+# accessibility bus, so those assertions run on headless CI instead of aborting
+# when the environment turns accessibility off with `GTK_A11Y=none'.
+test_env.set('GTK_A11Y', 'test')
 
 test_stubs = files('tests/test_stubs.c')
 

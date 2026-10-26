@@ -53,9 +53,9 @@ outside the Guix environment.
 
 The GTK tests need a display: with none, `gtk_init_check' fails and GLib turns
 the resulting GTK warnings into aborts (6 of 7 tests die with SIGTRAP), so the
-suite runs on a virtual X server, as in package.nix's checkPhase. `GDK_BACKEND',
-`GTK_A11Y' and `GSK_RENDERER' are pinned because there is no compositor, no a11y
-bus and no EGL under Xvfb.
+suite runs on a virtual X server, as in package.nix's checkPhase.`GDK_BACKEND', `GTK_A11Y' and `GSK_RENDERER' are pinned because there is no compositor, no a11y
+bus and no EGL under Xvfb; `GTK_A11Y=test' is GTK's own backend for the
+accessible-name assertions in the suite.
 
 The build directory is thrown away first: the Byggsteg job clone survives
 between jobs, and a tree configured by a different Meson version makes both
@@ -70,7 +70,7 @@ tests are the ones that match the checked out sources."
          (~ "'~a'"
             (string-join
              (list "set -eu"
-                   "export GTK_A11Y=none GDK_BACKEND=x11 GSK_RENDERER=cairo"
+                   "export GTK_A11Y=test GDK_BACKEND=x11 GSK_RENDERER=cairo"
                    "rm -rf build"
                    "meson setup build"
                    "ninja -C build"
