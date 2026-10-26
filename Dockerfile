@@ -62,6 +62,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
 # ------------------------------------------------------------------------------
 
 COPY meson.build ./
+COPY data/ ./data/
 COPY po/ ./po/
 COPY protocols/ ./protocols/
 COPY resources/ ./resources/
