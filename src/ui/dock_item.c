@@ -30,6 +30,8 @@
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
 #include "stack.h"         // Folder stacks (Downloads-style dock icons)
 #include "theme_engine.h" // CSS and theme engine utilities
+#include "trash.h"         // Desktop trash (count, empty, open)
+#include <glib/gi18n.h>
 
 /* ============================================================================
  * FISHEYE ZOOM WRAPPER
@@ -74,6 +76,8 @@ const char *dock_item_kind_to_string(LambdockItemKind kind) {
     return "stack";
   case LAMBDOCK_ITEM_LAUNCHPAD:
     return "launchpad";
+  case LAMBDOCK_ITEM_TRASH:
+    return "trash";
   case LAMBDOCK_ITEM_APP:
   default:
     return "app";
@@ -243,6 +247,12 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
 
   if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
     lambdock_launchpad_show(item->state);
+    return;
+  }
+
+  if (item->kind == LAMBDOCK_ITEM_TRASH) {
+    if (!lambdock_trash_open())
+      LOG_C_WARN("UI", "Could not open the trash");
     return;
   }
 
@@ -710,6 +720,12 @@ void free_dock_item(DockItem *item) {
     item->poll_timer_id = 0;
   }
 
+  // Cancel the trash refresh timer of a trash item
+  if (item->trash_timer_id > 0) {
+    g_source_remove(item->trash_timer_id);
+    item->trash_timer_id = 0;
+  }
+
   /* Detach the back pointers first: deferred drag callbacks may still hold the
    * widgets, and must see "no item" instead of a freed one. */
   if (item->button)
@@ -1099,6 +1115,7 @@ static DockItem *create_icon_dock_item(LambdockState *state,
       (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
 
   GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
+  item->icon_image = image;
   item->button = gtk_button_new();
 
   GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
@@ -1110,9 +1127,19 @@ static DockItem *create_icon_dock_item(LambdockState *state,
   gtk_button_set_child(GTK_BUTTON(item->button), content_box);
 
   gtk_widget_add_css_class(item->button, "flat");
-  gtk_widget_add_css_class(item->button,
-                           (kind == LAMBDOCK_ITEM_STACK) ? "stack-item"
-                                                         : "launchpad-item");
+  switch (kind) {
+  case LAMBDOCK_ITEM_STACK:
+    gtk_widget_add_css_class(item->button, "stack-item");
+    break;
+  case LAMBDOCK_ITEM_LAUNCHPAD:
+    gtk_widget_add_css_class(item->button, "launchpad-item");
+    break;
+  case LAMBDOCK_ITEM_TRASH:
+    gtk_widget_add_css_class(item->button, "trash-item");
+    break;
+  default:
+    break;
+  }
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 
   if (image) {
@@ -1183,6 +1210,105 @@ DockItem *create_launchpad_dock_item(LambdockState *state, const char *name,
       hover_animate);
 
   LOG_C_INFO("UI", "Created launchpad item: %s", item->name ? item->name : "");
+  return item;
+}
+
+/* ============================================================================
+ * THE TRASH
+ * ============================================================================
+ */
+
+/* `user-trash` and `user-trash-full` are the Icon Naming Specification's names
+ * for the empty and full trash, so every icon theme carries them. A theme set up
+ * for symbolic icons gets the symbolic full icon instead. */
+static const char *trash_full_icon_for(const char *icon) {
+  return (icon && g_str_has_suffix(icon, "-symbolic"))
+             ? "user-trash-full-symbolic"
+             : "user-trash-full";
+}
+
+static const char *trash_icon_for(const DockItem *item, gboolean full) {
+  if (full)
+    return trash_full_icon_for(item->icon);
+  return (item->icon && *item->icon != '\0') ? item->icon : "user-trash";
+}
+
+/* Whether the item's artwork can be swapped between the two themed trash icons.
+ * A configured file, resource or unknown icon is not touched: replacing it would
+ * lose the artwork the user chose (and an icon name is not a path). */
+static gboolean trash_artwork_is_swappable(const DockItem *item) {
+  if (!item->icon_image || !GTK_IS_IMAGE(item->icon_image))
+    return FALSE;
+  if (gtk_image_get_storage_type(GTK_IMAGE(item->icon_image)) !=
+      GTK_IMAGE_ICON_NAME)
+    return FALSE;
+  if (!item->icon || *item->icon == '\0')
+    return TRUE;
+
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+  return theme && gtk_icon_theme_has_icon(theme, item->icon);
+}
+
+void dock_item_refresh_trash(DockItem *item) {
+  if (!item || item->kind != LAMBDOCK_ITEM_TRASH)
+    return;
+
+  guint count = lambdock_trash_count();
+  gboolean full = (count > 0);
+
+  if (count == item->trash_count && full == item->trash_full)
+    return;
+
+  item->trash_count = count;
+  item->trash_full = full;
+
+  if (trash_artwork_is_swappable(item)) {
+    const char *icon = trash_icon_for(item, full);
+    const char *current = gtk_image_get_icon_name(GTK_IMAGE(item->icon_image));
+    if (g_strcmp0(current, icon) != 0)
+      gtk_image_set_from_icon_name(GTK_IMAGE(item->icon_image), icon);
+  }
+
+  const char *name =
+      (item->name && *item->name != '\0') ? item->name : _("Trash");
+  char *tooltip = NULL;
+  if (full) {
+    char *items_text =
+        g_strdup_printf(ngettext("%u item", "%u items", count), count);
+    tooltip = g_strdup_printf("%s — %s", name, items_text);
+    g_free(items_text);
+  } else {
+    tooltip = g_strdup(name);
+  }
+
+  if (item->button)
+    gtk_widget_set_tooltip_text(item->button, tooltip);
+  g_free(tooltip);
+}
+
+static gboolean on_trash_refresh(gpointer user_data) {
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return G_SOURCE_REMOVE;
+
+  dock_item_refresh_trash(item);
+  return G_SOURCE_CONTINUE;
+}
+
+DockItem *create_trash_dock_item(LambdockState *state, const char *name,
+                                 const char *icon, gboolean hover_animate) {
+  DockItem *item = create_icon_dock_item(
+      state, LAMBDOCK_ITEM_TRASH, name,
+      (icon && *icon != '\0') ? icon : "user-trash", hover_animate);
+
+  /* The trash is changed by every other program on the desktop, so the item
+   * counts it again on a timer instead of waiting for a signal nobody sends. */
+  item->trash_timer_id =
+      g_timeout_add(TRASH_REFRESH_INTERVAL_MS, on_trash_refresh, item);
+  dock_item_refresh_trash(item);
+
+  LOG_C_INFO("UI", "Created trash item: %s", item->name ? item->name : "");
   return item;
 }
 

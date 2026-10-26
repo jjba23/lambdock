@@ -48,6 +48,7 @@
                dynamic-item
                stack-item
                launchpad-item
+               trash-item
                ;; Dynamic items
                get-used-ram-percent
                get-used-ram-value

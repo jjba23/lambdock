@@ -293,6 +293,11 @@ tangible reality.
   as an icon grid, a list, or a mac-style fan of tilted cards; see [[#stacks][Stacks]].
 - *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
   parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
+- *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
+  an item count, opening it with a click and emptying it from its menu. It reads
+  and writes the freedesktop.org trash layout, not one desktop's private store,
+  so it works the same on GNOME, KDE, Xfce, Cinnamon and MATE; see
+  [[#trash][The trash]].
 - *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
   to remove it, drop a ~.desktop~ file to add an application or a folder to add a
   stack -- and the layout survives restarts; see
@@ -458,6 +463,50 @@ what the user or the distribution hid (~Hidden=true~, ~NoDisplay=true~) and
 deduplicates by desktop file name, so a Flatpak export overrides the identical
 system entry.  The list is rescanned every time the launchpad opens, so an app
 you just installed is there without restarting the dock.
+
+** The trash 🗑️
+:PROPERTIES:
+:CUSTOM_ID: trash
+:END:
+
+One item puts the desktop trash on the dock:
+
+#+begin_src scheme
+(define dock-items
+  (list (trash-item)                        ; name: "Trash"
+        (trash-item #:name "Bin"            ; or your own label
+                    #:icon "user-trash-symbolic")))
+#+end_src
+
+| Keyword             | Default          | What it does                                   |
+|---------------------+------------------+------------------------------------------------|
+| ~#:name~            | ~"Trash"~        | Header, tooltip and menu title.                |
+| ~#:icon~            | ~"user-trash"~   | Artwork shown while the trash is empty.        |
+| ~#:hover-animate?~  | ~#t~             | Whether the fisheye magnification applies.     |
+
+The icon follows the trash: the configured icon while it is empty, and the icon
+theme's ~user-trash-full~ (or ~user-trash-full-symbolic~, when the configured
+icon is a symbolic one) once it holds anything, with the number of items in the
+tooltip.  A custom theme icon used as ~#:icon~ is the empty-state artwork, and
+the full state swaps in the theme's full icon; an icon given as a file or
+resource is kept as it is in both states (the tooltip still counts the items).
+The item re-counts every two seconds, so a file deleted from any other program
+shows up without restarting the dock.
+
+- *Left click* opens the trash in your file manager: ~trash:///~ when your desktop
+  provides a handler for it, the home trash folder otherwise.
+- *Right click* shows how many items are in the trash, with *Open Trash* and
+  *Empty Trash* (disabled when there is nothing to empty).
+
+None of this is specific to one desktop.  The item reads and writes the trash the
+way the [[https://specifications.freedesktop.org/trash-spec/latest/][freedesktop.org
+Trash specification]] defines it: the home trash lives in
+=$XDG_DATA_HOME/Trash= (normally =~/.local/share/Trash=), and every mounted
+volume can have its own under =$topdir/.Trash/$uid= or =$topdir/.Trash-$uid=.
+The count and the empty action cover all of them, with no ~gio~, GVfs or
+GNOME/KDE helper involved, which is what makes the icon behave the same across
+GNOME, KDE, Xfce, Cinnamon, MATE and the rest.  Emptying runs off the main loop,
+so a trash with thousands of files does not freeze the dock while it is cleared.
 
 ** Rearranging the dock with drag and drop 🖱️
 :PROPERTIES:
@@ -953,6 +1002,7 @@ presets.
 | ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
 | ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~, ~'fan~), ~#:hover-animate?~             |
 | ~(launchpad-item ...)~          | Record      | Opens the full-screen application grid              | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
+| ~(trash-item ...)~              | Record      | Desktop trash icon: shows, opens and empties it     | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
 | ~(preset-launcher 'symbol)~     | Record      | Standard launcher resolved from the preset list      | Symbol (e.g. ~'emacs~, ~'alacritty~)                                                                    |
 | ~(preset-launchers-for 'a 'b)~  | List        | Batch helper returning a list of preset launchers    | Variadic list of symbols, or one list of symbols                                                       |
 | ~(preset-icon 'symbol)~         | String      | Resolves the default icon name for a given preset    | Symbol                                                                                                |
@@ -2428,8 +2478,11 @@ ninja -C build test
   stacks and drag and drop.  These build and exercise real GTK widgets through
   Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
   ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
-  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~), so they
-  catch GTK behaviour, not just arithmetic.  The stack tests cover the directory listing
+  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
+  ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The trash
+  tests build throwaway trash directories and cover the freedesktop.org layout,
+  the count, emptying (including read-only directories and orphans) and the
+  item's full/empty states; the stack tests cover the directory listing
   (dot-files, ordering, missing folders) and the fan's rotation maths; the drag
   and drop tests cover the drop-position arithmetic, the list reordering and the
   item identity that the layout overrides are built on.

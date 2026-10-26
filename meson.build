@@ -264,6 +264,7 @@ sources = files(
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
+  'src/ui/trash.c',
 )
 
 # Compiles and links the final binary application executable
@@ -303,6 +304,7 @@ full_app_sources = files(
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
+  'src/ui/trash.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
@@ -365,6 +367,11 @@ unit_tests = [
   {
     'id': 'preferences',
     'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'trash',
+    'extra_sources': ['src/ui/trash.c'],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
   },
 ]
 

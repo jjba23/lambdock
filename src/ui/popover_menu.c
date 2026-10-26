@@ -16,12 +16,14 @@
 // along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "popover_menu.h"
+#include "../logger.h"
 #include "../toplevel_tracker.h"
 #include "desktop_entry.h"
 #include "dock_dnd.h"
 #include "dock_item.h"
 #include "launchpad.h"
 #include "stack.h"
+#include "trash.h"
 #include <glib/gi18n.h>
 #include <locale.h>
 
@@ -251,6 +253,95 @@ static void on_popover_show_launchpad(GtkButton *btn, gpointer user_data) {
   lambdock_launchpad_show(item->state);
 }
 
+/* ============================================================================
+ * TRASH MENU ENTRIES
+ * ============================================================================
+ */
+
+static void on_popover_open_trash(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  if (!lambdock_trash_open())
+    LOG_C_WARN("UI", "Could not open the trash");
+
+  if (item->popover)
+    gtk_popover_popdown(GTK_POPOVER(item->popover));
+}
+
+/**
+ * EmptyTrashJob:
+ * @button: The trash item's button, referenced for as long as the job lives, so
+ * the item can be looked up when emptying finishes (a reload may have replaced
+ * it in the meantime).
+ */
+typedef struct {
+  GtkWidget *button;
+} EmptyTrashJob;
+
+static void free_empty_trash_job(gpointer data) {
+  EmptyTrashJob *job = (EmptyTrashJob *)data;
+  g_clear_object(&job->button);
+  g_free(job);
+}
+
+/* Emptying can delete thousands of files, so it does not run on the main
+ * thread: the dock would stop drawing (and auto-hiding) until it was done. */
+static void empty_trash_in_thread(GTask *task, gpointer source_object,
+                                  gpointer task_data,
+                                  GCancellable *cancellable) {
+  (void)source_object;
+  (void)task_data;
+  (void)cancellable;
+
+  guint removed = lambdock_trash_empty();
+  g_task_return_int(task, (gssize)removed);
+}
+
+static void on_empty_trash_finished(GObject *source_object,
+                                    GAsyncResult *result,
+                                    gpointer user_data) {
+  (void)source_object;
+  (void)user_data;
+
+  GTask *task = G_TASK(result);
+  GError *error = NULL;
+  gssize removed = g_task_propagate_int(task, &error);
+
+  if (error) {
+    LOG_C_WARN("UI", "Emptying the trash failed: %s", error->message);
+    g_clear_error(&error);
+  } else {
+    LOG_C_INFO("UI", "Emptied the trash (%" G_GSSIZE_FORMAT " items)",
+               removed);
+  }
+
+  EmptyTrashJob *job = (EmptyTrashJob *)g_task_get_task_data(task);
+  DockItem *item = job ? dock_item_from_widget(job->button) : NULL;
+  if (item)
+    dock_item_refresh_trash(item);
+}
+
+static void on_popover_empty_trash(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  if (item->popover)
+    gtk_popover_popdown(GTK_POPOVER(item->popover));
+
+  EmptyTrashJob *job = g_new0(EmptyTrashJob, 1);
+  job->button = item->button ? g_object_ref(item->button) : NULL;
+
+  GTask *task = g_task_new(NULL, NULL, on_empty_trash_finished, NULL);
+  g_task_set_task_data(task, job, free_empty_trash_job);
+  g_task_run_in_thread(task, empty_trash_in_thread);
+  g_object_unref(task);
+}
+
 static void on_popover_remove_item(GtkButton *btn, gpointer user_data) {
   (void)btn;
   DockItem *item = (DockItem *)user_data;
@@ -326,6 +417,39 @@ void populate_popover_menu(DockItem *item) {
                            "title"); // Apply CSS class `.title` for styling
   gtk_box_append(GTK_BOX(vbox), label);
   gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  // --------------------------------------------------------------------------
+  // Trash item: how much is in it, open it, empty it (no windows to list)
+  // --------------------------------------------------------------------------
+  if (item->kind == LAMBDOCK_ITEM_TRASH) {
+    guint count = lambdock_trash_count();
+    char *count_text = g_strdup_printf(
+        ngettext("%u item in the trash", "%u items in the trash", count),
+        count);
+    GtkWidget *count_label = gtk_label_new(count_text);
+    g_free(count_text);
+    gtk_widget_add_css_class(count_label, "dim-label");
+    gtk_box_append(GTK_BOX(vbox), count_label);
+
+    GtkWidget *btn_open = gtk_button_new_with_label(_("Open Trash"));
+    gtk_widget_add_css_class(btn_open, "flat");
+    g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_trash),
+                     item);
+    gtk_box_append(GTK_BOX(vbox), btn_open);
+
+    GtkWidget *btn_empty = gtk_button_new_with_label(_("Empty Trash"));
+    gtk_widget_add_css_class(btn_empty, "flat");
+    gtk_widget_add_css_class(btn_empty, "destructive-action");
+    gtk_widget_set_sensitive(btn_empty, count > 0);
+    g_signal_connect(btn_empty, "clicked", G_CALLBACK(on_popover_empty_trash),
+                     item);
+    gtk_box_append(GTK_BOX(vbox), btn_empty);
+
+    append_remove_entry(vbox, item);
+
+    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+    return;
+  }
 
   // --------------------------------------------------------------------------
   // Stack items: view mode switch + folder actions (no windows to list)

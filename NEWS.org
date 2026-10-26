@@ -9,6 +9,23 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Add a trash item. `(trash-item)` puts the desktop trash on the dock: the icon
+  follows it (the theme's `user-trash` while empty, `user-trash-full` once it
+  holds anything) and the tooltip says how many items it holds. Left click opens
+  the trash in the file manager; the context menu shows the count with *Open
+  Trash* and *Empty Trash*, the latter disabled when there is nothing to empty.
+- Read and write the trash the way the freedesktop.org Trash specification
+  defines it: the home trash in `$XDG_DATA_HOME/Trash`, plus every mounted
+  volume's `$topdir/.Trash/$uid` or `$topdir/.Trash-$uid`. No `gio`, GVfs or
+  GNOME/KDE helper is involved, so the item behaves the same on GNOME, KDE,
+  Xfce, Cinnamon, MATE and the rest, and a deletion made in any file manager
+  shows up within two seconds. Emptying removes orphaned files and stale
+  metadata too, copes with trashed directories that kept read-only modes, and
+  runs off the main loop so a large trash does not freeze the dock.
+- Cover it in tests: `tests/test_trash.c` for the layout, counting and emptying
+  (in throwaway trash directories only), plus the trash item in the dock-item,
+  popover-menu and Guile-bridge suites, and `trash-item` in the Scheme suite.
+
 ---------
 
 *[Released]*

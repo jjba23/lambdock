@@ -591,6 +591,19 @@
 (check-equal "the launchpad defaults to the app grid icon"
              "view-app-grid-symbolic" (dock-item-icon %launchpad))
 
+(define %trash (trash-item))
+(check-equal "trash-item creates a trash item"
+             'trash (dock-item-type %trash))
+(check-equal "trash items are keyed by kind and name"
+             "trash:Trash" (dock-item-key %trash))
+(check-equal "the trash defaults to the empty trash icon"
+             "user-trash" (dock-item-icon %trash))
+(check-equal "trash-item takes a custom icon"
+             "user-trash-symbolic"
+             (dock-item-icon (trash-item #:icon "user-trash-symbolic")))
+(check-equal "trash items do not animate at rest on request"
+             #f (dock-item-hover-animate? (trash-item #:hover-animate? #f)))
+
 ;; Plain app items carry no folder and the default view mode.
 (check-equal "app items have no folder"
              "" (dock-item-path (app-item #:name "A")))

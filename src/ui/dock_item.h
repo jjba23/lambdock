@@ -131,6 +131,33 @@ DockItem *create_launchpad_dock_item(LambdockState *state, const char *name,
                                      gboolean hover_animate);
 
 /**
+ * create_trash_dock_item:
+ * @state: Dock state the item belongs to.
+ * @name: Display name, also the popover header and tooltip ("Trash").
+ * @icon: Icon shown while the trash is empty. NULL or empty uses the icon
+ * theme's `user-trash`.
+ * @hover_animate: Whether the fisheye magnification applies.
+ *
+ * Creates an icon for the desktop trash. It shows the theme's `user-trash` while
+ * the trash is empty and `user-trash-full` once it is not, and it re-counts the
+ * trash every TRASH_REFRESH_INTERVAL_MS so a deletion made anywhere else shows
+ * up on the dock. Clicking it opens the trash in the file manager; its context
+ * menu offers opening and emptying it.
+ */
+DockItem *create_trash_dock_item(LambdockState *state, const char *name,
+                                 const char *icon, gboolean hover_animate);
+
+/**
+ * dock_item_refresh_trash:
+ * @item: A trash dock item (any other kind is ignored).
+ *
+ * Re-counts the trash and, when the count changed, swaps the icon between its
+ * empty and full artwork and updates the tooltip. Called on a timer, and right
+ * after the context menu empties the trash.
+ */
+void dock_item_refresh_trash(DockItem *item);
+
+/**
  * dock_item_key:
  * @item: A dock item (may be NULL).
  *

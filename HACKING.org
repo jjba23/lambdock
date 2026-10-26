@@ -194,6 +194,7 @@ lambdock/
 │       ├── dock_item.c/.h    # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h        # Glass shelf: 3D frame projection + icon reflections
 │       ├── popover_menu.c/.h # Right-click/multi-window popover builder
+│       ├── trash.c/.h        # Freedesktop.org trash: roots, count, empty, open
 │       ├── theme_engine.c/.h # GResource CSS loading + per-instance selector scoping
 │       └── icon_resolver.c/.h# 6-stage icon fallback pipeline + icon theme setup
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
@@ -327,6 +328,8 @@ C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~:
 - =test_icon_resolver= -- resource/file/theme icon resolution
 - =test_shelf= -- shelf parameters, activation, reflection geometry, frame
   delegation and item container ordering
+- =test_trash= -- home/volume trash roots, counting, emptying (read-only
+  directories, orphans) and the item's full/empty states
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
@@ -622,6 +625,10 @@ The key names, their defaults and their meanings are tabulated for users in
    - ~'dynamic~ → reads ~dock-item-poll-fn~ and ~dock-item-poll-interval~, then
      ~create_dynamic_dock_item(...)~.
    - ~'separator~ → ~create_separator_dock_item(...)~.
+   - ~'stack~ → ~create_stack_dock_item(...)~ (folder popover).
+   - ~'launchpad~ → ~create_launchpad_dock_item(...)~.
+   - ~'trash~ → ~create_trash_dock_item(...)~ (desktop trash, see
+     =ui/trash.c=).
 3. Each ~create_*~ builds the GTK button/popover, appends it to ~state->box~, and
    appends the ~DockItem*~ to ~state->dock_items~.
 
@@ -800,6 +807,10 @@ matters and is the canonical teardown sequence:
   ([[https://docs.gtk.org/gtk4/class.Separator.html][GTK docs]]) (note: not a
   [[https://docs.gtk.org/gtk4/class.Button.html][button]] -- helpers must
   null-check with ~GTK_IS_BUTTON~). ~is_favorite = TRUE~.
+- ~create_trash_dock_item~: an icon item whose artwork follows the trash, plus a
+  refresh timer (~trash_timer_id~) that re-counts it. The counting and emptying
+  live in =ui/trash.c=, against the freedesktop.org trash layout; nothing about
+  it is desktop-specific.
 - Tracked (running-window) items created by the tracker use
   ~create_dock_item(..., is_favorite = FALSE, ...)~ and are removed automatically
   when their last window closes.
@@ -822,7 +833,7 @@ open must survive that rebuild untouched.
 Every GLib/GTK source that stores a raw pointer must be cancelled before that
 pointer dies:
 
-- Timers: ~hide_timer_id~, ~poll_timer_id~ → ~g_source_remove~
+- Timers: ~hide_timer_id~, ~poll_timer_id~, ~trash_timer_id~ → ~g_source_remove~
   ([[https://docs.gtk.org/glib/struct.Source.html][GSource]]).
 - Tick callbacks: ~tick_cb_id~ → ~gtk_widget_remove_tick_callback~
   ([[https://docs.gtk.org/gtk4/method.Widget.add_tick_callback.html][add_tick_callback]]).
@@ -846,6 +857,7 @@ pointer dies:
 | =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
 | =ui/shelf.c=          | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections  |
 | =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
+| =ui/trash.c=          | Freedesktop.org trash: roots, counting, emptying, opening                        |
 | =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
 | =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
 | =logger.h=            | ~LOG_C_DEBUG/INFO/WARN/ERROR~ macros                                              |

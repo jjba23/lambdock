@@ -19,6 +19,8 @@
 #include "../src/ui/shelf.h"
 #include "../src/ui/desktop_entry.h"
 #include "../src/ui/dock_item.h"
+#include "../src/ui/trash.h"
+#include <glib/gstdio.h>
 #include <gtk/gtk.h>
 
 #define DUMMY_1 ((void *)0xDEADBEEF)
@@ -315,6 +317,73 @@ static void test_clear_favorite_dock_items(void) {
 /* ============================================================================
  * ITEM CONSTRUCTION & LIFECYCLE
  * ============================================================================ */
+
+/* The trash item follows the desktop trash: full icon and a count in the tooltip
+ * while it holds anything, empty icon and the plain name once it does not. The
+ * count also covers the machine's volume trashes, which the test cannot control,
+ * so the baseline is measured first and only the home trash is changed. */
+static void test_create_trash_dock_item(void) {
+  LambdockState state = {0};
+  state.icon_size = 48;
+  state.orientation = GTK_ORIENTATION_HORIZONTAL;
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+
+  char *home_trash = lambdock_trash_home_path();
+  guint volume_count = lambdock_trash_count() - lambdock_trash_count_at(home_trash);
+
+  char *info_dir =
+      g_build_filename(g_get_user_data_dir(), "Trash", "info", NULL);
+  g_assert_cmpint(g_mkdir_with_parents(info_dir, 0700), ==, 0);
+  char *info_file = g_build_filename(info_dir, "deleted.txt.trashinfo", NULL);
+  g_assert_true(g_file_set_contents(info_file,
+                                    "[Trash Info]\n"
+                                    "Path=/home/user/deleted.txt\n"
+                                    "DeletionDate=2026-10-26T00:00:00\n",
+                                    -1, NULL));
+
+  DockItem *item = create_trash_dock_item(&state, "Trash", NULL, TRUE);
+
+  g_assert_nonnull(item);
+  g_assert_cmpint(item->kind, ==, LAMBDOCK_ITEM_TRASH);
+  g_assert_cmpstr(item->icon, ==, "user-trash");
+  g_assert_true(item->is_favorite);
+  g_assert_true(item->hover_animate);
+  g_assert_true(gtk_widget_has_css_class(item->button, "trash-item"));
+  g_assert_cmpuint(item->trash_timer_id, >, 0);
+
+  g_assert_cmpuint(item->trash_count, ==, volume_count + 1);
+  g_assert_true(item->trash_full);
+
+  char *key = dock_item_key(item);
+  g_assert_cmpstr(key, ==, "trash:Trash");
+  g_free(key);
+
+  const char *tooltip = gtk_widget_get_tooltip_text(item->button);
+  g_assert_nonnull(tooltip);
+  g_assert_nonnull(strstr(tooltip, "item"));
+
+  /* Empty the home trash; the item notices on its next refresh. */
+  g_assert_cmpint(g_remove(info_file), ==, 0);
+  dock_item_refresh_trash(item);
+
+  g_assert_cmpuint(item->trash_count, ==, volume_count);
+  g_assert_cmpint(item->trash_full, ==, volume_count > 0);
+
+  if (volume_count == 0) {
+    const char *empty_tooltip = gtk_widget_get_tooltip_text(item->button);
+    g_assert_cmpstr(empty_tooltip, ==, "Trash");
+  }
+
+  free_dock_item(item);
+  g_list_free(state.dock_items);
+  g_object_ref_sink(state.box);
+  g_object_unref(state.box);
+
+  g_free(info_file);
+  g_free(info_dir);
+  g_free(home_trash);
+}
 
 static void test_create_separator_dock_item(void) {
   LambdockState state = {0};
@@ -681,6 +750,8 @@ int main(int argc, char **argv) {
                     test_clear_favorite_dock_items);
     g_test_add_func("/ui/dock_item/create_separator",
                     test_create_separator_dock_item);
+    g_test_add_func("/ui/dock_item/create_trash",
+                    test_create_trash_dock_item);
     g_test_add_func("/ui/dock_item/create_item", test_create_dock_item);
     g_test_add_func("/ui/dock_item/create_item_app_id_fallback",
                     test_create_dock_item_app_id_fallback);

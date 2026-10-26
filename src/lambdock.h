@@ -112,6 +112,8 @@ typedef struct LambdockState LambdockState;
  * @LAMBDOCK_ITEM_SEPARATOR: A visual divider.
  * @LAMBDOCK_ITEM_STACK: A folder whose contents open in a popover.
  * @LAMBDOCK_ITEM_LAUNCHPAD: Opens the full screen application grid.
+ * @LAMBDOCK_ITEM_TRASH: The desktop trash: shows whether it has anything in it,
+ * opens it and empties it.
  *
  * What a dock icon actually is. The kind decides the click behaviour and which
  * extra fields of DockItem are meaningful.
@@ -121,7 +123,8 @@ typedef enum {
   LAMBDOCK_ITEM_DYNAMIC,
   LAMBDOCK_ITEM_SEPARATOR,
   LAMBDOCK_ITEM_STACK,
-  LAMBDOCK_ITEM_LAUNCHPAD
+  LAMBDOCK_ITEM_LAUNCHPAD,
+  LAMBDOCK_ITEM_TRASH
 } LambdockItemKind;
 
 /**
@@ -162,6 +165,11 @@ typedef struct AppWindow {
  * @meter: Circular gauge drawn instead of text for meter dynamic items.
  * @meter_unit: Suffix of the gauge's reading ("%" or "°C").
  * @meter_max: Value that fills the gauge (0..100 readings use 100).
+ * @icon_image: The item's icon widget, kept so an item whose icon changes with
+ * its state (the trash) can swap its artwork.
+ * @trash_timer_id: GLib timeout re-counting the trash of a trash item.
+ * @trash_count: Items counted in the trash at the last refresh.
+ * @trash_full: TRUE while that count was above zero.
  */
 typedef struct DockItem {
   char *name;
@@ -189,6 +197,10 @@ typedef struct DockItem {
   char *meter_unit;     /* Reading suffix: "%" or "°C" */
   double meter_max;     /* Reading that fills the gauge */
   char *desktop_id;     /* Desktop entry this item resolves to (canonical id) */
+  GtkWidget *icon_image; /* The item's GtkImage, owned by the widget tree */
+  guint trash_timer_id;  /* Refresh timer of a trash item */
+  guint trash_count;     /* Items in the trash at the last refresh */
+  gboolean trash_full;   /* TRUE while the trash has anything in it */
 } DockItem;
 
 /**

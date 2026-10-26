@@ -501,6 +501,14 @@ void populate_dock_items_for(LambdockState *state) {
 
       free(name);
       free(icon);
+    } else if (g_strcmp0(type_str, "trash") == 0) {
+      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
+      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
+
+      create_trash_dock_item(state, name, icon, hover_anim);
+
+      free(name);
+      free(icon);
     }
 
     free(type_str);

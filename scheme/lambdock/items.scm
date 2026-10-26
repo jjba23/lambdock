@@ -42,6 +42,7 @@
                         dynamic-item
                         stack-item
                         launchpad-item
+                        trash-item
 
                         ;; Dynamic Item Helpers & Presets
                         get-used-ram-percent
@@ -230,6 +231,26 @@ computes, so both halves of the dock agree on the identity of an item."
                          (icon "view-app-grid-symbolic")
                          (hover-animate? #t))
   (make-dock-item 'launchpad
+                  name
+                  icon
+                  ""
+                  #f
+                  0
+                  hover-animate?
+                  ""
+                  'grid
+                  #f
+                  ""
+                  100))
+
+;; The trash: a dock icon that follows the desktop trash. It shows whether there
+;; is anything in it, opens it on a click, and its context menu empties it. `icon`
+;; is the artwork shown while the trash is empty; the full state uses the icon
+;; theme's `user-trash-full' (or `user-trash-full-symbolic' for a symbolic icon).
+(define* (trash-item #:key (name "Trash")
+                     (icon "user-trash")
+                     (hover-animate? #t))
+  (make-dock-item 'trash
                   name
                   icon
                   ""

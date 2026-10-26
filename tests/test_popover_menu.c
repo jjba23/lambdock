@@ -18,7 +18,9 @@
 #include "../src/lambdock.h"
 #include "../src/ui/stack.h"
 #include "../src/ui/popover_menu.h"
+#include "../src/ui/trash.h"
 #include <gtk/gtk.h>
+#include <string.h>
 
 /* Collects every user-visible label in the popover, in creation order. Row
  * containers contribute their focus-button label; the close buttons are icon
@@ -320,6 +322,59 @@ static void test_popover_menu_launchpad(void) {
   free_item(item);
 }
 
+/* Finds the button whose label is TEXT anywhere in the menu. */
+static GtkWidget *find_menu_button(GtkWidget *widget, const char *text) {
+  for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (GTK_IS_BUTTON(child)) {
+      GtkWidget *label = gtk_button_get_child(GTK_BUTTON(child));
+      if (label && GTK_IS_LABEL(label) &&
+          g_strcmp0(gtk_label_get_text(GTK_LABEL(label)), text) == 0)
+        return child;
+    }
+
+    GtkWidget *found = find_menu_button(child, text);
+    if (found)
+      return found;
+  }
+  return NULL;
+}
+
+static void test_popover_menu_trash(void) {
+  /* The trash menu reports the count, offers opening and emptying, and only
+   * offers emptying while there is something to empty. */
+  guint count = lambdock_trash_count();
+
+  DockItem *item = new_item("Trash", "trash", NULL);
+  item->kind = LAMBDOCK_ITEM_TRASH;
+  item->is_favorite = TRUE;
+
+  populate_popover_menu(item);
+
+  GtkWidget *content = gtk_popover_get_child(GTK_POPOVER(item->popover));
+  GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
+  collect_labels(content, labels);
+
+  gboolean has_count = FALSE;
+  for (guint i = 0; i < labels->len; i++) {
+    const char *text = g_ptr_array_index(labels, i);
+    if (text && strstr(text, " in the trash"))
+      has_count = TRUE;
+  }
+
+  g_assert_true(has_count);
+  g_assert_true(labels_contain(labels, "Open Trash"));
+  g_assert_true(labels_contain(labels, "Empty Trash"));
+  g_assert_true(labels_contain(labels, "Remove from Dock"));
+
+  GtkWidget *empty = find_menu_button(content, "Empty Trash");
+  g_assert_nonnull(empty);
+  g_assert_cmpint(gtk_widget_get_sensitive(empty), ==, count > 0);
+
+  g_ptr_array_unref(labels);
+  free_item(item);
+}
+
 static void test_popover_menu_remove_entry(void) {
   /* Pinned items offer "Remove from Dock"; window-tracked (non-favourite) ones
    * do not, because the dock did not create them. */
@@ -367,6 +422,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/popover_menu/rebuild", test_popover_menu_rebuild);
   g_test_add_func("/ui/popover_menu/stack", test_popover_menu_stack);
   g_test_add_func("/ui/popover_menu/launchpad", test_popover_menu_launchpad);
+  g_test_add_func("/ui/popover_menu/trash", test_popover_menu_trash);
   g_test_add_func("/ui/popover_menu/remove_entry",
                   test_popover_menu_remove_entry);
 

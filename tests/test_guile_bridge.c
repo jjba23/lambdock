@@ -82,7 +82,8 @@ static const char *FAKE_MODULES =
     "                #f 0 #t \"\" 'grid)\n"
     "        (vector 'dynamic \"Gauge\" \"\" \"gauge\"\n"
     "                (lambda () 42) 111 #f \"\" 'grid #t \"%\" 100)\n"
-    "        (vector 'separator \"\" \"\" \"\" #f 0 #f)))\n"
+    "        (vector 'separator \"\" \"\" \"\" #f 0 #f)\n"
+    "        (vector 'trash \"Trash\" \"user-trash\" \"\" #f 0 #t)))\n"
     "(define (dock-item-type v) (vector-ref v 0))\n"
     "(define (dock-item-name v) (vector-ref v 1))\n"
     "(define (dock-item-icon v) (vector-ref v 2))\n"
@@ -243,8 +244,8 @@ static void test_populate_dock_items(void) {
   populate_dock_items_for(&state);
 
   /* The excluded "bad-app" launcher is skipped; app + dynamic + stack +
-   * launchpad + meter + separator remain, in order. */
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 6);
+   * launchpad + meter + separator + trash remain, in order. */
+  g_assert_cmpint(g_list_length(state.dock_items), ==, 7);
 
   DockItem *app = (DockItem *)g_list_nth_data(state.dock_items, 0);
   g_assert_nonnull(app);
@@ -304,6 +305,14 @@ static void test_populate_dock_items(void) {
   g_assert_nonnull(sep);
   g_assert_true(GTK_IS_SEPARATOR(sep->button));
   g_assert_true(sep->is_favorite);
+
+  DockItem *trash = (DockItem *)g_list_nth_data(state.dock_items, 6);
+  g_assert_nonnull(trash);
+  g_assert_cmpint(trash->kind, ==, LAMBDOCK_ITEM_TRASH);
+  g_assert_cmpstr(trash->name, ==, "Trash");
+  g_assert_true(gtk_widget_has_css_class(trash->button, "trash-item"));
+  g_assert_true(trash->is_favorite);
+  g_assert_cmpuint(trash->trash_timer_id, >, 0);
 
   /* Let the dynamic timer fire at least once more before teardown, proving
    * the C-side polling loop keeps calling the Scheme procedure. */
