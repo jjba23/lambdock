@@ -64,6 +64,14 @@
                           wlr-protocols
                           ninja
                           guile-ares-rs
+                          ;; `libtiff-4.pc' (pulled in through gdk-pixbuf)
+                          ;; lists liblzma in its Requires.private, and
+                          ;; pkg-config resolves those even for `--cflags'. The
+                          ;; library is not propagated into the shell, so
+                          ;; without xz the gtk4 dependency lookup aborts with
+                          ;; "Package 'liblzma' ... not found" before meson can
+                          ;; configure anything.
+                          xz
                           ;; `glib-compile-resources' lives in the "bin" output of
                           ;; glib, which is not what gtk propagates. Without it
                           ;; meson aborts at gnome.compile_resources.
