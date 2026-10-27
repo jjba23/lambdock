@@ -8,6 +8,25 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+- The launchpad no longer shows one application twice. Two desktop files that
+  describe the same program -- `libreoffice-writer.desktop` and
+  `org.libreoffice.LibreOffice.writer.desktop` for the distro package and the
+  Flatpak export of it -- each used to get a tile. Entries are now collapsed
+  when they share a name and the window class they declare, or the icon when
+  neither declares a class, keeping the entry the scan sees first (your own
+  directory, then Flatpak, then the system). Same-named applications that really
+  are two applications, like two panels called *Displays*, are still both
+  listed. The copy that does not get the tile is not lost: the tile's context
+  menu (right click, *Menu* or *Shift+F10*) lists every installed copy with
+  where it comes from (Flatpak, your own files, the system) and the command it
+  runs, so the copy that starts is the one the user picks. A tile whose
+  application is installed once has no menu, and the cache of window-to-
+  application lookups still indexes the copies that lost, so a window of a
+  distro package keeps resolving to the application of its Flatpak sibling.
+- The launchpad backdrop is denser, so the labels stay legible over a busy or
+  bright desktop: the solid background goes from 78% to 94% opacity and the
+  frosted one from 50% to 82%. A real blur of what is behind it is still the
+  compositor's job, as documented in *The launchpad*.
 
 ---------
 

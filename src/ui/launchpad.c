@@ -21,6 +21,7 @@
 #include "../logger.h"
 #include "desktop_entry.h"
 #include "icon_resolver.h"
+#include "popover_menu.h"
 #include <glib/gi18n.h>
 #include <string.h>
 
@@ -87,8 +88,36 @@ static gboolean entry_matches_query(const LambdockDesktopEntry *entry,
   return match;
 }
 
-static GtkWidget *launchpad_tile_new(LambdockDesktopEntry *entry,
-                                     int icon_size) {
+/* A GtkFlowBox wraps every child in a GtkFlowBoxChild, and the "nothing
+ * matched" label is wrapped like a tile. This returns the focusable tile button
+ * inside WRAPPER, or NULL when the wrapper holds something else (the label). */
+static GtkWidget *launchpad_tile_in(GtkWidget *wrapper) {
+  if (!wrapper)
+    return NULL;
+
+  if (gtk_widget_has_css_class(wrapper, "launchpad-tile"))
+    return wrapper;
+
+  if (GTK_IS_FLOW_BOX_CHILD(wrapper)) {
+    GtkWidget *inner = gtk_flow_box_child_get_child(GTK_FLOW_BOX_CHILD(wrapper));
+    if (inner && gtk_widget_has_css_class(inner, "launchpad-tile"))
+      return inner;
+  }
+
+  return NULL;
+}
+
+/* Built further down, next to the menu itself: a tile of an application that is
+ * installed more than once carries the menu of its copies. */
+static void launchpad_tile_add_copy_menu(GtkWidget *tile,
+                                         LambdockDesktopEntry *entry);
+
+static gboolean entry_has_copies(const LambdockDesktopEntry *entry) {
+  return entry && entry->alternates && entry->alternates->len > 0;
+}
+
+GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
+                                       int icon_size) {
   GtkIconTheme *theme =
       gtk_icon_theme_get_for_display(gdk_display_get_default());
 
@@ -112,15 +141,218 @@ static GtkWidget *launchpad_tile_new(LambdockDesktopEntry *entry,
   gtk_widget_add_css_class(button, "launchpad-tile");
   gtk_widget_set_size_request(button, MAX(120, icon_size + 56), -1);
   gtk_button_set_child(GTK_BUTTON(button), content);
-  gtk_widget_set_tooltip_text(button, entry->exec);
-  lambdock_accessible_update(button, entry->name,
-                             _("Application. Press Enter to open."));
+
+  /* A tile of an installed-twice application says so, so the menu is
+   * discoverable without a right click that would otherwise do nothing. */
+  if (entry_has_copies(entry)) {
+    char *tooltip = g_strdup_printf("%s\n%s", entry->exec,
+                                    _("Right-click for the other installed "
+                                      "copies."));
+    gtk_widget_set_tooltip_text(button, tooltip);
+    g_free(tooltip);
+    lambdock_accessible_update(
+        button, entry->name,
+        _("Application with more than one installed copy. Press Enter to open "
+          "it, or use the menu for the other copies."));
+  } else {
+    gtk_widget_set_tooltip_text(button, entry->exec);
+    lambdock_accessible_update(button, entry->name,
+                               _("Application. Press Enter to open."));
+  }
 
   g_signal_connect_data(button, "clicked",
                         G_CALLBACK(on_launchpad_tile_clicked),
                         g_strdup(entry->exec), free_launched_command, 0);
 
+  /* The copies travelling with the entry are reachable from here and nowhere
+   * else. */
+  if (entry_has_copies(entry))
+    launchpad_tile_add_copy_menu(button, entry);
+
   return button;
+}
+
+/* ============================================================================
+ * THE OTHER INSTALLED COPIES
+ * ============================================================================
+ * The grid lists an application once, but a program can be installed twice --
+ * the distro package and a Flatpak export of it. The copies the scan did not
+ * list ride along on the entry it kept (see desktop_entry.h), and the tile
+ * offers them from its context menu: the copy that starts is then the one the
+ * user picked instead of the one the scan happened to reach first.
+ */
+
+/* The one tile menu that can be open: Escape closes it before it closes the
+ * launchpad, and hiding the launchpad has to let go of it. */
+static GtkWidget *g_launchpad_menu = NULL;
+
+static void on_launchpad_copy_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  const char *command = (const char *)user_data;
+
+  if (command)
+    lambdock_spawn_command(command);
+
+  lambdock_launchpad_hide();
+}
+
+/* One row of the menu: where the copy comes from, and the command it runs. */
+static GtkWidget *launchpad_copy_row_new(const char *source,
+                                         const char *command) {
+  GtkWidget *row = gtk_button_new();
+  gtk_widget_add_css_class(row, "flat");
+  gtk_widget_add_css_class(row, "copy-row");
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+
+  GtkWidget *label = gtk_label_new(source);
+  gtk_widget_add_css_class(label, "copy-source");
+  gtk_label_set_xalign(GTK_LABEL(label), 0);
+  gtk_box_append(GTK_BOX(box), label);
+
+  GtkWidget *detail = gtk_label_new(command);
+  gtk_widget_add_css_class(detail, "copy-command");
+  gtk_label_set_xalign(GTK_LABEL(detail), 0);
+  gtk_label_set_ellipsize(GTK_LABEL(detail), PANGO_ELLIPSIZE_MIDDLE);
+  gtk_label_set_max_width_chars(GTK_LABEL(detail), 44);
+  gtk_box_append(GTK_BOX(box), detail);
+
+  gtk_button_set_child(GTK_BUTTON(row), box);
+  gtk_widget_set_tooltip_text(row, command);
+  lambdock_accessible_update(row, source, command);
+
+  g_signal_connect_data(row, "clicked", G_CALLBACK(on_launchpad_copy_clicked),
+                        g_strdup(command), free_launched_command, 0);
+
+  return row;
+}
+
+static GtkWidget *launchpad_install_menu_new(LambdockDesktopEntry *entry) {
+  if (!entry)
+    return NULL;
+
+  GtkWidget *popover = gtk_popover_new();
+  gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
+  gtk_widget_add_css_class(popover, "launchpad-copy-menu");
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+
+  GtkWidget *title = gtk_label_new(entry->name);
+  gtk_widget_add_css_class(title, "menu-title");
+  gtk_label_set_xalign(GTK_LABEL(title), 0);
+  gtk_box_append(GTK_BOX(box), title);
+
+  /* The tile starts the first copy, so the menu lists it first, then the
+   * copies it was collapsed with, each named after where it comes from. */
+  guint copies = 1 + (entry->alternates ? entry->alternates->len : 0);
+  for (guint i = 0; i < copies; i++) {
+    LambdockDesktopEntry *copy = (i == 0)
+                                     ? entry
+                                     : g_ptr_array_index(entry->alternates,
+                                                         i - 1);
+    char *source = lambdock_desktop_entry_source_label(copy);
+    gtk_box_append(GTK_BOX(box), launchpad_copy_row_new(source, copy->exec));
+    g_free(source);
+  }
+
+  gtk_popover_set_child(GTK_POPOVER(popover), box);
+  lambdock_accessible_update(
+      popover, entry->name,
+      _("Choose which installed copy of this application to open."));
+
+  return popover;
+}
+
+/* Closes the open copy menu, if there is one. */
+static gboolean launchpad_copy_menu_close(void) {
+  if (!g_launchpad_menu)
+    return FALSE;
+
+  GtkWidget *menu = g_launchpad_menu;
+  g_launchpad_menu = NULL;
+
+  if (gtk_widget_get_visible(menu))
+    gtk_popover_popdown(GTK_POPOVER(menu));
+
+  return TRUE;
+}
+
+static void launchpad_copy_menu_show(GtkWidget *menu) {
+  launchpad_copy_menu_close();
+  g_launchpad_menu = menu;
+  gtk_popover_popup(GTK_POPOVER(menu));
+}
+
+static void on_launchpad_menu_closed(GtkPopover *popover, gpointer user_data) {
+  (void)user_data;
+
+  if (g_launchpad_menu == GTK_WIDGET(popover))
+    g_launchpad_menu = NULL;
+}
+
+static void on_launchpad_tile_menu_request(GtkGestureClick *gesture,
+                                           int n_press, double x, double y,
+                                           gpointer user_data) {
+  (void)gesture;
+  (void)n_press;
+  (void)x;
+  (void)y;
+
+  launchpad_copy_menu_show(GTK_WIDGET(user_data));
+}
+
+/* The Menu key and Shift+F10 are the keyboard's right click, as on the dock. */
+static gboolean on_launchpad_tile_key_pressed(GtkEventControllerKey *controller,
+                                              guint keyval, guint keycode,
+                                              GdkModifierType state,
+                                              gpointer user_data) {
+  (void)controller;
+  (void)keycode;
+
+  if (keyval != GDK_KEY_Menu &&
+      !(keyval == GDK_KEY_F10 && (state & GDK_SHIFT_MASK) != 0))
+    return FALSE;
+
+  launchpad_copy_menu_show(GTK_WIDGET(user_data));
+  return TRUE;
+}
+
+/* The copy menu a tile parents, if it has one. */
+static GtkWidget *launchpad_tile_copy_menu(GtkWidget *tile) {
+  for (GtkWidget *child = gtk_widget_get_first_child(tile); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (GTK_IS_POPOVER(child))
+      return child;
+  }
+
+  return NULL;
+}
+
+/* Gives a tile the menu of its other installed copies. */
+static void launchpad_tile_add_copy_menu(GtkWidget *tile,
+                                         LambdockDesktopEntry *entry) {
+  GtkWidget *menu = launchpad_install_menu_new(entry);
+  if (!menu)
+    return;
+
+  gtk_widget_set_parent(menu, tile);
+  lambdock_popover_close_on_escape(menu);
+  g_signal_connect(menu, "closed", G_CALLBACK(on_launchpad_menu_closed), NULL);
+
+  GtkGesture *right_click = gtk_gesture_click_new();
+  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
+                                GDK_BUTTON_SECONDARY);
+  g_signal_connect(right_click, "pressed",
+                   G_CALLBACK(on_launchpad_tile_menu_request), menu);
+  gtk_widget_add_controller(tile, GTK_EVENT_CONTROLLER(right_click));
+
+  GtkEventController *keys = gtk_event_controller_key_new();
+  /* Capture, like the grid's arrow keys: the tile must see the Menu key even
+   * when the flow box would otherwise use it. */
+  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+  g_signal_connect(keys, "key-pressed",
+                   G_CALLBACK(on_launchpad_tile_key_pressed), menu);
+  gtk_widget_add_controller(tile, keys);
 }
 
 /* ============================================================================
@@ -132,9 +364,23 @@ static void launchpad_clear_flow(void) {
   if (!g_launchpad_flow)
     return;
 
+  /* The tiles own their menus, so the pointer to the open one has to go before
+   * the tiles do. */
+  launchpad_copy_menu_close();
+
   GtkWidget *child;
-  while ((child = gtk_widget_get_first_child(g_launchpad_flow)) != NULL)
+  while ((child = gtk_widget_get_first_child(g_launchpad_flow)) != NULL) {
+    /* A widget has to let go of its popover before GTK finalizes it, or it
+     * complains about being finalized with children left (the same reason
+     * free_dock_item() unparents one), and this grid is rebuilt on every
+     * keystroke. */
+    GtkWidget *tile = launchpad_tile_in(child);
+    GtkWidget *menu = tile ? launchpad_tile_copy_menu(tile) : NULL;
+    if (menu)
+      gtk_widget_unparent(menu);
+
     gtk_flow_box_remove(GTK_FLOW_BOX(g_launchpad_flow), child);
+  }
 }
 
 static void launchpad_refill(void) {
@@ -150,7 +396,7 @@ static void launchpad_refill(void) {
       continue;
 
     gtk_flow_box_append(GTK_FLOW_BOX(g_launchpad_flow),
-                        launchpad_tile_new(entry, g_launchpad_icon_size));
+                        lambdock_launchpad_tile_new(entry, g_launchpad_icon_size));
     shown++;
   }
 
@@ -174,25 +420,6 @@ static void launchpad_refill(void) {
  * so it follows the columns the grid actually laid out rather than a fixed
  * count that would jump rows on a resized window.
  */
-
-/* A GtkFlowBox wraps every child in a GtkFlowBoxChild, and the "nothing
- * matched" label is wrapped like a tile. This returns the focusable tile button
- * inside WRAPPER, or NULL when the wrapper holds something else (the label). */
-static GtkWidget *launchpad_tile_in(GtkWidget *wrapper) {
-  if (!wrapper)
-    return NULL;
-
-  if (gtk_widget_has_css_class(wrapper, "launchpad-tile"))
-    return wrapper;
-
-  if (GTK_IS_FLOW_BOX_CHILD(wrapper)) {
-    GtkWidget *inner = gtk_flow_box_child_get_child(GTK_FLOW_BOX_CHILD(wrapper));
-    if (inner && gtk_widget_has_css_class(inner, "launchpad-tile"))
-      return inner;
-  }
-
-  return NULL;
-}
 
 /* The TILE-th application tile, skipping the "nothing matched" label that the
  * empty grid holds. */
@@ -481,6 +708,9 @@ static void launchpad_apply_config(LambdockState *state) {
  */
 
 void lambdock_launchpad_hide(void) {
+  /* The copies menu belongs to a tile of this window. */
+  launchpad_copy_menu_close();
+
   if (g_launchpad_window)
     gtk_widget_set_visible(g_launchpad_window, FALSE);
 }
@@ -499,6 +729,10 @@ static gboolean on_launchpad_key_pressed(GtkEventControllerKey *controller,
   (void)user_data;
 
   if (keyval == GDK_KEY_Escape) {
+    /* An open menu is the thing closest to the user, so it goes first. */
+    if (launchpad_copy_menu_close())
+      return TRUE;
+
     lambdock_launchpad_hide();
     return TRUE;
   }
@@ -721,6 +955,10 @@ void lambdock_launchpad_show(LambdockState *state) {
 }
 
 void lambdock_launchpad_shutdown(void) {
+  /* The tiles go with the window, so they have to let go of their copy menus
+   * first. */
+  launchpad_clear_flow();
+
   if (g_launchpad_window) {
     gtk_window_destroy(GTK_WINDOW(g_launchpad_window));
     g_launchpad_window = NULL;

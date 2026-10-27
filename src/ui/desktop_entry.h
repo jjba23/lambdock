@@ -38,6 +38,12 @@
  * written ("Network;WebBrowser;"). NULL when the file has none.
  * @no_display: NoDisplay=true (do not list it in launchers).
  * @hidden: Hidden=true (the user or the distribution removed it).
+ * @path: Absolute path of the desktop file the entry was read from, or NULL
+ * when it was parsed from memory. Tells a Flatpak export from a distro package.
+ * @alternates: (element-type LambdockDesktopEntry) (nullable): the other
+ * desktop files that describe the same application. Owned by the entry, and
+ * filled in by lambdock_desktop_entries_scan() for the copies it does not list
+ * itself.
  *
  * One installed application, parsed from a freedesktop.org desktop entry. The
  * launchpad lists these, dropping a .desktop file on the dock turns one into a
@@ -54,6 +60,8 @@ typedef struct LambdockDesktopEntry {
   char *categories;
   gboolean no_display;
   gboolean hidden;
+  char *path;
+  GPtrArray *alternates;
 } LambdockDesktopEntry;
 
 /**
@@ -116,12 +124,30 @@ char *lambdock_exec_strip_field_codes(const char *exec);
 /**
  * lambdock_desktop_entries_scan:
  * Scans every applications directory of the XDG data dirs (plus the flatpak
- * exports dirs) and returns a name-sorted, id-deduplicated array of entries
- * that are meant to be visible in launchers.
+ * exports dirs) and returns a name-sorted array of entries that are meant to be
+ * visible in launchers. Entries are deduplicated by desktop file id, and the
+ * same application installed twice (a distro package and a Flatpak export of
+ * it, say) is listed once: the first copy in scan order stays in the array and
+ * carries the others in its @alternates.
  *
  * Returns: (transfer full): GPtrArray of LambdockDesktopEntry*.
  */
 GPtrArray *lambdock_desktop_entries_scan(void);
+
+/**
+ * lambdock_desktop_entry_source_label:
+ * @entry: (nullable): a desktop entry.
+ *
+ * Where the entry's desktop file comes from, as something worth showing next to
+ * it: "Flatpak" for an export, "Your files" for one of the user's own
+ * applications, "System" for one a distribution installed, and "Application"
+ * for an entry that was never read from a file. Used to tell the copies of an
+ * application apart in the launchpad's menu.
+ *
+ * Returns: (transfer full) (nullable): the translated label, or NULL when
+ * @entry is NULL.
+ */
+char *lambdock_desktop_entry_source_label(const LambdockDesktopEntry *entry);
 
 /**
  * lambdock_desktop_entries_free:

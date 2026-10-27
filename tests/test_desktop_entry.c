@@ -216,6 +216,26 @@ static int entries_index_of(GPtrArray *entries, const char *name) {
   return -1;
 }
 
+static int entries_count_named(GPtrArray *entries, const char *name) {
+  int count = 0;
+  for (guint i = 0; i < entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(entries, i);
+    if (g_strcmp0(entry->name, name) == 0)
+      count++;
+  }
+  return count;
+}
+
+static LambdockDesktopEntry *entry_named(GPtrArray *entries,
+                                         const char *name) {
+  for (guint i = 0; i < entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(entries, i);
+    if (g_strcmp0(entry->name, name) == 0)
+      return entry;
+  }
+  return NULL;
+}
+
 static void test_scan(const char *data_dir) {
   char *apps = g_build_filename(data_dir, "applications", NULL);
 
@@ -383,6 +403,147 @@ static void write_app(const char *dir, const char *filename, const char *body) {
   char *path = g_build_filename(dir, filename, NULL);
   g_assert_true(g_file_set_contents(path, body, -1, NULL));
   g_free(path);
+}
+
+/* The same application installed twice -- a distro package and a Flatpak export
+ * of it -- has two differently named desktop files, and the grid would show a
+ * tile for each. Two *different* applications that happen to share a name are
+ * two applications, and both stay. */
+static void test_scan_collapses_duplicate_applications(const char *data_dir) {
+  char *apps = g_build_filename(data_dir, "applications", NULL);
+
+  /* Distro LibreOffice Writer and its Flatpak export: same name, same window
+   * class, different icon. */
+  write_app(apps, "libreoffice-writer.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=LibreOffice Writer\n"
+            "Exec=libreoffice --writer %U\n"
+            "Icon=libreoffice-writer\n"
+            "StartupWMClass=libreoffice-writer\n");
+  write_app(apps, "org.libreoffice.LibreOffice.writer.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=LibreOffice Writer\n"
+            "Exec=/usr/bin/flatpak run --branch=stable org.libreoffice.LibreOffice "
+            "--writer %U\n"
+            "Icon=org.libreoffice.LibreOffice.writer\n"
+            "StartupWMClass=libreoffice-writer\n");
+
+  /* Two applications called "Displays": no window class on either, and
+   * different icons, so they are not the same thing and both are kept. */
+  write_app(apps, "network.cycles.wdisplays.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Displays\n"
+            "Exec=wdisplays\n"
+            "Icon=wdisplays\n");
+  write_app(apps, "gnome-display-panel.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Displays\n"
+            "Exec=gnome-control-center display\n"
+            "Icon=org.gnome.Settings-display-symbolic\n");
+
+  /* Neither file declares a window class: the icon is the identity they share,
+   * and with the same name it is the same application again. */
+  write_app(apps, "org.gtk.WidgetFactory4.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Widget Factory\n"
+            "Exec=gtk4-widget-factory\n"
+            "Icon=org.gtk.WidgetFactory4\n");
+  write_app(apps, "widget-factory-old.desktop",
+            "[Desktop Entry]\n"
+            "Type=Application\n"
+            "Name=Widget Factory\n"
+            "Exec=gtk4-widget-factory --old\n"
+            "Icon=org.gtk.WidgetFactory4\n");
+
+  GPtrArray *entries = lambdock_desktop_entries_scan();
+  g_assert_nonnull(entries);
+  g_assert_cmpint(entries_count_named(entries, "LibreOffice Writer"), ==, 1);
+  g_assert_cmpint(entries_count_named(entries, "Widget Factory"), ==, 1);
+  g_assert_cmpint(entries_count_named(entries, "Displays"), ==, 2);
+
+  /* The copies that lose are kept on the winner instead of thrown away: the
+   * launchpad offers them from the tile's menu, so picking the copy to start
+   * is the user's call. Which of the two files wins depends on the directory
+   * order, so this checks that the other one is the one attached. */
+  LambdockDesktopEntry *writer = entry_named(entries, "LibreOffice Writer");
+  g_assert_nonnull(writer);
+  g_assert_nonnull(writer->alternates);
+  g_assert_cmpuint(writer->alternates->len, ==, 1);
+
+  LambdockDesktopEntry *copy = g_ptr_array_index(writer->alternates, 0);
+  g_assert_cmpstr(copy->name, ==, "LibreOffice Writer");
+  g_assert_cmpstr(copy->id, !=, writer->id);
+  g_assert_cmpstr(copy->exec, !=, writer->exec);
+
+  /* The two applications called "Displays" are not copies of each other, so
+   * neither carries the other. */
+  int displays = 0;
+  for (guint i = 0; i < entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(entries, i);
+    if (g_strcmp0(entry->name, "Displays") != 0)
+      continue;
+    displays++;
+    g_assert_null(entry->alternates);
+  }
+  g_assert_cmpint(displays, ==, 2);
+
+  lambdock_desktop_entries_free(entries);
+  g_free(apps);
+}
+
+/* Where a copy comes from is what tells two of them apart in the menu. */
+static void test_source_label(void) {
+  LambdockDesktopEntry *entry = lambdock_desktop_entry_new_from_data(
+      "[Desktop Entry]\n"
+      "Type=Application\n"
+      "Name=Files\n"
+      "Exec=nautilus\n",
+      "org.gnome.Nautilus.desktop");
+  g_assert_nonnull(entry);
+
+  /* An entry that was never read from a file has no origin to name. */
+  g_assert_null(entry->path);
+  char *label = lambdock_desktop_entry_source_label(entry);
+  g_assert_cmpstr(label, ==, "Application");
+  g_free(label);
+
+  /* A Flatpak export... */
+  entry->path = g_strdup("/home/joe/.local/share/flatpak/exports/share/"
+                         "applications/org.gnome.Nautilus.desktop");
+  label = lambdock_desktop_entry_source_label(entry);
+  g_assert_cmpstr(label, ==, "Flatpak");
+  g_free(label);
+
+  /* ...a file the distribution installed... */
+  g_free(entry->path);
+  entry->path = g_strdup("/var/lib/flatpak/exports/share/applications/"
+                         "org.gnome.Nautilus.desktop");
+  label = lambdock_desktop_entry_source_label(entry);
+  g_assert_cmpstr(label, ==, "Flatpak");
+  g_free(label);
+
+  g_free(entry->path);
+  entry->path = g_strdup("/usr/share/applications/org.gnome.Nautilus.desktop");
+  label = lambdock_desktop_entry_source_label(entry);
+  g_assert_cmpstr(label, ==, "System");
+  g_free(label);
+
+  /* ...and one of the user's own, which is what the private XDG tree of this
+   * test process looks like. */
+  g_free(entry->path);
+  entry->path = g_build_filename(g_get_user_data_dir(), "applications",
+                                 "org.gnome.Nautilus.desktop", NULL);
+  label = lambdock_desktop_entry_source_label(entry);
+  g_assert_cmpstr(label, ==, "Your files");
+  g_free(label);
+
+  lambdock_desktop_entry_free(entry);
+  g_assert_null(lambdock_desktop_entry_source_label(NULL));
 }
 
 static void test_cache(const char *data_dir) {
@@ -574,6 +735,9 @@ int main(int argc, char **argv) {
   g_test_add_func("/desktop_entry/app_id_to_name", test_app_id_to_name);
   g_test_add_data_func("/desktop_entry/scan", data_dir,
                        (GTestDataFunc)test_scan);
+  g_test_add_data_func("/desktop_entry/scan_duplicates", data_dir,
+                       (GTestDataFunc)test_scan_collapses_duplicate_applications);
+  g_test_add_func("/desktop_entry/source_label", test_source_label);
   g_test_add_data_func("/desktop_entry/cache", data_dir,
                        (GTestDataFunc)test_cache);
   g_test_add_func("/desktop_entry/localized_names", test_localized_names);

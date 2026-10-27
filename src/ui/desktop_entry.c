@@ -17,6 +17,7 @@
 
 #include "desktop_entry.h"
 #include "../logger.h"
+#include <glib/gi18n.h>
 
 #define DESKTOP_GROUP "Desktop Entry"
 
@@ -231,6 +232,12 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_file(const char *path) {
       lambdock_desktop_entry_new_from_data(data, id);
   g_free(id);
   g_free(data);
+
+  /* Where the file lives is part of what an entry is: it is what tells the
+   * copies of an application apart (see lambdock_desktop_entry_source_label). */
+  if (entry)
+    entry->path = g_strdup(path);
+
   return entry;
 }
 
@@ -245,7 +252,29 @@ void lambdock_desktop_entry_free(LambdockDesktopEntry *entry) {
   g_free(entry->icon);
   g_free(entry->wm_class);
   g_free(entry->categories);
+  g_free(entry->path);
+  g_clear_pointer(&entry->alternates, g_ptr_array_unref);
   g_free(entry);
+}
+
+char *lambdock_desktop_entry_source_label(const LambdockDesktopEntry *entry) {
+  if (!entry)
+    return NULL;
+
+  const char *path = entry->path;
+  if (!path || *path == '\0')
+    return g_strdup(_("Application"));
+
+  /* "~/.local/share/flatpak/exports/share/applications/x.desktop" and
+   * "/var/lib/flatpak/..." are both Flatpak exports. */
+  if (strstr(path, "/flatpak/") != NULL)
+    return g_strdup(_("Flatpak"));
+
+  const char *user_dir = g_get_user_data_dir();
+  if (user_dir && *user_dir != '\0' && g_str_has_prefix(path, user_dir))
+    return g_strdup(_("Your files"));
+
+  return g_strdup(_("System"));
 }
 
 gboolean lambdock_desktop_entry_has_category(const LambdockDesktopEntry *entry,
@@ -349,6 +378,84 @@ static gint compare_entries(gconstpointer a, gconstpointer b) {
                         entry_b->name ? entry_b->name : "");
 }
 
+/* ============================================================================
+ * ONE TILE PER APPLICATION
+ * ============================================================================
+ *
+ * A desktop file name is not an application. The same program installed as a
+ * distro package and as a Flatpak exports two differently named files --
+ * "libreoffice-writer.desktop" and "org.libreoffice.LibreOffice.writer.desktop"
+ * -- that a launcher would show as two identical "LibreOffice Writer" tiles.
+ *
+ * Entries are therefore collapsed when they agree on the name *and* on the
+ * strongest identity they both declare: the window class a compositor reports,
+ * or, for entries that declare no class at all, the icon they draw. Two
+ * same-named applications stay separate as long as their classes or icons
+ * differ, because they really are two applications (a GNOME settings panel and
+ * a third-party tool may both be called "Displays").
+ */
+
+static char *application_identity_key(const LambdockDesktopEntry *entry) {
+  char *name = g_utf8_casefold(entry->name ? entry->name : "", -1);
+
+  /* "org.gnome.Nautilus" and "org-gnome-nautilus" are the same class spelled
+   * differently, and Flatpak exports often name the icon after the app id. */
+  gboolean has_class = entry->wm_class && *entry->wm_class != '\0';
+  const char *signal = has_class ? entry->wm_class : entry->icon;
+  char *folded = g_utf8_casefold(signal ? signal : "", -1);
+
+  /* \x1f cannot appear in a desktop file value, so it cannot make two
+   * different names collide. */
+  char *key = g_strdup_printf("%s\x1f%s", name, folded);
+
+  g_free(folded);
+  g_free(name);
+  return key;
+}
+
+/* Attaches COPY to KEEPER as another installed copy of the same application.
+ * The menu of a launchpad tile is what shows them (see launchpad.c). */
+static void add_alternate(LambdockDesktopEntry *keeper,
+                          LambdockDesktopEntry *copy) {
+  if (!keeper || !copy)
+    return;
+
+  if (!keeper->alternates)
+    keeper->alternates = g_ptr_array_new_with_free_func(
+        (GDestroyNotify)lambdock_desktop_entry_free);
+
+  g_ptr_array_add(keeper->alternates, copy);
+}
+
+/* Lists each application once, keeping the first copy of it. Scan order is the
+ * precedence order -- user entries, then Flatpak exports, then the system ones
+ * -- so the one that stays on the grid is the copy the user's own directory or
+ * Flatpak put there, exactly like the id-based deduplication above. The copies
+ * that lose are not thrown away: they move to the winner's alternates, because
+ * a launcher should offer them rather than decide silently. */
+static void collapse_duplicate_applications(GPtrArray *entries) {
+  GHashTable *kept = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                           NULL);
+
+  for (guint i = 0; i < entries->len;) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(entries, i);
+    char *key = application_identity_key(entry);
+    LambdockDesktopEntry *keeper = g_hash_table_lookup(kept, key);
+
+    if (keeper) {
+      g_free(key);
+      /* Stealing hands the entry over instead of freeing it. */
+      add_alternate(keeper, g_ptr_array_steal_index(entries, i));
+      continue;
+    }
+
+    g_hash_table_insert(kept, key, entry);
+    i++;
+  }
+
+  g_hash_table_destroy(kept);
+}
+
 GPtrArray *lambdock_desktop_entries_scan(void) {
   GPtrArray *entries =
       g_ptr_array_new_with_free_func((GDestroyNotify)lambdock_desktop_entry_free);
@@ -358,6 +465,10 @@ GPtrArray *lambdock_desktop_entries_scan(void) {
 
   for (guint i = 0; i < dirs->len; i++)
     scan_one_dir(g_ptr_array_index(dirs, i), entries, seen_ids);
+
+  /* Before the sort: collapsing in scan order is what makes the precedence
+   * above predictable, since the sort only orders by name. */
+  collapse_duplicate_applications(entries);
 
   g_ptr_array_sort(entries, compare_entries);
 
@@ -457,6 +568,23 @@ static char *exec_base_name(const char *exec) {
   return base;
 }
 
+/* Every name an entry could be reported under: the desktop id, the window class
+ * a compositor announces, the executable's base name, the last component of a
+ * reverse-DNS id. */
+static void cache_index_entry(GHashTable *index, LambdockDesktopEntry *entry) {
+  cache_index_add(index, entry->id, entry);
+  cache_index_add(index, entry->stem, entry);
+  cache_index_add(index, entry->wm_class, entry);
+
+  char *base = exec_base_name(entry->exec);
+  cache_index_add(index, base, entry);
+  g_free(base);
+
+  char *tail = last_component(entry->stem);
+  cache_index_add(index, tail, entry);
+  g_free(tail);
+}
+
 static void cache_build(void) {
   cache_clear();
 
@@ -466,17 +594,13 @@ static void cache_build(void) {
   for (guint i = 0; i < cache_entries->len; i++) {
     LambdockDesktopEntry *entry = g_ptr_array_index(cache_entries, i);
 
-    cache_index_add(cache_index, entry->id, entry);
-    cache_index_add(cache_index, entry->stem, entry);
-    cache_index_add(cache_index, entry->wm_class, entry);
+    cache_index_entry(cache_index, entry);
 
-    char *base = exec_base_name(entry->exec);
-    cache_index_add(cache_index, base, entry);
-    g_free(base);
-
-    char *tail = last_component(entry->stem);
-    cache_index_add(cache_index, tail, entry);
-    g_free(tail);
+    /* The copies the grid does not list are indexed too, so a window of the
+     * copy that lost still resolves to the application and its icon. The one on
+     * the grid goes first, and the index keeps the first entry of a key. */
+    for (guint a = 0; entry->alternates && a < entry->alternates->len; a++)
+      cache_index_entry(cache_index, g_ptr_array_index(entry->alternates, a));
   }
 
   cache_built_at = g_get_monotonic_time();

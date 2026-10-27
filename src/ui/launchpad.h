@@ -19,6 +19,7 @@
 #define LAUNCHPAD_H
 
 #include "../lambdock.h"
+#include "desktop_entry.h"
 
 /* Icon size of a launchpad tile, in pixels. */
 #define LAUNCHPAD_ICON_SIZE 64
@@ -74,5 +75,23 @@ void lambdock_launchpad_shutdown(void);
  * Returns: (transfer none): a GtkFlowBox.
  */
 GtkWidget *lambdock_launchpad_grid_new(GPtrArray *entries);
+
+/**
+ * lambdock_launchpad_tile_new:
+ * @entry: the installed application to show.
+ * @icon_size: pixel size of its icon.
+ *
+ * Builds one tile of the grid: the icon, the name, the accessibility text and
+ * the tooltip. An application that is installed more than once (see
+ * lambdock_desktop_entries_scan()) also gets a context menu, opened with the
+ * right mouse button, the Menu key or Shift+F10, that lists the copies so the
+ * user picks the one to start instead of the scan picking for them. Tiles of an
+ * application with a single copy have no menu. Exposed so the tiles can be
+ * exercised without a display server.
+ *
+ * Returns: (transfer none): a GtkButton.
+ */
+GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
+                                       int icon_size);
 
 #endif // LAUNCHPAD_H

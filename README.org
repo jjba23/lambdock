@@ -482,7 +482,7 @@ Its appearance follows the settings of the dock that opened it:
 |------------------------------+---------+-----------------------------------------------------------|
 | ~dock-launchpad-icon-size~   | ~64~    | Pixel size of an application icon in the grid (32 … 160). |
 | ~dock-launchpad-columns~     | ~0~     | Tiles per row. 0 fits as many as the screen allows; 3 … 14 is an upper bound (the grid still shrinks to fit). |
-| ~dock-launchpad-blur?~       | ~#f~    | Frosted, translucent background instead of the solid one. |
+| ~dock-launchpad-blur?~       | ~#f~    | Frosted, translucent background instead of the near-opaque one. |
 
 #+begin_src scheme
 (define dock-launchpad-icon-size 80)
@@ -504,15 +504,33 @@ layer-rule {
 }
 #+end_src
 
-Without such a rule the option still gives a lighter, tinted glass backdrop,
-just not a blurred one.
+Without such a rule the option still gives a darker, tinted glass backdrop, just
+not a blurred one: the tint is deliberately dense (18, 18, 24 at 82% in frosted
+mode, 94% in the solid one) so that labels keep their contrast over a bright or
+busy desktop, whether or not the compositor blurs what is behind.
+
+An application that is installed twice -- the distro package *and* its Flatpak
+export, say -- has one tile showing that fact in its tooltip, and its context
+menu (right click, *Menu* or *Shift+F10*) lists the copies, each with where it
+comes from and the command it runs, so clicking the tile starts the copy the
+scan preferred while the menu starts the one you pick.  Applications installed
+once have no menu, and a right click on them does nothing.
 
 Under the hood it parses the ~.desktop~ entries with ~GKeyFile~ (locale aware
 ~Name~, ~Exec~ with the ~%f~ / ~%U~ / ~%i~ field codes stripped, ~Icon~), skips
 what the user or the distribution hid (~Hidden=true~, ~NoDisplay=true~) and
 deduplicates by desktop file name, so a Flatpak export overrides the identical
-system entry.  The list is rescanned every time the launchpad opens, so an app
-you just installed is there without restarting the dock.
+system entry.  An application installed twice under two different file names (a
+distro package and its Flatpak export: ~libreoffice-writer.desktop~ and
+~org.libreoffice.LibreOffice.writer.desktop~) is collapsed into a single tile as
+well: two entries are the same application when they share a name and the window
+class they declare, or the icon when neither declares a class.  The copy that
+stays on the grid is the first one the scan reaches (your own directory, then
+Flatpak, then the system) and it carries the others as its alternatives, which
+is what the tile's menu offers.  Applications that merely share a name, like two
+different panels called *Displays*, are still listed separately.  The list is
+rescanned every time the launchpad opens, so an app you just installed is there
+without restarting the dock.
 
 ** The trash 🗑️
 :PROPERTIES:
@@ -641,7 +659,8 @@ what it is.
   the launchpad.
 - In the launchpad, typing goes to the search field, *Down* enters the grid, the
   arrows move by tile, and *Enter* launches.  *Return* in the search field launches
-  the first match.
+  the first match.  On a tile of an application installed more than once, *Menu*
+  or *Shift+F10* opens the menu of its copies.
 - In a stack, the arrows move between entries (a whole row at a time in the grid
   view) and *Enter* opens the entry.  The fan is painted rather than made of
   widgets, so it keeps the arrows itself: *Home*/*End* and *Left*/*Right* choose a

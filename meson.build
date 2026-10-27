@@ -364,6 +364,10 @@ unit_tests = [
     'extra_sources': full_test_sources,
   },
   {
+    'id': 'launchpad',
+    'extra_sources': full_test_sources,
+  },
+  {
     'id': 'dock_dnd',
     'extra_sources': full_test_sources,
   },
