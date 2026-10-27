@@ -500,8 +500,8 @@ static GtkWidget *build_content(const char *config_path) {
   add_switch(launchpad, config_path, "dock-launchpad-blur?",
              _("Frosted background"),
              _("Translucent backdrop. Compositors that blur layer surfaces "
-               "(KWin by default, niri with a layer-rule) frost it; others "
-               "show a subtle tint."),
+               "(KWin by default, niri with a layer-rule) frost it; the tint "
+               "is dense enough to read the grid without one."),
              get_launchpad_blur_config_for(config_path));
 
   /* --- Glass shelf ------------------------------------------------------ */
