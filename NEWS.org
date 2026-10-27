@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file. Changes are
 This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic Versioning]].
 
 *[Unreleased]*
+
+---------
+
+*[Released]*
+
+** v0.13.3 (2026-10-27)
 - The launchpad no longer shows one application twice. Two desktop files that
   describe the same program -- `libreoffice-writer.desktop` and
   `org.libreoffice.LibreOffice.writer.desktop` for the distro package and the

@@ -1,3 +1,13 @@
+lambdock (0.13.3-1) unstable; urgency=medium
+
+  * New upstream release: the launchpad lists one tile per application again,
+    collapsing the desktop files that describe the same program, and a tile
+    whose application is installed more than once offers every copy from its
+    context menu with where each copy comes from and the command it runs. The
+    launchpad backdrop is denser, so its labels read over a busy desktop.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Tue, 27 Oct 2026 15:05:00 +0100
+
 lambdock (0.13.2-1) unstable; urgency=medium
 
   * New upstream release: the right-click menu of a dock item carries actions

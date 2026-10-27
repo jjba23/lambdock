@@ -16,7 +16,7 @@
 #
 
 Name:           lambdock
-Version:        0.13.2
+Version:        0.13.3
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        GPL-3.0-or-later
@@ -78,6 +78,10 @@ Wayfire, Niri, and other compatible compositors.
 %{_datadir}/guile/site/3.0/lambdock
 
 %changelog
+* Tue Oct 27 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.3
+- The launchpad shows one tile per application again, and a tile whose
+  application is installed more than once offers which copy to start
+- The launchpad backdrop is denser, so its labels read over a busy desktop
 * Mon Oct 26 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.2
 - Right-click menu offers browser and music player actions for those apps
 * Mon Oct 26 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.1
