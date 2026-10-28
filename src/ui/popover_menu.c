@@ -167,7 +167,8 @@ static void on_popover_close_all_windows(GtkButton *btn, gpointer user_data) {
   GList *handles = NULL;
   for (GList *l = item->windows; l != NULL; l = l->next) {
     AppWindow *win = (AppWindow *)l->data;
-    handles = g_list_append(handles, win->handle);
+    if (win && win->handle)
+      handles = g_list_append(handles, win->handle);
   }
 
   // Iterate over handle copy list and send close requests for every window
@@ -536,252 +537,253 @@ static void append_remove_entry(GtkWidget *vbox, DockItem *item) {
  * ============================================================================
  */
 
-/**
- * populate_popover_menu:
- * @item: Pointer to target `DockItem` whose menu needs to be populated/built.
- *
- * Dynamically constructs and attaches the GTK menu layout inside
- * `item->popover`.
- *
- * Menu layout structure built:
- * ┌──────────────────────────────────────────────┐
- * │ App Name Header Label                        │
- * │ ───────────────────────────────────────────  │
- * │ [ Window Title 1... ]   [ X ]                │  <-- (If open windows exist)
- * │ [ Window Title 2... ]   [ X ]                │
- * │ ───────────────────────────────────────────  │
- * │ New Instance                                 │  <-- (If exec string exists)
- * │ Close All Windows                            │  <-- (If > 1 window exists)
- * └──────────────────────────────────────────────┘
+/* -------------------------------------------------------------------------
+ * MENU SECTIONS
+ * -------------------------------------------------------------------------
+ * The context menu used to be one 200-line function with four early returns.
+ * Each kind of item now has its own small section builder, and the entry point
+ * below is only the running order.
  */
-void populate_popover_menu(DockItem *item) {
-  if (!item || !item->popover)
-    return; // Defensive guard: exit if references are invalid
 
-  // Clear existing popover child widget before rebuilding layout contents
-  GtkWidget *old_child = gtk_popover_get_child(GTK_POPOVER(item->popover));
-  if (old_child)
-    gtk_popover_set_child(GTK_POPOVER(item->popover), NULL);
-
-  // Create main vertical container box with configured element spacing and
-  // padding margins
+/** The popover's padded vertical container. */
+static GtkWidget *popover_menu_vbox_new(void) {
   GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, POPOVER_VBOX_SPACING);
+
   gtk_widget_set_margin_start(vbox, POPOVER_VBOX_MARGIN);
   gtk_widget_set_margin_end(vbox, POPOVER_VBOX_MARGIN);
   gtk_widget_set_margin_top(vbox, POPOVER_VBOX_MARGIN);
   gtk_widget_set_margin_bottom(vbox, POPOVER_VBOX_MARGIN);
 
-  // --------------------------------------------------------------------------
-  // App Header Title & Separator Line
-  // --------------------------------------------------------------------------
-  const char *title = (item->name && *item->name != '\0') ? item->name
-                      : (item->app_id && *item->app_id != '\0')
-                          ? item->app_id
-                          : _("Application");
+  return vbox;
+}
+
+/** The item's name (or a sensible fallback) and the rule under it. */
+static void menu_append_header(GtkWidget *vbox, const DockItem *item) {
+  const char *title = lambdock_item_title(item, _("Application"));
   GtkWidget *label = gtk_label_new(title);
-  gtk_widget_add_css_class(label,
-                           "title"); // Apply CSS class `.title` for styling
+
+  gtk_widget_add_css_class(label, "title");
   gtk_box_append(GTK_BOX(vbox), label);
   gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+}
 
-  // --------------------------------------------------------------------------
-  // Trash item: how much is in it, open it, empty it (no windows to list)
-  // --------------------------------------------------------------------------
-  if (item->kind == LAMBDOCK_ITEM_TRASH) {
-    guint count = lambdock_trash_count();
-    char *count_text = g_strdup_printf(
-        ngettext("%u item in the trash", "%u items in the trash", count),
-        count);
-    GtkWidget *count_label = gtk_label_new(count_text);
-    g_free(count_text);
-    gtk_widget_add_css_class(count_label, "dim-label");
-    gtk_box_append(GTK_BOX(vbox), count_label);
+/** Trash: how much is in it, open it, empty it (no windows to list). */
+static void menu_append_trash_section(GtkWidget *vbox, DockItem *item) {
+  guint count = lambdock_trash_count();
+  char *count_text = g_strdup_printf(
+      ngettext("%u item in the trash", "%u items in the trash", count), count);
 
-    GtkWidget *btn_open = gtk_button_new_with_label(_("Open Trash"));
-    gtk_widget_add_css_class(btn_open, "flat");
-    g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_trash),
-                     item);
-    gtk_box_append(GTK_BOX(vbox), btn_open);
+  GtkWidget *count_label = gtk_label_new(count_text);
+  g_free(count_text);
+  gtk_widget_add_css_class(count_label, "dim-label");
+  gtk_box_append(GTK_BOX(vbox), count_label);
 
-    GtkWidget *btn_empty = gtk_button_new_with_label(_("Empty Trash"));
-    gtk_widget_add_css_class(btn_empty, "flat");
-    gtk_widget_add_css_class(btn_empty, "destructive-action");
-    gtk_widget_set_sensitive(btn_empty, count > 0);
-    g_signal_connect(btn_empty, "clicked", G_CALLBACK(on_popover_empty_trash),
-                     item);
-    gtk_box_append(GTK_BOX(vbox), btn_empty);
+  GtkWidget *btn_open = gtk_button_new_with_label(_("Open Trash"));
+  gtk_widget_add_css_class(btn_open, "flat");
+  g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_trash), item);
+  gtk_box_append(GTK_BOX(vbox), btn_open);
 
-    append_remove_entry(vbox, item);
+  GtkWidget *btn_empty = gtk_button_new_with_label(_("Empty Trash"));
+  gtk_widget_add_css_class(btn_empty, "flat");
+  gtk_widget_add_css_class(btn_empty, "destructive-action");
+  gtk_widget_set_sensitive(btn_empty, count > 0);
+  g_signal_connect(btn_empty, "clicked", G_CALLBACK(on_popover_empty_trash),
+                   item);
+  gtk_box_append(GTK_BOX(vbox), btn_empty);
+}
 
-    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
-    return;
+/** Stack: the view switch plus the folder action. */
+static void menu_append_stack_section(GtkWidget *vbox, DockItem *item) {
+  GtkWidget *views = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
+
+  gtk_box_append(GTK_BOX(views),
+                 stack_view_button(item, LAMBDOCK_STACK_VIEW_GRID, _("Grid")));
+  gtk_box_append(GTK_BOX(views),
+                 stack_view_button(item, LAMBDOCK_STACK_VIEW_LIST, _("List")));
+  gtk_box_append(GTK_BOX(vbox), views);
+
+  GtkWidget *btn_open = gtk_button_new_with_label(_("Open Folder"));
+  gtk_widget_add_css_class(btn_open, "flat");
+  g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_folder),
+                   item);
+  gtk_box_append(GTK_BOX(vbox), btn_open);
+}
+
+/** Launchpad: reopen the overlay. */
+static void menu_append_launchpad_section(GtkWidget *vbox, DockItem *item) {
+  GtkWidget *btn_show = gtk_button_new_with_label(_("Show Launchpad"));
+
+  gtk_widget_add_css_class(btn_show, "flat");
+  g_signal_connect(btn_show, "clicked",
+                   G_CALLBACK(on_popover_show_launchpad), item);
+  gtk_box_append(GTK_BOX(vbox), btn_show);
+}
+
+/** One row: focus this window, or close it. */
+static void menu_append_window_row(GtkWidget *vbox, DockItem *item,
+                                   AppWindow *win) {
+  GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, POPOVER_ROW_SPACING);
+
+  const char *win_title =
+      (win->title && *win->title != '\0') ? win->title : _("Window");
+
+  GtkWidget *btn_focus = gtk_button_new_with_label(win_title);
+  gtk_widget_add_css_class(btn_focus, "flat");
+  gtk_widget_set_hexpand(btn_focus, TRUE);
+
+  GtkWidget *child_label = gtk_button_get_child(GTK_BUTTON(btn_focus));
+  if (GTK_IS_LABEL(child_label)) {
+    gtk_label_set_ellipsize(GTK_LABEL(child_label), PANGO_ELLIPSIZE_END);
+    gtk_label_set_max_width_chars(GTK_LABEL(child_label),
+                                  POPOVER_TITLE_MAX_CHARS);
   }
 
-  // --------------------------------------------------------------------------
-  // Stack items: view mode switch + folder actions (no windows to list)
-  // --------------------------------------------------------------------------
-  if (item->kind == LAMBDOCK_ITEM_STACK) {
-    GtkWidget *views = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4);
-    gtk_box_append(GTK_BOX(views),
-                   stack_view_button(item, LAMBDOCK_STACK_VIEW_GRID, _("Grid")));
-    gtk_box_append(GTK_BOX(views),
-                   stack_view_button(item, LAMBDOCK_STACK_VIEW_LIST, _("List")));
-    gtk_box_append(GTK_BOX(views),
-                   stack_view_button(item, LAMBDOCK_STACK_VIEW_FAN, _("Fan")));
-    gtk_box_append(GTK_BOX(vbox), views);
+  /* `g_signal_connect_data` frees the action data with the button. */
+  WindowActionData *focus_data = g_new0(WindowActionData, 1);
+  focus_data->item = item;
+  focus_data->handle = win->handle;
+  g_signal_connect_data(btn_focus, "clicked",
+                        G_CALLBACK(on_popover_focus_window), focus_data,
+                        free_action_data, 0);
+  gtk_box_append(GTK_BOX(row), btn_focus);
 
-    GtkWidget *btn_open = gtk_button_new_with_label(_("Open Folder"));
-    gtk_widget_add_css_class(btn_open, "flat");
-    g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_folder),
-                     item);
-    gtk_box_append(GTK_BOX(vbox), btn_open);
+  GtkWidget *btn_close = gtk_button_new_from_icon_name("window-close-symbolic");
+  gtk_widget_add_css_class(btn_close, "flat");
 
-    append_remove_entry(vbox, item);
+  WindowActionData *close_data = g_new0(WindowActionData, 1);
+  close_data->item = item;
+  close_data->handle = win->handle;
+  g_signal_connect_data(btn_close, "clicked",
+                        G_CALLBACK(on_popover_close_window), close_data,
+                        free_action_data, 0);
+  gtk_box_append(GTK_BOX(row), btn_close);
 
-    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+  gtk_box_append(GTK_BOX(vbox), row);
+}
+
+/** "New Instance" (or "New Window" for a browser, in its own section). */
+static void menu_append_new_instance_row(GtkWidget *vbox, DockItem *item,
+                                         LambdockAppKind app_kind) {
+  if (!item->exec || *item->exec == '\0' ||
+      app_kind == LAMBDOCK_APP_KIND_BROWSER)
     return;
-  }
 
-  // --------------------------------------------------------------------------
-  // Launchpad item: reopen the overlay, or unpin it
-  // --------------------------------------------------------------------------
-  if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
-    GtkWidget *btn_show = gtk_button_new_with_label(_("Show Launchpad"));
-    gtk_widget_add_css_class(btn_show, "flat");
-    g_signal_connect(btn_show, "clicked",
-                     G_CALLBACK(on_popover_show_launchpad), item);
-    gtk_box_append(GTK_BOX(vbox), btn_show);
+  GtkWidget *btn_launch = gtk_button_new_with_label(_("New Instance"));
+  gtk_widget_add_css_class(btn_launch, "flat");
+  g_signal_connect_swapped(btn_launch, "clicked",
+                           G_CALLBACK(on_popover_launch_clicked), item);
+  gtk_box_append(GTK_BOX(vbox), btn_launch);
+}
 
-    append_remove_entry(vbox, item);
-
-    gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+/** "Close All Windows", only for an item that has more than one. */
+static void menu_append_close_all_row(GtkWidget *vbox, DockItem *item,
+                                      int window_count) {
+  if (window_count <= 1)
     return;
-  }
 
-  // --------------------------------------------------------------------------
-  // Kind-specific actions (browser windows, player controls)
-  //
-  // Computed before the window list because a browser's "New Window" entry
-  // replaces the generic "New Instance" one.
-  // --------------------------------------------------------------------------
-  GArray *app_actions = NULL;
-  LambdockAppKind app_kind = LAMBDOCK_APP_KIND_NONE;
-  char *music_bus = NULL;
-  if (item->kind == LAMBDOCK_ITEM_APP)
-    app_actions = item_app_actions(item, &app_kind, &music_bus);
+  GtkWidget *btn_close_all = gtk_button_new_with_label(_("Close All Windows"));
+  gtk_widget_add_css_class(btn_close_all, "flat");
+  g_signal_connect(btn_close_all, "clicked",
+                   G_CALLBACK(on_popover_close_all_windows), item);
+  gtk_box_append(GTK_BOX(vbox), btn_close_all);
+}
 
-  // --------------------------------------------------------------------------
-  // Open Application Window List Construction
-  // --------------------------------------------------------------------------
-  if (item->windows != NULL) {
-    int win_count = g_list_length(item->windows);
-
-    // Loop through each active open window attached to this dock launcher
-    for (GList *l = item->windows; l != NULL; l = l->next) {
-      AppWindow *win = (AppWindow *)l->data;
-
-      // Horizontal row container: [ Focus Button | Close Button ]
-      GtkWidget *row =
-          gtk_box_new(GTK_ORIENTATION_HORIZONTAL, POPOVER_ROW_SPACING);
-
-      const char *win_title =
-          (win->title && *win->title != '\0') ? win->title : _("Window");
-
-      // Create focus/activate button with window title label
-      GtkWidget *btn_focus = gtk_button_new_with_label(win_title);
-      gtk_widget_add_css_class(btn_focus, "flat");
-      gtk_widget_set_hexpand(btn_focus,
-                             TRUE); // Allow button to expand horizontally
-
-      // Format title text: Ellipsize long window titles with "..." at end
-      GtkWidget *child_label = gtk_button_get_child(GTK_BUTTON(btn_focus));
-      if (GTK_IS_LABEL(child_label)) {
-        gtk_label_set_ellipsize(GTK_LABEL(child_label), PANGO_ELLIPSIZE_END);
-        gtk_label_set_max_width_chars(GTK_LABEL(child_label),
-                                      POPOVER_TITLE_MAX_CHARS);
-      }
-
-      // Prepare action data and attach click signal for focusing window
-      WindowActionData *action_data = g_new0(WindowActionData, 1);
-      action_data->item = item;
-      action_data->handle = win->handle;
-
-      // `g_signal_connect_data` attaches callback with `free_action_data`
-      // automatically freeing `action_data` when the button widget is destroyed
-      g_signal_connect_data(btn_focus, "clicked",
-                            G_CALLBACK(on_popover_focus_window), action_data,
-                            free_action_data, 0);
-      gtk_box_append(GTK_BOX(row), btn_focus);
-
-      // Create window close ("X") icon button
-      GtkWidget *btn_close =
-          gtk_button_new_from_icon_name("window-close-symbolic");
-      gtk_widget_add_css_class(btn_close, "flat");
-
-      // Prepare action data and attach click signal for closing window
-      WindowActionData *close_data = g_new0(WindowActionData, 1);
-      close_data->item = item;
-      close_data->handle = win->handle;
-      g_signal_connect_data(btn_close, "clicked",
-                            G_CALLBACK(on_popover_close_window), close_data,
-                            free_action_data, 0);
-      gtk_box_append(GTK_BOX(row), btn_close);
-
-      // Append completed window item row into main popover vertical box
-      gtk_box_append(GTK_BOX(vbox), row);
-    }
-
-    // Horizontal separator line below open window entries
-    gtk_box_append(GTK_BOX(vbox),
-                   gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
-
-    // ------------------------------------------------------------------------
-    // Option: "New Instance" (When app is already running)
-    //
-    // A browser gets "New Window" instead, in its own section below.
-    // ------------------------------------------------------------------------
-    if (item->exec && *item->exec != '\0' &&
-        app_kind != LAMBDOCK_APP_KIND_BROWSER) {
-      GtkWidget *btn_launch = gtk_button_new_with_label(_("New Instance"));
+/** The running application's windows, plus what to do about them. */
+static void menu_append_window_section(GtkWidget *vbox, DockItem *item,
+                                       LambdockAppKind app_kind) {
+  if (item->windows == NULL) {
+    /* Nothing is running: offer to start it. */
+    if (item->exec && *item->exec != '\0') {
+      GtkWidget *btn_launch = gtk_button_new_with_label(_("Launch Application"));
       gtk_widget_add_css_class(btn_launch, "flat");
-
-      // `g_signal_connect_swapped` automatically passes `item` as the primary
-      // first parameter to `on_popover_launch_clicked` instead of the button
-      // pointer
       g_signal_connect_swapped(btn_launch, "clicked",
                                G_CALLBACK(on_popover_launch_clicked), item);
       gtk_box_append(GTK_BOX(vbox), btn_launch);
     }
-
-    // ------------------------------------------------------------------------
-    // Option: "Close All Windows" (Only shown if > 1 window open)
-    // ------------------------------------------------------------------------
-    if (win_count > 1) {
-      GtkWidget *btn_close_all =
-          gtk_button_new_with_label(_("Close All Windows"));
-      gtk_widget_add_css_class(btn_close_all, "flat");
-      g_signal_connect(btn_close_all, "clicked",
-                       G_CALLBACK(on_popover_close_all_windows), item);
-      gtk_box_append(GTK_BOX(vbox), btn_close_all);
-    }
-  }
-  // --------------------------------------------------------------------------
-  // Option: "Launch Application" (When no windows are open yet)
-  // --------------------------------------------------------------------------
-  else if (item->exec && *item->exec != '\0') {
-    GtkWidget *btn_launch = gtk_button_new_with_label(_("Launch Application"));
-    gtk_widget_add_css_class(btn_launch, "flat");
-    g_signal_connect_swapped(btn_launch, "clicked",
-                             G_CALLBACK(on_popover_launch_clicked), item);
-    gtk_box_append(GTK_BOX(vbox), btn_launch);
+    return;
   }
 
-  if (app_actions)
-    append_action_buttons(vbox, item, app_actions, music_bus);
+  int window_count = 0;
+  for (GList *l = item->windows; l != NULL; l = l->next) {
+    AppWindow *win = (AppWindow *)l->data;
+    if (!win)
+      continue;
+
+    menu_append_window_row(vbox, item, win);
+    window_count++;
+  }
+
+  gtk_box_append(GTK_BOX(vbox),
+                 gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  menu_append_new_instance_row(vbox, item, app_kind);
+  menu_append_close_all_row(vbox, item, window_count);
+}
+
+/** Kind-specific actions: browser windows, player controls. */
+static void menu_append_app_actions(GtkWidget *vbox, DockItem *item,
+                                    GArray *app_actions, char *music_bus) {
+  if (!app_actions)
+    return;
+
+  append_action_buttons(vbox, item, app_actions, music_bus);
+}
+
+/** Installs @vbox as the popover's child. */
+static void menu_finish(DockItem *item, GtkWidget *vbox) {
+  append_remove_entry(vbox, item);
+  gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+}
+
+/* -------------------------------------------------------------------------
+ * THE MENU
+ * -------------------------------------------------------------------------
+ */
+
+void populate_popover_menu(DockItem *item) {
+  if (!item || !item->popover)
+    return;
+
+  /* Rebuild from scratch: the menu always describes the current state. */
+  if (gtk_popover_get_child(GTK_POPOVER(item->popover)))
+    gtk_popover_set_child(GTK_POPOVER(item->popover), NULL);
+
+  GtkWidget *vbox = popover_menu_vbox_new();
+  menu_append_header(vbox, item);
+
+  if (item->kind == LAMBDOCK_ITEM_TRASH) {
+    menu_append_trash_section(vbox, item);
+    menu_finish(item, vbox);
+    return;
+  }
+
+  if (item->kind == LAMBDOCK_ITEM_STACK) {
+    menu_append_stack_section(vbox, item);
+    menu_finish(item, vbox);
+    return;
+  }
+
+  if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
+    menu_append_launchpad_section(vbox, item);
+    menu_finish(item, vbox);
+    return;
+  }
+
+  /* Application items may have browser or music-player actions. They are
+   * computed before the window list because a browser's "New Window" entry
+   * replaces the generic "New Instance" one. */
+  GArray *app_actions = NULL;
+  LambdockAppKind app_kind = LAMBDOCK_APP_KIND_NONE;
+  char *music_bus = NULL;
+
+  if (item->kind == LAMBDOCK_ITEM_APP)
+    app_actions = item_app_actions(item, &app_kind, &music_bus);
+
+  menu_append_window_section(vbox, item, app_kind);
+  menu_append_app_actions(vbox, item, app_actions, music_bus);
+
   g_clear_pointer(&app_actions, g_array_unref);
   g_free(music_bus);
 
-  // Set built vertical box layout as active child container of the GTK popover
-  append_remove_entry(vbox, item);
-  gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
+  menu_finish(item, vbox);
 }

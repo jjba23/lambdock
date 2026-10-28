@@ -5,6 +5,7 @@
 
 #include "dock_window.h"
 #include "accessibility.h"
+#include "dock_registry.h"
 #include "guile_bridge.h"
 #include "lambdock.h"
 #include "logger.h"
@@ -27,15 +28,6 @@
  */
 
 /**
- * g_active_states:
- * A GLib doubly-linked list (`GList*`) storing pointers to `LambdockState`
- * instances.
- */
-static GList *g_active_states = NULL;
-
-GList *get_active_dock_states(void) { return g_active_states; }
-
-/**
  * g_reload_timer_id:
  * GLib event source ID for debouncing file modification events.
  * 0 means no reload is currently scheduled.
@@ -44,10 +36,10 @@ static guint g_reload_timer_id = 0;
 
 /**
  * unregister_dock_state:
- * Removes an active LambdockState instance from g_active_states.
+ * Removes an active LambdockState instance from the dock registry.
  */
 void unregister_dock_state(LambdockState *state) {
-  g_active_states = g_list_remove(g_active_states, state);
+  dock_registry_remove(state);
 }
 
 /* =========================================================================
@@ -125,6 +117,9 @@ static GdkMonitor *find_monitor_by_connector(const char *connector) {
   guint n = g_list_model_get_n_items(monitors);
   for (guint i = 0; i < n; i++) {
     GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
+    if (!mon)
+      continue;
+
     const char *name = gdk_monitor_get_connector(mon);
     if (name && g_strcmp0(name, connector) == 0)
       return mon; /* transfer reference to the caller */
@@ -192,236 +187,269 @@ static gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
 static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                                  const char *config_path);
 
+/* -------------------------------------------------------------------------
+ * SELECTING DOCKS
+ * -------------------------------------------------------------------------
+ * Every "reconcile the docks with the world" step has the same shape: pick the
+ * registered docks that satisfy some predicate, then destroy them. Both halves
+ * are small helpers here, so the policy below reads as policy.
+ */
+
+typedef gboolean (*DockPredicate)(const LambdockState *state, gpointer user);
+
+/** A monitor plus the config path it belongs to. */
+typedef struct {
+  const char *config_path;
+  GdkMonitor *monitor; /* borrowed */
+} DockMonitorSelector;
+
+/** Snapshot of the registered docks that satisfy @pred (all when NULL). */
+static GPtrArray *docks_matching(DockPredicate pred, gpointer user) {
+  GPtrArray *matches = g_ptr_array_new();
+  GPtrArray *all = dock_registry_snapshot();
+
+  for (guint i = 0; i < all->len; i++) {
+    LambdockState *state = g_ptr_array_index(all, i);
+    if (state && (!pred || pred(state, user)))
+      g_ptr_array_add(matches, state);
+  }
+  g_ptr_array_unref(all);
+
+  return matches;
+}
+
+/** Number of registered docks that satisfy @pred. */
+static guint docks_matching_count(DockPredicate pred, gpointer user) {
+  GPtrArray *matches = docks_matching(pred, user);
+  guint count = matches->len;
+
+  g_ptr_array_unref(matches);
+  return count;
+}
+
+/** Destroys every dock in @states and frees the array itself. */
+static void destroy_docks(GPtrArray *states) {
+  if (!states)
+    return;
+
+  for (guint i = 0; i < states->len; i++)
+    destroy_dock_instance(g_ptr_array_index(states, i));
+  g_ptr_array_unref(states);
+}
+
+static gboolean dock_has_no_config(const LambdockState *state, gpointer user) {
+  (void)user;
+  return state->config_path == NULL;
+}
+
+static gboolean dock_has_config(const LambdockState *state, gpointer user) {
+  (void)user;
+  return state->config_path != NULL;
+}
+
+static gboolean dock_is_for_config(const LambdockState *state, gpointer user) {
+  return g_strcmp0(state->config_path, (const char *)user) == 0;
+}
+
+static gboolean dock_is_for_config_without_monitor(const LambdockState *state,
+                                                   gpointer user) {
+  return dock_is_for_config(state, user) && state->monitor == NULL;
+}
+
+static gboolean dock_is_for_config_on_any_monitor(const LambdockState *state,
+                                                  gpointer user) {
+  return dock_is_for_config(state, user) && state->monitor != NULL;
+}
+
+static gboolean dock_is_on_selector_monitor(const LambdockState *state,
+                                            gpointer user) {
+  const DockMonitorSelector *selector = user;
+
+  return dock_is_for_config(state, (gpointer)selector->config_path) &&
+         state->monitor == selector->monitor;
+}
+
+static gboolean dock_is_not_on_selector_monitor(const LambdockState *state,
+                                                gpointer user) {
+  const DockMonitorSelector *selector = user;
+
+  return dock_is_for_config(state, (gpointer)selector->config_path) &&
+         state->monitor != selector->monitor;
+}
+
+/** TRUE when @state belongs to @user and its monitor is gone or invalid. */
+static gboolean dock_is_stranded(const LambdockState *state, gpointer user) {
+  if (!dock_is_for_config(state, user))
+    return FALSE;
+
+  return state->monitor == NULL || !is_monitor_valid(state->monitor);
+}
+
+/** TRUE when @state's settings file is not in @user (a GList of paths). */
+static gboolean dock_config_missing_from(const LambdockState *state,
+                                         gpointer user) {
+  if (state->config_path == NULL)
+    return FALSE;
+
+  for (GList *l = (GList *)user; l != NULL; l = l->next) {
+    if (g_strcmp0((const char *)l->data, state->config_path) == 0)
+      return FALSE;
+  }
+  return TRUE;
+}
+
+/* -------------------------------------------------------------------------
+ * DOCK RECONCILIATION
+ * -------------------------------------------------------------------------
+ */
+
+/** A settings file's monitor policy, resolved once per reconcile pass. */
+typedef struct MonitorSelection {
+  gboolean all;
+  GdkMonitor *target;      /* borrowed */
+  char *connector;         /* owned */
+} MonitorSelection;
+
+/**
+ * resolve_monitor_selection:
+ * Turns the settings file's `dock-monitor` string ("all", "default" or a
+ * connector name) into a policy. A connector that does not exist falls back to
+ * the default monitor, as documented for a typo'd settings value.
+ */
+static MonitorSelection resolve_monitor_selection(const char *file_path) {
+  MonitorSelection selection = {FALSE, NULL, NULL};
+
+  selection.connector = get_monitor_config_for(file_path);
+  selection.all = (g_strcmp0(selection.connector, "all") == 0);
+
+  if (!selection.all && selection.connector && *selection.connector != '\0' &&
+      g_strcmp0(selection.connector, "default") != 0) {
+    selection.target = find_monitor_by_connector(selection.connector);
+    if (!selection.target) {
+      LOG_C_WARN("Main",
+                 "Monitor connector '%s' not found for [%s]; falling back "
+                 "to the default monitor.",
+                 selection.connector, file_path);
+    }
+  }
+
+  return selection;
+}
+
+/** Reloads the dock for @monitor/@file_path, or spawns it when missing. */
+static void reload_or_spawn_dock(GtkApplication *app, GdkMonitor *monitor,
+                                 const char *file_path) {
+  DockMonitorSelector selector = {file_path, monitor};
+  GPtrArray *existing = docks_matching(dock_is_on_selector_monitor, &selector);
+
+  if (existing->len > 0) {
+    LambdockState *state = g_ptr_array_index(existing, 0);
+    g_ptr_array_unref(existing);
+    reload_dock_instance(state);
+    return;
+  }
+  g_ptr_array_unref(existing);
+
+  if (monitor)
+    LOG_C_INFO("Main", "New monitor detected. Spawning dock instance (%s)...",
+               file_path);
+  else
+    LOG_C_INFO("Main", "Spawning single dock instance (%s)...", file_path);
+
+  create_dock_instance(app, monitor, file_path);
+}
+
+/** `dock-monitor: all` -- one dock per active monitor. */
+static void reconcile_all_monitors(GtkApplication *app, const char *file_path,
+                                   GListModel *monitors, guint n_monitors) {
+  destroy_docks(docks_matching(dock_is_stranded, (gpointer)file_path));
+
+  for (guint i = 0; i < n_monitors; i++) {
+    GdkMonitor *monitor = GDK_MONITOR(g_list_model_get_item(monitors, i));
+    if (!monitor)
+      continue;
+
+    reload_or_spawn_dock(app, monitor, file_path);
+    g_object_unref(monitor);
+  }
+}
+
+/** A named connector: exactly one dock, on that monitor. */
+static void reconcile_named_monitor(GtkApplication *app, const char *file_path,
+                                    GdkMonitor *target) {
+  DockMonitorSelector selector = {file_path, target};
+
+  destroy_docks(docks_matching(dock_is_not_on_selector_monitor, &selector));
+  reload_or_spawn_dock(app, target, file_path);
+}
+
+/** No monitor in the settings: a single dock that follows no monitor. */
+static void reconcile_default_monitor(GtkApplication *app,
+                                      const char *file_path) {
+  destroy_docks(
+      docks_matching(dock_is_for_config_on_any_monitor, (gpointer)file_path));
+
+  if (docks_matching_count(dock_is_for_config_without_monitor,
+                           (gpointer)file_path) == 0)
+    reload_or_spawn_dock(app, NULL, file_path);
+}
+
+/** Picks the monitor policy for one settings file and applies it. */
+static void reconcile_settings_file(GtkApplication *app,
+                                    const char *file_path) {
+  load_dock_config_scm(file_path);
+
+  SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
+  if (scm_is_true(start_repl_fn))
+    scm_call_1(start_repl_fn, scm_from_utf8_string(file_path));
+
+  MonitorSelection selection = resolve_monitor_selection(file_path);
+
+  GdkDisplay *display = gdk_display_get_default();
+  GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
+  guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
+
+  if (selection.all && monitors && n_monitors > 0)
+    reconcile_all_monitors(app, file_path, monitors, n_monitors);
+  else if (selection.target)
+    reconcile_named_monitor(app, file_path, selection.target);
+  else
+    reconcile_default_monitor(app, file_path);
+
+  g_free(selection.connector);
+}
+
 /**
  * sync_docks_with_disk:
- * Reconciles active dock windows with the current state of settings files on
- * disk and active monitor outputs.
- * - Handles creation of new dock instances when settings-*.scm files are added.
- * - Handles destruction of dock instances when settings-*.scm files are deleted
- * or when monitors are removed.
- * - Spawns default fallback dock if and only if NO settings files exist on
- * disk.
+ * Reconciles active dock windows with the settings files on disk and the active
+ * monitor outputs: spawns docks for new settings files, destroys docks whose
+ * file or monitor disappeared, and keeps one fallback dock when no settings
+ * file exists at all.
  */
 static void sync_docks_with_disk(GtkApplication *app) {
   GList *disk_files = scan_settings_files();
 
-  if (disk_files != NULL) {
-    // Collect fallback docks to destroy
-    GList *to_destroy = NULL;
-    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-      LambdockState *state = (LambdockState *)curr->data;
-      if (state->config_path == NULL) {
-        to_destroy = g_list_append(to_destroy, state);
-      }
-    }
-    for (GList *l = to_destroy; l != NULL; l = l->next) {
-      LOG_C_INFO("Main",
-                 "Settings file(s) detected. Destroying fallback dock.");
-      destroy_dock_instance((LambdockState *)l->data);
-    }
-    g_list_free(to_destroy);
-    to_destroy = NULL;
+  if (disk_files == NULL) {
+    destroy_docks(docks_matching(dock_has_config, NULL));
 
-    // Collect docks whose config files were deleted from disk
-    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-      LambdockState *state = (LambdockState *)curr->data;
-      if (state->config_path != NULL) {
-        gboolean found = FALSE;
-        for (GList *df = disk_files; df != NULL; df = df->next) {
-          if (g_strcmp0((const char *)df->data, state->config_path) == 0) {
-            found = TRUE;
-            break;
-          }
-        }
-        if (!found) {
-          to_destroy = g_list_append(to_destroy, state);
-        }
-      }
-    }
-    for (GList *l = to_destroy; l != NULL; l = l->next) {
-      LambdockState *state = (LambdockState *)l->data;
-      LOG_C_INFO("Main", "Config file deleted: %s. Destroying dock instance...",
-                 state->config_path);
-      destroy_dock_instance(state);
-    }
-    g_list_free(to_destroy);
-
-    // Spawn new docks or reload existing docks
-    for (GList *df = disk_files; df != NULL; df = df->next) {
-      const char *file_path = (const char *)df->data;
-      load_dock_config_scm(file_path);
-
-      SCM start_repl_fn = scm_c_public_ref("lambdock core", "start-repl!");
-      if (scm_is_true(start_repl_fn)) {
-        scm_call_1(start_repl_fn, scm_from_utf8_string(file_path));
-      }
-
-      char *monitor_target = get_monitor_config_for(file_path);
-      GdkDisplay *display = gdk_display_get_default();
-      GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
-      guint n_monitors = monitors ? g_list_model_get_n_items(monitors) : 0;
-
-      gboolean monitor_all = (g_strcmp0(monitor_target, "all") == 0);
-      GdkMonitor *target_monitor = NULL;
-      if (!monitor_all && monitor_target && *monitor_target != '\0' &&
-          g_strcmp0(monitor_target, "default") != 0) {
-        target_monitor = find_monitor_by_connector(monitor_target);
-        if (!target_monitor) {
-          LOG_C_WARN("Main",
-                     "Monitor connector '%s' not found for [%s]; falling back "
-                     "to the default monitor.",
-                     monitor_target, file_path);
-        }
-      }
-
-      if (monitor_all && monitors && n_monitors > 0) {
-        // 1. Destroy docks for this config path whose monitor was
-        // unplugged/invalidated
-        to_destroy = NULL;
-        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-          LambdockState *state = (LambdockState *)curr->data;
-          if (state->config_path &&
-              g_strcmp0(state->config_path, file_path) == 0) {
-            if (!state->monitor || !is_monitor_valid(state->monitor)) {
-              to_destroy = g_list_append(to_destroy, state);
-            }
-          }
-        }
-        for (GList *l = to_destroy; l != NULL; l = l->next) {
-          LambdockState *state = (LambdockState *)l->data;
-          LOG_C_INFO("Main",
-                     "Monitor removed for dock instance [%s]. Destroying...",
-                     file_path);
-          destroy_dock_instance(state);
-        }
-        g_list_free(to_destroy);
-
-        // 2. Ensure each active monitor has a dock instance
-        for (guint i = 0; i < n_monitors; i++) {
-          GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-          gboolean active = FALSE;
-
-          for (GList *l = g_active_states; l != NULL; l = l->next) {
-            LambdockState *state = (LambdockState *)l->data;
-            if (state->config_path &&
-                g_strcmp0(state->config_path, file_path) == 0 &&
-                state->monitor == mon) {
-              active = TRUE;
-              reload_dock_instance(state);
-              break;
-            }
-          }
-
-          if (!active) {
-            LOG_C_INFO("Main",
-                       "New monitor detected. Spawning dock instance for "
-                       "monitor %u (%s)...",
-                       i, file_path);
-            create_dock_instance(app, mon, file_path);
-          }
-          g_object_unref(mon);
-        }
-      } else if (target_monitor != NULL) {
-        // Destroy docks for this config that are not bound to the target monitor
-        to_destroy = NULL;
-        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-          LambdockState *state = (LambdockState *)curr->data;
-          if (state->config_path &&
-              g_strcmp0(state->config_path, file_path) == 0 &&
-              state->monitor != target_monitor) {
-            to_destroy = g_list_append(to_destroy, state);
-          }
-        }
-        for (GList *l = to_destroy; l != NULL; l = l->next) {
-          destroy_dock_instance((LambdockState *)l->data);
-        }
-        g_list_free(to_destroy);
-        to_destroy = NULL;
-
-        // Ensure a single dock is bound to the target monitor
-        gboolean active = FALSE;
-        for (GList *l = g_active_states; l != NULL; l = l->next) {
-          LambdockState *state = (LambdockState *)l->data;
-          if (state->config_path &&
-              g_strcmp0(state->config_path, file_path) == 0 &&
-              state->monitor == target_monitor) {
-            active = TRUE;
-            reload_dock_instance(state);
-            break;
-          }
-        }
-
-        if (!active) {
-          LOG_C_INFO("Main",
-                     "Spawning dock instance on monitor connector '%s' (%s)...",
-                     monitor_target, file_path);
-          create_dock_instance(app, target_monitor, file_path);
-        }
-      } else {
-        // Destroy monitor-specific docks if target is no longer "all"
-        to_destroy = NULL;
-        for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-          LambdockState *state = (LambdockState *)curr->data;
-          if (state->config_path &&
-              g_strcmp0(state->config_path, file_path) == 0) {
-            if (state->monitor != NULL) {
-              to_destroy = g_list_append(to_destroy, state);
-            }
-          }
-        }
-        for (GList *l = to_destroy; l != NULL; l = l->next) {
-          destroy_dock_instance((LambdockState *)l->data);
-        }
-        g_list_free(to_destroy);
-
-        // Single default dock instance
-        gboolean active = FALSE;
-        for (GList *l = g_active_states; l != NULL; l = l->next) {
-          LambdockState *state = (LambdockState *)l->data;
-          if (state->config_path &&
-              g_strcmp0(state->config_path, file_path) == 0 &&
-              state->monitor == NULL) {
-            active = TRUE;
-            reload_dock_instance(state);
-            break;
-          }
-        }
-
-        if (!active) {
-          LOG_C_INFO("Main", "Spawning single dock instance (%s)...",
-                     file_path);
-          create_dock_instance(app, NULL, file_path);
-        }
-      }
-      if (target_monitor)
-        g_object_unref(target_monitor);
-      free(monitor_target); /* get_monitor_config_for may return scm_to_utf8_string() */
-    }
-  } else {
-    // No settings files exist on disk: destroy all file-backed docks
-    GList *to_destroy = NULL;
-    for (GList *curr = g_active_states; curr != NULL; curr = curr->next) {
-      LambdockState *state = (LambdockState *)curr->data;
-      if (state->config_path != NULL) {
-        to_destroy = g_list_append(to_destroy, state);
-      }
-    }
-    for (GList *l = to_destroy; l != NULL; l = l->next) {
-      destroy_dock_instance((LambdockState *)l->data);
-    }
-    g_list_free(to_destroy);
-
-    if (g_active_states == NULL) {
+    if (dock_registry_is_empty()) {
       LOG_C_INFO("Main",
                  "No settings files found. Spawning default fallback dock...");
       reload_guile_config();
       create_dock_instance(app, NULL, NULL);
     }
+    return;
   }
+
+  LOG_C_INFO("Main", "Settings file(s) detected. Destroying fallback dock.");
+  destroy_docks(docks_matching(dock_has_no_config, NULL));
+  destroy_docks(docks_matching(dock_config_missing_from, disk_files));
+
+  for (GList *df = disk_files; df != NULL; df = df->next)
+    reconcile_settings_file(app, (const char *)df->data);
 
   g_list_free_full(disk_files, g_free);
 }
-
 /* =========================================================================
  * REPL HOT-RELOAD vs DISK SYNC
  * ========================================================================= */
@@ -432,12 +460,10 @@ static void sync_docks_with_disk(GtkApplication *app) {
  * disk files.
  */
 static void redraw_active_docks(void) {
-  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
-    if (state) {
-      reload_dock_instance(state);
-    }
-  }
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++)
+    reload_dock_instance(g_ptr_array_index(docks, i));
+  g_ptr_array_unref(docks);
 }
 
 static gboolean on_manual_reload_idle(gpointer user_data) {
@@ -482,8 +508,11 @@ static void setup_guile_primitives(void) {
  */
 static gboolean on_config_reload_timeout(gpointer user_data) {
   GtkApplication *app = GTK_APPLICATION(user_data);
-  sync_docks_with_disk(app);
+
+  /* The source is gone once we return; forget the id so the next file event
+   * cannot remove an unrelated (recycled) source. */
   g_reload_timer_id = 0;
+  sync_docks_with_disk(app);
   return G_SOURCE_REMOVE;
 }
 
@@ -500,10 +529,8 @@ static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
   (void)other_file;
   (void)event_type;
 
-  if (g_reload_timer_id > 0) {
-    g_source_remove(g_reload_timer_id);
-  }
-
+  /* Debounce: restart the countdown on every event. */
+  g_clear_handle_id(&g_reload_timer_id, g_source_remove);
   g_reload_timer_id = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
                                     on_config_reload_timeout, user_data);
 }
@@ -565,11 +592,15 @@ static void on_monitor_invalidated(GdkMonitor *monitor, gpointer user_data) {
  * layer-shell surfaces (and iterating the monitor model in is_monitor_valid)
  * while the GListModel is still emitting items-changed is reentrancy-prone.
  */
-static gboolean g_monitor_sync_pending = FALSE;
+/* Id of the pending monitor-reconcile idle, or 0 when none is queued. Keeping
+ * the id (instead of a separate boolean) means the "already queued" test and
+ * the cancellation use the same value. */
+static guint g_monitor_sync_idle_id = 0;
 
 static gboolean on_monitors_changed_idle(gpointer user_data) {
-  g_monitor_sync_pending = FALSE;
   GtkApplication *app = GTK_APPLICATION(user_data);
+
+  g_monitor_sync_idle_id = 0;
   LOG_C_INFO("Main", "MONITORS CHANGED: reconciling docks");
   sync_docks_with_disk(app);
   LOG_C_INFO("Main", "MONITORS CHANGED: reconciliation done");
@@ -583,10 +614,9 @@ static void on_monitors_changed_cb(GListModel *monitors, guint position,
   LOG_C_INFO("Main", "MONITORS CHANGED: position=%u removed=%u added=%u",
              position, removed, added);
 
-  if (!g_monitor_sync_pending) {
-    g_monitor_sync_pending = TRUE;
-    g_idle_add(on_monitors_changed_idle, user_data);
-  }
+  if (g_monitor_sync_idle_id == 0)
+    g_monitor_sync_idle_id =
+        g_idle_add(on_monitors_changed_idle, user_data);
 }
 
 /**
@@ -618,33 +648,19 @@ static void setup_monitor_listeners(GtkApplication *app) {
  * @param monitor GdkMonitor target (or NULL for default monitor).
  * @param config_path Absolute path to the settings file for this dock instance.
  */
-static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
-                                 const char *config_path) {
-  LambdockState *state = g_new0(LambdockState, 1);
-  state->monitor = monitor ? g_object_ref(monitor) : NULL;
-  state->config_path = config_path ? g_strdup(config_path) : NULL;
+/* -------------------------------------------------------------------------
+ * DOCK INSTANCE CONSTRUCTION
+ * -------------------------------------------------------------------------
+ * Creating a dock is a sequence of independent steps: read the settings, build
+ * the widget tree, build the menu, install the input, then show it. Each step is
+ * its own function so a step can be read (and changed) without holding the whole
+ * 170-line construction in your head.
+ */
 
-  // Listen for monitor disconnects immediately
-  if (state->monitor) {
-    g_signal_connect(state->monitor, "invalidate",
-                     G_CALLBACK(on_monitor_invalidated), state);
-  }
-
-  state->edge = get_position_config_for(state->config_path);
-
-  state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
-                        state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
-                           ? GTK_ORIENTATION_VERTICAL
-                           : GTK_ORIENTATION_HORIZONTAL;
-
-  GtkWidget *window = gtk_application_window_new(app);
-  state->window = window;
-  /* A window without a title is announced as an unnamed frame; name the dock so
-   * a screen reader says what surface the focus just landed on. */
-  gtk_window_set_title(GTK_WINDOW(window), _("Lambdock dock"));
-
-  /* Resolve mode flags BEFORE loading CSS so the taskbar modifier stylesheet is
-   * applied when taskbar mode or window titles are enabled. */
+/** Reads everything the dock needs out of the settings file into @state. */
+static void dock_state_read_config(LambdockState *state) {
+  /* Mode flags are resolved BEFORE the CSS is loaded, so the taskbar modifier
+   * stylesheet is applied when taskbar mode or window titles are enabled. */
   state->taskbar = get_taskbar_config_for(state->config_path);
   state->show_window_titles =
       get_show_window_titles_config_for(state->config_path);
@@ -654,20 +670,47 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->track_windows = get_track_windows_config_for(state->config_path);
   state->show_when_clear = get_show_when_clear_config_for(state->config_path);
   state->hover_animate = get_hover_animate_config_for(state->config_path);
-  state->reduce_motion =
-      get_reduce_motion_config_for(state->config_path);
+  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
   state->icon_size = get_icon_size_config_for(state->config_path);
   state->item_spacing = get_item_spacing_config_for(state->config_path);
-  state->capsule_padding =
-      get_capsule_padding_config_for(state->config_path);
+  state->capsule_padding = get_capsule_padding_config_for(state->config_path);
+}
 
-  /* Load CSS theme AFTER window context is created */
-  state->theme = get_theme_config_for(state->config_path);
-  load_custom_css(state);
+/** The scrolling content viewport: the item box inside a scroller. */
+static GtkWidget *dock_viewport_build(LambdockState *state) {
+  GtkWidget *scrolled_window = gtk_scrolled_window_new();
+  gtk_widget_set_overflow(scrolled_window, GTK_OVERFLOW_VISIBLE);
+  gtk_scrolled_window_set_propagate_natural_width(
+      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
+  gtk_scrolled_window_set_propagate_natural_height(
+      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
 
+  state->box = gtk_box_new(state->orientation, state->item_spacing);
+  gtk_widget_set_overflow(state->box, GTK_OVERFLOW_VISIBLE);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window),
+                                state->box);
+
+  /* The viewport only ever scrolls along the dock's main axis. */
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
+  else
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
+                                   GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
+
+  GtkEventController *scroll_ctrl =
+      gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
+  g_signal_connect(scroll_ctrl, "scroll", G_CALLBACK(on_dock_scroll), state);
+  gtk_widget_add_controller(scrolled_window, scroll_ctrl);
+
+  return scrolled_window;
+}
+
+/** The capsule (and its shelf frame) inside the window's overlay. */
+static void dock_capsule_build(LambdockState *state) {
   GtkWidget *overlay = gtk_overlay_new();
   gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
-  gtk_window_set_child(GTK_WINDOW(window), overlay);
+  gtk_window_set_child(GTK_WINDOW(state->window), overlay);
   state->overlay = overlay;
 
   GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
@@ -675,41 +718,19 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   state->bg_capsule = bg_capsule;
 
   /* Wrap the styled capsule in the shelf frame. With the default shelf
-   * parameters (no tilt) the frame is a pure pass-through, so the dock looks
-   * identical to a plain capsule. */
-  GtkWidget *bg_shelf = shelf_frame_new(bg_capsule);
-  state->bg_shelf = bg_shelf;
-  gtk_widget_set_overflow(bg_shelf, GTK_OVERFLOW_VISIBLE);
+   * parameters (no tilt) the frame is a pure pass-through. */
+  state->bg_shelf = shelf_frame_new(bg_capsule);
+  gtk_widget_set_overflow(state->bg_shelf, GTK_OVERFLOW_VISIBLE);
 
   apply_dock_mode_classes(state);
+}
 
-  GtkWidget *box = gtk_box_new(state->orientation, state->item_spacing);
-  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
-  state->box = box;
+/** Assembles window -> overlay -> [shelf frame( capsule ), scroller]. */
+static void dock_widgets_build(LambdockState *state) {
+  dock_capsule_build(state);
 
-  GtkWidget *scrolled_window = gtk_scrolled_window_new();
+  GtkWidget *scrolled_window = dock_viewport_build(state);
   state->scrolled_window = scrolled_window;
-  gtk_widget_set_overflow(scrolled_window, GTK_OVERFLOW_VISIBLE);
-
-  gtk_scrolled_window_set_propagate_natural_width(
-      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
-  gtk_scrolled_window_set_propagate_natural_height(
-      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
-
-  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window), box);
-
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
-                                   GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
-  } else {
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
-                                   GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
-  }
-
-  GtkEventController *scroll_ctrl =
-      gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
-  g_signal_connect(scroll_ctrl, "scroll", G_CALLBACK(on_dock_scroll), state);
-  gtk_widget_add_controller(scrolled_window, scroll_ctrl);
 
   update_dock_dimensions(state);
 
@@ -717,17 +738,18 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                               ? GTK_SIZE_GROUP_HORIZONTAL
                               : GTK_SIZE_GROUP_VERTICAL;
   state->size_group = gtk_size_group_new(mode);
-  gtk_size_group_add_widget(state->size_group, bg_capsule);
+  gtk_size_group_add_widget(state->size_group, state->bg_capsule);
   gtk_size_group_add_widget(state->size_group, scrolled_window);
 
-  gtk_overlay_set_child(GTK_OVERLAY(overlay), bg_shelf);
-  gtk_overlay_add_overlay(GTK_OVERLAY(overlay), scrolled_window);
+  gtk_overlay_set_child(GTK_OVERLAY(state->overlay), state->bg_shelf);
+  gtk_overlay_add_overlay(GTK_OVERLAY(state->overlay), scrolled_window);
 
-  gtk_widget_set_overflow(box, GTK_OVERFLOW_VISIBLE);
-  gtk_widget_set_overflow(window, GTK_OVERFLOW_VISIBLE);
+  gtk_widget_set_overflow(state->box, GTK_OVERFLOW_VISIBLE);
+  gtk_widget_set_overflow(state->window, GTK_OVERFLOW_VISIBLE);
+}
 
-  populate_dock_items_for(state);
-
+/** The window's own context menu: Preferences (for this dock), About, Quit. */
+static void dock_menu_popover_build(LambdockState *state) {
   GMenu *menu_model = g_menu_new();
 
   /* Preferences carries the dock's settings path as its action target: with
@@ -747,47 +769,90 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
       gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
   g_object_unref(menu_model);
 
-  gtk_widget_set_parent(popover, window);
+  gtk_widget_set_parent(popover, state->window);
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
   lambdock_popover_close_on_escape(popover);
-  state->popover = popover;
 
   g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
+  state->popover = popover;
+}
 
+/** Right click, drag and drop, keyboard navigation, motion tracking. */
+static void dock_input_install(LambdockState *state) {
   GtkGesture *right_click_gesture = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
                                 GDK_BUTTON_SECONDARY);
   g_signal_connect(right_click_gesture, "pressed", G_CALLBACK(on_right_click),
                    state);
-  gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(right_click_gesture));
+  gtk_widget_add_controller(state->window,
+                            GTK_EVENT_CONTROLLER(right_click_gesture));
 
-  setup_layer_shell_window(state);
   setup_dock_motion_controller(state);
   dock_dnd_setup(state);
 
   /* Keyboard access: arrows walk the icons, Menu opens their context menu,
    * Escape closes whatever the dock has open, Ctrl+Arrow rearranges them. */
-  lambdock_dock_attach_key_navigation(window, state);
+  lambdock_dock_attach_key_navigation(state->window, state);
+}
+
+/** Shows the dock and puts it under window tracking / auto-hide. */
+static void dock_present(LambdockState *state) {
+  setup_layer_shell_window(state);
 
   /* A dock that starts with reduced motion must not run a first slide. */
   dock_apply_motion_preference(state);
 
-  g_active_states = g_list_append(g_active_states, state);
+  dock_registry_add(state);
+  g_signal_connect_swapped(state->window, "destroy",
+                           G_CALLBACK(destroy_dock_instance), state);
 
-  g_signal_connect_swapped(window, "destroy", G_CALLBACK(destroy_dock_instance),
-                           state);
-
-  gtk_window_present(GTK_WINDOW(window));
+  gtk_window_present(GTK_WINDOW(state->window));
 
   init_toplevel_tracker(state);
   sync_window_trackers(state);
 
   if (state->auto_hide && state->show_when_clear &&
-      state->window_trackers != NULL) {
+      state->window_trackers != NULL)
     hide_dock(state);
-  } else {
+  else
     schedule_initial_autohide(state);
+}
+
+static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
+                                 const char *config_path) {
+  LambdockState *state = g_new0(LambdockState, 1);
+
+  state->monitor = monitor ? g_object_ref(monitor) : NULL;
+  state->config_path = config_path ? g_strdup(config_path) : NULL;
+
+  /* Listen for this monitor disappearing out from under the dock. */
+  if (state->monitor) {
+    g_signal_connect(state->monitor, "invalidate",
+                     G_CALLBACK(on_monitor_invalidated), state);
   }
+
+  state->edge = get_position_config_for(state->config_path);
+  state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
+                        state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
+                           ? GTK_ORIENTATION_VERTICAL
+                           : GTK_ORIENTATION_HORIZONTAL;
+
+  dock_state_read_config(state);
+
+  state->window = gtk_application_window_new(app);
+  /* A window without a title is announced as an unnamed frame; name the dock so
+   * a screen reader says what surface the focus just landed on. */
+  gtk_window_set_title(GTK_WINDOW(state->window), _("Lambdock dock"));
+
+  /* The theme stylesheet needs the window's CSS context, hence this order. */
+  state->theme = get_theme_config_for(state->config_path);
+  load_custom_css(state);
+
+  dock_widgets_build(state);
+  populate_dock_items_for(state);
+  dock_menu_popover_build(state);
+  dock_input_install(state);
+  dock_present(state);
 }
 
 /**
@@ -802,8 +867,10 @@ static void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
   (void)pspec;
   (void)user_data;
 
-  for (GList *l = g_active_states; l != NULL; l = l->next)
-    dock_apply_motion_preference((LambdockState *)l->data);
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++)
+    dock_apply_motion_preference(g_ptr_array_index(docks, i));
+  g_ptr_array_unref(docks);
 }
 
 /**

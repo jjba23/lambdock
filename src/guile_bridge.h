@@ -171,7 +171,7 @@ void dock_layout_set_order(const char *config_path, GList *keys);
 
 /**
  * dock_layout_set_view:
- * Stores the view mode ('grid', 'list' or 'fan') of a stack item.
+ * Stores the view mode ('grid' or 'list') of a stack item.
  */
 void dock_layout_set_view(const char *config_path, const char *key,
                           const char *view);

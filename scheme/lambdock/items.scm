@@ -55,7 +55,7 @@
 ;;
 ;; `path` and `view-mode` are only meaningful for stacks: a stack is a dock icon
 ;; that shows the contents of a directory (like the macOS Downloads stack), and
-;; `view-mode` picks how those contents are laid out ('grid, 'list or 'fan).
+;; `view-mode` picks how those contents are laid out ('grid or 'list).
 ;; Every other item keeps them at "" / 'grid.
 ;;
 ;; `meter?`, `unit` and `max` describe dynamic items that are drawn as a gauge
@@ -192,7 +192,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   max))
 
 ;; A stack: a dock icon that opens a popover with the contents of a directory.
-;; `view-mode` is one of 'grid, 'list or 'fan and can be changed at runtime from
+;; `view-mode` is one of 'grid or 'list and can be changed at runtime from
 ;; the item's context menu.
 (define* (stack-item #:key (name "Stack")
                      (icon "folder")
@@ -207,7 +207,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   0
                   hover-animate?
                   path
-                  (if (memq view-mode '(grid list fan))
+                  (if (memq view-mode '(grid list))
                       view-mode
                       'grid)
                   #f

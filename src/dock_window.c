@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "dock_window.h"
+#include "core/dock_dims.h"
 #include "accessibility.h"
 #include "guile_bridge.h"
 #include "logger.h"
@@ -867,198 +868,219 @@ gboolean is_monitor_valid(GdkMonitor *mon) {
   return FALSE;
 }
 
+/* =========================================================================
+ * DOCK DIMENSIONS
+ * =========================================================================
+ * The numbers are decided by the pure `lambdock_dock_dims_compute()`; the
+ * functions below only apply them, one widget concern each.
+ */
+
+/** Reads the monitor's geometry, falling back to the first monitor. */
+static void dock_monitor_size(const LambdockState *state, int *width,
+                              int *height) {
+  *width = 0;
+  *height = 0;
+
+  GdkMonitor *monitor = state->monitor;
+  if (!monitor || !is_monitor_valid(monitor))
+    monitor = NULL;
+
+  GdkDisplay *display = gdk_display_get_default();
+  GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
+
+  if (!monitor && monitors && g_list_model_get_n_items(monitors) > 0)
+    monitor = GDK_MONITOR(g_list_model_get_item(monitors, 0));
+  else if (monitor)
+    g_object_ref(monitor);
+
+  if (!monitor)
+    return;
+
+  GdkRectangle geometry;
+  gdk_monitor_get_geometry(monitor, &geometry);
+  *width = geometry.width;
+  *height = geometry.height;
+  g_object_unref(monitor);
+}
+
+/** Size-group mode follows the dock's orientation. */
+static void dock_dims_apply_size_group(const LambdockState *state) {
+  if (!state->size_group)
+    return;
+
+  GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+                              ? GTK_SIZE_GROUP_HORIZONTAL
+                              : GTK_SIZE_GROUP_VERTICAL;
+  gtk_size_group_set_mode(state->size_group, mode);
+}
+
+/** The scrolled viewport only ever scrolls along the dock's main axis. */
+static void dock_dims_apply_scroll_policy(const LambdockState *state,
+                                          const LambdockDockDims *dims) {
+  if (!state->scrolled_window)
+    return;
+
+  GtkScrolledWindow *scrolled = GTK_SCROLLED_WINDOW(state->scrolled_window);
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
+    gtk_scrolled_window_set_policy(scrolled, GTK_POLICY_EXTERNAL,
+                                   GTK_POLICY_NEVER);
+    gtk_scrolled_window_set_max_content_width(scrolled, dims->max_main_h_px);
+  } else {
+    gtk_scrolled_window_set_policy(scrolled, GTK_POLICY_NEVER,
+                                   GTK_POLICY_EXTERNAL);
+    gtk_scrolled_window_set_max_content_height(scrolled, dims->max_main_v_px);
+  }
+}
+
+/** Padding along the main axis, and the margin that keeps icons off the edge. */
+static void dock_dims_apply_box_margins(const LambdockState *state,
+                                        const LambdockDockDims *dims,
+                                        gboolean horizontal) {
+  if (horizontal) {
+    gtk_widget_set_margin_start(state->box, dims->padding_px);
+    gtk_widget_set_margin_end(state->box, dims->padding_px);
+    gtk_widget_set_margin_top(state->box, 0);
+    gtk_widget_set_margin_bottom(state->box, 0);
+  } else {
+    gtk_widget_set_margin_top(state->box, dims->padding_px);
+    gtk_widget_set_margin_bottom(state->box, dims->padding_px);
+    gtk_widget_set_margin_start(state->box, 0);
+    gtk_widget_set_margin_end(state->box, 0);
+  }
+
+  /* Keep the icons off the outer edge by the front glass thickness, so the
+   * mirrors (and any front face) have room in front of them. The reflection
+   * widget already occupies the band inside that glass, hence the difference:
+   * the icons' edge ends up exactly `front` pixels from the screen edge. */
+  if (dims->outer_margin_px <= 0)
+    return;
+
+  gboolean edge_is_start =
+      horizontal ? (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+                 : (state->edge == GTK_LAYER_SHELL_EDGE_LEFT);
+
+  if (horizontal) {
+    if (edge_is_start)
+      gtk_widget_set_margin_top(state->box, dims->outer_margin_px);
+    else
+      gtk_widget_set_margin_bottom(state->box, dims->outer_margin_px);
+  } else {
+    if (edge_is_start)
+      gtk_widget_set_margin_start(state->box, dims->outer_margin_px);
+    else
+      gtk_widget_set_margin_end(state->box, dims->outer_margin_px);
+  }
+}
+
+/** Cross-axis size requests for the overlay and the capsule. */
+static void dock_dims_apply_size_requests(const LambdockState *state,
+                                          const LambdockDockDims *dims,
+                                          gboolean horizontal) {
+  if (horizontal) {
+    gtk_widget_set_size_request(state->overlay, -1, dims->overlay_cross_px);
+    gtk_widget_set_size_request(state->bg_capsule, -1,
+                                dims->capsule_cross_px);
+  } else {
+    gtk_widget_set_size_request(state->overlay, dims->overlay_cross_px, -1);
+    gtk_widget_set_size_request(state->bg_capsule, dims->capsule_cross_px,
+                                -1);
+  }
+}
+
+/** The scrolled viewport fills a taskbar and centres in a floating capsule. */
+static void dock_dims_apply_scroll_alignment(const LambdockState *state,
+                                             gboolean horizontal) {
+  if (!state->scrolled_window)
+    return;
+
+  GtkWidget *scrolled = state->scrolled_window;
+
+  if (horizontal) {
+    gtk_widget_set_valign(scrolled, (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+                                       ? GTK_ALIGN_START
+                                       : GTK_ALIGN_END);
+    gtk_widget_set_halign(scrolled, state->taskbar ? GTK_ALIGN_FILL
+                                                   : GTK_ALIGN_CENTER);
+    /* In taskbar mode the content viewport must expand to fill the bar so
+     * icons grow from the leading edge. */
+    gtk_widget_set_hexpand(scrolled, state->taskbar);
+  } else {
+    gtk_widget_set_halign(scrolled, (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
+                                        ? GTK_ALIGN_START
+                                        : GTK_ALIGN_END);
+    gtk_widget_set_valign(scrolled, state->taskbar ? GTK_ALIGN_FILL
+                                                   : GTK_ALIGN_CENTER);
+    gtk_widget_set_vexpand(scrolled, state->taskbar);
+  }
+}
+
+/** A taskbar fills its cross axis; a floating capsule centres and hugs edge. */
+static void dock_dims_apply_capsule_alignment(const LambdockState *state,
+                                              gboolean horizontal) {
+  gboolean edge_is_start =
+      horizontal ? (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
+                 : (state->edge == GTK_LAYER_SHELL_EDGE_LEFT);
+
+  if (horizontal) {
+    gtk_widget_set_halign(state->bg_capsule,
+                          state->taskbar ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(state->box,
+                          state->taskbar ? GTK_ALIGN_START : GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(state->bg_capsule, edge_is_start ? GTK_ALIGN_START
+                                                           : GTK_ALIGN_END);
+    gtk_widget_set_valign(state->box,
+                          edge_is_start ? GTK_ALIGN_START : GTK_ALIGN_END);
+  } else {
+    gtk_widget_set_valign(state->bg_capsule,
+                          state->taskbar ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER);
+    gtk_widget_set_valign(state->box,
+                          state->taskbar ? GTK_ALIGN_START : GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(state->bg_capsule, edge_is_start ? GTK_ALIGN_START
+                                                           : GTK_ALIGN_END);
+    gtk_widget_set_halign(state->box,
+                          edge_is_start ? GTK_ALIGN_START : GTK_ALIGN_END);
+  }
+}
+
+/** The shelf wrapper is what the overlay positions, so it mirrors the capsule. */
+static void dock_dims_mirror_shelf_alignment(const LambdockState *state) {
+  if (!state->bg_shelf)
+    return;
+
+  gtk_widget_set_halign(state->bg_shelf,
+                        gtk_widget_get_halign(state->bg_capsule));
+  gtk_widget_set_valign(state->bg_shelf,
+                        gtk_widget_get_valign(state->bg_capsule));
+}
+
 void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int bg_fixed_dim = dock_capsule_cross_dim(state);
-  int max_cross_dim = dock_cross_axis_dim(state);
+  int monitor_width = 0;
+  int monitor_height = 0;
+  dock_monitor_size(state, &monitor_width, &monitor_height);
 
-  GdkMonitor *mon = state->monitor;
-  GdkDisplay *display = gdk_display_get_default();
+  LambdockShelfGeometry shelf =
+      lambdock_shelf_geometry_for(state, state->icon_size);
+  LambdockDockDims dims =
+      lambdock_dock_dims_compute(state->icon_size, state->capsule_padding,
+                                 shelf, monitor_width, monitor_height);
 
-  // Safely verify if stored monitor is still valid; if not, fall back to
-  // default
-  if (!mon || !is_monitor_valid(mon)) {
-    mon = NULL;
-    if (display) {
-      GListModel *monitors = gdk_display_get_monitors(display);
-      if (monitors && g_list_model_get_n_items(monitors) > 0) {
-        gpointer item = g_list_model_get_item(monitors, 0);
-        if (item) {
-          mon = GDK_MONITOR(item); // Keep item ref until done
-        }
-      }
-    }
-  } else {
-    g_object_ref(mon);
-  }
+  gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
 
-  int mon_width = 1920;
-  int mon_height = 1080;
-  if (mon) {
-    GdkRectangle geom;
-    gdk_monitor_get_geometry(mon, &geom);
-    if (geom.width > 0)
-      mon_width = geom.width;
-    if (geom.height > 0)
-      mon_height = geom.height;
-    g_object_unref(mon); // Clean up reference ONLY after reading geometry
-  }
-
-  int max_main_dim_h = mon_width - 32;
-  int max_main_dim_v = mon_height - 32;
-  if (max_main_dim_h < 100)
-    max_main_dim_h = 100;
-  if (max_main_dim_v < 100)
-    max_main_dim_v = 100;
-
-  if (state->size_group) {
-    GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
-                                ? GTK_SIZE_GROUP_HORIZONTAL
-                                : GTK_SIZE_GROUP_VERTICAL;
-    gtk_size_group_set_mode(state->size_group, mode);
-  }
-
-  if (state->scrolled_window) {
-    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-      gtk_scrolled_window_set_policy(
-          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_EXTERNAL,
-          GTK_POLICY_NEVER);
-      gtk_scrolled_window_set_max_content_width(
-          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_h);
-    } else {
-      gtk_scrolled_window_set_policy(
-          GTK_SCROLLED_WINDOW(state->scrolled_window), GTK_POLICY_NEVER,
-          GTK_POLICY_EXTERNAL);
-      gtk_scrolled_window_set_max_content_height(
-          GTK_SCROLLED_WINDOW(state->scrolled_window), max_main_dim_v);
-    }
-  }
-
-  /* The room between the capsule's ends and the icons: the theme's button
-   * padding sits on top of it. */
-  int padding = (state->capsule_padding >= 0) ? state->capsule_padding
-                                              : CAPSULE_MAIN_AXIS_PADDING_PX;
-
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_widget_set_margin_start(state->box, padding);
-    gtk_widget_set_margin_end(state->box, padding);
-    gtk_widget_set_margin_top(state->box, 0);
-    gtk_widget_set_margin_bottom(state->box, 0);
-
-    /* Keep the icons off the outer edge by the front glass thickness, so the
-     * mirrors (and any front face) have room in front of them. The reflection
-     * widget already occupies the band inside that glass, hence the difference:
-     * the icons' bottom edge ends up exactly `front` pixels from the screen
-     * edge, with the mirror in the glass below it. That is what puts the icons'
-     * centre on the slab's top edge, as in the OS X dock. */
-    LambdockShelfGeometry geometry =
-        lambdock_shelf_geometry_for(state, state->icon_size);
-    int outer_margin = geometry.outer_px - geometry.band_px;
-    if (outer_margin < 0)
-      outer_margin = 0;
-    if (outer_margin > 0) {
-      if (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
-        gtk_widget_set_margin_top(state->box, outer_margin);
-      else
-        gtk_widget_set_margin_bottom(state->box, outer_margin);
-    }
-
-    gtk_widget_set_size_request(state->overlay, -1, max_cross_dim);
-    gtk_widget_set_size_request(state->bg_capsule, -1, bg_fixed_dim);
-
-    if (state->scrolled_window) {
-      gtk_widget_set_valign(state->scrolled_window,
-                            (state->edge == GTK_LAYER_SHELL_EDGE_TOP)
-                                ? GTK_ALIGN_START
-                                : GTK_ALIGN_END);
-      gtk_widget_set_halign(state->scrolled_window,
-                            state->taskbar ? GTK_ALIGN_FILL
-                                           : GTK_ALIGN_CENTER);
-      /* In taskbar mode the content viewport must expand to fill the bar so
-       * icons grow from the left edge. */
-      gtk_widget_set_hexpand(state->scrolled_window, state->taskbar);
-    }
-
-    if (state->taskbar) {
-      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_FILL);
-      gtk_widget_set_halign(state->box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_CENTER);
-      gtk_widget_set_halign(state->box, GTK_ALIGN_CENTER);
-    }
-
-    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_START);
-      gtk_widget_set_valign(state->box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_END);
-      gtk_widget_set_valign(state->box, GTK_ALIGN_END);
-    }
-  } else {
-    gtk_widget_set_margin_top(state->box, padding);
-    gtk_widget_set_margin_bottom(state->box, padding);
-    gtk_widget_set_margin_start(state->box, 0);
-    gtk_widget_set_margin_end(state->box, 0);
-
-    /* Same on side docks. */
-    LambdockShelfGeometry geometry =
-        lambdock_shelf_geometry_for(state, state->icon_size);
-    int outer_margin = geometry.outer_px - geometry.band_px;
-    if (outer_margin < 0)
-      outer_margin = 0;
-    if (outer_margin > 0) {
-      if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
-        gtk_widget_set_margin_start(state->box, outer_margin);
-      else
-        gtk_widget_set_margin_end(state->box, outer_margin);
-    }
-
-    gtk_widget_set_size_request(state->overlay, max_cross_dim, -1);
-    gtk_widget_set_size_request(state->bg_capsule, bg_fixed_dim, -1);
-
-    if (state->scrolled_window) {
-      gtk_widget_set_halign(state->scrolled_window,
-                            (state->edge == GTK_LAYER_SHELL_EDGE_LEFT)
-                                ? GTK_ALIGN_START
-                                : GTK_ALIGN_END);
-      gtk_widget_set_valign(state->scrolled_window,
-                            state->taskbar ? GTK_ALIGN_FILL
-                                           : GTK_ALIGN_CENTER);
-      gtk_widget_set_vexpand(state->scrolled_window, state->taskbar);
-    }
-
-    if (state->taskbar) {
-      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_FILL);
-      gtk_widget_set_valign(state->box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_valign(state->bg_capsule, GTK_ALIGN_CENTER);
-      gtk_widget_set_valign(state->box, GTK_ALIGN_CENTER);
-    }
-
-    if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_START);
-      gtk_widget_set_halign(state->box, GTK_ALIGN_START);
-    } else {
-      gtk_widget_set_halign(state->bg_capsule, GTK_ALIGN_END);
-      gtk_widget_set_halign(state->box, GTK_ALIGN_END);
-    }
-  }
+  dock_dims_apply_size_group(state);
+  dock_dims_apply_scroll_policy(state, &dims);
+  dock_dims_apply_box_margins(state, &dims, horizontal);
+  dock_dims_apply_size_requests(state, &dims, horizontal);
+  dock_dims_apply_scroll_alignment(state, horizontal);
+  dock_dims_apply_capsule_alignment(state, horizontal);
 
   /* Size, show or hide the glass-shelf reflections so they always match the
    * current icon size and shelf parameters. */
   apply_shelf_layout(state);
-
-  /* The shelf wrapper is what the overlay actually positions, so mirror the
-   * capsule's alignment onto it (the capsule itself stays aligned for themes
-   * and for the size group). */
-  if (state->bg_shelf) {
-    gtk_widget_set_halign(state->bg_shelf,
-                          gtk_widget_get_halign(state->bg_capsule));
-    gtk_widget_set_valign(state->bg_shelf,
-                          gtk_widget_get_valign(state->bg_capsule));
-  }
+  dock_dims_mirror_shelf_alignment(state);
 }
 
 /*
@@ -1301,6 +1323,6 @@ void destroy_dock_instance(LambdockState *state) {
   }
 
   g_free(state->config_path);
-  free(state->theme); /* get_theme_config_for may return a scm_to_utf8_string result */
+  g_free(state->theme);
   g_free(state);
 }

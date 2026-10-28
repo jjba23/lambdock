@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: lambdock\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-10-26 19:47+0100\n"
+"POT-Creation-Date: 2026-10-28 20:59+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,28 +18,28 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
-#. A window without a title is announced as an unnamed frame; name the dock so
-#. * a screen reader says what surface the focus just landed on.
-#: src/main.c:656
-msgid "Lambdock dock"
-msgstr ""
-
 #. Preferences carries the dock's settings path as its action target: with
 #. * several settings files in use, the menu must open the pane for the dock it
 #. * was right-clicked on, not for an arbitrary one.
-#: src/main.c:748
+#: src/main.c:758
 msgid "Preferences…"
 msgstr ""
 
-#: src/main.c:755
+#: src/main.c:765
 msgid "About Lambdock"
 msgstr ""
 
-#: src/main.c:756
+#: src/main.c:766
 msgid "Quit"
 msgstr ""
 
-#: src/dock_window.c:814
+#. A window without a title is announced as an unnamed frame; name the dock so
+#. * a screen reader says what surface the focus just landed on.
+#: src/main.c:845
+msgid "Lambdock dock"
+msgstr ""
+
+#: src/dock_window.c:803
 msgid ""
 "A modern Wayland-native hackable desktop dock bar.\n"
 "\n"
@@ -49,339 +49,336 @@ msgid ""
 "Scheme."
 msgstr ""
 
-#: src/dock_window.c:836
+#: src/dock_window.c:825
 msgid "Find the project's source code here"
 msgstr ""
 
-#: src/ui/app_actions.c:257
+#: src/ui/app_actions.c:245
 msgid "New Window"
 msgstr ""
 
-#: src/ui/app_actions.c:259
+#: src/ui/app_actions.c:247
 msgid "New Private Window"
 msgstr ""
 
-#: src/ui/app_actions.c:261
+#: src/ui/app_actions.c:249
 msgid "Play/Pause"
 msgstr ""
 
-#: src/ui/app_actions.c:263
+#: src/ui/app_actions.c:251
 msgid "Previous Track"
 msgstr ""
 
-#: src/ui/app_actions.c:265
+#: src/ui/app_actions.c:253
 msgid "Next Track"
 msgstr ""
 
-#: src/ui/app_actions.c:267
+#: src/ui/app_actions.c:255
 msgid "Stop Playback"
 msgstr ""
 
-#: src/ui/popover_menu.c:517
+#: src/ui/popover_menu.c:528
 msgid "Remove from Dock"
 msgstr ""
 
-#: src/ui/popover_menu.c:570
+#: src/ui/popover_menu.c:562
 msgid "Application"
 msgstr ""
 
-#: src/ui/popover_menu.c:583
+#: src/ui/popover_menu.c:574
 #, c-format
 msgid "%u item in the trash"
 msgid_plural "%u items in the trash"
 msgstr[0] ""
 msgstr[1] ""
 
-#: src/ui/popover_menu.c:590
+#: src/ui/popover_menu.c:581
 msgid "Open Trash"
 msgstr ""
 
-#: src/ui/popover_menu.c:596
+#: src/ui/popover_menu.c:586
 msgid "Empty Trash"
 msgstr ""
 
-#: src/ui/popover_menu.c:616
+#: src/ui/popover_menu.c:600
 msgid "Grid"
 msgstr ""
 
-#: src/ui/popover_menu.c:618
+#: src/ui/popover_menu.c:602
 msgid "List"
 msgstr ""
 
-#: src/ui/popover_menu.c:620
-msgid "Fan"
-msgstr ""
-
-#: src/ui/popover_menu.c:623
+#: src/ui/popover_menu.c:605
 msgid "Open Folder"
 msgstr ""
 
-#: src/ui/popover_menu.c:639
+#: src/ui/popover_menu.c:614
 msgid "Show Launchpad"
 msgstr ""
 
-#: src/ui/popover_menu.c:666
+#: src/ui/popover_menu.c:628
 msgid "Window"
 msgstr ""
 
-#: src/ui/popover_menu.c:720
+#: src/ui/popover_menu.c:671
 msgid "New Instance"
 msgstr ""
 
-#: src/ui/popover_menu.c:736
+#: src/ui/popover_menu.c:684
 msgid "Close All Windows"
 msgstr ""
 
-#: src/ui/popover_menu.c:747
+#: src/ui/popover_menu.c:697
 msgid "Launch Application"
 msgstr ""
 
-#: src/ui/preferences.c:298
-msgid "Type an exact value"
-msgstr ""
-
 #: src/ui/preferences.c:305
-#, c-format
-msgid "%s, exact value"
-msgstr ""
-
-#: src/ui/preferences.c:307
-msgid "Type a value, or use the arrow keys."
-msgstr ""
-
-#: src/ui/preferences.c:413
-msgid "Behaviour"
-msgstr ""
-
-#: src/ui/preferences.c:414
-msgid "How the dock responds to windows, the pointer and the session."
-msgstr ""
-
-#: src/ui/preferences.c:417
 msgid "Auto-hide"
 msgstr ""
 
-#: src/ui/preferences.c:418
+#: src/ui/preferences.c:306
 msgid "Slide the dock away when the pointer leaves it."
 msgstr ""
 
-#: src/ui/preferences.c:422
+#: src/ui/preferences.c:308
 msgid "Show when no windows"
 msgstr ""
 
-#: src/ui/preferences.c:423
+#: src/ui/preferences.c:309
 msgid "Reveal the dock when the last window is closed."
 msgstr ""
 
-#: src/ui/preferences.c:427
+#: src/ui/preferences.c:311
 msgid "Hover magnification"
 msgstr ""
 
-#: src/ui/preferences.c:427
+#: src/ui/preferences.c:312
 msgid "Grow the icon under the pointer."
 msgstr ""
 
-#: src/ui/preferences.c:430
+#: src/ui/preferences.c:313
 msgid "Track windows"
 msgstr ""
 
-#: src/ui/preferences.c:431
+#: src/ui/preferences.c:314
 msgid "Show running indicators and window menus."
 msgstr ""
 
-#: src/ui/preferences.c:435
+#: src/ui/preferences.c:316
 msgid "Window titles"
 msgstr ""
 
-#: src/ui/preferences.c:436
+#: src/ui/preferences.c:317
 msgid "Show window titles on running taskbar buttons."
 msgstr ""
 
-#: src/ui/preferences.c:439
+#: src/ui/preferences.c:322
 msgid "Window mode"
 msgstr ""
 
-#: src/ui/preferences.c:440
+#: src/ui/preferences.c:323
 msgid "A floating dock or a full-width taskbar."
 msgstr ""
 
-#: src/ui/preferences.c:446
-msgid "Accessibility"
-msgstr ""
-
-#: src/ui/preferences.c:447
-msgid ""
-"Motion comfort. The desktop's own accessibility settings are honoured too."
-msgstr ""
-
-#: src/ui/preferences.c:451
+#: src/ui/preferences.c:328
 msgid "Reduce motion"
 msgstr ""
 
-#: src/ui/preferences.c:452
+#: src/ui/preferences.c:329
 msgid ""
 "Skip the dock's slide and hover magnification. Also follows the desktop's "
 "\"enable animations\" setting."
 msgstr ""
 
-#: src/ui/preferences.c:458
-msgid "Layout & material"
-msgstr ""
-
-#: src/ui/preferences.c:459
-msgid "Size, spacing, screen edge and the material the dock is dressed in."
-msgstr ""
-
-#: src/ui/preferences.c:461 src/ui/preferences.c:490
+#: src/ui/preferences.c:335 src/ui/preferences.c:355
 msgid "Icon size"
 msgstr ""
 
-#: src/ui/preferences.c:462
+#: src/ui/preferences.c:336
 msgid "Pixel resolution of the launcher icons."
 msgstr ""
 
-#: src/ui/preferences.c:465
+#: src/ui/preferences.c:338
 msgid "Item spacing"
 msgstr ""
 
-#: src/ui/preferences.c:466
+#: src/ui/preferences.c:339
 msgid "Gap between icons, in pixels."
 msgstr ""
 
-#: src/ui/preferences.c:469
+#: src/ui/preferences.c:341
 msgid "Capsule padding"
 msgstr ""
 
-#: src/ui/preferences.c:470
+#: src/ui/preferences.c:342
 msgid "Room between the capsule's ends and the icons."
 msgstr ""
 
-#: src/ui/preferences.c:473
+#: src/ui/preferences.c:347
 msgid "Screen edge"
 msgstr ""
 
-#: src/ui/preferences.c:474
+#: src/ui/preferences.c:348
 msgid "Which edge the dock is attached to."
 msgstr ""
 
-#: src/ui/preferences.c:479
+#: src/ui/preferences.c:350
 msgid "Theme"
 msgstr ""
 
-#: src/ui/preferences.c:480
+#: src/ui/preferences.c:350
 msgid "The material the dock is dressed in."
 msgstr ""
 
-#: src/ui/preferences.c:486
-msgid "Launchpad"
-msgstr ""
-
-#: src/ui/preferences.c:487
-msgid "How the full screen application grid looks when this dock opens it."
-msgstr ""
-
-#: src/ui/preferences.c:491
+#: src/ui/preferences.c:356
 msgid "Pixel size of an application icon in the grid."
 msgstr ""
 
-#: src/ui/preferences.c:495
+#: src/ui/preferences.c:359
 msgid "Columns"
 msgstr ""
 
-#: src/ui/preferences.c:496
+#: src/ui/preferences.c:360
 msgid "Tiles per row; 0 fits as many as the screen allows."
 msgstr ""
 
-#: src/ui/preferences.c:501
+#: src/ui/preferences.c:365
 msgid "Frosted background"
 msgstr ""
 
-#: src/ui/preferences.c:502
+#: src/ui/preferences.c:366
 msgid ""
 "Translucent backdrop. Compositors that blur layer surfaces (KWin by default, "
-"niri with a layer-rule) frost it; others show a subtle tint."
+"niri with a layer-rule) frost it; the tint is dense enough to read the grid "
+"without one."
 msgstr ""
 
-#: src/ui/preferences.c:509
-msgid "Glass shelf"
-msgstr ""
-
-#: src/ui/preferences.c:510
-msgid "The 3D slab, its overhang and the reflections on it."
-msgstr ""
-
-#: src/ui/preferences.c:512
+#: src/ui/preferences.c:373
 msgid "Icon overhang"
 msgstr ""
 
-#: src/ui/preferences.c:513
+#: src/ui/preferences.c:374
 msgid "Glass above the icons; negative lets them overhang the slab."
 msgstr ""
 
-#: src/ui/preferences.c:516
+#: src/ui/preferences.c:376
 msgid "Front glass"
 msgstr ""
 
-#: src/ui/preferences.c:517
+#: src/ui/preferences.c:377
 msgid "Glass in front of the icons, where the mirrors live."
 msgstr ""
 
-#: src/ui/preferences.c:520
+#: src/ui/preferences.c:379
 msgid "Reflection height"
 msgstr ""
 
-#: src/ui/preferences.c:521
+#: src/ui/preferences.c:380
 msgid "Mirror band as a fraction of the icon size (0 = none)."
 msgstr ""
 
-#: src/ui/preferences.c:525
+#: src/ui/preferences.c:382
 msgid "Reflection intensity"
 msgstr ""
 
-#: src/ui/preferences.c:526
+#: src/ui/preferences.c:383
 msgid "Alpha of the mirror where it touches the icon."
 msgstr ""
 
-#: src/ui/preferences.c:529
+#: src/ui/preferences.c:385
 msgid "Reflection blur"
 msgstr ""
 
-#: src/ui/preferences.c:530
+#: src/ui/preferences.c:386
 msgid "Blur radius as a fraction of the icon size."
 msgstr ""
 
-#: src/ui/preferences.c:533
+#: src/ui/preferences.c:388
 msgid "Keystone flare"
 msgstr ""
 
-#: src/ui/preferences.c:534
+#: src/ui/preferences.c:389
 msgid "How much wider the slab is at the screen edge, per side."
 msgstr ""
 
-#: src/ui/preferences.c:537
+#: src/ui/preferences.c:391
 msgid "Shelf tilt"
 msgstr ""
 
-#: src/ui/preferences.c:538
+#: src/ui/preferences.c:392
 msgid "Tilt away from the viewer, in degrees (0 = flat)."
 msgstr ""
 
-#: src/ui/preferences.c:541
+#: src/ui/preferences.c:394
 msgid "Shelf perspective"
 msgstr ""
 
-#: src/ui/preferences.c:542
+#: src/ui/preferences.c:395
 msgid "Projection distance in pixels; smaller is a stronger 3D."
 msgstr ""
 
-#: src/ui/preferences.c:625 src/ui/preferences.c:633
+#: src/ui/preferences.c:410
+msgid "Behaviour"
+msgstr ""
+
+#: src/ui/preferences.c:411
+msgid "How the dock responds to windows, the pointer and the session."
+msgstr ""
+
+#: src/ui/preferences.c:414
+msgid "Accessibility"
+msgstr ""
+
+#: src/ui/preferences.c:415
+msgid ""
+"Motion comfort. The desktop's own accessibility settings are honoured too."
+msgstr ""
+
+#: src/ui/preferences.c:419
+msgid "Layout & material"
+msgstr ""
+
+#: src/ui/preferences.c:420
+msgid "Size, spacing, screen edge and the material the dock is dressed in."
+msgstr ""
+
+#: src/ui/preferences.c:423
+msgid "Launchpad"
+msgstr ""
+
+#: src/ui/preferences.c:424
+msgid "How the full screen application grid looks when this dock opens it."
+msgstr ""
+
+#: src/ui/preferences.c:427
+msgid "Glass shelf"
+msgstr ""
+
+#: src/ui/preferences.c:428
+msgid "The 3D slab, its overhang and the reflections on it."
+msgstr ""
+
+#: src/ui/preferences.c:750
+msgid "Type an exact value"
+msgstr ""
+
+#: src/ui/preferences.c:754
+#, c-format
+msgid "%s, exact value"
+msgstr ""
+
+#: src/ui/preferences.c:756
+msgid "Type a value, or use the arrow keys."
+msgstr ""
+
+#: src/ui/preferences.c:981 src/ui/preferences.c:1012
 msgid "Lambdock Preferences"
 msgstr ""
 
-#: src/ui/preferences.c:636
+#: src/ui/preferences.c:985
 msgid "Reset"
 msgstr ""
 
-#: src/ui/preferences.c:638
+#: src/ui/preferences.c:988
 msgid "Forget the choices made here and go back to the settings file"
 msgstr ""

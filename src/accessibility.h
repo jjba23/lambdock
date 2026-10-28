@@ -52,8 +52,8 @@ void lambdock_accessible_update(GtkWidget *widget, const char *label,
  * @message: the sentence to read out.
  * @assertive: interrupt the screen reader instead of waiting for a pause.
  *
- * Speaks a change that has no visible focus move of its own, such as the
- * selection inside the stack's fan view. GTK gained announcements in 4.14, so
+ * Speaks a change that has no visible focus move of its own, such as a value
+ * that changed underneath the pointer. GTK gained announcements in 4.14, so
  * older toolkits simply say nothing and keep the description up to date.
  */
 void lambdock_accessible_announce(GtkWidget *widget, const char *message,

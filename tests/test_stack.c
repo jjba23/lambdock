@@ -195,51 +195,25 @@ static void test_thumbnail_for_path(void) {
 static void test_view_mode_names(void) {
   g_assert_cmpint(lambdock_stack_view_from_string("grid"), ==,
                   LAMBDOCK_STACK_VIEW_GRID);
-  g_assert_cmpint(lambdock_stack_view_from_string("list"), ==,
+  g_assert_cmpint(lambdock_stack_view_from_string("LIST"), ==,
                   LAMBDOCK_STACK_VIEW_LIST);
-  g_assert_cmpint(lambdock_stack_view_from_string("FAN"), ==,
-                  LAMBDOCK_STACK_VIEW_FAN);
 
-  /* Anything unknown is the default grid. */
+  /* Anything unknown, including the removed fan view, is the default grid. */
   g_assert_cmpint(lambdock_stack_view_from_string(NULL), ==,
                   LAMBDOCK_STACK_VIEW_GRID);
   g_assert_cmpint(lambdock_stack_view_from_string(""), ==,
+                  LAMBDOCK_STACK_VIEW_GRID);
+  g_assert_cmpint(lambdock_stack_view_from_string("fan"), ==,
                   LAMBDOCK_STACK_VIEW_GRID);
   g_assert_cmpint(lambdock_stack_view_from_string("carousel"), ==,
                   LAMBDOCK_STACK_VIEW_GRID);
 
   /* Round trip. */
-  for (int view = LAMBDOCK_STACK_VIEW_GRID; view <= LAMBDOCK_STACK_VIEW_FAN;
+  for (int view = LAMBDOCK_STACK_VIEW_GRID; view <= LAMBDOCK_STACK_VIEW_LIST;
        view++) {
     const char *name = lambdock_stack_view_to_string((LambdockStackView)view);
     g_assert_cmpint(lambdock_stack_view_from_string(name), ==, view);
   }
-}
-
-/* ============================================================================
- * FAN HIT TESTING
- * ============================================================================ */
-
-static void test_fan_contains(void) {
-  /* A flat card: plain rectangle test. */
-  g_assert_true(
-      lambdock_stack_fan_contains(0, 0, 0, 0, 0, 100, 100));
-  g_assert_true(
-      lambdock_stack_fan_contains(49, -49, 0, 0, 0, 100, 100));
-  g_assert_false(
-      lambdock_stack_fan_contains(51, 0, 0, 0, 0, 100, 100));
-
-  /* Centred away from the origin. */
-  g_assert_true(
-      lambdock_stack_fan_contains(110, 205, 100, 200, 0, 100, 100));
-
-  /* Rotating the card by 90 degrees swaps which side the point falls on: a
-   * point below the centre is now inside the (now tall) card, one to the right
-   * is outside. */
-  g_assert_true(
-      lambdock_stack_fan_contains(100, 290, 100, 200, 90, 200, 40));
-  g_assert_false(
-      lambdock_stack_fan_contains(190, 200, 100, 200, 90, 200, 40));
 }
 
 /* ============================================================================
@@ -287,26 +261,6 @@ static void test_view_widgets(void) {
                   >=, 350);
   g_object_ref_sink(list);
   g_object_unref(list);
-
-  /* The fan paints itself: it must report a sensible size for its cards. */
-  GtkWidget *fan = lambdock_stack_view_new(entries, LAMBDOCK_STACK_VIEW_FAN,
-                                           48);
-  g_assert_nonnull(fan);
-  /* The fan is wrapped in a scroller so a wide one stays usable. */
-  g_assert_true(GTK_IS_SCROLLED_WINDOW(fan));
-  GtkWidget *fan_cards = gtk_scrolled_window_get_child(GTK_SCROLLED_WINDOW(fan));
-  g_assert_nonnull(fan_cards);
-
-  int minimum = 0;
-  int natural = 0;
-  gtk_widget_measure(fan_cards, GTK_ORIENTATION_HORIZONTAL, -1, &minimum,
-                     &natural, NULL, NULL);
-  g_assert_cmpint(natural, >, 0);
-  gtk_widget_measure(fan_cards, GTK_ORIENTATION_VERTICAL, -1, &minimum,
-                     &natural, NULL, NULL);
-  g_assert_cmpint(natural, >, 100);
-  g_object_ref_sink(fan);
-  g_object_unref(fan);
 
   lambdock_stack_entries_free(entries);
 }
@@ -513,19 +467,6 @@ static void test_view_accessibility(void) {
   g_object_ref_sink(list);
   g_object_unref(list);
 
-  /* Fan: a single painted widget, so it announces itself as a group and says
-   * how to use it. Its cards are announced one by one as they are selected. */
-  GtkWidget *fan =
-      lambdock_stack_view_new(entries, LAMBDOCK_STACK_VIEW_FAN, 48);
-  GtkWidget *fan_cards = scrolled_content(fan);
-  assert_accessible_label(fan_cards, "Fan view");
-  assert_accessible_description(
-      fan_cards,
-      "Fan of 3 items. Left and right choose one, Enter opens it.");
-  g_assert_true(gtk_widget_get_focusable(fan_cards));
-  g_object_ref_sink(fan);
-  g_object_unref(fan);
-
   lambdock_stack_entries_free(entries);
   remove_mixed_entries(dir);
 }
@@ -585,34 +526,6 @@ static void test_view_keyboard(void) {
   g_object_ref_sink(list);
   g_object_unref(list);
 
-  /* Fan: the painted cards take the arrow keys, and the caption/tooltip follows
-   * the selection so sighted keyboard users see the same thing a screen reader
-   * hears. */
-  GtkWidget *fan =
-      lambdock_stack_view_new(entries, LAMBDOCK_STACK_VIEW_FAN, 48);
-  gtk_window_set_child(GTK_WINDOW(window), fan);
-
-  GtkWidget *cards = scrolled_content(fan);
-  g_assert_true(gtk_widget_grab_focus(cards));
-
-  /* Home makes the starting card explicit whether or not focusing the fan
-   * already selected one. */
-  g_assert_true(send_key(cards, GDK_KEY_Home));
-  g_assert_cmpstr(gtk_widget_get_tooltip_text(cards), ==, "subdir");
-
-  g_assert_true(send_key(cards, GDK_KEY_Right));
-  g_assert_cmpstr(gtk_widget_get_tooltip_text(cards), ==, "alpha.txt");
-
-  g_assert_true(send_key(cards, GDK_KEY_End));
-  g_assert_cmpstr(gtk_widget_get_tooltip_text(cards), ==, "beta.txt");
-
-  g_assert_true(send_key(cards, GDK_KEY_Home));
-  g_assert_cmpstr(gtk_widget_get_tooltip_text(cards), ==, "subdir");
-
-  /* At the first card Left stays put but is still the fan's key. */
-  g_assert_true(send_key(cards, GDK_KEY_Left));
-  g_assert_cmpstr(gtk_widget_get_tooltip_text(cards), ==, "subdir");
-
   gtk_window_destroy(GTK_WINDOW(window));
   lambdock_stack_entries_free(entries);
   remove_mixed_entries(dir);
@@ -624,7 +537,6 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/stack/expand_path", test_expand_path);
   g_test_add_func("/ui/stack/list_directory", test_list_directory);
   g_test_add_func("/ui/stack/view_mode_names", test_view_mode_names);
-  g_test_add_func("/ui/stack/fan_contains", test_fan_contains);
 
   if (!gtk_init_check()) {
     g_print("Skipping stack widget tests: No display server available\n");

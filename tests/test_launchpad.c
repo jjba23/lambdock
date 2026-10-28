@@ -214,8 +214,76 @@ static void test_tile_copies(const char *data_dir) {
   g_free(own_path);
 }
 
+/* ============================================================================
+ * PURE HELPERS
+ * ============================================================================
+ * The search filter and the column arithmetic are data-in/data-out, so they are
+ * tested here without a display: the same cases the grid hits, at the sizes that
+ * used to be guesses.
+ */
+
+static void test_entry_matches(void) {
+  LambdockDesktopEntry *entry =
+      entry_from("/tmp/firefox.desktop", "Firefox", "firefox %u");
+
+  /* Nothing typed means everything is shown. */
+  g_assert_true(lambdock_launchpad_entry_matches(entry, NULL));
+  g_assert_true(lambdock_launchpad_entry_matches(entry, ""));
+
+  /* Both the name and the command line are searched, case-insensitively. */
+  g_assert_true(lambdock_launchpad_entry_matches(entry, "fire"));
+  g_assert_true(lambdock_launchpad_entry_matches(entry, "FIREFOX"));
+
+  g_assert_false(lambdock_launchpad_entry_matches(entry, "chromium"));
+  g_assert_false(lambdock_launchpad_entry_matches(NULL, "firefox"));
+
+  lambdock_desktop_entry_free(entry);
+
+  /* A word that is only in the command finds the entry too (field codes like
+   * "%u" are stripped when the desktop file is parsed, so the flags are what a
+   * command search can match on). */
+  entry = entry_from("/tmp/writer.desktop", "Writer",
+                     "libreoffice --writer --norestore");
+  g_assert_true(lambdock_launchpad_entry_matches(entry, "--norestore"));
+  g_assert_true(lambdock_launchpad_entry_matches(entry, "writer"));
+  g_assert_false(lambdock_launchpad_entry_matches(entry, "--calc"));
+
+  lambdock_desktop_entry_free(entry);
+}
+
+static void test_columns(void) {
+  /* As many as fit: a 1280 px window holds 1280 - 112 px of tiles, and a tile
+   * of a 64 px icon is 150 px wide. */
+  g_assert_cmpint(lambdock_launchpad_columns_for(1168, 64, 0), ==, 7);
+
+  /* Narrow screens clamp to the minimum, wide ones to the maximum, so a grid
+   * never becomes one column or a wall of thirty. */
+  g_assert_cmpint(lambdock_launchpad_columns_for(300, 64, 0), ==,
+                  LAUNCHPAD_AUTO_COLUMNS_MIN);
+  g_assert_cmpint(lambdock_launchpad_columns_for(5000, 64, 0), ==,
+                  LAUNCHPAD_AUTO_COLUMNS_MAX);
+
+  /* No measurable width yet (first allocation): a usable default. */
+  g_assert_cmpint(lambdock_launchpad_columns_for(0, 64, 0), ==,
+                  LAUNCHPAD_FALLBACK_COLUMNS);
+
+  /* A configured count is an upper bound, honoured when it fits... */
+  g_assert_cmpint(lambdock_launchpad_columns_for(1168, 64, 4), ==, 4);
+
+  /* ...and ignored when the screen cannot hold it. */
+  g_assert_cmpint(lambdock_launchpad_columns_for(400, 64, 14), ==,
+                  LAUNCHPAD_COLUMNS_MIN);
+
+  /* A bigger icon means wider tiles, so fewer of them fit. */
+  g_assert_cmpint(lambdock_launchpad_columns_for(1168, 160, 0),
+                  <, lambdock_launchpad_columns_for(1168, 32, 0));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
+
+  g_test_add_func("/launchpad/entry_matches", test_entry_matches);
+  g_test_add_func("/launchpad/columns", test_columns);
 
   /* The user's own applications directory is what makes a copy "Your files",
    * and the preference files must not touch the real home directory. The system

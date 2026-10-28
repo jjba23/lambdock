@@ -405,11 +405,11 @@ static void test_layout_bridge(void) {
 
   /* Stack view modes travel as symbols, and default to 'grid. */
   scheme_eval("(clear-layout-calls!)");
-  dock_layout_set_view("cfg", "stack:Downloads", "fan");
+  dock_layout_set_view("cfg", "stack:Downloads", "list");
   dock_layout_set_view("cfg", "stack:Other", NULL);
   g_assert_true(scheme_true(
       "(equal? (get-layout-calls)"
-      "        (list (list 'view \"cfg\" \"stack:Downloads\" 'fan)"
+      "        (list (list 'view \"cfg\" \"stack:Downloads\" 'list)"
       "              (list 'view \"cfg\" \"stack:Other\" 'grid)))"));
 
   /* No config path means no Scheme call at all. */

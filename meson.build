@@ -237,6 +237,10 @@ inc = include_directories('src')
 sources = files(
   'src/main.c',
   'src/accessibility.c',
+  'src/app_window.c',
+  'src/core/config_values.c',
+  'src/core/dock_dims.c',
+  'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -284,6 +288,10 @@ test_stubs = files('tests/test_stubs.c')
 # Shared non-main sources for tests requiring full application context
 full_app_sources = files(
   'src/accessibility.c',
+  'src/app_window.c',
+  'src/core/config_values.c',
+  'src/core/dock_dims.c',
+  'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -309,7 +317,7 @@ unit_tests = [
   {
     'id': 'theme_engine',
     'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
-                      lambdock_resources],
+                      'src/ui/icon_zoom.c', lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep],
   },
   {
@@ -344,6 +352,20 @@ unit_tests = [
     'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
   },
   {
+    'id': 'config_values',
+    'extra_sources': ['src/core/config_values.c', 'src/ui/shelf.c',
+                      'src/ui/icon_zoom.c', lambdock_resources],
+  },
+  {
+    'id': 'dock_registry',
+    'extra_sources': ['src/dock_registry.c'],
+  },
+  {
+    'id': 'dock_dims',
+    'extra_sources': ['src/core/dock_dims.c', 'src/ui/shelf.c',
+                      'src/ui/icon_zoom.c', lambdock_resources],
+  },
+  {
     'id': 'stack',
     'extra_sources': full_test_sources,
   },
@@ -361,7 +383,8 @@ unit_tests = [
   },
   {
     'id': 'meter',
-    'extra_sources': ['src/ui/meter.c', lambdock_resources],
+    'extra_sources': ['src/ui/meter.c', 'src/core/config_values.c',
+                      'src/ui/icon_zoom.c', lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep],
   },
   {

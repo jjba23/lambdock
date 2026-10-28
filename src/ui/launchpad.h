@@ -21,6 +21,15 @@
 #define LAUNCHPAD_COLUMNS_MIN 3
 #define LAUNCHPAD_COLUMNS_MAX 14
 
+/* Bounds for the width-derived column count: fewer than four wastes the screen,
+ * more than ten makes the labels unreadable. */
+#define LAUNCHPAD_AUTO_COLUMNS_MIN 4
+#define LAUNCHPAD_AUTO_COLUMNS_MAX 10
+
+/* Columns used when the screen width cannot be read yet (first allocation,
+ * headless test). */
+#define LAUNCHPAD_FALLBACK_COLUMNS 8
+
 /**
  * lambdock_launchpad_show:
  * @state: Any dock state; its window provides the GtkApplication and monitor.
@@ -65,8 +74,39 @@ void lambdock_launchpad_shutdown(void);
 GtkWidget *lambdock_launchpad_grid_new(GPtrArray *entries);
 
 /**
+ * lambdock_launchpad_entry_matches:
+ * @entry: an installed application.
+ * @query: what the user typed, NULL or "" for "everything".
+ *
+ * The search filter, on its own: matches case-insensitively against the
+ * application's name and its command line, so both "fire" and "--private" find
+ * the entry that names Firefox and runs `firefox --private-window`. Exposed so
+ * the filter can be tested without a display.
+ *
+ * Returns: TRUE when @entry belongs in the grid.
+ */
+gboolean lambdock_launchpad_entry_matches(const LambdockDesktopEntry *entry,
+                                          const char *query);
+
+/**
+ * lambdock_launchpad_columns_for:
+ * @usable_width: pixels available between the grid's margins.
+ * @icon_size: the configured tile icon size.
+ * @configured_columns: requested tiles per row, 0 for "as many as fit".
+ *
+ * Tiles grow with the icon size, so the column count is derived from the width
+ * instead of fixed; a configured count is an upper bound, because asking for 14
+ * tiles per row on a laptop must not push the last ones off the screen. Exposed
+ * so this arithmetic can be tested without a display.
+ *
+ * Returns: how many tiles fit in a row.
+ */
+int lambdock_launchpad_columns_for(int usable_width, int icon_size,
+                                   int configured_columns);
+
+/**
  * lambdock_launchpad_tile_new:
- * @entry: the installed application to show.
+ * @entry: (nullable): the installed application to show.
  * @icon_size: pixel size of its icon.
  *
  * Builds one tile of the grid: the icon, the name, the accessibility text and
@@ -77,9 +117,9 @@ GtkWidget *lambdock_launchpad_grid_new(GPtrArray *entries);
  * application with a single copy have no menu. Exposed so the tiles can be
  * exercised without a display server.
  *
- * Returns: (transfer none): a GtkButton.
+ * Returns: (transfer none) (nullable): a GtkButton, or NULL for a NULL entry.
  */
-GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
+GtkWidget *lambdock_launchpad_tile_new(const LambdockDesktopEntry *entry,
                                        int icon_size);
 
 #endif // LAUNCHPAD_H

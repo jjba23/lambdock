@@ -598,9 +598,12 @@
 (check-equal "an unknown stack view mode falls back to grid"
              'grid (dock-item-view-mode (stack-item #:name "X"
                                                     #:view-mode 'carousel)))
-(check-equal "the fan view mode is accepted"
-             'fan (dock-item-view-mode (stack-item #:name "X"
-                                                   #:view-mode 'fan)))
+(check-equal "the list view mode is accepted"
+             'list (dock-item-view-mode (stack-item #:name "X"
+                                                    #:view-mode 'list)))
+(check-equal "the removed fan view mode falls back to grid"
+             'grid (dock-item-view-mode (stack-item #:name "X"
+                                                    #:view-mode 'fan)))
 
 (define %launchpad (launchpad-item))
 (check-equal "launchpad-item creates a launchpad"
@@ -682,9 +685,9 @@
                (dock-item-path item)))
 
 ;; Per-stack view modes are remembered too.
-(dock-layout-set-view! %layout-cfg "stack:Shots" 'fan)
+(dock-layout-set-view! %layout-cfg "stack:Shots" 'list)
 (check-equal "set-view switches a stack's view mode"
-             'fan
+             'list
              (let ((item (car (reverse (get-dock-items %layout-cfg)))))
                (dock-item-view-mode item)))
 
@@ -704,7 +707,7 @@
                ("stack" "Shots" "folder" "/tmp/shots" "list"))
              (assq-ref %saved-layout 'added))
 (check-equal "the saved stack view mode is stored"
-             'fan
+             'list
              (assoc-ref (assq-ref %saved-layout 'views) "stack:Shots"))
 
 ;; A hand written override file is applied on load: this is what makes the

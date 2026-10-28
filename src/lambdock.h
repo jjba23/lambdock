@@ -148,7 +148,7 @@ typedef struct AppWindow {
  * @hover_animate: TRUE if hover fisheye magnification applies to this item.
  * @kind: What the item is (app, dynamic, separator, stack, launchpad).
  * @stack_path: Folder shown by a stack item (NULL otherwise).
- * @stack_view: Stack view mode name ("grid", "list" or "fan").
+ * @stack_view: Stack view mode name ("grid" or "list").
  * @dragging: TRUE while the user drags this item (guards the drop handlers).
  * @meter: Circular gauge drawn instead of text for meter dynamic items.
  * @meter_unit: Suffix of the gauge's reading ("%" or "°C").
@@ -179,7 +179,7 @@ typedef struct DockItem {
   gboolean hover_animate;
   LambdockItemKind kind;
   char *stack_path; /* Folder of a stack item */
-  char *stack_view; /* "grid" / "list" / "fan" */
+  char *stack_view; /* "grid" / "list" */
   gboolean dragging;
   GtkWidget *meter;     /* Gauge shown for meter dynamic items */
   char *meter_unit;     /* Reading suffix: "%" or "°C" */

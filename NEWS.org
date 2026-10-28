@@ -9,12 +9,27 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- Stacks no longer offer the *fan* view.  Two views remain, the icon grid and
+  the list; a settings file or override that still says `'fan` (or anything
+  else unknown) reads back as the grid, so nothing breaks and nothing throws.
+  The context menu of a stack now shows one switch button fewer.
 - The project moved from the GNU General Public License v3.0-or-later to the
   MIT License. Every source file now starts with a three line SPDX header
   (=SPDX-License-Identifier: MIT=), =COPYING= carries the MIT text, and the
   license every package metadata declares -- the Arch, Debian, openSUSE and
   Flatpak packaging, the Nix, Guix and maak manifests, the AppStream metadata,
   the container labels and the About dialog -- says MIT as well.
+- The launchpad keeps its ten pieces of file-scope state in one model struct,
+  and its search filter and column arithmetic became pure functions with their
+  own tests (they no longer need a display to be exercised). No behaviour change.
+- A pass over the C side for state and safety.  The active docks now live in one
+  registry that hands out snapshots instead of the list itself; the dimension
+  arithmetic, the configuration clamping and the name-to-value rules moved into
+  pure, display-free modules with their own tests; a dock item kind, a Scheme
+  item type and a stack view are each one row of a table instead of a switch;
+  and the Guile bridge no longer lets Guile's `malloc`'d strings escape, so every
+  free site is a `g_free`.  Nothing user-visible changes, apart from fewer ways
+  for a hostile settings file to break the layout.
 
 ---------
 

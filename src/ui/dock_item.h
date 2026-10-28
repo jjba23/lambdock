@@ -101,7 +101,7 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * @name: Display name (usually the folder's base name).
  * @icon: Icon name or path.
  * @path: Folder whose contents the stack shows.
- * @view: Initial view mode ("grid", "list" or "fan").
+ * @view: Initial view mode ("grid" or "list").
  * @hover_animate: Whether the fisheye magnification applies.
  *
  * Creates a dock icon that opens a popover listing @path.
@@ -165,20 +165,18 @@ char *dock_item_key(const DockItem *item);
 const char *dock_item_kind_to_string(LambdockItemKind kind);
 
 /**
- * dock_item_icon_size:
- * @item: A dock item (may be NULL).
+ * lambdock_item_title:
+ * @item: (nullable): a dock item.
+ * @fallback: (nullable): what to return when the item has no name at all.
  *
- * The size the item's icon is drawn at right now, in pixels: the magnified size
- * while the fisheye is scaling it, the resting size otherwise.
+ * The text a user should see for @item: its name, else its app id, else
+ * @fallback. Every menu header and tooltip used to spell this chain out again,
+ * with slightly different fallbacks.
  *
- * The glass-shelf reflection needs this to mirror the icon at the size it is
- * actually shown, and it must not be read from the GtkImage's pixel size -- that
- * one is whatever raster the icon is currently held at, not the size on screen
- * (see icon_zoom.h).
- *
- * Returns: the icon size in pixels, or 0 when the item has no icon.
+ * Returns: (transfer none) (nullable): a borrowed string owned by @item.
  */
-int dock_item_icon_size(DockItem *item);
+const char *lambdock_item_title(const DockItem *item, const char *fallback);
+
 
 /**
  * dock_item_from_widget:

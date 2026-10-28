@@ -14,98 +14,188 @@
 #include <string.h>
 
 /* ============================================================================
- * LAUNCHPAD STATE
+ * THE LAUNCHPAD
  * ============================================================================
  *
- * The launchpad is global (there is exactly one screen to cover), so it lives in
- * file statics rather than in a LambdockState. It is created lazily on the first
- * click, hidden rather than destroyed on close, and rescans the installed
- * applications every time it opens.
+ * There is exactly one launchpad (there is exactly one screen to cover), so it
+ * is one model value rather than a LambdockState: created lazily on first use,
+ * hidden rather than destroyed on close, and rescanned every time it opens.
+ *
+ * The file follows one order:
+ *
+ *   types      the model, and the value types it is made of
+ *   pure       filtering, column maths and the text of a tile: no widgets
+ *   tiles      one tile, and the menu of its other installed copies
+ *   grid       the flow box, its filling and its keyboard movement
+ *   appearance settings of the dock that opened it
+ *   callbacks  thin adapters that hand the model to the functions above
+ *   window     creation, showing, hiding and teardown
+ * ========================================================================= */
+
+/* The grid lives inside these margins: the maths below subtracts them so the
+ * last column never hangs off the screen. */
+#define LAUNCHPAD_SIDE_MARGIN_PX 48
+#define LAUNCHPAD_GRID_INSET_PX 16
+
+/* A tile is at least this wide, and its icon is this much narrower than the
+ * tile so a two-line label fits under it. */
+#define LAUNCHPAD_TILE_MIN_WIDTH_PX 150
+#define LAUNCHPAD_TILE_CHROME_PX 86
+
+/* ============================================================================
+ * TYPES
+ * ============================================================================
  */
 
-static GtkWidget *g_launchpad_window = NULL;
-static GtkWidget *g_launchpad_flow = NULL;
-static GtkWidget *g_launchpad_search = NULL;
-static char *g_launchpad_query = NULL;
-static GPtrArray *g_launchpad_entries = NULL;
+/* How the launchpad looks. Resolved from the settings of the dock that opened
+ * it, re-read on every show so a change made in the preferences window shows up
+ * without restarting lambdock. */
+typedef struct {
+  int icon_size;
+  int columns; /* 0 = as many as fit */
+  gboolean blur;
+} LaunchpadAppearance;
 
-/* Appearance of the current launchpad, resolved from the dock settings of the
- * instance that opened it (see launchpad_apply_config()). */
-static int g_launchpad_icon_size = LAUNCHPAD_ICON_SIZE;
-static int g_launchpad_columns = LAUNCHPAD_COLUMNS_AUTO;
-static gboolean g_launchpad_blur = FALSE;
+typedef struct {
+  GtkWidget *window;
+  GtkWidget *grid;   /* GtkFlowBox of tiles */
+  GtkWidget *search; /* GtkSearchEntry */
 
-/* Tiles per row the grid last laid out, so the arrow keys can move by a row. */
-static guint g_launchpad_applied_columns = 8;
+  /* The copy menu of a tile, when one is open: it is the thing closest to the
+   * user, so Escape closes it before the launchpad, and hiding the launchpad
+   * has to let go of it. */
+  GtkWidget *open_copy_menu;
+
+  char *query;           /* owned, "" when nothing is typed */
+  GPtrArray *entries;    /* owned, rescanned on every show */
+  LaunchpadAppearance appearance;
+  guint applied_columns; /* tiles per row the grid last laid out */
+} LambdockLaunchpad;
+
+/* One launchpad per process, like the one screen it covers. Everything below
+ * takes the model as a parameter; only the public entry points and the signal
+ * adapters reach for this. */
+static LambdockLaunchpad g_launchpad;
+
+static LambdockLaunchpad *launchpad_instance(void) { return &g_launchpad; }
+
+/* ============================================================================
+ * PURE HELPERS (no widgets, no I/O)
+ * ============================================================================
+ */
+
+/**
+ * lambdock_launchpad_entry_matches:
+ * @entry: an installed application.
+ * @query: what the user typed, or NULL/"" for "everything".
+ *
+ * Matches case-insensitively against the application's name and its command
+ * line, so both "fire" and "--private" find the entry that names Firefox and
+ * runs `firefox --private-window`.
+ *
+ * Returns: TRUE when @entry belongs in the grid.
+ */
+gboolean lambdock_launchpad_entry_matches(const LambdockDesktopEntry *entry,
+                                          const char *query) {
+  if (!entry)
+    return FALSE;
+  if (!query || *query == '\0')
+    return TRUE;
+
+  g_autofree char *name = g_utf8_casefold(entry->name ? entry->name : "", -1);
+  g_autofree char *needle = g_utf8_casefold(query, -1);
+  g_autofree char *exec = g_utf8_casefold(entry->exec ? entry->exec : "", -1);
+
+  return strstr(name, needle) != NULL || strstr(exec, needle) != NULL;
+}
+
+/**
+ * lambdock_launchpad_columns_for:
+ * @usable_width: pixels available between the grid's margins.
+ * @icon_size: configured tile icon size.
+ * @configured_columns: requested tiles per row, 0 for "as many as fit".
+ *
+ * Returns: how many tiles fit in a row. A configured count is an upper bound:
+ * asking for 14 tiles on a laptop must not push the last ones off the screen.
+ */
+int lambdock_launchpad_columns_for(int usable_width, int icon_size,
+                                   int configured_columns) {
+  int tile_width = MAX(LAUNCHPAD_TILE_MIN_WIDTH_PX,
+                       icon_size + LAUNCHPAD_TILE_CHROME_PX);
+  int fit = usable_width > 0 ? usable_width / tile_width : 0;
+
+  if (configured_columns > 0) {
+    if (fit <= 0)
+      return configured_columns;
+    return MIN(configured_columns, MAX(LAUNCHPAD_COLUMNS_MIN, fit));
+  }
+
+  if (fit <= 0)
+    return LAUNCHPAD_FALLBACK_COLUMNS;
+
+  return CLAMP(fit, LAUNCHPAD_AUTO_COLUMNS_MIN, LAUNCHPAD_AUTO_COLUMNS_MAX);
+}
+
+/** The tile's tooltip: the command, and why right-clicking is worth it. */
+static char *tile_tooltip_text(const LambdockDesktopEntry *entry) {
+  const char *command = entry->exec ? entry->exec : "";
+
+  if (!entry->alternates || entry->alternates->len == 0)
+    return g_strdup(command);
+
+  return g_strdup_printf("%s\n%s", command,
+                         _("Right-click for the other installed copies."));
+}
+
+/** The tile's accessibility description, which depends on the copies rule. */
+static const char *tile_description(const LambdockDesktopEntry *entry) {
+  if (entry->alternates && entry->alternates->len > 0)
+    return _("Application with more than one installed copy. Press Enter to "
+             "open it, or use the menu for the other copies.");
+
+  return _("Application. Press Enter to open.");
+}
+
+/** Visits every entry that matches @query, in scan order. */
+typedef void (*LaunchpadEntryFunc)(LambdockLaunchpad *launchpad,
+                                   LambdockDesktopEntry *entry,
+                                   gpointer user_data);
+
+static void launchpad_for_each_matching(LambdockLaunchpad *launchpad,
+                                        LaunchpadEntryFunc visit,
+                                        gpointer user_data) {
+  if (!launchpad->entries)
+    return;
+
+  for (guint i = 0; i < launchpad->entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(launchpad->entries, i);
+    if (lambdock_launchpad_entry_matches(entry, launchpad->query))
+      visit(launchpad, entry, user_data);
+  }
+}
 
 /* ============================================================================
  * TILES
  * ============================================================================
  */
 
-static void on_launchpad_tile_clicked(GtkButton *button, gpointer user_data) {
+static void on_tile_clicked(GtkButton *button, gpointer user_data) {
   (void)button;
-  const char *command = (const char *)user_data;
 
-  if (command)
-    lambdock_spawn_command(command);
-
+  /* Launching is already logged by the spawn helper; hiding afterwards is the
+   * same behaviour as the original launcher. */
+  lambdock_spawn_command((const char *)user_data);
   lambdock_launchpad_hide();
 }
 
-static void free_launched_command(gpointer data, GClosure *closure) {
+static void free_clicked_command(gpointer data, GClosure *closure) {
   (void)closure;
   g_free(data);
 }
 
-static gboolean entry_matches_query(const LambdockDesktopEntry *entry,
-                                    const char *query) {
-  if (!query || *query == '\0')
-    return TRUE;
-
-  char *name = g_utf8_casefold(entry->name ? entry->name : "", -1);
-  char *needle = g_utf8_casefold(query, -1);
-  char *exec = g_utf8_casefold(entry->exec ? entry->exec : "", -1);
-
-  gboolean match = (strstr(name, needle) != NULL) ||
-                   (strstr(exec, needle) != NULL);
-
-  g_free(name);
-  g_free(needle);
-  g_free(exec);
-  return match;
-}
-
-/* A GtkFlowBox wraps every child in a GtkFlowBoxChild, and the "nothing
- * matched" label is wrapped like a tile. This returns the focusable tile button
- * inside WRAPPER, or NULL when the wrapper holds something else (the label). */
-static GtkWidget *launchpad_tile_in(GtkWidget *wrapper) {
-  if (!wrapper)
-    return NULL;
-
-  if (gtk_widget_has_css_class(wrapper, "launchpad-tile"))
-    return wrapper;
-
-  if (GTK_IS_FLOW_BOX_CHILD(wrapper)) {
-    GtkWidget *inner = gtk_flow_box_child_get_child(GTK_FLOW_BOX_CHILD(wrapper));
-    if (inner && gtk_widget_has_css_class(inner, "launchpad-tile"))
-      return inner;
-  }
-
-  return NULL;
-}
-
-/* Built further down, next to the menu itself: a tile of an application that is
- * installed more than once carries the menu of its copies. */
-static void launchpad_tile_add_copy_menu(GtkWidget *tile,
-                                         LambdockDesktopEntry *entry);
-
-static gboolean entry_has_copies(const LambdockDesktopEntry *entry) {
-  return entry && entry->alternates && entry->alternates->len > 0;
-}
-
-GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
-                                       int icon_size) {
+/** The tile's contents: the icon over its name. */
+static GtkWidget *make_tile_content(const LambdockDesktopEntry *entry,
+                                    int icon_size) {
   GtkIconTheme *theme =
       gtk_icon_theme_get_for_display(gdk_display_get_default());
 
@@ -124,38 +214,36 @@ GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
   gtk_widget_set_valign(label, GTK_ALIGN_CENTER);
   gtk_box_append(GTK_BOX(content), label);
 
+  return content;
+}
+
+/* Built with the rest of the copy menu, further down. */
+static void tile_add_copy_menu(GtkWidget *tile,
+                               const LambdockDesktopEntry *entry);
+
+GtkWidget *lambdock_launchpad_tile_new(const LambdockDesktopEntry *entry,
+                                       int icon_size) {
+  if (!entry)
+    return NULL;
+
   GtkWidget *button = gtk_button_new();
   gtk_widget_add_css_class(button, "flat");
   gtk_widget_add_css_class(button, "launchpad-tile");
   gtk_widget_set_size_request(button, MAX(120, icon_size + 56), -1);
-  gtk_button_set_child(GTK_BUTTON(button), content);
+  gtk_button_set_child(GTK_BUTTON(button),
+                       make_tile_content(entry, icon_size));
 
-  /* A tile of an installed-twice application says so, so the menu is
-   * discoverable without a right click that would otherwise do nothing. */
-  if (entry_has_copies(entry)) {
-    char *tooltip = g_strdup_printf("%s\n%s", entry->exec,
-                                    _("Right-click for the other installed "
-                                      "copies."));
-    gtk_widget_set_tooltip_text(button, tooltip);
-    g_free(tooltip);
-    lambdock_accessible_update(
-        button, entry->name,
-        _("Application with more than one installed copy. Press Enter to open "
-          "it, or use the menu for the other copies."));
-  } else {
-    gtk_widget_set_tooltip_text(button, entry->exec);
-    lambdock_accessible_update(button, entry->name,
-                               _("Application. Press Enter to open."));
-  }
+  g_autofree char *tooltip = tile_tooltip_text(entry);
+  gtk_widget_set_tooltip_text(button, tooltip);
+  lambdock_accessible_update(button, entry->name, tile_description(entry));
 
-  g_signal_connect_data(button, "clicked",
-                        G_CALLBACK(on_launchpad_tile_clicked),
-                        g_strdup(entry->exec), free_launched_command, 0);
+  g_signal_connect_data(button, "clicked", G_CALLBACK(on_tile_clicked),
+                        g_strdup(entry->exec), free_clicked_command, 0);
 
-  /* The copies travelling with the entry are reachable from here and nowhere
-   * else. */
-  if (entry_has_copies(entry))
-    launchpad_tile_add_copy_menu(button, entry);
+  /* The copies travel with the entry and are reachable from the tile and
+   * nowhere else. */
+  if (entry->alternates && entry->alternates->len > 0)
+    tile_add_copy_menu(button, entry);
 
   return button;
 }
@@ -166,59 +254,60 @@ GtkWidget *lambdock_launchpad_tile_new(LambdockDesktopEntry *entry,
  * The grid lists an application once, but a program can be installed twice --
  * the distro package and a Flatpak export of it. The copies the scan did not
  * list ride along on the entry it kept (see desktop_entry.h), and the tile
- * offers them from its context menu: the copy that starts is then the one the
- * user picked instead of the one the scan happened to reach first.
+ * offers them: the copy that starts is then the one the user picked, instead of
+ * the one the scan happened to reach first.
  */
 
-/* The one tile menu that can be open: Escape closes it before it closes the
- * launchpad, and hiding the launchpad has to let go of it. */
-static GtkWidget *g_launchpad_menu = NULL;
-
-static void on_launchpad_copy_clicked(GtkButton *button, gpointer user_data) {
+static void on_copy_clicked(GtkButton *button, gpointer user_data) {
   (void)button;
-  const char *command = (const char *)user_data;
 
-  if (command)
-    lambdock_spawn_command(command);
-
+  lambdock_spawn_command((const char *)user_data);
   lambdock_launchpad_hide();
 }
 
-/* One row of the menu: where the copy comes from, and the command it runs. */
-static GtkWidget *launchpad_copy_row_new(const char *source,
-                                         const char *command) {
+/** One row of the menu: where the copy comes from, and the command it runs. */
+static GtkWidget *make_copy_row(const char *source, const char *command) {
   GtkWidget *row = gtk_button_new();
   gtk_widget_add_css_class(row, "flat");
   gtk_widget_add_css_class(row, "copy-row");
 
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
 
-  GtkWidget *label = gtk_label_new(source);
-  gtk_widget_add_css_class(label, "copy-source");
-  gtk_label_set_xalign(GTK_LABEL(label), 0);
-  gtk_box_append(GTK_BOX(box), label);
+  GtkWidget *source_label = gtk_label_new(source);
+  gtk_widget_add_css_class(source_label, "copy-source");
+  gtk_label_set_xalign(GTK_LABEL(source_label), 0);
+  gtk_box_append(GTK_BOX(box), source_label);
 
-  GtkWidget *detail = gtk_label_new(command);
-  gtk_widget_add_css_class(detail, "copy-command");
-  gtk_label_set_xalign(GTK_LABEL(detail), 0);
-  gtk_label_set_ellipsize(GTK_LABEL(detail), PANGO_ELLIPSIZE_MIDDLE);
-  gtk_label_set_max_width_chars(GTK_LABEL(detail), 44);
-  gtk_box_append(GTK_BOX(box), detail);
+  GtkWidget *command_label = gtk_label_new(command);
+  gtk_widget_add_css_class(command_label, "copy-command");
+  gtk_label_set_xalign(GTK_LABEL(command_label), 0);
+  gtk_label_set_ellipsize(GTK_LABEL(command_label), PANGO_ELLIPSIZE_MIDDLE);
+  gtk_label_set_max_width_chars(GTK_LABEL(command_label), 44);
+  gtk_box_append(GTK_BOX(box), command_label);
 
   gtk_button_set_child(GTK_BUTTON(row), box);
   gtk_widget_set_tooltip_text(row, command);
   lambdock_accessible_update(row, source, command);
-
-  g_signal_connect_data(row, "clicked", G_CALLBACK(on_launchpad_copy_clicked),
-                        g_strdup(command), free_launched_command, 0);
+  g_signal_connect_data(row, "clicked", G_CALLBACK(on_copy_clicked),
+                        g_strdup(command), free_clicked_command, 0);
 
   return row;
 }
 
-static GtkWidget *launchpad_install_menu_new(LambdockDesktopEntry *entry) {
-  if (!entry)
-    return NULL;
+/** One menu row per installed copy, the listed one first. */
+static void append_copy_rows(GtkBox *box, const LambdockDesktopEntry *entry) {
+  guint copies = 1 + (entry->alternates ? entry->alternates->len : 0);
 
+  for (guint i = 0; i < copies; i++) {
+    const LambdockDesktopEntry *copy =
+        (i == 0) ? entry
+                 : g_ptr_array_index(entry->alternates, i - 1);
+    g_autofree char *source = lambdock_desktop_entry_source_label(copy);
+    gtk_box_append(box, make_copy_row(source, copy->exec));
+  }
+}
+
+static GtkWidget *make_copy_menu(const LambdockDesktopEntry *entry) {
   GtkWidget *popover = gtk_popover_new();
   gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
   gtk_widget_add_css_class(popover, "launchpad-copy-menu");
@@ -230,18 +319,7 @@ static GtkWidget *launchpad_install_menu_new(LambdockDesktopEntry *entry) {
   gtk_label_set_xalign(GTK_LABEL(title), 0);
   gtk_box_append(GTK_BOX(box), title);
 
-  /* The tile starts the first copy, so the menu lists it first, then the
-   * copies it was collapsed with, each named after where it comes from. */
-  guint copies = 1 + (entry->alternates ? entry->alternates->len : 0);
-  for (guint i = 0; i < copies; i++) {
-    LambdockDesktopEntry *copy = (i == 0)
-                                     ? entry
-                                     : g_ptr_array_index(entry->alternates,
-                                                         i - 1);
-    char *source = lambdock_desktop_entry_source_label(copy);
-    gtk_box_append(GTK_BOX(box), launchpad_copy_row_new(source, copy->exec));
-    g_free(source);
-  }
+  append_copy_rows(GTK_BOX(box), entry);
 
   gtk_popover_set_child(GTK_POPOVER(popover), box);
   lambdock_accessible_update(
@@ -251,13 +329,13 @@ static GtkWidget *launchpad_install_menu_new(LambdockDesktopEntry *entry) {
   return popover;
 }
 
-/* Closes the open copy menu, if there is one. */
-static gboolean launchpad_copy_menu_close(void) {
-  if (!g_launchpad_menu)
+/** Closes the open copy menu; TRUE when there was one. */
+static gboolean launchpad_copy_menu_close(LambdockLaunchpad *launchpad) {
+  if (!launchpad || !launchpad->open_copy_menu)
     return FALSE;
 
-  GtkWidget *menu = g_launchpad_menu;
-  g_launchpad_menu = NULL;
+  GtkWidget *menu = launchpad->open_copy_menu;
+  launchpad->open_copy_menu = NULL;
 
   if (gtk_widget_get_visible(menu))
     gtk_popover_popdown(GTK_POPOVER(menu));
@@ -265,35 +343,39 @@ static gboolean launchpad_copy_menu_close(void) {
   return TRUE;
 }
 
-static void launchpad_copy_menu_show(GtkWidget *menu) {
-  launchpad_copy_menu_close();
-  g_launchpad_menu = menu;
+static void launchpad_copy_menu_show(LambdockLaunchpad *launchpad,
+                                     GtkWidget *menu) {
+  if (!launchpad)
+    return;
+
+  launchpad_copy_menu_close(launchpad);
+  launchpad->open_copy_menu = menu;
   gtk_popover_popup(GTK_POPOVER(menu));
 }
 
-static void on_launchpad_menu_closed(GtkPopover *popover, gpointer user_data) {
-  (void)user_data;
+static void on_copy_menu_closed(GtkPopover *popover, gpointer user_data) {
+  LambdockLaunchpad *launchpad = user_data;
 
-  if (g_launchpad_menu == GTK_WIDGET(popover))
-    g_launchpad_menu = NULL;
+  if (launchpad && launchpad->open_copy_menu == GTK_WIDGET(popover))
+    launchpad->open_copy_menu = NULL;
 }
 
-static void on_launchpad_tile_menu_request(GtkGestureClick *gesture,
-                                           int n_press, double x, double y,
-                                           gpointer user_data) {
+/* Adapter: a right click on a tile asks for its menu. */
+static void on_tile_menu_request(GtkGestureClick *gesture, int n_press,
+                                 double x, double y, gpointer user_data) {
   (void)gesture;
   (void)n_press;
   (void)x;
   (void)y;
 
-  launchpad_copy_menu_show(GTK_WIDGET(user_data));
+  LambdockLaunchpad *launchpad = launchpad_instance();
+  launchpad_copy_menu_show(launchpad, GTK_WIDGET(user_data));
 }
 
-/* The Menu key and Shift+F10 are the keyboard's right click, as on the dock. */
-static gboolean on_launchpad_tile_key_pressed(GtkEventControllerKey *controller,
-                                              guint keyval, guint keycode,
-                                              GdkModifierType state,
-                                              gpointer user_data) {
+/* Adapter: the Menu key and Shift+F10 are the keyboard's right click. */
+static gboolean on_tile_key_pressed(GtkEventControllerKey *controller,
+                                    guint keyval, guint keycode,
+                                    GdkModifierType state, gpointer user_data) {
   (void)controller;
   (void)keycode;
 
@@ -301,12 +383,12 @@ static gboolean on_launchpad_tile_key_pressed(GtkEventControllerKey *controller,
       !(keyval == GDK_KEY_F10 && (state & GDK_SHIFT_MASK) != 0))
     return FALSE;
 
-  launchpad_copy_menu_show(GTK_WIDGET(user_data));
+  launchpad_copy_menu_show(launchpad_instance(), GTK_WIDGET(user_data));
   return TRUE;
 }
 
-/* The copy menu a tile parents, if it has one. */
-static GtkWidget *launchpad_tile_copy_menu(GtkWidget *tile) {
+/** The copy menu a tile parents, if it has one. */
+static GtkWidget *tile_copy_menu(GtkWidget *tile) {
   for (GtkWidget *child = gtk_widget_get_first_child(tile); child != NULL;
        child = gtk_widget_get_next_sibling(child)) {
     if (GTK_IS_POPOVER(child))
@@ -316,138 +398,155 @@ static GtkWidget *launchpad_tile_copy_menu(GtkWidget *tile) {
   return NULL;
 }
 
-/* Gives a tile the menu of its other installed copies. */
-static void launchpad_tile_add_copy_menu(GtkWidget *tile,
-                                         LambdockDesktopEntry *entry) {
-  GtkWidget *menu = launchpad_install_menu_new(entry);
-  if (!menu)
-    return;
+static void tile_add_copy_menu(GtkWidget *tile,
+                               const LambdockDesktopEntry *entry) {
+  GtkWidget *menu = make_copy_menu(entry);
 
+  /* At most one copy menu is open in the process, so the bookkeeping always
+   * belongs to the one launchpad -- including for a tile built on its own. */
   gtk_widget_set_parent(menu, tile);
   lambdock_popover_close_on_escape(menu);
-  g_signal_connect(menu, "closed", G_CALLBACK(on_launchpad_menu_closed), NULL);
+  g_signal_connect(menu, "closed", G_CALLBACK(on_copy_menu_closed),
+                   launchpad_instance());
 
   GtkGesture *right_click = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
                                 GDK_BUTTON_SECONDARY);
-  g_signal_connect(right_click, "pressed",
-                   G_CALLBACK(on_launchpad_tile_menu_request), menu);
+  g_signal_connect(right_click, "pressed", G_CALLBACK(on_tile_menu_request),
+                   menu);
   gtk_widget_add_controller(tile, GTK_EVENT_CONTROLLER(right_click));
 
   GtkEventController *keys = gtk_event_controller_key_new();
-  /* Capture, like the grid's arrow keys: the tile must see the Menu key even
-   * when the flow box would otherwise use it. */
+  /* Capture: the tile must see the Menu key even when the flow box would use
+   * it first. */
   gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed",
-                   G_CALLBACK(on_launchpad_tile_key_pressed), menu);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_tile_key_pressed), menu);
   gtk_widget_add_controller(tile, keys);
 }
 
 /* ============================================================================
- * GRID & SEARCH
+ * GRID: FILLING
  * ============================================================================
  */
 
-static void launchpad_clear_flow(void) {
-  if (!g_launchpad_flow)
+/** The tile inside @wrapper, or NULL when @wrapper holds something else (the
+ * "nothing matched" label lives in the same flow box). */
+static GtkWidget *tile_in(GtkWidget *wrapper) {
+  if (!wrapper)
+    return NULL;
+
+  if (gtk_widget_has_css_class(wrapper, "launchpad-tile"))
+    return wrapper;
+
+  if (GTK_IS_FLOW_BOX_CHILD(wrapper)) {
+    GtkWidget *inner =
+        gtk_flow_box_child_get_child(GTK_FLOW_BOX_CHILD(wrapper));
+    if (inner && gtk_widget_has_css_class(inner, "launchpad-tile"))
+      return inner;
+  }
+
+  return NULL;
+}
+
+static void launchpad_clear_grid(LambdockLaunchpad *launchpad) {
+  if (!launchpad->grid)
     return;
 
   /* The tiles own their menus, so the pointer to the open one has to go before
    * the tiles do. */
-  launchpad_copy_menu_close();
+  launchpad_copy_menu_close(launchpad);
 
   GtkWidget *child;
-  while ((child = gtk_widget_get_first_child(g_launchpad_flow)) != NULL) {
-    /* A widget has to let go of its popover before GTK finalizes it, or it
-     * complains about being finalized with children left (the same reason
+  while ((child = gtk_widget_get_first_child(launchpad->grid)) != NULL) {
+    /* A widget has to let go of its popover before GTK finalizes it, or GTK
+     * complains about finalizing a widget with children (the same reason
      * free_dock_item() unparents one), and this grid is rebuilt on every
      * keystroke. */
-    GtkWidget *tile = launchpad_tile_in(child);
-    GtkWidget *menu = tile ? launchpad_tile_copy_menu(tile) : NULL;
+    GtkWidget *tile = tile_in(child);
+    GtkWidget *menu = tile ? tile_copy_menu(tile) : NULL;
     if (menu)
       gtk_widget_unparent(menu);
 
-    gtk_flow_box_remove(GTK_FLOW_BOX(g_launchpad_flow), child);
+    gtk_flow_box_remove(GTK_FLOW_BOX(launchpad->grid), child);
   }
 }
 
-static void launchpad_refill(void) {
-  if (!g_launchpad_flow || !g_launchpad_entries)
+static void append_tile(LambdockLaunchpad *launchpad,
+                        LambdockDesktopEntry *entry, gpointer user_data) {
+  guint *shown = user_data;
+
+  gtk_flow_box_append(
+      GTK_FLOW_BOX(launchpad->grid),
+      lambdock_launchpad_tile_new(entry, launchpad->appearance.icon_size));
+  (*shown)++;
+}
+
+/** The "nothing matched" hint, which a screen reader hears once. */
+static void launchpad_show_empty_hint(LambdockLaunchpad *launchpad) {
+  GtkWidget *empty = gtk_label_new(_("No applications match your search"));
+  gtk_widget_add_css_class(empty, "dim-label");
+  gtk_flow_box_append(GTK_FLOW_BOX(launchpad->grid), empty);
+
+  lambdock_accessible_announce(launchpad->grid,
+                               _("No applications match your search"), FALSE);
+}
+
+/** Rebuilds the grid for the current query. */
+static void launchpad_refill(LambdockLaunchpad *launchpad) {
+  if (!launchpad->grid || !launchpad->entries)
     return;
 
-  launchpad_clear_flow();
+  launchpad_clear_grid(launchpad);
 
   guint shown = 0;
-  for (guint i = 0; i < g_launchpad_entries->len; i++) {
-    LambdockDesktopEntry *entry = g_ptr_array_index(g_launchpad_entries, i);
-    if (!entry_matches_query(entry, g_launchpad_query))
-      continue;
+  launchpad_for_each_matching(launchpad, append_tile, &shown);
 
-    gtk_flow_box_append(GTK_FLOW_BOX(g_launchpad_flow),
-                        lambdock_launchpad_tile_new(entry, g_launchpad_icon_size));
-    shown++;
-  }
-
-  if (shown == 0) {
-    GtkWidget *empty = gtk_label_new(_("No applications match your search"));
-    gtk_widget_add_css_class(empty, "dim-label");
-    gtk_flow_box_append(GTK_FLOW_BOX(g_launchpad_flow), empty);
-
-    /* A screen reader user typing into the field cannot see the grid go
-     * empty; say it once instead of on every keystroke. */
-    lambdock_accessible_announce(g_launchpad_flow,
-                                 _("No applications match your search"), FALSE);
-  }
+  if (shown == 0)
+    launchpad_show_empty_hint(launchpad);
 }
 
 /* ============================================================================
- * GRID KEYBOARD NAVIGATION
+ * GRID: KEYBOARD MOVEMENT
  * ============================================================================
- * The grid is a GtkFlowBox of plain buttons: Tab walks them, but a launcher is
- * expected to be usable with the arrow keys alone. Movement is by tile index,
- * so it follows the columns the grid actually laid out rather than a fixed
- * count that would jump rows on a resized window.
+ * The grid is a flow box of plain buttons: Tab walks them, but a launcher is
+ * expected to work with the arrow keys alone. Movement is by tile index, so it
+ * follows the columns the grid actually laid out rather than a fixed count that
+ * would jump rows on a resized window.
  */
 
-/* The TILE-th application tile, skipping the "nothing matched" label that the
- * empty grid holds. */
-static GtkWidget *launchpad_tile_at(GtkWidget *flow, guint tile) {
-  if (!flow)
-    return NULL;
+static guint tile_count(GtkWidget *grid) {
+  guint count = 0;
 
+  for (GtkWidget *child = gtk_widget_get_first_child(grid); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (tile_in(child))
+      count++;
+  }
+
+  return count;
+}
+
+/** The @tile-th application tile, skipping the "nothing matched" label. */
+static GtkWidget *tile_at(GtkWidget *grid, guint tile) {
   guint seen = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(flow);
-       child != NULL; child = gtk_widget_get_next_sibling(child)) {
-    GtkWidget *tile_button = launchpad_tile_in(child);
+
+  for (GtkWidget *child = gtk_widget_get_first_child(grid); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    GtkWidget *tile_button = tile_in(child);
     if (!tile_button)
       continue;
     if (seen == tile)
       return tile_button;
     seen++;
   }
+
   return NULL;
 }
 
-static guint launchpad_tile_count(GtkWidget *flow) {
-  if (!flow)
-    return 0;
-
-  guint count = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(flow); child != NULL;
-       child = gtk_widget_get_next_sibling(child)) {
-    if (launchpad_tile_in(child))
-      count++;
-  }
-  return count;
-}
-
-/* Which tile holds the focus, or -1 when the focus is elsewhere (typically the
+/** Which tile holds the focus, or -1 when the focus is elsewhere (typically the
  * search field). */
-static int launchpad_focused_tile(GtkWidget *flow) {
-  if (!flow)
-    return -1;
-
-  GtkRoot *root = gtk_widget_get_root(flow);
+static int focused_tile(GtkWidget *grid) {
+  GtkRoot *root = gtk_widget_get_root(grid);
   if (!root || !GTK_IS_WINDOW(root))
     return -1;
 
@@ -457,9 +556,10 @@ static int launchpad_focused_tile(GtkWidget *flow) {
 
   int index = -1;
   guint tile = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(flow); child != NULL;
+
+  for (GtkWidget *child = gtk_widget_get_first_child(grid); child != NULL;
        child = gtk_widget_get_next_sibling(child)) {
-    GtkWidget *tile_button = launchpad_tile_in(child);
+    GtkWidget *tile_button = tile_in(child);
     if (!tile_button)
       continue;
 
@@ -468,18 +568,20 @@ static int launchpad_focused_tile(GtkWidget *flow) {
         index = (int)tile;
         break;
       }
-      if (w == flow)
+      if (w == grid)
         break;
     }
+
     if (index >= 0)
       return index;
     tile++;
   }
+
   return -1;
 }
 
-static gboolean launchpad_focus_tile(GtkWidget *flow, int tile) {
-  GtkWidget *target = launchpad_tile_at(flow, tile < 0 ? 0 : (guint)tile);
+static gboolean focus_tile(GtkWidget *grid, int tile) {
+  GtkWidget *target = tile_at(grid, tile < 0 ? 0 : (guint)tile);
   if (!target)
     return FALSE;
 
@@ -487,77 +589,74 @@ static gboolean launchpad_focus_tile(GtkWidget *flow, int tile) {
   return TRUE;
 }
 
-static gboolean launchpad_move_focus(GtkWidget *flow, int delta) {
-  guint count = launchpad_tile_count(flow);
+/** Moves the focus by @delta tiles, clamped to the grid's ends. */
+static gboolean move_focus(GtkWidget *grid, int delta) {
+  guint count = tile_count(grid);
   if (count == 0)
     return FALSE;
 
-  int current = launchpad_focused_tile(flow);
+  int current = focused_tile(grid);
   if (current < 0)
-    return launchpad_focus_tile(flow, 0);
+    return focus_tile(grid, 0);
 
-  int next = current + delta;
-  if (next < 0)
-    next = 0;
-  if (next >= (int)count)
-    next = (int)count - 1;
-
+  int next = CLAMP(current + delta, 0, (int)count - 1);
   if (next == current)
     return TRUE;
 
-  return launchpad_focus_tile(flow, next);
+  return focus_tile(grid, next);
 }
 
-static gboolean on_launchpad_grid_key_pressed(GtkEventControllerKey *controller,
-                                              guint keyval, guint keycode,
-                                              GdkModifierType state,
-                                              gpointer user_data) {
+/* Adapter: the grid's arrow keys. */
+static gboolean on_grid_key_pressed(GtkEventControllerKey *controller,
+                                    guint keyval, guint keycode,
+                                    GdkModifierType state, gpointer user_data) {
   (void)controller;
   (void)keycode;
   (void)state;
 
-  GtkWidget *flow = GTK_WIDGET(user_data);
-  if (!flow)
-    flow = g_launchpad_flow;
+  LambdockLaunchpad *launchpad = user_data;
+  if (!launchpad->grid)
+    return FALSE;
 
-  int columns = (int)g_launchpad_applied_columns;
-  if (columns < 1)
-    columns = 1;
+  int columns = MAX(1, (int)launchpad->applied_columns);
 
   switch (keyval) {
   case GDK_KEY_Left:
-    return launchpad_move_focus(flow, -1);
+    return move_focus(launchpad->grid, -1);
   case GDK_KEY_Right:
-    return launchpad_move_focus(flow, 1);
+    return move_focus(launchpad->grid, 1);
   case GDK_KEY_Up:
-    return launchpad_move_focus(flow, -columns);
+    return move_focus(launchpad->grid, -columns);
   case GDK_KEY_Down:
-    return launchpad_move_focus(flow, columns);
+    return move_focus(launchpad->grid, columns);
   case GDK_KEY_Home:
-    return launchpad_focus_tile(flow, 0);
+    return focus_tile(launchpad->grid, 0);
   case GDK_KEY_End:
-    return launchpad_focus_tile(flow, (int)launchpad_tile_count(flow) - 1);
+    return focus_tile(launchpad->grid, (int)tile_count(launchpad->grid) - 1);
   default:
     return FALSE;
   }
 }
 
-/* Down and Return in the search field: Down enters the grid, Return launches
- * the first match without making the user tab into it. */
-static gboolean on_launchpad_search_key_pressed(GtkEventControllerKey *controller,
-                                                guint keyval, guint keycode,
-                                                GdkModifierType state,
-                                                gpointer user_data) {
+/* Adapter: Down enters the grid from the search field; Return launches the
+ * first match without making the user tab into it. */
+static gboolean on_search_key_pressed(GtkEventControllerKey *controller,
+                                      guint keyval, guint keycode,
+                                      GdkModifierType state,
+                                      gpointer user_data) {
   (void)controller;
   (void)keycode;
   (void)state;
-  (void)user_data;
+
+  LambdockLaunchpad *launchpad = user_data;
+  if (!launchpad->grid)
+    return FALSE;
 
   if (keyval == GDK_KEY_Down)
-    return launchpad_focus_tile(g_launchpad_flow, 0);
+    return focus_tile(launchpad->grid, 0);
 
   if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) {
-    GtkWidget *first = launchpad_tile_at(g_launchpad_flow, 0);
+    GtkWidget *first = tile_at(launchpad->grid, 0);
     if (!first)
       return FALSE;
     gtk_widget_activate(first);
@@ -567,127 +666,196 @@ static gboolean on_launchpad_search_key_pressed(GtkEventControllerKey *controlle
   return FALSE;
 }
 
-static void on_launchpad_search_changed(GtkSearchEntry *entry,
-                                        gpointer user_data) {
-  (void)user_data;
+/* Adapter: typing re-filters the grid. */
+static void on_search_changed(GtkSearchEntry *entry, gpointer user_data) {
+  LambdockLaunchpad *launchpad = user_data;
 
-  g_free(g_launchpad_query);
-  g_launchpad_query = g_strdup(gtk_editable_get_text(GTK_EDITABLE(entry)));
+  g_free(launchpad->query);
+  launchpad->query = g_strdup(gtk_editable_get_text(GTK_EDITABLE(entry)));
 
-  launchpad_refill();
+  launchpad_refill(launchpad);
 }
 
-static int launchpad_columns(GtkWidget *window) {
-  /* The grid lives inside 48px side margins and its own padding; counting them
-   * is what keeps the last column from hanging off the screen. */
-  int width = gtk_widget_get_width(window);
-  int usable = MAX(0, width - 2 * 48 - 16);
+/* ============================================================================
+ * GRID: THE WIDGET
+ * ============================================================================
+ */
 
-  /* Tiles grow with the configured icon size, so a wide grid does not turn
-   * into a row of overlapping labels on a smaller screen. */
-  int tile = MAX(150, g_launchpad_icon_size + 86);
-  int fit = usable > 0 ? usable / tile : 0;
+/** Applies @columns to the flow box and remembers them for the arrow keys. */
+static void grid_apply_columns(LambdockLaunchpad *launchpad, int columns) {
+  launchpad->applied_columns = (guint)columns;
 
-  /* A configured count is an upper bound: asking for 14 tiles on a laptop
-   * should not push the last ones off the screen. 0 means "as many as fit". */
-  if (g_launchpad_columns > 0)
-    return fit > 0 ? MIN(g_launchpad_columns, MAX(LAUNCHPAD_COLUMNS_MIN, fit))
-                   : g_launchpad_columns;
-
-  if (fit <= 0)
-    return 8;
-
-  int columns = fit;
-  if (columns < 4)
-    columns = 4;
-  if (columns > 10)
-    columns = 10;
-  return columns;
+  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(launchpad->grid),
+                                         (guint)columns);
+  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(launchpad->grid),
+                                         (guint)columns);
 }
 
-static void on_launchpad_size_allocate(GtkWidget *widget, int width, int height,
-                                       gpointer user_data) {
-  (void)width;
+/** Columns for a window of @width pixels. */
+static int columns_for_width(const LambdockLaunchpad *launchpad, int width) {
+  int usable = MAX(0, width - 2 * LAUNCHPAD_SIDE_MARGIN_PX -
+                          LAUNCHPAD_GRID_INSET_PX);
+
+  return lambdock_launchpad_columns_for(usable, launchpad->appearance.icon_size,
+                                        launchpad->appearance.columns);
+}
+
+/* Adapter: the window was resized, so re-fit the columns. */
+static void on_grid_size_allocate(GtkWidget *widget, int width, int height,
+                                  gpointer user_data) {
+  (void)widget; /* The width is what matters; the model holds the grid. */
   (void)height;
-  (void)user_data;
 
-  if (!g_launchpad_flow)
+  LambdockLaunchpad *launchpad = user_data;
+  if (!launchpad->grid)
     return;
 
-  int columns = launchpad_columns(widget);
-  g_launchpad_applied_columns = (guint)columns;
-  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(g_launchpad_flow),
-                                         (guint)columns);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(g_launchpad_flow),
-                                         (guint)columns);
+  grid_apply_columns(launchpad, columns_for_width(launchpad, width));
 }
 
 GtkWidget *lambdock_launchpad_grid_new(GPtrArray *entries) {
-  GtkWidget *flow = gtk_flow_box_new();
+  (void)entries; /* The grid is filled by the launchpad, from its own model. */
 
-  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(flow), GTK_SELECTION_NONE);
-  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(flow), TRUE);
-  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(flow), 8);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(flow), 8);
-  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(flow), 16);
-  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(flow), 16);
-  gtk_widget_add_css_class(flow, "launchpad-grid");
+  LambdockLaunchpad *launchpad = launchpad_instance();
 
-  gtk_widget_set_hexpand(flow, TRUE);
-  gtk_widget_set_vexpand(flow, TRUE);
+  GtkWidget *grid = gtk_flow_box_new();
+  launchpad->grid = grid;
+
+  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(grid), GTK_SELECTION_NONE);
+  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(grid), TRUE);
+  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(grid),
+                                         LAUNCHPAD_FALLBACK_COLUMNS);
+  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(grid),
+                                         LAUNCHPAD_FALLBACK_COLUMNS);
+  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(grid), 16);
+  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(grid), 16);
+  gtk_widget_add_css_class(grid, "launchpad-grid");
+  gtk_widget_set_hexpand(grid, TRUE);
+  gtk_widget_set_vexpand(grid, TRUE);
+
   lambdock_accessible_update(
-      flow, _("Applications"),
+      grid, _("Applications"),
       _("Application grid. Use the arrow keys to choose an application and "
         "Enter to open it."));
 
+  /* Capture: the flow box has arrow bindings of its own, and the grid's
+   * movement has to follow the tiles rather than an invisible cursor. */
   GtkEventController *keys = gtk_event_controller_key_new();
-  /* Capture: the flow box has its own arrow bindings, and the grid's movement
-   * has to follow the tiles rather than an invisible cursor. */
   gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed",
-                   G_CALLBACK(on_launchpad_grid_key_pressed), flow);
-  gtk_widget_add_controller(flow, keys);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_grid_key_pressed),
+                   launchpad);
+  gtk_widget_add_controller(grid, keys);
 
-  (void)entries; /* The flow box is filled by launchpad_refill(). */
-  return flow;
+  return grid;
 }
 
 /* ============================================================================
  * APPEARANCE
  * ============================================================================
- * The launchpad is global, but its settings belong to the dock instance that
- * opened it. They are resolved again on every show, which is also what makes a
- * change made in the preferences window visible without restarting lambdock.
  */
 
-static void launchpad_apply_columns(void) {
-  if (!g_launchpad_flow || !g_launchpad_window)
-    return;
-
-  int columns = launchpad_columns(g_launchpad_window);
-  g_launchpad_applied_columns = (guint)columns;
-  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(g_launchpad_flow),
-                                         (guint)columns);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(g_launchpad_flow),
-                                         (guint)columns);
-}
-
-static void launchpad_apply_config(LambdockState *state) {
+/** Reads the appearance out of the settings of the dock that opened us. */
+static LaunchpadAppearance appearance_for(const LambdockState *state) {
   const char *config_path = state ? state->config_path : NULL;
 
-  g_launchpad_icon_size = get_launchpad_icon_size_config_for(config_path);
-  g_launchpad_columns = get_launchpad_columns_config_for(config_path);
-  g_launchpad_blur = get_launchpad_blur_config_for(config_path);
+  LaunchpadAppearance appearance = {
+      .icon_size = get_launchpad_icon_size_config_for(config_path),
+      .columns = get_launchpad_columns_config_for(config_path),
+      .blur = get_launchpad_blur_config_for(config_path),
+  };
 
-  if (!g_launchpad_window)
+  return appearance;
+}
+
+/** Pushes the appearance into the widgets that exist. */
+static void launchpad_apply_appearance(LambdockLaunchpad *launchpad,
+                                       LaunchpadAppearance appearance) {
+  launchpad->appearance = appearance;
+
+  if (!launchpad->window)
     return;
 
-  if (g_launchpad_blur)
-    gtk_widget_add_css_class(g_launchpad_window, "launchpad-frosted");
+  if (appearance.blur)
+    gtk_widget_add_css_class(launchpad->window, "launchpad-frosted");
   else
-    gtk_widget_remove_css_class(g_launchpad_window, "launchpad-frosted");
+    gtk_widget_remove_css_class(launchpad->window, "launchpad-frosted");
 
-  launchpad_apply_columns();
+  if (launchpad->grid) {
+    int width = gtk_widget_get_width(launchpad->window);
+    grid_apply_columns(launchpad, columns_for_width(launchpad, width));
+  }
+}
+
+/* ============================================================================
+ * CLOSING
+ * ============================================================================
+ */
+
+/* Every part of the launchpad that a click must not treat as "the backdrop".
+ * The grid is in the list because a click on the empty area of the grid is not
+ * a click outside the launchpad. */
+/* GTK's own predicates take a non-const widget, so this one does too. */
+static gboolean widget_is_launchpad_content(GtkWidget *widget) {
+  return gtk_widget_has_css_class(widget, "launchpad-tile") ||
+         gtk_widget_has_css_class(widget, "launchpad-grid") ||
+         gtk_widget_has_css_class(widget, "launchpad-search") ||
+         gtk_widget_has_css_class(widget, "launchpad-close") ||
+         GTK_IS_ENTRY(widget) || GTK_IS_TEXT(widget);
+}
+
+/** TRUE when @picked sits inside something the click must not close. */
+static gboolean click_hits_content(GtkWidget *picked) {
+  for (GtkWidget *widget = picked; widget != NULL;
+       widget = gtk_widget_get_parent(widget)) {
+    if (widget_is_launchpad_content(widget))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+/* Adapter: a click on the backdrop closes the launchpad, like clicking outside
+ * Launchpad on macOS. */
+static void on_backdrop_click(GtkGestureClick *gesture, int n_press, double x,
+                              double y, gpointer user_data) {
+  (void)gesture;
+  (void)n_press;
+  (void)user_data;
+
+  GtkWidget *window = launchpad_instance()->window;
+  if (!window)
+    return;
+
+  GtkWidget *picked = gtk_widget_pick(window, x, y, GTK_PICK_DEFAULT);
+  if (picked && !click_hits_content(picked))
+    lambdock_launchpad_hide();
+}
+
+/* Adapter: Escape closes the copy menu first, then the launchpad. */
+static gboolean on_window_key_pressed(GtkEventControllerKey *controller,
+                                      guint keyval, guint keycode,
+                                      GdkModifierType state,
+                                      gpointer user_data) {
+  (void)controller;
+  (void)keycode;
+  (void)state;
+  (void)user_data;
+
+  if (keyval != GDK_KEY_Escape)
+    return FALSE;
+
+  if (launchpad_copy_menu_close(launchpad_instance()))
+    return TRUE;
+
+  lambdock_launchpad_hide();
+  return TRUE;
+}
+
+/* Adapter: the close button. */
+static void on_close_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  (void)user_data;
+  lambdock_launchpad_hide();
 }
 
 /* ============================================================================
@@ -695,82 +863,7 @@ static void launchpad_apply_config(LambdockState *state) {
  * ============================================================================
  */
 
-void lambdock_launchpad_hide(void) {
-  /* The copies menu belongs to a tile of this window. */
-  launchpad_copy_menu_close();
-
-  if (g_launchpad_window)
-    gtk_widget_set_visible(g_launchpad_window, FALSE);
-}
-
-gboolean lambdock_launchpad_is_open(void) {
-  return g_launchpad_window && gtk_widget_get_visible(g_launchpad_window);
-}
-
-static gboolean on_launchpad_key_pressed(GtkEventControllerKey *controller,
-                                         guint keyval, guint keycode,
-                                         GdkModifierType state,
-                                         gpointer user_data) {
-  (void)controller;
-  (void)keycode;
-  (void)state;
-  (void)user_data;
-
-  if (keyval == GDK_KEY_Escape) {
-    /* An open menu is the thing closest to the user, so it goes first. */
-    if (launchpad_copy_menu_close())
-      return TRUE;
-
-    lambdock_launchpad_hide();
-    return TRUE;
-  }
-  return FALSE;
-}
-
-static void on_launchpad_close_clicked(GtkButton *button, gpointer user_data) {
-  (void)button;
-  (void)user_data;
-  lambdock_launchpad_hide();
-}
-
-static void on_launchpad_click(GtkGestureClick *gesture, int n_press, double x,
-                               double y, gpointer user_data) {
-  (void)gesture;
-  (void)n_press;
-  (void)user_data;
-
-  GtkWidget *window = g_launchpad_window;
-  if (!window)
-    return;
-
-  /* A click on the backdrop (not on a tile or the search field) closes the
-   * launchpad, like clicking outside Launchpad on macOS. */
-  GtkWidget *picked = gtk_widget_pick(window, x, y, GTK_PICK_DEFAULT);
-  if (!picked)
-    return;
-
-  if (gtk_widget_has_css_class(picked, "launchpad-tile") ||
-      gtk_widget_has_css_class(picked, "launchpad-grid") ||
-      gtk_widget_has_css_class(picked, "launchpad-search") ||
-      gtk_widget_has_css_class(picked, "launchpad-close") ||
-      GTK_IS_ENTRY(picked) || GTK_IS_TEXT(picked))
-    return;
-
-  /* Widgets inside a tile or the search field bubble up to their parents. */
-  for (GtkWidget *parent = gtk_widget_get_parent(picked); parent != NULL;
-       parent = gtk_widget_get_parent(parent)) {
-    if (gtk_widget_has_css_class(parent, "launchpad-tile") ||
-        gtk_widget_has_css_class(parent, "launchpad-search") ||
-        gtk_widget_has_css_class(parent, "launchpad-close") ||
-        GTK_IS_ENTRY(parent))
-      return;
-  }
-
-  lambdock_launchpad_hide();
-}
-
-static void launchpad_configure_layer_shell(GtkWidget *window,
-                                            LambdockState *state) {
+static void configure_layer_shell(GtkWidget *window, LambdockState *state) {
   GtkWindow *gtk_window = GTK_WINDOW(window);
 
   if (!gtk_layer_is_supported())
@@ -792,33 +885,8 @@ static void launchpad_configure_layer_shell(GtkWidget *window,
     gtk_layer_set_monitor(gtk_window, state->monitor);
 }
 
-static GtkWidget *launchpad_window_new(LambdockState *state) {
-  GtkApplication *app = NULL;
-  if (state && state->window && GTK_IS_WINDOW(state->window))
-    app = gtk_window_get_application(GTK_WINDOW(state->window));
-
-  if (!app)
-    return NULL;
-
-  GtkWidget *window = gtk_application_window_new(app);
-  gtk_widget_add_css_class(window, "launchpad");
-  gtk_window_set_title(GTK_WINDOW(window), _("Applications"));
-  gtk_window_set_default_size(GTK_WINDOW(window), 1280, 800);
-  gtk_window_set_hide_on_close(GTK_WINDOW(window), TRUE);
-
-  /* The surface fills the whole overlay, so the frosted background covers the
-   * screen edge to edge. The content keeps its own margins inside it. */
-  GtkWidget *surface = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
-  gtk_widget_add_css_class(surface, "launchpad-surface");
-
-  GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
-  gtk_widget_set_margin_start(vbox, 48);
-  gtk_widget_set_margin_end(vbox, 48);
-  gtk_widget_set_margin_top(vbox, 28);
-  gtk_widget_set_margin_bottom(vbox, 36);
-  gtk_widget_set_valign(vbox, GTK_ALIGN_FILL);
-  gtk_widget_set_vexpand(vbox, TRUE);
-
+/** The header line: the title, and the close button. */
+static GtkWidget *make_window_header(void) {
   GtkWidget *top = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
   gtk_widget_add_css_class(top, "launchpad-top");
 
@@ -839,132 +907,207 @@ static GtkWidget *launchpad_window_new(LambdockState *state) {
                              _("Closes the application grid. Escape does the "
                                "same."));
   gtk_widget_set_size_request(close, 38, 38);
-  g_signal_connect(close, "clicked", G_CALLBACK(on_launchpad_close_clicked),
-                   NULL);
+  g_signal_connect(close, "clicked", G_CALLBACK(on_close_clicked), NULL);
   gtk_box_append(GTK_BOX(top), close);
 
-  gtk_box_append(GTK_BOX(vbox), top);
+  return top;
+}
 
+/** The search field, with its own key controller. */
+static GtkWidget *make_search_entry(LambdockLaunchpad *launchpad) {
   GtkWidget *search = gtk_search_entry_new();
   gtk_widget_add_css_class(search, "launchpad-search");
   gtk_widget_set_halign(search, GTK_ALIGN_CENTER);
   gtk_widget_set_size_request(search, 460, -1);
   gtk_search_entry_set_placeholder_text(GTK_SEARCH_ENTRY(search),
-                                       _("Search applications"));
+                                        _("Search applications"));
   lambdock_accessible_update(
       search, _("Search applications"),
       _("Filters the grid as you type. Down enters the grid."));
-  g_signal_connect(search, "search-changed",
-                   G_CALLBACK(on_launchpad_search_changed), NULL);
+  g_signal_connect(search, "search-changed", G_CALLBACK(on_search_changed),
+                   launchpad);
 
-  GtkEventController *search_keys = gtk_event_controller_key_new();
   /* Capture: the entry consumes Return for its own "activate" signal, and Down
    * has to leave the field instead of moving the text cursor. */
-  gtk_event_controller_set_propagation_phase(search_keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(search_keys, "key-pressed",
-                   G_CALLBACK(on_launchpad_search_key_pressed), NULL);
-  gtk_widget_add_controller(search, search_keys);
-  gtk_box_append(GTK_BOX(vbox), search);
-  g_launchpad_search = search;
+  GtkEventController *keys = gtk_event_controller_key_new();
+  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_search_key_pressed),
+                   launchpad);
+  gtk_widget_add_controller(search, keys);
 
+  return search;
+}
+
+/** The scrolling area that holds the grid. */
+static GtkWidget *make_grid_viewport(void) {
   GtkWidget *scrolled = gtk_scrolled_window_new();
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER,
-                                 GTK_POLICY_AUTOMATIC);
+
+  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled),
+                                 GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
   gtk_scrolled_window_set_propagate_natural_width(
       GTK_SCROLLED_WINDOW(scrolled), TRUE);
   gtk_scrolled_window_set_propagate_natural_height(
       GTK_SCROLLED_WINDOW(scrolled), TRUE);
   gtk_widget_set_vexpand(scrolled, TRUE);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled),
+                                lambdock_launchpad_grid_new(NULL));
 
-  GtkWidget *flow = lambdock_launchpad_grid_new(NULL);
-  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), flow);
-  g_launchpad_flow = flow;
+  return scrolled;
+}
 
-  gtk_box_append(GTK_BOX(vbox), scrolled);
-  gtk_box_append(GTK_BOX(surface), vbox);
-  gtk_window_set_child(GTK_WINDOW(window), surface);
+/** Header, search field and grid, stacked with the launchpad's margins. */
+static GtkWidget *make_window_body(LambdockLaunchpad *launchpad) {
+  GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
+  gtk_widget_set_margin_start(vbox, LAUNCHPAD_SIDE_MARGIN_PX);
+  gtk_widget_set_margin_end(vbox, LAUNCHPAD_SIDE_MARGIN_PX);
+  gtk_widget_set_margin_top(vbox, 28);
+  gtk_widget_set_margin_bottom(vbox, 36);
+  gtk_widget_set_valign(vbox, GTK_ALIGN_FILL);
+  gtk_widget_set_vexpand(vbox, TRUE);
 
+  gtk_box_append(GTK_BOX(vbox), make_window_header());
+  gtk_box_append(GTK_BOX(vbox), make_search_entry(launchpad));
+  gtk_box_append(GTK_BOX(vbox), make_grid_viewport());
+
+  return vbox;
+}
+
+/* Escape (capture phase, because the search entry consumes it itself) and the
+ * backdrop click that closes the launchpad. */
+static void install_window_controllers(LambdockLaunchpad *launchpad,
+                                       GtkWidget *window) {
   GtkEventController *keys = gtk_event_controller_key_new();
-  /* Capture phase: the search entry consumes Escape itself (to clear its text),
-   * so a bubbling handler on the window would never see it. */
   gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_launchpad_key_pressed),
-                   NULL);
+  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_window_key_pressed),
+                   launchpad);
   gtk_widget_add_controller(window, keys);
 
   GtkGesture *click = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(click), GDK_BUTTON_PRIMARY);
-  g_signal_connect(click, "pressed", G_CALLBACK(on_launchpad_click), NULL);
+  g_signal_connect(click, "pressed", G_CALLBACK(on_backdrop_click), launchpad);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(click));
 
-  g_signal_connect(window, "size-allocate",
-                   G_CALLBACK(on_launchpad_size_allocate), NULL);
+  g_signal_connect(window, "size-allocate", G_CALLBACK(on_grid_size_allocate),
+                   launchpad);
+}
 
-  launchpad_configure_layer_shell(window, state);
+/** The application to parent the launchpad to, or NULL when there is none. */
+static GtkApplication *application_for(const LambdockState *state) {
+  if (!state || !state->window || !GTK_IS_WINDOW(state->window))
+    return NULL;
+
+  return gtk_window_get_application(GTK_WINDOW(state->window));
+}
+
+static GtkWidget *make_window_new(LambdockLaunchpad *launchpad,
+                                  LambdockState *state) {
+  GtkApplication *app = application_for(state);
+  if (!app)
+    return NULL;
+
+  GtkWidget *window = gtk_application_window_new(app);
+  gtk_widget_add_css_class(window, "launchpad");
+  gtk_window_set_title(GTK_WINDOW(window), _("Applications"));
+  gtk_window_set_default_size(GTK_WINDOW(window), 1280, 800);
+  gtk_window_set_hide_on_close(GTK_WINDOW(window), TRUE);
+
+  /* The surface fills the whole overlay so the frosted background covers the
+   * screen edge to edge; the content keeps its own margins inside it. */
+  GtkWidget *surface = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_widget_add_css_class(surface, "launchpad-surface");
+  gtk_box_append(GTK_BOX(surface), make_window_body(launchpad));
+  gtk_window_set_child(GTK_WINDOW(window), surface);
+
+  install_window_controllers(launchpad, window);
+  configure_layer_shell(window, state);
 
   return window;
 }
 
-void lambdock_launchpad_show(LambdockState *state) {
-  launchpad_apply_config(state);
+/** Loads a fresh application list, replacing the previous one. */
+static void launchpad_rescan(LambdockLaunchpad *launchpad) {
+  g_clear_pointer(&launchpad->entries, lambdock_desktop_entries_free);
+  launchpad->entries = lambdock_desktop_entries_scan();
+}
 
-  if (!g_launchpad_window) {
-    g_launchpad_window = launchpad_window_new(state);
-    if (!g_launchpad_window) {
+/** Clears the search field and the query it feeds. */
+static void launchpad_reset_query(LambdockLaunchpad *launchpad) {
+  g_free(launchpad->query);
+  launchpad->query = g_strdup("");
+
+  if (launchpad->search && GTK_IS_EDITABLE(launchpad->search))
+    gtk_editable_set_text(GTK_EDITABLE(launchpad->search), "");
+}
+
+void lambdock_launchpad_show(LambdockState *state) {
+  LambdockLaunchpad *launchpad = launchpad_instance();
+  LaunchpadAppearance appearance = appearance_for(state);
+
+  if (!launchpad->window) {
+    launchpad->window = make_window_new(launchpad, state);
+    if (!launchpad->window) {
       LOG_C_WARN("UI", "Cannot open the launchpad without an application");
       return;
     }
-
-    /* The window exists now: apply the frosted class and the grid width that
-     * were resolved before it could be built. */
-    launchpad_apply_config(state);
   }
+
+  /* The window exists now, so the appearance reaches the widgets it owns. */
+  launchpad_apply_appearance(launchpad, appearance);
 
   /* Rescan on every show: installing an application should be enough for it to
    * appear, without restarting the dock. */
-  if (g_launchpad_entries)
-    lambdock_desktop_entries_free(g_launchpad_entries);
-  g_launchpad_entries = lambdock_desktop_entries_scan();
-
-  g_free(g_launchpad_query);
-  g_launchpad_query = g_strdup("");
-  if (g_launchpad_search && GTK_IS_EDITABLE(g_launchpad_search))
-    gtk_editable_set_text(GTK_EDITABLE(g_launchpad_search), "");
-
-  launchpad_refill();
+  launchpad_rescan(launchpad);
+  launchpad_reset_query(launchpad);
+  launchpad_refill(launchpad);
 
   LOG_C_INFO("UI", "Opening launchpad with %u applications",
-             g_launchpad_entries ? g_launchpad_entries->len : 0);
+             launchpad->entries ? launchpad->entries->len : 0);
 
-  gtk_window_present(GTK_WINDOW(g_launchpad_window));
+  gtk_window_present(GTK_WINDOW(launchpad->window));
 
-  if (g_launchpad_search)
-    gtk_widget_grab_focus(g_launchpad_search);
+  if (launchpad->search)
+    gtk_widget_grab_focus(launchpad->search);
+}
+
+void lambdock_launchpad_hide(void) {
+  LambdockLaunchpad *launchpad = launchpad_instance();
+
+  /* The copy menu belongs to a tile of this window. */
+  launchpad_copy_menu_close(launchpad);
+
+  if (launchpad->window)
+    gtk_widget_set_visible(launchpad->window, FALSE);
+}
+
+gboolean lambdock_launchpad_is_open(void) {
+  LambdockLaunchpad *launchpad = launchpad_instance();
+
+  return launchpad->window && gtk_widget_get_visible(launchpad->window);
 }
 
 void lambdock_launchpad_shutdown(void) {
+  LambdockLaunchpad *launchpad = launchpad_instance();
+
   /* The tiles go with the window, so they have to let go of their copy menus
    * first. */
-  launchpad_clear_flow();
+  launchpad_clear_grid(launchpad);
 
-  if (g_launchpad_window) {
-    gtk_window_destroy(GTK_WINDOW(g_launchpad_window));
-    g_launchpad_window = NULL;
+  if (launchpad->window) {
+    gtk_window_destroy(GTK_WINDOW(launchpad->window));
+    launchpad->window = NULL;
   }
 
-  g_launchpad_flow = NULL;
-  g_launchpad_search = NULL;
+  launchpad->grid = NULL;
+  launchpad->search = NULL;
 
-  g_launchpad_icon_size = LAUNCHPAD_ICON_SIZE;
-  g_launchpad_columns = LAUNCHPAD_COLUMNS_AUTO;
-  g_launchpad_blur = FALSE;
-  g_launchpad_applied_columns = 8;
+  LaunchpadAppearance defaults = {
+      .icon_size = LAUNCHPAD_ICON_SIZE,
+      .columns = LAUNCHPAD_COLUMNS_AUTO,
+      .blur = FALSE,
+  };
+  launchpad->appearance = defaults;
+  launchpad->applied_columns = LAUNCHPAD_FALLBACK_COLUMNS;
 
-  if (g_launchpad_entries) {
-    lambdock_desktop_entries_free(g_launchpad_entries);
-    g_launchpad_entries = NULL;
-  }
-
-  g_free(g_launchpad_query);
-  g_launchpad_query = NULL;
+  g_clear_pointer(&launchpad->entries, lambdock_desktop_entries_free);
+  g_clear_pointer(&launchpad->query, g_free);
 }

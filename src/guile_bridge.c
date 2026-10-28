@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "guile_bridge.h" // Header file defining function declarations and LambdockState
+#include "core/config_values.h" // Pure, unit-tested range/name rules
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
 #include "ui/dock_item.h" // Functions to create visual dock items and separators
 #include "ui/launchpad.h"  // Launchpad defaults and limits
@@ -58,6 +59,9 @@ static SCM call_core_proc_with_path(const char *func_name, const char *path) {
  * get_guile_string_for:
  * Calls a Scheme function that returns a string or symbol for a given config
  * path, and converts it into a C string.
+ *
+ * Returns: (transfer full) (nullable): a `g_malloc`'d string (free it with
+ * `g_free`), or @default_val again when the Scheme side has nothing usable.
  */
 static char *get_guile_string_for(const char *func_name,
                                   const char *fallback_module,
@@ -79,9 +83,11 @@ static char *get_guile_string_for(const char *func_name,
 
   if (scm_is_string(str_scm)) {
     char *str = scm_to_utf8_string(str_scm);
-    if (str && *str != '\0')
-      return str;
+    char *copy = (str && *str != '\0') ? g_strdup(str) : NULL;
     free(str);
+
+    if (copy)
+      return copy;
   }
 
   return g_strdup(default_val);
@@ -119,24 +125,8 @@ static double get_guile_number_for(const char *func_name, const char *path,
   return fallback;
 }
 
-/* --- Clamping helpers ------------------------------------------------------ */
-
-static double clamp_double(double value, double low, double high) {
-  if (value < low)
-    return low;
-  if (value > high)
-    return high;
-  return value;
-}
-
-static int clamp_int(double value, int low, int high) {
-  int v = (int)round(value);
-  if (v < low)
-    return low;
-  if (v > high)
-    return high;
-  return v;
-}
+/* Clamping and name->value rules live in src/core/config_values.c, where they
+ * are pure and unit tested without a Guile interpreter or a display. */
 
 /* =================================================================================
  * PUBLIC BRIDGE API
@@ -161,13 +151,9 @@ gboolean get_hover_animate_config_for(const char *config_path) {
 
 /** Reads icon size for a specific config path. */
 int get_icon_size_config_for(const char *config_path) {
-  SCM res = call_core_proc_with_path("get-dock-icon-size", config_path);
-  if (scm_is_true(res) && (scm_is_integer(res) || scm_is_number(res))) {
-    int sz = scm_to_int(res);
-    if (sz > 0)
-      return sz;
-  }
-  return DEFAULT_ICON_SIZE;
+  double raw = get_guile_number_for("get-dock-icon-size", config_path,
+                                    (double)DEFAULT_ICON_SIZE);
+  return lambdock_icon_size_sanitize(raw);
 }
 
 /**
@@ -176,16 +162,9 @@ int get_icon_size_config_for(const char *config_path) {
  * clamped so a typo cannot collapse or explode the dock.
  */
 int get_item_spacing_config_for(const char *config_path) {
-  SCM res = call_core_proc_with_path("get-dock-item-spacing", config_path);
-  if (scm_is_true(res) && (scm_is_integer(res) || scm_is_number(res))) {
-    int spacing = scm_to_int(res);
-    if (spacing < 0)
-      return 0;
-    if (spacing > 64)
-      return 64;
-    return spacing;
-  }
-  return DOCK_ITEM_SPACING_PX;
+  double raw = get_guile_number_for("get-dock-item-spacing", config_path,
+                                    (double)DOCK_ITEM_SPACING_PX);
+  return lambdock_item_spacing_sanitize(raw);
 }
 
 /**
@@ -194,30 +173,21 @@ int get_item_spacing_config_for(const char *config_path) {
  * clamped so a typo cannot collapse or explode the dock.
  */
 int get_capsule_padding_config_for(const char *config_path) {
-  SCM res = call_core_proc_with_path("get-dock-capsule-padding", config_path);
-  if (scm_is_true(res) && (scm_is_integer(res) || scm_is_number(res))) {
-    int padding = scm_to_int(res);
-    if (padding < 0)
-      return 0;
-    if (padding > CAPSULE_MAIN_AXIS_PADDING_MAX_PX)
-      return CAPSULE_MAIN_AXIS_PADDING_MAX_PX;
-    return padding;
-  }
-  return CAPSULE_MAIN_AXIS_PADDING_PX;
+  double raw = get_guile_number_for("get-dock-capsule-padding", config_path,
+                                    (double)CAPSULE_MAIN_AXIS_PADDING_PX);
+  return lambdock_capsule_padding_sanitize(raw);
 }
 
 int get_launchpad_icon_size_config_for(const char *config_path) {
   double size = get_guile_number_for("get-dock-launchpad-icon-size", config_path,
                                      LAUNCHPAD_ICON_SIZE);
-  return clamp_int(size, LAUNCHPAD_ICON_SIZE_MIN, LAUNCHPAD_ICON_SIZE_MAX);
+  return lambdock_launchpad_icon_size_sanitize(size);
 }
 
 int get_launchpad_columns_config_for(const char *config_path) {
   double value = get_guile_number_for("get-dock-launchpad-columns", config_path,
                                       LAUNCHPAD_COLUMNS_AUTO);
-  if (value <= 0)
-    return LAUNCHPAD_COLUMNS_AUTO;
-  return clamp_int(value, LAUNCHPAD_COLUMNS_MIN, LAUNCHPAD_COLUMNS_MAX);
+  return lambdock_launchpad_columns_sanitize(value);
 }
 
 gboolean get_launchpad_blur_config_for(const char *config_path) {
@@ -246,8 +216,8 @@ gboolean get_track_windows_config_for(const char *config_path) {
 gboolean get_taskbar_config_for(const char *config_path) {
   char *mode =
       get_guile_string_for("get-dock-mode", NULL, config_path, "dock");
-  gboolean taskbar = (g_ascii_strcasecmp(mode, "taskbar") == 0);
-  free(mode);
+  gboolean taskbar = lambdock_dock_mode_is_taskbar(mode);
+  g_free(mode);
   return taskbar;
 }
 
@@ -261,58 +231,38 @@ gboolean get_show_window_titles_config_for(const char *config_path) {
  * Resolves every shelf/reflection parameter for a dock instance.
  *
  * The Scheme side already merges "explicit setting > special-mode preset >
- * default"; this function only clamps the results so that hand-written or
- * hostile values (negative padding, absurd tilt, NaN...) can never break the
- * layout maths.
+ * default"; this function only reads the numbers out and hands them to the pure
+ * sanitiser, so hand-written or hostile values (negative padding, absurd tilt,
+ * NaN...) can never break the layout maths.
  */
 void get_shelf_config_for(const char *config_path, LambdockShelfParams *out) {
   if (!out)
     return;
 
-  LambdockShelfParams defaults = lambdock_shelf_params_default();
-  *out = defaults;
+  const LambdockShelfParams defaults = lambdock_shelf_params_default();
+  LambdockShelfRawValues raw;
 
-  out->tilt_deg = clamp_double(
+  raw.tilt_deg =
       get_guile_number_for("get-dock-shelf-tilt", config_path,
-                           defaults.tilt_deg),
-      -SHELF_TILT_MAX_DEG, SHELF_TILT_MAX_DEG);
-
-  double perspective = get_guile_number_for("get-dock-shelf-perspective",
-                                            config_path, defaults.perspective);
-  out->perspective =
-      clamp_double(perspective, SHELF_PERSPECTIVE_MIN, SHELF_PERSPECTIVE_MAX);
-
-  /* The margin may be negative: that is how the icons overhang the shelf. */
-  out->margin_px = clamp_int(
-      get_guile_number_for("get-dock-shelf-margin", config_path,
-                           (double)defaults.margin_px),
-      -SHELF_EXTRA_MAX_PX, SHELF_EXTRA_MAX_PX);
-
-  out->front_px = clamp_int(
-      get_guile_number_for("get-dock-shelf-front", config_path,
-                           (double)defaults.front_px),
-      0, SHELF_EXTRA_MAX_PX);
-
-  out->reflection_ratio = clamp_double(
-      get_guile_number_for("get-dock-reflection", config_path,
-                           defaults.reflection_ratio),
-      0.0, SHELF_REFLECTION_RATIO_MAX);
-
-  out->reflection_intensity = clamp_double(
+                           defaults.tilt_deg);
+  raw.perspective = get_guile_number_for("get-dock-shelf-perspective",
+                                         config_path, defaults.perspective);
+  raw.margin_px = get_guile_number_for("get-dock-shelf-margin", config_path,
+                                       (double)defaults.margin_px);
+  raw.front_px = get_guile_number_for("get-dock-shelf-front", config_path,
+                                      (double)defaults.front_px);
+  raw.reflection_ratio = get_guile_number_for(
+      "get-dock-reflection", config_path, defaults.reflection_ratio);
+  raw.reflection_intensity =
       get_guile_number_for("get-dock-reflection-intensity", config_path,
-                           defaults.reflection_intensity),
-      0.0, 1.0);
-
-  out->reflection_blur_ratio = clamp_double(
+                           defaults.reflection_intensity);
+  raw.reflection_blur_ratio =
       get_guile_number_for("get-dock-reflection-blur", config_path,
-                           defaults.reflection_blur_ratio),
-      0.0, SHELF_REFLECTION_BLUR_MAX);
+                           defaults.reflection_blur_ratio);
+  raw.flare_px = get_guile_number_for("get-dock-shelf-flare", config_path,
+                                      (double)defaults.flare_px);
 
-  /* The keystone lean, in pixels per side. */
-  out->flare_px = clamp_int(
-      get_guile_number_for("get-dock-shelf-flare", config_path,
-                           (double)defaults.flare_px),
-      -SHELF_FLARE_MAX_PX, SHELF_FLARE_MAX_PX);
+  *out = lambdock_shelf_params_sanitize(&raw, defaults);
 }
 
 /** Retrieves target monitor screen configuration string for a specific config
@@ -330,16 +280,9 @@ char *get_config_path_c(void) {
 GtkLayerShellEdge get_position_config_for(const char *config_path) {
   char *pos_str =
       get_guile_string_for("get-dock-position", NULL, config_path, "bottom");
-  GtkLayerShellEdge edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  GtkLayerShellEdge edge = lambdock_edge_from_name(pos_str);
 
-  if (g_strcmp0(pos_str, "top") == 0)
-    edge = GTK_LAYER_SHELL_EDGE_TOP;
-  else if (g_strcmp0(pos_str, "left") == 0)
-    edge = GTK_LAYER_SHELL_EDGE_LEFT;
-  else if (g_strcmp0(pos_str, "right") == 0)
-    edge = GTK_LAYER_SHELL_EDGE_RIGHT;
-
-  free(pos_str);
+  g_free(pos_str);
   return edge;
 }
 
@@ -377,7 +320,7 @@ gboolean is_app_excluded(const char *app_id, const char *config_path) {
 
     if (scm_is_string(str_scm)) {
       char *str = scm_to_utf8_string(str_scm);
-      gboolean match = (g_ascii_strcasecmp(str, app_id) == 0);
+      gboolean match = str && (g_ascii_strcasecmp(str, app_id) == 0);
       free(str);
 
       if (match)
@@ -388,142 +331,296 @@ gboolean is_app_excluded(const char *app_id, const char *config_path) {
   return FALSE;
 }
 
-/* Helper function to safely convert Guile SCM string/symbol/#f to C char* */
+/* -------------------------------------------------------------------------
+ * SCHEME -> C VALUE HELPERS
+ * -------------------------------------------------------------------------
+ * Every string that leaves this file is allocated with GLib (`g_strdup`), so
+ * callers always pair it with `g_free`. Guile's own `scm_to_utf8_string()` uses
+ * malloc, which used to leak into the rest of the program and made every free
+ * site a guess; that conversion now stays local to these helpers.
+ */
+
+/** Converts a Scheme string/symbol to a `g_strdup`'d string, or NULL. */
 static char *scm_to_c_string_or_null(SCM val) {
   if (!scm_is_true(val))
     return NULL;
+
   SCM str_scm = scm_is_symbol(val) ? scm_symbol_to_string(val) : val;
-  if (scm_is_string(str_scm)) {
-    char *str = scm_to_utf8_string(str_scm);
-    if (str && *str != '\0')
-      return str;
-    free(str);
-  }
+  if (!scm_is_string(str_scm))
+    return NULL;
+
+  char *raw = scm_to_utf8_string(str_scm);
+  if (!raw)
+    return NULL;
+
+  char *copy = (*raw != '\0') ? g_strdup(raw) : NULL;
+  free(raw);
+  return copy;
+}
+
+/**
+ * scm_symbol_name_or_null:
+ * Reads the symbol name of @val. A string is accepted too, and anything else
+ * (a list, `#f`, a number) yields NULL instead of raising a Guile type error
+ * that would longjmp out of the C caller.
+ */
+static char *scm_symbol_name_or_null(SCM val) {
+  if (scm_is_symbol(val))
+    return scm_to_c_string_or_null(val);
+  if (scm_is_string(val))
+    return scm_to_c_string_or_null(val);
+
   return NULL;
 }
 
-/** Reads launcher items for state->config_path and populates dock. */
+/** A poll interval in ms, clamped to something a timer can use. */
+static guint scm_to_poll_interval(SCM val, guint fallback) {
+  if (!scm_is_number(val))
+    return fallback;
+
+  double interval = scm_to_double(val);
+  if (!isfinite(interval) || interval < 1.0)
+    return fallback;
+  if (interval > (double)G_MAXUINT)
+    return G_MAXUINT;
+
+  return (guint)interval;
+}
+
+/* -------------------------------------------------------------------------
+ * DOCK ITEM BUILDERS
+ * -------------------------------------------------------------------------
+ * Each Scheme item type has one small builder below and one row in the table
+ * that follows. Adding a kind of item is therefore a new builder plus a new
+ * row, instead of another branch in a long string comparison chain.
+ */
+
+/* Every `dock-item-*` accessor, resolved once per populate pass. */
+typedef struct {
+  SCM name;
+  SCM icon;
+  SCM exec;
+  SCM poll;
+  SCM poll_interval;
+  SCM hover_animate;
+  SCM path;
+  SCM view;
+  SCM meter;
+  SCM unit;
+  SCM max;
+} DockItemAccessors;
+
+typedef struct {
+  LambdockState *state;
+  SCM item;
+  gboolean hover_animate;
+  GtkOrientation separator_orientation;
+  const DockItemAccessors *accessors;
+} DockItemBuildContext;
+
+typedef void (*DockItemBuildFunc)(const DockItemBuildContext *context);
+
+static void build_app_item(const DockItemBuildContext *context) {
+  const DockItemAccessors *acc = context->accessors;
+
+  char *name = scm_to_c_string_or_null(scm_call_1(acc->name, context->item));
+  char *icon = scm_to_c_string_or_null(scm_call_1(acc->icon, context->item));
+  char *exec = scm_to_c_string_or_null(scm_call_1(acc->exec, context->item));
+
+  const char *config_path = context->state->config_path;
+  if (is_app_excluded(name, config_path) ||
+      is_app_excluded(icon, config_path) ||
+      is_app_excluded(exec, config_path)) {
+    LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s",
+               name ? name : "");
+  } else {
+    create_dock_item(context->state, name, icon, exec, name, TRUE,
+                     context->hover_animate);
+    LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)",
+               name ? name : "unnamed", exec ? exec : "no-exec");
+  }
+
+  g_free(name);
+  g_free(icon);
+  g_free(exec);
+}
+
+static void build_dynamic_item(const DockItemBuildContext *context) {
+  const DockItemAccessors *acc = context->accessors;
+
+  char *name = scm_to_c_string_or_null(scm_call_1(acc->name, context->item));
+  char *icon = scm_to_c_string_or_null(scm_call_1(acc->icon, context->item));
+  char *exec = scm_to_c_string_or_null(scm_call_1(acc->exec, context->item));
+  SCM poll_fn = scm_call_1(acc->poll, context->item);
+  guint interval_ms =
+      scm_to_poll_interval(scm_call_1(acc->poll_interval, context->item), 1000);
+
+  const char *config_path = context->state->config_path;
+  if (is_app_excluded(name, config_path) || is_app_excluded(exec, config_path)) {
+    goto done;
+  }
+
+  DockItem *dynamic = create_dynamic_dock_item(context->state, name, icon, exec,
+                                               poll_fn, interval_ms,
+                                               context->hover_animate);
+
+  /* Meter items draw a gauge instead of text: the poll function returns a
+   * number, which fills the ring up to `max' and is shown with `unit'. */
+  if (dynamic && scm_is_true(scm_call_1(acc->meter, context->item))) {
+    char *unit = scm_to_c_string_or_null(scm_call_1(acc->unit, context->item));
+    SCM max_scm = scm_call_1(acc->max, context->item);
+    double max_value = scm_is_number(max_scm) ? scm_to_double(max_scm) : 100.0;
+
+    dock_item_enable_meter(dynamic, unit, max_value);
+    g_free(unit);
+  }
+
+  LOG_C_INFO("GuileBridge",
+             "Created dynamic item: %s (%s, poll interval: %u ms)",
+             name ? name : "unnamed", exec ? exec : "no-exec", interval_ms);
+
+done:
+  g_free(name);
+  g_free(icon);
+  g_free(exec);
+}
+
+static void build_separator_item(const DockItemBuildContext *context) {
+  create_separator_dock_item(context->state,
+                             context->separator_orientation);
+  LOG_C_INFO("GuileBridge", "Created layout separator");
+}
+
+static void build_stack_item(const DockItemBuildContext *context) {
+  const DockItemAccessors *acc = context->accessors;
+
+  char *name = scm_to_c_string_or_null(scm_call_1(acc->name, context->item));
+  char *icon = scm_to_c_string_or_null(scm_call_1(acc->icon, context->item));
+  char *path = scm_to_c_string_or_null(scm_call_1(acc->path, context->item));
+  char *view = scm_symbol_name_or_null(scm_call_1(acc->view, context->item));
+
+  create_stack_dock_item(context->state, name, icon, path, view,
+                         context->hover_animate);
+
+  g_free(name);
+  g_free(icon);
+  g_free(path);
+  g_free(view);
+}
+
+static void build_launchpad_item(const DockItemBuildContext *context) {
+  const DockItemAccessors *acc = context->accessors;
+
+  char *name = scm_to_c_string_or_null(scm_call_1(acc->name, context->item));
+  char *icon = scm_to_c_string_or_null(scm_call_1(acc->icon, context->item));
+
+  create_launchpad_dock_item(context->state, name, icon,
+                             context->hover_animate);
+
+  g_free(name);
+  g_free(icon);
+}
+
+static void build_trash_item(const DockItemBuildContext *context) {
+  const DockItemAccessors *acc = context->accessors;
+
+  char *name = scm_to_c_string_or_null(scm_call_1(acc->name, context->item));
+  char *icon = scm_to_c_string_or_null(scm_call_1(acc->icon, context->item));
+
+  create_trash_dock_item(context->state, name, icon, context->hover_animate);
+
+  g_free(name);
+  g_free(icon);
+}
+
+/* One row per Scheme item type: the type names are the `dock-item-type`
+ * symbols produced by the Scheme side. */
+static const struct {
+  const char *type_name;
+  DockItemBuildFunc build;
+} DOCK_ITEM_BUILDERS[] = {
+    {"app", build_app_item},
+    {"dynamic", build_dynamic_item},
+    {"separator", build_separator_item},
+    {"stack", build_stack_item},
+    {"launchpad", build_launchpad_item},
+    {"trash", build_trash_item},
+};
+
+static DockItemBuildFunc builder_for_type(const char *type_name) {
+  if (!type_name)
+    return NULL;
+
+  for (gsize i = 0; i < G_N_ELEMENTS(DOCK_ITEM_BUILDERS); i++) {
+    if (g_strcmp0(type_name, DOCK_ITEM_BUILDERS[i].type_name) == 0)
+      return DOCK_ITEM_BUILDERS[i].build;
+  }
+
+  return NULL;
+}
+
+/** Resolves every accessor the builders use; FALSE when `(lambdock core)` is
+ * not loaded (the dock then simply stays empty instead of crashing). */
+static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
+  accessors->name = scm_c_public_ref("lambdock core", "dock-item-name");
+  accessors->icon = scm_c_public_ref("lambdock core", "dock-item-icon");
+  accessors->exec = scm_c_public_ref("lambdock core", "dock-item-exec");
+  accessors->poll = scm_c_public_ref("lambdock core", "dock-item-poll-fn");
+  accessors->poll_interval =
+      scm_c_public_ref("lambdock core", "dock-item-poll-interval");
+  accessors->hover_animate =
+      scm_c_public_ref("lambdock core", "dock-item-hover-animate?");
+  accessors->path = scm_c_public_ref("lambdock core", "dock-item-path");
+  accessors->view = scm_c_public_ref("lambdock core", "dock-item-view-mode");
+  accessors->meter = scm_c_public_ref("lambdock core", "dock-item-meter?");
+  accessors->unit = scm_c_public_ref("lambdock core", "dock-item-unit");
+  accessors->max = scm_c_public_ref("lambdock core", "dock-item-max");
+
+  return scm_is_true(accessors->name) && scm_is_true(accessors->icon) &&
+         scm_is_true(accessors->path) && scm_is_true(accessors->view);
+}
+
+/** Reads every configured item and builds one dock item per entry. */
 void populate_dock_items_for(LambdockState *state) {
   if (!state || !state->box)
     return;
 
-  SCM items_list =
-      call_core_proc_with_path("get-dock-items", state->config_path);
+  DockItemAccessors accessors = {0};
+  if (!resolve_item_accessors(&accessors))
+    return;
+
   SCM get_type_fn = scm_c_public_ref("lambdock core", "dock-item-type");
-  SCM get_name_fn = scm_c_public_ref("lambdock core", "dock-item-name");
-  SCM get_icon_fn = scm_c_public_ref("lambdock core", "dock-item-icon");
-  SCM get_exec_fn = scm_c_public_ref("lambdock core", "dock-item-exec");
-  SCM get_poll_fn = scm_c_public_ref("lambdock core", "dock-item-poll-fn");
-  SCM get_poll_interval_fn =
-      scm_c_public_ref("lambdock core", "dock-item-poll-interval");
-  SCM get_hover_animate_fn =
-      scm_c_public_ref("lambdock core", "dock-item-hover-animate?");
-  SCM get_path_fn = scm_c_public_ref("lambdock core", "dock-item-path");
-  SCM get_view_fn = scm_c_public_ref("lambdock core", "dock-item-view-mode");
-  SCM get_meter_fn = scm_c_public_ref("lambdock core", "dock-item-meter?");
-  SCM get_unit_fn = scm_c_public_ref("lambdock core", "dock-item-unit");
-  SCM get_max_fn = scm_c_public_ref("lambdock core", "dock-item-max");
+  if (!scm_is_true(get_type_fn))
+    return;
 
-  GtkOrientation sep_orient = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
-                                  ? GTK_ORIENTATION_VERTICAL
-                                  : GTK_ORIENTATION_HORIZONTAL;
+  GtkOrientation separator_orientation =
+      (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+          ? GTK_ORIENTATION_VERTICAL
+          : GTK_ORIENTATION_HORIZONTAL;
 
-  while (scm_is_pair(items_list)) {
-    SCM item = scm_car(items_list);
+  SCM items = call_core_proc_with_path("get-dock-items", state->config_path);
+  while (scm_is_pair(items)) {
+    SCM item = scm_car(items);
 
-    char *type_str =
-        scm_to_utf8_string(scm_symbol_to_string(scm_call_1(get_type_fn, item)));
-    gboolean hover_anim = scm_is_true(scm_call_1(get_hover_animate_fn, item));
+    char *type_name = scm_symbol_name_or_null(scm_call_1(get_type_fn, item));
+    DockItemBuildFunc build = builder_for_type(type_name);
 
-    if (g_strcmp0(type_str, "app") == 0) {
-      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
-      char *exec = scm_to_c_string_or_null(scm_call_1(get_exec_fn, item));
-
-      if (!is_app_excluded(name, state->config_path) &&
-          !is_app_excluded(icon, state->config_path) &&
-          !is_app_excluded(exec, state->config_path)) {
-        create_dock_item(state, name, icon, exec, name, TRUE, hover_anim);
-        LOG_C_INFO("GuileBridge", "Created favorite item: %s (%s)",
-                   name ? name : "unnamed", exec ? exec : "no-exec");
-      } else {
-        LOG_C_INFO("GuileBridge", "Skipping excluded launcher item: %s",
-                   name ? name : "");
-      }
-
-      free(name);
-      free(icon);
-      free(exec);
-    } else if (g_strcmp0(type_str, "dynamic") == 0) {
-      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
-      char *exec = scm_to_c_string_or_null(scm_call_1(get_exec_fn, item));
-      SCM poll_fn = scm_call_1(get_poll_fn, item);
-      SCM interval_scm = scm_call_1(get_poll_interval_fn, item);
-      guint interval_ms =
-          (scm_is_integer(interval_scm) || scm_is_number(interval_scm))
-              ? scm_to_uint(interval_scm)
-              : 1000;
-
-      if (!is_app_excluded(name, state->config_path) &&
-          !is_app_excluded(exec, state->config_path)) {
-        DockItem *dynamic = create_dynamic_dock_item(
-            state, name, icon, exec, poll_fn, interval_ms, hover_anim);
-
-        /* Meter items draw a gauge instead of text: the poll function returns a
-         * number, which fills the ring up to `max' and is shown with `unit'. */
-        if (dynamic && scm_is_true(scm_call_1(get_meter_fn, item))) {
-          char *unit = scm_to_c_string_or_null(scm_call_1(get_unit_fn, item));
-          SCM max_scm = scm_call_1(get_max_fn, item);
-          double max_value = (scm_is_number(max_scm)) ? scm_to_double(max_scm)
-                                                      : 100.0;
-          dock_item_enable_meter(dynamic, unit, max_value);
-          free(unit);
-        }
-
-        LOG_C_INFO(
-            "GuileBridge", "Created dynamic item: %s (%s, poll interval: %dms)",
-            name ? name : "unnamed", exec ? exec : "no-exec", interval_ms);
-      }
-
-      free(name);
-      free(icon);
-      free(exec);
-    } else if (g_strcmp0(type_str, "separator") == 0) {
-      create_separator_dock_item(state, sep_orient);
-      LOG_C_INFO("GuileBridge", "Created layout separator");
-    } else if (g_strcmp0(type_str, "stack") == 0) {
-      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
-      char *path = scm_to_c_string_or_null(scm_call_1(get_path_fn, item));
-      char *view = scm_to_c_string_or_null(scm_call_1(get_view_fn, item));
-
-      create_stack_dock_item(state, name, icon, path, view, hover_anim);
-
-      free(name);
-      free(icon);
-      free(path);
-      free(view);
-    } else if (g_strcmp0(type_str, "launchpad") == 0) {
-      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
-
-      create_launchpad_dock_item(state, name, icon, hover_anim);
-
-      free(name);
-      free(icon);
-    } else if (g_strcmp0(type_str, "trash") == 0) {
-      char *name = scm_to_c_string_or_null(scm_call_1(get_name_fn, item));
-      char *icon = scm_to_c_string_or_null(scm_call_1(get_icon_fn, item));
-
-      create_trash_dock_item(state, name, icon, hover_anim);
-
-      free(name);
-      free(icon);
+    if (build) {
+      DockItemBuildContext context = {
+          .state = state,
+          .item = item,
+          .hover_animate = scm_is_true(scm_call_1(accessors.hover_animate, item)),
+          .separator_orientation = separator_orientation,
+          .accessors = &accessors,
+      };
+      build(&context);
+    } else if (type_name) {
+      LOG_C_WARN("GuileBridge", "Ignoring unknown dock item type: %s",
+                 type_name);
     }
 
-    free(type_str);
-    items_list = scm_cdr(items_list);
+    g_free(type_name);
+    items = scm_cdr(items);
   }
 }
 

@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+#include "dock_registry.h"
 #include "toplevel_tracker.h"
 #include "dock_window.h"
 #include "ui/desktop_entry.h"
@@ -59,8 +60,9 @@ toplevel_handle_title(void *data,
   top->title = g_strdup(title);
 
   // Broadcast title update across all active docks
-  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++) {
+    LambdockState *state = g_ptr_array_index(docks, i);
     if (!state)
       continue;
 
@@ -78,6 +80,7 @@ toplevel_handle_title(void *data,
       update_dock_item_status(item);
     }
   }
+  g_ptr_array_unref(docks);
 }
 
 /**
@@ -133,8 +136,9 @@ toplevel_handle_app_id(void *data,
    * it under the previous id. Otherwise that item keeps a stale AppWindow and a
    * permanent running indicator (and leaks the AppWindow). */
   if (top->app_id && g_strcmp0(top->app_id, app_id) != 0) {
-    for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-      LambdockState *state = (LambdockState *)l->data;
+    GPtrArray *docks = dock_registry_snapshot();
+    for (guint i = 0; i < docks->len; i++) {
+      LambdockState *state = g_ptr_array_index(docks, i);
       if (!state)
         continue;
 
@@ -147,6 +151,7 @@ toplevel_handle_app_id(void *data,
         }
       }
     }
+    g_ptr_array_unref(docks);
   }
 
   g_free(top->app_id);
@@ -155,8 +160,9 @@ toplevel_handle_app_id(void *data,
   LOG_C_INFO("Tracker", "App ID resolved globally: '%s'", app_id);
 
   // Broadcast window creation across all active docks
-  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++) {
+    LambdockState *state = g_ptr_array_index(docks, i);
     if (!state)
       continue;
 
@@ -188,6 +194,7 @@ toplevel_handle_app_id(void *data,
       hide_dock(state);
     }
   }
+  g_ptr_array_unref(docks);
 }
 
 static void
@@ -201,8 +208,9 @@ toplevel_handle_closed(void *data,
              top->app_id ? top->app_id : "unknown");
 
   // Broadcast window close across all active docks
-  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-    LambdockState *state = (LambdockState *)l->data;
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++) {
+    LambdockState *state = g_ptr_array_index(docks, i);
     if (!state || !state->track_windows)
       continue;
 
@@ -224,6 +232,7 @@ toplevel_handle_closed(void *data,
       reveal_dock(state);
     }
   }
+  g_ptr_array_unref(docks);
 
   g_master_toplevels = g_list_remove(g_master_toplevels, top);
   zwlr_foreign_toplevel_handle_v1_destroy(handle);
@@ -326,9 +335,10 @@ static void tracker_teardown(void) {
   toplevel_manager_global = 0;
   tracker_initialized = FALSE;
 
-  for (GList *l = get_active_dock_states(); l != NULL; l = l->next) {
-    clear_tracked_windows((LambdockState *)l->data);
-  }
+  GPtrArray *docks = dock_registry_snapshot();
+  for (guint i = 0; i < docks->len; i++)
+    clear_tracked_windows(g_ptr_array_index(docks, i));
+  g_ptr_array_unref(docks);
 }
 
 static void

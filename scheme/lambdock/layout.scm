@@ -178,7 +178,7 @@ sections. A missing, unreadable or malformed file simply means \"no overrides\".
   "Applies a stored per-item view mode (stacks only) to ITEM."
   (let ((stored (and (eq? (dock-item-type item) 'stack)
                      (assoc-ref views (dock-item-key item)))))
-    (if (memq stored '(grid list fan))
+    (if (memq stored '(grid list))
         (stack-item #:name (dock-item-name item)
                     #:icon (dock-item-icon item)
                     #:path (dock-item-path item)
@@ -321,9 +321,9 @@ order, which is why the sort is stable."
                              (assq-ref layout 'views)))))
 
 (define (dock-layout-set-view! config-path item-key view)
-  "Stores the stack view mode of ITEM-KEY ('grid, 'list or 'fan)."
+  "Stores the stack view mode of ITEM-KEY ('grid or 'list)."
   (let* ((layout (dock-layout-ref config-path))
-         (mode (if (memq view '(grid list fan)) view 'grid))
+         (mode (if (memq view '(grid list)) view 'grid))
          (views (acons item-key
                        mode
                        (assoc-remove (assq-ref layout 'views) item-key))))

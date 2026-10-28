@@ -290,7 +290,7 @@ tangible reality.
   icon-sized gauges that fill up and change colour, not as text; see
   [[#dynamic-widgets][Dynamic widgets]].
 - *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
-  as an icon grid, a list, or a mac-style fan of tilted cards; see [[#stacks][Stacks]].
+  as an icon grid or a list; see [[#stacks][Stacks]].
 - *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
   parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
 - *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
@@ -411,11 +411,11 @@ Downloads stack, except that you decide which folder it shows.  Add one with
 (define dock-items
   (list (stack-item #:name "Downloads"   ; what the header and tooltip say
                     #:path "~/Downloads" ; the folder to show ("~" is expanded)
-                    #:view-mode 'grid)   ; 'grid, 'list or 'fan
+                    #:view-mode 'grid)   ; 'grid or 'list
         (stack-item #:name "Screenshots"
                     #:path "~/Pictures/Screenshots"
                     #:icon "folder-pictures"
-                    #:view-mode 'fan)))
+                    #:view-mode 'list)))
 #+end_src
 
 | Keyword        | Default    | What it does                                        |
@@ -431,15 +431,7 @@ gigantic directory cannot lock the UI up):
 
 - *grid*: a flow box of tiles, four to seven per row, the default;
 - *list*: one row per entry with its content-type icon, close to a file
-  manager's list view;
-- *fan*: an arc of tilted cards, macOS style.  GTK cannot rotate child widgets,
-  so this view paints its cards itself (rounded rectangle, preview, name) and
-  hit-tests the click by rotating the pointer back into each card's frame.  The
-  centre card stands upright, the outer ones lean and sink away from it, and the
-  card under the pointer comes to the front with its full name printed above the
-  fan.  A fan with more cards than fit scrolls sideways instead of shrinking
-  every card into a sliver; it shows at most 16 cards and a note says so, since
-  the folder itself is one click away in the header.
+  manager's list view.
 
 In every view, an image file shows a live, centre-cropped thumbnail of its
 contents instead of a generic type icon.  Thumbnails are decoded in the
@@ -624,7 +616,7 @@ It records four independent things: the item *order*, the items you dragged
 *out*, the items you dragged *in*, and per-stack *view modes*.  On the next start
 they are replayed on top of whatever the settings file says, so regenerating your
 configuration keeps working: new items appear, the ones you removed stay removed,
-and the stack you switched to a fan stays a fan.  Delete the file (or call
+and the stack you switched to a list stays a list.  Delete the file (or call
 ~(dock-layout-reset! path)~ from the REPL) to go back to the pure configuration.
 
 Item identity is =kind:name= (the Scheme procedure ~dock-item-key~), which is why
@@ -662,9 +654,7 @@ what it is.
   the first match.  On a tile of an application installed more than once, *Menu*
   or *Shift+F10* opens the menu of its copies.
 - In a stack, the arrows move between entries (a whole row at a time in the grid
-  view) and *Enter* opens the entry.  The fan is painted rather than made of
-  widgets, so it keeps the arrows itself: *Home*/*End* and *Left*/*Right* choose a
-  card, *Enter* opens it.
+  view) and *Enter* opens the entry; *Home*/*End* jump to the first and last one.
 - The preferences window closes with *Escape*, and every slider has a spin button
   next to it for typing an exact value.
 
@@ -680,9 +670,9 @@ state changes:
 
 Launchpad tiles ("Firefox. Application. Press Enter to open."), stack entries
 ("report.pdf. File.") and every preference control ("Reduce motion", "Icon size")
-are labelled too.  When the focus moves to a control, a screen reader reads it; when
-the fan's selection moves, the new card's name and position are announced (on GTK
-4.14 and newer, which is where announcements appeared).
+are labelled too.  When the focus moves to a control, a screen reader reads it, and
+changes that have no focus move of their own are announced (on GTK 4.14 and newer,
+which is where announcements appeared).
 
 Keyboard focus is drawn as a visible ring on dock icons, launchpad tiles, stack
 entries and preference controls, and only for keyboard focus (~:focus-visible~),
@@ -1157,7 +1147,7 @@ presets.
 | ~(app-item ...)~                | Record      | Custom application launcher definition              | ~#:name~, ~#:icon~, ~#:exec~, ~#:hover-animate?~                                                       |
 | ~(dynamic-item ...)~            | Record      | Dynamic polling widget: text, or a gauge with ~#:meter?~ | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~, ~#:meter?~, ~#:unit~, ~#:max~ |
 | ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
-| ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~, ~'fan~), ~#:hover-animate?~             |
+| ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~), ~#:hover-animate?~                    |
 | ~(launchpad-item ...)~          | Record      | Opens the full-screen application grid              | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
 | ~(trash-item ...)~              | Record      | Desktop trash icon: shows, opens and empties it     | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
 | ~(preset-launcher 'symbol)~     | Record      | Standard launcher resolved from the preset list      | Symbol (e.g. ~'emacs~, ~'alacritty~)                                                                    |
@@ -2654,12 +2644,16 @@ ninja -C build test
   Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
   ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
   ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
-  ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The trash
+  ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The pure
+  halves of the C side have their own display-free tests: ~test_config_values~
+  (range rules, clamping, NaN handling, edge and mode names) and ~test_dock_dims~
+  (the capsule/overlay/margin arithmetic), plus ~test_dock_registry~ for the
+  active-dock list.  The trash
   tests build throwaway trash directories and cover the freedesktop.org layout,
   the count, emptying (including read-only directories and orphans), moving
   dropped files and folders in with GIO (including name collisions) and the
   item's full/empty states; the stack tests cover the directory listing
-  (dot-files, ordering, missing folders) and the fan's rotation maths; the drag
+  (dot-files, ordering, missing folders) and the view-mode names; the drag
   and drop tests cover the drop-position arithmetic, the list reordering and the
   item identity that the layout overrides are built on.
 - *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by

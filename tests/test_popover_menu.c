@@ -308,14 +308,14 @@ static void test_popover_menu_stack(void) {
   GPtrArray *labels = g_ptr_array_new_with_free_func(g_free);
   collect_labels(gtk_popover_get_child(GTK_POPOVER(item->popover)), labels);
 
-  /* Header, the three view modes (with the active one marked), the folder
-   * action and "Remove from Dock". */
+  /* Header, the view modes (with the active one marked), the folder action and
+   * "Remove from Dock". */
   g_assert_true(labels_contain(labels, "Downloads"));
-  /* The active view mode is marked with a filled circle, the others with an
+  /* The active view mode is marked with a filled circle, the other with an
    * empty one (the item is on the list view). */
   g_assert_true(labels_contain(labels, "\xe2\x97\x8b Grid"));
   g_assert_true(labels_contain(labels, "\xe2\x97\x8f List"));
-  g_assert_true(labels_contain(labels, "\xe2\x97\x8b Fan"));
+  g_assert_false(labels_contain(labels, "Fan"));
   g_assert_true(labels_contain(labels, "Open Folder"));
   g_assert_true(labels_contain(labels, "Remove from Dock"));
 

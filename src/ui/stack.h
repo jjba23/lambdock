@@ -12,22 +12,16 @@
  * must not turn a popover into a memory and layout disaster. */
 #define STACK_MAX_ENTRIES 300
 
-/* The fan view stops at a readable handful of cards; the rest stay reachable
- * through the folder itself (and through the grid/list views). */
-#define STACK_FAN_MAX_CARDS 16
-
 /**
  * LambdockStackView:
  * @LAMBDOCK_STACK_VIEW_GRID: Icon grid (icon + name tiles).
  * @LAMBDOCK_STACK_VIEW_LIST: One row per entry, like a file manager list.
- * @LAMBDOCK_STACK_VIEW_FAN: macOS-style fanned arc of tilted cards.
  *
  * How a stack lays out the contents of its folder.
  */
 typedef enum {
   LAMBDOCK_STACK_VIEW_GRID = 0,
-  LAMBDOCK_STACK_VIEW_LIST,
-  LAMBDOCK_STACK_VIEW_FAN
+  LAMBDOCK_STACK_VIEW_LIST
 } LambdockStackView;
 
 /**
@@ -82,7 +76,7 @@ void lambdock_stack_entries_free(GPtrArray *entries);
 
 /**
  * lambdock_stack_view_from_string / lambdock_stack_view_to_string:
- * Convert between the Scheme symbol names ("grid", "list", "fan") and the
+ * Convert between the Scheme symbol names ("grid", "list") and the
  * enum. Unknown strings fall back to LAMBDOCK_STACK_VIEW_GRID.
  */
 LambdockStackView lambdock_stack_view_from_string(const char *name);
@@ -95,9 +89,7 @@ const char *lambdock_stack_view_to_string(LambdockStackView view);
  * @icon_size: Pixel size for the entry icons.
  *
  * Builds the widget that renders @entries in the requested view. Grid and list
- * views are scrollable containers of buttons; the fan view is a custom widget
- * that paints tilted cards and hit-tests them itself, wrapped in a horizontal
- * scroller so a large folder stays reachable at a readable card size.
+ * views are scrollable containers of buttons.
  *
  * Returns: (transfer none): the view widget.
  */
@@ -132,26 +124,6 @@ void lambdock_stack_set_view(DockItem *item, LambdockStackView view);
  * expanded.
  */
 char *lambdock_stack_expand_path(const char *path);
-
-/**
- * lambdock_stack_fan_contains:
- * @x: Pointer x, in widget coordinates.
- * @y: Pointer y, in widget coordinates.
- * @cx: Centre of the card, x.
- * @cy: Centre of the card, y.
- * @angle_degrees: Rotation of the card around its centre.
- * @width: Card width.
- * @height: Card height.
- *
- * The fan view paints rotated cards itself, so it has to hit-test them itself
- * too. This is that test: rotate the point back into the card's own frame and
- * compare it with the card rectangle.
- *
- * Returns: TRUE when the point lies inside the rotated card.
- */
-gboolean lambdock_stack_fan_contains(double x, double y, double cx, double cy,
-                                     double angle_degrees, double width,
-                                     double height);
 
 /**
  * lambdock_stack_view_focus_step:

@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "shelf.h"
+#include "icon_zoom.h"
 #include "../logger.h"
 #include "dock_item.h"
 #include <math.h>
@@ -1120,6 +1121,44 @@ GtkWidget *shelf_wrap_item(LambdockState *state, GtkWidget *button,
   return container;
 }
 
+/**
+ * item_icon_size:
+ * @item: a dock item.
+ *
+ * The size the item's icon is drawn at right now: the magnified size while the
+ * fisheye is scaling it, the resting size otherwise. (This lives here because
+ * the reflection is the only consumer; it used to sit in dock_item.c and made
+ * the shelf unusable without linking the whole item implementation.)
+ */
+static int item_icon_size(const DockItem *item) {
+  if (!item || !item->button || !GTK_IS_BUTTON(item->button))
+    return 0;
+
+  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!child)
+    return 0;
+
+  /* App and dynamic items hold their icon inside a zoom container; stacks, the
+   * launchpad and meter items put it straight in the content box. */
+  if (GTK_IS_BOX(child)) {
+    for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+         w = gtk_widget_get_next_sibling(w)) {
+      if (lambdock_icon_zoom_is_zoom(w))
+        return lambdock_icon_zoom_target_size(w);
+      if (GTK_IS_IMAGE(w) && gtk_image_get_pixel_size(GTK_IMAGE(w)) > 0)
+        return gtk_image_get_pixel_size(GTK_IMAGE(w));
+    }
+    return 0;
+  }
+
+  if (lambdock_icon_zoom_is_zoom(child))
+    return lambdock_icon_zoom_target_size(child);
+  if (GTK_IS_IMAGE(child) && gtk_image_get_pixel_size(GTK_IMAGE(child)) > 0)
+    return gtk_image_get_pixel_size(GTK_IMAGE(child));
+
+  return 0;
+}
+
 void apply_shelf_layout(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
@@ -1143,7 +1182,7 @@ void apply_shelf_layout(LambdockState *state) {
     /* Follow the current icon size so fisheye magnification is mirrored too,
      * but keep the band thickness tied to the *base* icon size: growing the
      * band would push the whole row of icons up while hovering. */
-    int icon_px = dock_item_icon_size(item);
+    int icon_px = item_icon_size(item);
     if (icon_px <= 0)
       icon_px = default_icon;
 

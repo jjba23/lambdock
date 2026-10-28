@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "meter.h"
+#include "../core/config_values.h"
 #include <math.h>
 
 /* ============================================================================
@@ -275,7 +276,9 @@ void lambdock_meter_set_value(GtkWidget *meter, double fraction,
     return;
 
   LambdockMeter *self = LAMBDOCK_METER(meter);
-  self->fraction = CLAMP(fraction, 0.0, 1.0);
+  /* CLAMP() lets NaN through (every comparison against NaN is false), which
+   * would reach the paint code; the sanitiser maps it to a safe value. */
+  self->fraction = lambdock_sanitize_double(fraction, 0.0, 0.0, 1.0);
 
   if (text) {
     g_free(self->text);

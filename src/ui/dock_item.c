@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-#include "dock_item.h" // Struct definitions for DockItem, LambdockState, AppWindow
+#include "dock_item.h"
+#include "../app_window.h"
+#include "../core/config_values.h" // Struct definitions for DockItem, LambdockState, AppWindow
 #include "../accessibility.h"    // Screen reader labels and motion preferences
 #include "../dock_window.h"      // Recording whether the dock is mid-animation
 #include "../guile_bridge.h"     // Scheme/Guile configuration interface
@@ -56,22 +58,62 @@ static GtkWidget *wrap_icon_for_zoom(GtkWidget *image, int base_size) {
  * ============================================================================
  */
 
+void dock_item_activate_stack(DockItem *item);
+void dock_item_activate_launchpad(DockItem *item);
+void dock_item_activate_trash(DockItem *item);
+
+static void describe_app_item(const DockItem *item, char **label,
+                              char **description);
+static void describe_dynamic_item(const DockItem *item, char **label,
+                                  char **description);
+static void describe_stack_item(const DockItem *item, char **label,
+                                char **description);
+static void describe_launchpad_item(const DockItem *item, char **label,
+                                    char **description);
+static void describe_trash_item(const DockItem *item, char **label,
+                                char **description);
+
+/**
+ * LambdockItemKindOps:
+ * Everything the rest of the file needs to know about one kind of dock item.
+ *
+ * The dock used to answer "what is this kind?" in four separate switches (key
+ * name, CSS class, click behaviour, accessibility text). Adding a kind meant
+ * finding all four. Now a kind is one row of `ITEM_KIND_OPS`, and the switches
+ * are gone: the table is the single place where a kind is defined.
+ */
+typedef struct {
+  const char *key_name; /* stable identity prefix, e.g. "app" */
+  const char *css_class; /* extra CSS class, NULL for none */
+  void (*activate)(DockItem *item); /* NULL means "app behaviour" */
+  void (*describe)(const DockItem *item, char **label, char **description);
+} LambdockItemKindOps;
+
+static const LambdockItemKindOps ITEM_KIND_OPS[] = {
+    [LAMBDOCK_ITEM_APP] = {"app", NULL, NULL, describe_app_item},
+    [LAMBDOCK_ITEM_DYNAMIC] = {"dynamic", NULL, NULL, describe_dynamic_item},
+    [LAMBDOCK_ITEM_SEPARATOR] = {"separator", NULL, NULL, NULL},
+    [LAMBDOCK_ITEM_STACK] = {"stack", "stack-item", dock_item_activate_stack,
+                             describe_stack_item},
+    [LAMBDOCK_ITEM_LAUNCHPAD] = {"launchpad", "launchpad-item",
+                                 dock_item_activate_launchpad,
+                                 describe_launchpad_item},
+    [LAMBDOCK_ITEM_TRASH] = {"trash", "trash-item", dock_item_activate_trash,
+                             describe_trash_item},
+};
+
+/** The descriptor of @kind; unknown kinds behave like a plain application. */
+static const LambdockItemKindOps *kind_ops(LambdockItemKind kind) {
+  gsize index = (gsize)kind;
+
+  if (index >= G_N_ELEMENTS(ITEM_KIND_OPS) || !ITEM_KIND_OPS[index].key_name)
+    return &ITEM_KIND_OPS[LAMBDOCK_ITEM_APP];
+
+  return &ITEM_KIND_OPS[index];
+}
+
 const char *dock_item_kind_to_string(LambdockItemKind kind) {
-  switch (kind) {
-  case LAMBDOCK_ITEM_DYNAMIC:
-    return "dynamic";
-  case LAMBDOCK_ITEM_SEPARATOR:
-    return "separator";
-  case LAMBDOCK_ITEM_STACK:
-    return "stack";
-  case LAMBDOCK_ITEM_LAUNCHPAD:
-    return "launchpad";
-  case LAMBDOCK_ITEM_TRASH:
-    return "trash";
-  case LAMBDOCK_ITEM_APP:
-  default:
-    return "app";
-  }
+  return kind_ops(kind)->key_name;
 }
 
 char *dock_item_key(const DockItem *item) {
@@ -81,34 +123,17 @@ char *dock_item_key(const DockItem *item) {
                          item->name ? item->name : "");
 }
 
-int dock_item_icon_size(DockItem *item) {
-  if (!item || !item->button || !GTK_IS_BUTTON(item->button))
-    return 0;
-
-  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(item->button));
-  if (!child)
-    return 0;
-
-  /* App and dynamic items hold their icon inside a zoom container; stacks, the
-   * launchpad and meter items put it straight in the content box. */
-  if (GTK_IS_BOX(child)) {
-    for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-         w = gtk_widget_get_next_sibling(w)) {
-      if (lambdock_icon_zoom_is_zoom(w))
-        return lambdock_icon_zoom_target_size(w);
-      if (GTK_IS_IMAGE(w) && gtk_image_get_pixel_size(GTK_IMAGE(w)) > 0)
-        return gtk_image_get_pixel_size(GTK_IMAGE(w));
-    }
-    return 0;
+const char *lambdock_item_title(const DockItem *item, const char *fallback) {
+  if (item) {
+    if (item->name && *item->name != '\0')
+      return item->name;
+    if (item->app_id && *item->app_id != '\0')
+      return item->app_id;
   }
 
-  if (lambdock_icon_zoom_is_zoom(child))
-    return lambdock_icon_zoom_target_size(child);
-  if (GTK_IS_IMAGE(child) && gtk_image_get_pixel_size(GTK_IMAGE(child)) > 0)
-    return gtk_image_get_pixel_size(GTK_IMAGE(child));
-
-  return 0;
+  return fallback;
 }
+
 
 /**
  * dock_item_attach_data:
@@ -155,56 +180,79 @@ static char *dock_item_running_text(const DockItem *item) {
       ngettext("Running, %u window", "Running, %u windows", count), count);
 }
 
+/* The per-kind half of the accessibility text; see ITEM_KIND_OPS. */
+static void describe_app_item(const DockItem *item, char **label,
+                              char **description) {
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+
+  *label = g_strdup(name ? name : _("Application"));
+  *description = dock_item_running_text(item);
+}
+
+static void describe_dynamic_item(const DockItem *item, char **label,
+                                  char **description) {
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+  const char *reading = gtk_widget_get_tooltip_text(item->button);
+
+  if (reading && *reading != '\0') {
+    /* Meter items already put "name: reading" in the tooltip. */
+    *label = g_str_has_prefix(reading, name ? name : "")
+                 ? g_strdup(reading)
+                 : g_strdup_printf("%s: %s", name ? name : _("Reading"),
+                                   reading);
+  } else {
+    *label = g_strdup(name ? name : _("Reading"));
+  }
+
+  *description = g_strdup(_("Live reading from the dock."));
+}
+
+static void describe_stack_item(const DockItem *item, char **label,
+                                char **description) {
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+
+  *label = g_strdup_printf(_("%s, folder stack"), name ? name : _("Stack"));
+  *description = g_strdup(_("Opens the folder's contents."));
+}
+
+static void describe_launchpad_item(const DockItem *item, char **label,
+                                    char **description) {
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+
+  *label = g_strdup(name ? name : _("Applications"));
+  *description = g_strdup(_("Opens the application grid. Escape closes it."));
+}
+
+static void describe_trash_item(const DockItem *item, char **label,
+                                char **description) {
+  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+
+  *label = g_strdup(name ? name : _("Trash"));
+
+  if (item->trash_count == 0) {
+    *description = g_strdup(_("The trash is empty. Opens the trash."));
+    return;
+  }
+
+  char *count = g_strdup_printf(
+      ngettext("%u item in the trash", "%u items in the trash",
+               item->trash_count),
+      item->trash_count);
+  *description = g_strdup_printf(_("%s. Opens the trash."), count);
+  g_free(count);
+}
+
 void dock_item_update_accessible(DockItem *item) {
   if (!item || !item->button || item->kind == LAMBDOCK_ITEM_SEPARATOR)
     return;
 
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
+  const LambdockItemKindOps *ops = kind_ops(item->kind);
+  if (!ops->describe)
+    return;
+
   char *label = NULL;
   char *description = NULL;
-
-  switch (item->kind) {
-  case LAMBDOCK_ITEM_STACK:
-    label = g_strdup_printf(_("%s, folder stack"), name ? name : _("Stack"));
-    description = g_strdup(_("Opens the folder's contents."));
-    break;
-  case LAMBDOCK_ITEM_LAUNCHPAD:
-    label = g_strdup(name ? name : _("Applications"));
-    description = g_strdup(_("Opens the application grid. Escape closes it."));
-    break;
-  case LAMBDOCK_ITEM_TRASH:
-    label = g_strdup(name ? name : _("Trash"));
-    if (item->trash_count > 0) {
-      char *count = g_strdup_printf(
-          ngettext("%u item in the trash", "%u items in the trash",
-                   item->trash_count),
-          item->trash_count);
-      description = g_strdup_printf(_("%s. Opens the trash."), count);
-      g_free(count);
-    } else {
-      description = g_strdup(_("The trash is empty. Opens the trash."));
-    }
-    break;
-  case LAMBDOCK_ITEM_DYNAMIC: {
-    const char *reading = gtk_widget_get_tooltip_text(item->button);
-    if (reading && *reading != '\0') {
-      /* Meter items already put "name: reading" in the tooltip. */
-      label = g_str_has_prefix(reading, name ? name : "")
-                  ? g_strdup(reading)
-                  : g_strdup_printf("%s: %s", name ? name : _("Reading"),
-                                    reading);
-    } else {
-      label = g_strdup(name ? name : _("Reading"));
-    }
-    description = g_strdup(_("Live reading from the dock."));
-    break;
-  }
-  case LAMBDOCK_ITEM_APP:
-  default:
-    label = g_strdup(name ? name : _("Application"));
-    description = dock_item_running_text(item);
-    break;
-  }
+  ops->describe(item, &label, &description);
 
   lambdock_accessible_update(item->button, label, description);
   g_free(label);
@@ -376,6 +424,19 @@ gboolean lambdock_dock_item_move(LambdockState *state, DockItem *item,
   return TRUE;
 }
 
+/** The shared "show the popover" path: used by clicks, keys and menus. */
+static void dock_item_popup_menu(DockItem *item) {
+  if (!item || !item->popover || !item->state)
+    return;
+
+  populate_popover_menu(item);
+
+  if (!gtk_widget_get_visible(item->popover))
+    item->state->active_popovers++;
+
+  gtk_popover_popup(GTK_POPOVER(item->popover));
+}
+
 void lambdock_dock_item_show_menu(DockItem *item) {
   if (!item || !item->popover || !item->state)
     return;
@@ -385,12 +446,7 @@ void lambdock_dock_item_show_menu(DockItem *item) {
     return;
   }
 
-  populate_popover_menu(item);
-
-  if (!gtk_widget_get_visible(item->popover))
-    item->state->active_popovers++;
-
-  gtk_popover_popup(GTK_POPOVER(item->popover));
+  dock_item_popup_menu(item);
 }
 
 gboolean lambdock_dock_items_close_popovers(LambdockState *state) {
@@ -586,6 +642,44 @@ void apply_dock_item_alignment(DockItem *item) {
  * If 0 windows open    -> Execute the application launcher command
  * (`item->exec`).
  */
+void dock_item_activate_stack(DockItem *item) { lambdock_stack_show(item); }
+
+void dock_item_activate_launchpad(DockItem *item) {
+  lambdock_launchpad_show(item->state);
+}
+
+void dock_item_activate_trash(DockItem *item) {
+  (void)item;
+  if (!lambdock_trash_open())
+    LOG_C_WARN("UI", "Could not open the trash");
+}
+
+/** What a click on an application item does: focus, list or launch. */
+static void activate_app_item(DockItem *item) {
+  if (item->windows == NULL) {
+    if (item->exec && *item->exec != '\0') {
+      GError *error = NULL;
+
+      if (!g_spawn_command_line_async(item->exec, &error)) {
+        LOG_C_WARN("UI", "Failed to launch '%s': %s", item->exec,
+                   (error && error->message) ? error->message : "unknown");
+        g_clear_error(&error);
+      }
+    }
+    return;
+  }
+
+  if (g_list_length(item->windows) == 1) {
+    AppWindow *win = (AppWindow *)item->windows->data;
+    if (win && win->handle)
+      activate_toplevel_window(win->handle);
+    return;
+  }
+
+  /* Several windows: let the user pick one from the menu. */
+  dock_item_popup_menu(item);
+}
+
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   (void)btn;
 
@@ -593,46 +687,13 @@ static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   if (!item)
     return;
 
-  /* Stacks open a popover with their folder contents; the launchpad opens the
-   * full screen application grid. Neither has windows or a command to run. */
-  if (item->kind == LAMBDOCK_ITEM_STACK) {
-    lambdock_stack_show(item);
+  void (*activate)(DockItem *) = kind_ops(item->kind)->activate;
+  if (activate) {
+    activate(item);
     return;
   }
 
-  if (item->kind == LAMBDOCK_ITEM_LAUNCHPAD) {
-    lambdock_launchpad_show(item->state);
-    return;
-  }
-
-  if (item->kind == LAMBDOCK_ITEM_TRASH) {
-    if (!lambdock_trash_open())
-      LOG_C_WARN("UI", "Could not open the trash");
-    return;
-  }
-
-  if (item->windows != NULL) {
-    if (g_list_length(item->windows) == 1) {
-      AppWindow *win = (AppWindow *)item->windows->data;
-      if (win && win->handle)
-        activate_toplevel_window(win->handle);
-    } else {
-      populate_popover_menu(item);
-
-      if (!gtk_widget_get_visible(item->popover))
-        item->state->active_popovers++;
-
-      gtk_popover_popup(GTK_POPOVER(item->popover));
-    }
-  } else if (item->exec && *item->exec != '\0') {
-    GError *error = NULL;
-
-    if (!g_spawn_command_line_async(item->exec, &error)) {
-      g_warning("[Lambdock] Failed to launch '%s': %s", item->exec,
-                error->message);
-      g_clear_error(&error);
-    }
-  }
+  activate_app_item(item);
 }
 
 /**
@@ -655,15 +716,8 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
   (void)y;
 
   DockItem *item = (DockItem *)user_data;
-  if (!item || !item->popover || !item->state)
-    return;
 
-  populate_popover_menu(item);
-
-  if (!gtk_widget_get_visible(item->popover))
-    item->state->active_popovers++;
-
-  gtk_popover_popup(GTK_POPOVER(item->popover));
+  dock_item_popup_menu(item);
 }
 
 /* ============================================================================
@@ -687,6 +741,10 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
   DockItem *item = (DockItem *)user_data;
   if (!item || !scm_is_true(item->poll_fn) ||
       !scm_is_true(scm_procedure_p(item->poll_fn))) {
+    /* The source is gone once we return: forget its id so teardown does not try
+     * to remove it (and cannot remove an unrelated source that reused it). */
+    if (item)
+      item->poll_timer_id = 0;
     return G_SOURCE_REMOVE;
   }
 
@@ -699,10 +757,17 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
   if (item->meter && scm_is_number(res)) {
     double value = scm_to_double(res);
     double maximum = (item->meter_max > 0.0) ? item->meter_max : 100.0;
-    char *text = g_strdup_printf("%.0f%s", value,
+
+    /* A Scheme poller can return NaN or an out-of-range reading; the gauge
+     * takes a 0..1 fraction and must never be handed a non-finite one. */
+    double fraction = lambdock_sanitize_double(
+        (maximum > 0.0) ? value / maximum : 0.0, 0.0, 0.0, 1.0);
+
+    char *text = g_strdup_printf("%.0f%s", lambdock_sanitize_double(value, 0.0,
+                                                                   -1e9, 1e9),
                                  item->meter_unit ? item->meter_unit : "");
 
-    lambdock_meter_set_value(item->meter, value / maximum, text);
+    lambdock_meter_set_value(item->meter, fraction, text);
 
     char *tooltip = g_strdup_printf("%s: %s", item->name ? item->name : "",
                                     text);
@@ -722,7 +787,7 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
       }
       gtk_widget_set_tooltip_text(item->button, text);
       dock_item_update_accessible(item);
-      free(text);
+      free(text); /* scm_to_utf8_string() allocates with malloc */
     }
   }
 
@@ -1077,17 +1142,10 @@ void free_dock_item(DockItem *item) {
   if (!item)
     return;
 
-  // Cancel dynamic polling timer before deallocating memory
-  if (item->poll_timer_id > 0) {
-    g_source_remove(item->poll_timer_id);
-    item->poll_timer_id = 0;
-  }
-
-  // Cancel the trash refresh timer of a trash item
-  if (item->trash_timer_id > 0) {
-    g_source_remove(item->trash_timer_id);
-    item->trash_timer_id = 0;
-  }
+  /* g_clear_handle_id() only removes a source that is still alive, so a timer
+   * that already fired cannot make us remove an unrelated (recycled) id. */
+  g_clear_handle_id(&item->poll_timer_id, g_source_remove);
+  g_clear_handle_id(&item->trash_timer_id, g_source_remove);
 
   /* Detach the back pointers first: deferred drag callbacks may still hold the
    * widgets, and must see "no item" instead of a freed one. */
@@ -1142,12 +1200,7 @@ void free_dock_item(DockItem *item) {
     item->container = NULL;
   }
 
-  for (GList *l = item->windows; l != NULL; l = l->next) {
-    AppWindow *win = (AppWindow *)l->data;
-    g_free(win->title);
-    g_free(win);
-  }
-  g_list_free(item->windows);
+  app_windows_free(item->windows);
   item->windows = NULL;
 
   g_free(item->name);
@@ -1175,14 +1228,7 @@ void clear_tracked_windows(LambdockState *state) {
     if (!item)
       continue;
 
-    for (GList *w = item->windows; w != NULL; w = w->next) {
-      AppWindow *win = (AppWindow *)w->data;
-      if (win) {
-        g_free(win->title);
-        g_free(win);
-      }
-    }
-    g_list_free(item->windows);
+    app_windows_free(item->windows);
     item->windows = NULL;
     update_dock_item_status(item);
   }
@@ -1244,9 +1290,7 @@ dock_item_add_window(DockItem *item,
       return existing;
   }
 
-  AppWindow *win = g_new0(AppWindow, 1);
-  win->handle = handle;
-  win->title = g_strdup(item->name ? item->name : item->app_id);
+  AppWindow *win = app_window_new(handle, item->name ? item->name : item->app_id);
 
   item->windows = g_list_append(item->windows, win);
 
@@ -1261,10 +1305,9 @@ void dock_item_remove_window(DockItem *item,
 
   for (GList *l = item->windows; l != NULL; l = l->next) {
     AppWindow *win = (AppWindow *)l->data;
-    if (win->handle == handle) {
+    if (app_window_matches(win, handle)) {
       item->windows = g_list_remove(item->windows, win);
-      g_free(win->title);
-      g_free(win);
+      app_window_free(win);
       break;
     }
   }
@@ -1495,19 +1538,12 @@ static DockItem *create_icon_dock_item(LambdockState *state,
   gtk_button_set_child(GTK_BUTTON(item->button), content_box);
 
   gtk_widget_add_css_class(item->button, "flat");
-  switch (kind) {
-  case LAMBDOCK_ITEM_STACK:
-    gtk_widget_add_css_class(item->button, "stack-item");
-    break;
-  case LAMBDOCK_ITEM_LAUNCHPAD:
-    gtk_widget_add_css_class(item->button, "launchpad-item");
-    break;
-  case LAMBDOCK_ITEM_TRASH:
-    gtk_widget_add_css_class(item->button, "trash-item");
-    break;
-  default:
-    break;
-  }
+
+  /* The per-kind CSS class comes from the same descriptor as the click
+   * behaviour and the accessibility text. */
+  const char *kind_class = kind_ops(kind)->css_class;
+  if (kind_class)
+    gtk_widget_add_css_class(item->button, kind_class);
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 
   if (image) {
@@ -1701,7 +1737,7 @@ void reload_dock_instance(LambdockState *state) {
              state->config_path ? state->config_path : "default");
 
   // Reload active theme config and custom CSS for this specific dock instance
-  free(state->theme); /* get_theme_config_for may return a scm_to_utf8_string result */
+  g_free(state->theme);
   state->theme = get_theme_config_for(state->config_path);
 
   // Mode flags must refresh before CSS reload so the taskbar modifier

@@ -181,15 +181,21 @@ the parts a person changing the code needs.
 #+begin_example
 lambdock/
 ├── src/                     # The C core
-│   ├── main.c               # Entry point, Guile boot, multi-dock reconciliation, hotplug
+│   ├── main.c               # Entry point, Guile boot, dock reconciliation, hotplug
 │   ├── dock_window.c        # LambdockState lifecycle, animation, auto-hide, layer shell, teardown
-│   ├── guile_bridge.c       # C→Scheme readers: config getters + populate_dock_items_for
+│   ├── dock_registry.c      # The only owner of the active-dock list (snapshot iteration)
+│   ├── app_window.c         # AppWindow ownership: new/set-title/matches/free
+│   ├── guile_bridge.c       # C→Scheme readers: config getters + table-driven item builders
 │   ├── toplevel_tracker.c   # Raw Wayland zwlr_foreign_toplevel manager + handle listeners
 │   ├── lambdock.h           # THE central header: LambdockState, DockItem, AppWindow, constants
 │   ├── dock_window.h        # Public window API
 │   ├── guile_bridge.h       # Public bridge API
 │   ├── toplevel_tracker.h   # Public tracker API
+│   ├── dock_registry.h      # Public registry API
 │   ├── logger.h             # LOG_C_* colored logging macros
+│   ├── core/                # Pure, widget-free, interpreter-free logic (unit tested)
+│   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
+│   │   └── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
 │   └── ui/
 │       ├── dock_item.c/.h    # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h        # Glass shelf: 3D frame projection + icon reflections
@@ -212,7 +218,7 @@ lambdock/
 ├── data/                    # .desktop entry + AppStream metainfo
 ├── tests/                   # C unit tests, Scheme test suite + shared stubs
 │   ├── test_*.c             # One binary per unit (see Tests)
-│   ├── test_stubs.c         # get_active_dock_states / unregister_dock_state doubles
+│   ├── test_stubs.c         # unregister_dock_state double (the registry itself is linked)
 │   ├── run_scheme_tests.sh  # Guile driver (exit 77 = skipped)
 │   └── scheme/lambdock_tests.scm
 ├── po/                      # gettext translations (.pot, *.po, LINGUAS)
@@ -860,13 +866,19 @@ pointer dies:
 
 | File                  | Responsibility                                                                 |
 |-----------------------+--------------------------------------------------------------------------------+
-| =main.c=              | Boot, globals, file/monitor watching, multi-dock reconciliation, create/activate |
-| =dock_window.c=       | LambdockState lifecycle, layer shell, margin animation, auto-hide, dimension math, about dialog |
-| =guile_bridge.c=      | All C→Scheme config reads, item population, exclusion checks                     |
+| =main.c=              | Boot, file/monitor watching, dock reconciliation, dock construction steps        |
+| =dock_window.c=       | LambdockState lifecycle, layer shell, margin animation, auto-hide, about dialog  |
+| =dock_registry.c=     | The active-dock list: add/remove/contains/count, snapshot + ~foreach~ iteration  |
+| =app_window.c=        | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |
+| =core/config_values.c= | Pure clamps and name→value rules (icon size, spacing, shelf params, edges)      |
+| =core/dock_dims.c=    | Pure ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values    |
+| =guile_bridge.c=      | All C→Scheme config reads, table-driven item builders, exclusion checks          |
 | =toplevel_tracker.c=  | Raw Wayland registry/manager/handle listeners, per-window title/app_id/closed    |
 | =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
 | =ui/shelf.c=          | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections  |
 | =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
+| =ui/launchpad.c=      | The one launchpad: model, tile+copy menu builders, grid fill and key movement   |
+| =ui/preferences.c=    | Settings window: a declarative row table, debounced apply, window registry       |
 | =ui/trash.c=          | Freedesktop.org trash: roots, count, empty, open, taking dropped files          |
 | =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
 | =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
@@ -878,6 +890,58 @@ file path, a [[https://docs.gtk.org/gtk4/class.IconTheme.html][GtkIconTheme]]
 lookup, an XDG data-directory ~pixmaps~ search, a ~-symbolic~ variant, and
 finally the generic ~application-x-executable~ icon. Users see this list from the
 other side in [[file:README.org::#finding-icon-names][README: Finding icon names]].
+
+------------------
+
+------------------
+
+* Code conventions: values in, values out
+:PROPERTIES:
+:CUSTOM_ID: code-conventions
+:END:
+
+The C side is deliberately boring about state.  Four rules cover most of it, and
+the places that already follow them are where a new feature should land.
+
+** Pure logic goes in =src/core/=
+If a decision can be made from numbers and strings alone -- how thick the capsule
+is, what a NaN shelf parameter should become, whether =taskbar= means taskbar --
+it belongs in =src/core/=, takes values and returns values, and is unit tested
+without a display or an interpreter (=tests/test_config_values.c=,
+=tests/test_dock_dims.c=).  =update_dock_dimensions()= is then only appliers: read
+a monitor, ask =lambdock_dock_dims_compute()= once, push the finished struct into
+widgets.
+
+** One owner per piece of mutable state
+- The set of docks lives in =dock_registry.c=; nothing else keeps that list, and
+  callers iterate a snapshot, so destroying a dock inside the loop cannot corrupt
+  the iteration.
+- The launchpad is one model value (=LambdockLaunchpad= in =ui/launchpad.c=)
+  rather than ten file statics, and the functions that act on it take it as a
+  parameter; only its public entry points reach for the instance.
+- ~AppWindow~ lists are freed through =app_window.c=, which is NULL-safe.
+- Timer ids are cleared with ~g_clear_handle_id()~, or reset by the callback that
+  consumed them, so teardown never removes a dead (possibly recycled) source.
+
+** A kind is a table row, not a switch
+- A dock item kind is one row of =ITEM_KIND_OPS= in =ui/dock_item.c=: key name,
+  CSS class, click behaviour, accessibility text.  Adding a kind means adding a
+  row and, if it needs one, a small builder.
+- A Scheme item type is one row of =DOCK_ITEM_BUILDERS= in =guile_bridge.c=.
+- A stack view is one row of =STACK_VIEW_OPS= in =ui/stack.c= (settings symbol +
+  builder), which is also where the symbol mapping lives.
+
+** Strings that leave the bridge are GLib strings
+=guile_bridge.c= converts ~SCM~ values with ~scm_to_utf8_string()~ and copies them
+with ~g_strdup()~; every caller frees with ~g_free()~.  Guile's ~malloc~'d strings
+never escape the bridge, so every free site can be checked by grep.
+
+** Small functions, lists of steps
+Public entry points read as a short list of named steps: =create_dock_instance()=
+is /read the settings → build the widgets → populate the items → build the menu →
+install the input → present/, and each of those is a function.
+=sync_docks_with_disk()= is /select the docks → destroy them → reconcile each
+settings file/.
 
 ------------------
 
