@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 """Turn controller events into an ASS subtitle file for the demo GIF.
 
     make_subtitles.py OUT.ass EVENTS.tsv WIDTH HEIGHT

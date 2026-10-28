@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 """A tiny terminal front-end for the lambdock Guile socket REPL.
 
 The demo controller writes expressions to a FIFO.  This program types them out

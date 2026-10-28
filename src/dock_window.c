@@ -1,19 +1,7 @@
-// lambdock
-
+// lambdock -- hyper-hackable desktop dock for Wayland
+//
+// SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
-
-// lambdock is free software : you can redistribute it and / or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// lambdock is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with lambdock. If not, see <https://www.gnu.org/licenses/>.
 
 #include "dock_window.h"
 #include "accessibility.h"
@@ -825,9 +813,9 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
       GTK_ABOUT_DIALOG(about),
       "Copyright © Josep Bigorra <jjbigorra@gmail.com>");
 
-  // License (GPL-3.0)
+  // License (MIT)
   gtk_about_dialog_set_license_type(GTK_ABOUT_DIALOG(about),
-                                    GTK_LICENSE_GPL_3_0);
+                                    GTK_LICENSE_MIT_X11);
 
   // Repository Web Links
   gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),

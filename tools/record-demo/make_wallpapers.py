@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 """Generate the two demo wallpapers without any network access.
 
     make_wallpapers.py OUTDIR WIDTH HEIGHT

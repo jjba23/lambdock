@@ -1,3 +1,9 @@
+/* lambdock -- hyper-hackable desktop dock for Wayland
+ *
+ * SPDX-License-Identifier: MIT
+ * Copyright © Josep Bigorra <jjbigorra@gmail.com>
+ */
+
 /*
  * vptr -- a tiny deterministic pointer driver for the lambdock demo recorder.
  *

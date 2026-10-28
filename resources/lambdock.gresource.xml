@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- lambdock, a hyper-hackable desktop dock for Wayland
+
+     SPDX-License-Identifier: MIT
+     Copyright © Josep Bigorra <jjbigorra@gmail.com> -->
+
 <gresources>
   <gresource prefix="/org/jointhefreeworld/lambdock">
     <!-- Dock Themes -->

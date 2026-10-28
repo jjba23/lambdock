@@ -1,12 +1,8 @@
 #!/bin/sh
-# lambdock
+# lambdock -- hyper-hackable desktop dock for Wayland
 #
+# SPDX-License-Identifier: MIT
 # Copyright © Josep Bigorra <jjbigorra@gmail.com>
-#
-# lambdock is free software : you can redistribute it and / or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
 #
 # Runs the pure-Scheme (Guile) unit tests for the embedded configuration
 # engine. These do not need a display server or the C runtime. Exits 0 on

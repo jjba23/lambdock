@@ -1,3 +1,8 @@
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 [Desktop Entry]
 Type=Application
 Version=1.0

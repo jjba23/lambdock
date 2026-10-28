@@ -1,3 +1,8 @@
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 app-id: org.jointhefreeworld.lambdock
 runtime: org.gnome.Platform
 runtime-version: '50'

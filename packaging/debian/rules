@@ -1,4 +1,8 @@
 #!/usr/bin/make -f
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 %:
 	dh $@ --buildsystem=meson

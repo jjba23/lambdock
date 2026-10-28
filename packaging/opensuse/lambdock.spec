@@ -19,7 +19,7 @@ Name:           lambdock
 Version:        0.13.3
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
-License:        GPL-3.0-or-later
+License:        MIT
 URL:            https://codeberg.org/jjba23/lambdock
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  gcc

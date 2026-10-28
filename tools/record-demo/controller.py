@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 """Drive the lambdock showcase storyboard inside a nested niri session.
 
 This program is started by niri as the nested session's startup command, so it

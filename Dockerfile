@@ -1,21 +1,9 @@
-# lambdock
-#
-# Copyright © Josep Bigorra <jjbigorra@gmail.com>
-#
-# lambdock is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# lambdock is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with lambdock.  If not, see <https://www.gnu.org/licenses/>.
-
 # syntax=docker/dockerfile:1.7
+
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 # ==============================================================================
 # Build stage
@@ -132,7 +120,7 @@ ENV LANG=C.UTF-8 \
 LABEL org.opencontainers.image.title="Lambdock" \
       org.opencontainers.image.description="Wayland desktop dock customizable with GNU Guile Scheme" \
       org.opencontainers.image.url="https://codeberg.org/jjba23/lambdock" \
-      org.opencontainers.image.licenses="GPL-3.0-or-later" \
+      org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 
 # ------------------------------------------------------------------------------

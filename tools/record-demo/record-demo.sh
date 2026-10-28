@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
 #
 # Record a deterministic lambdock feature-and-theme showcase GIF.
 #

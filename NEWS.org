@@ -9,6 +9,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- The project moved from the GNU General Public License v3.0-or-later to the
+  MIT License. Every source file now starts with a three line SPDX header
+  (=SPDX-License-Identifier: MIT=), =COPYING= carries the MIT text, and the
+  license every package metadata declares -- the Arch, Debian, openSUSE and
+  Flatpak packaging, the Nix, Guix and maak manifests, the AppStream metadata,
+  the container labels and the About dialog -- says MIT as well.
+
 ---------
 
 *[Released]*
