@@ -15,7 +15,7 @@ Build-Depends: debhelper-compat (= 13),
                wayland-protocols,
                wayland-scanner++ | libwayland-bin
 Standards-Version: 4.6.2
-Homepage: https://codeberg.org/jjba23/lambdock
+Homepage: https://github.com/jjba23/lambdock
 
 Package: lambdock
 Architecture: any

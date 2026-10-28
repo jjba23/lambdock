@@ -22,8 +22,8 @@ that will bite you. Read it once end to end, then keep it open as a reference.
 
 - 📖 *Read the user-facing side:* [[file:README.org][README.org]] -- what the dock does and how it is configured
 - 📰 *Read what changed:* [[file:NEWS.org][NEWS.org]]
-- 💾 *Read the source:* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
-- 🐛 *Report a bug:* [[https://codeberg.org/jjba23/lambdock/issues][the issue tracker]]
+- 💾 *Read the source:* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
+- 🐛 *Report a bug:* [[https://github.com/jjba23/lambdock/issues][the issue tracker]]
 - 💬 *Ask a question:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
 
 #+TOC: headlines 2
@@ -68,7 +68,7 @@ way they appear in the source, so ~free_dock_item~ is a C function and
 
 |-----------------------------------+-------------------------------------------------------------|
 | *Diagrams*                        | The flowcharts are [[https://mermaid.js.org/][Mermaid]] blocks; Emacs will not   |
-|                                   | render them, but Codeberg and GitHub do.                    |
+|                                   | render them, but GitHub does.                               |
 | *C source of truth*               | =src/lambdock.h= for types, =meson.build= for the build.    |
 | *Scheme source of truth*          | =scheme/lambdock/core.scm= for what C may call.             |
 | *Behavioural rules*               | [[#pitfalls][Pitfalls]] -- each one was a real bug once.              |
@@ -1448,8 +1448,8 @@ Everything below is upstream documentation for something this codebase uses.
 :CUSTOM_ID: getting-help
 :END:
 
-- Codeberg repository: https://codeberg.org/jjba23/lambdock
-- Issue tracker: https://codeberg.org/jjba23/lambdock/issues
+- GitHub repository: https://github.com/jjba23/lambdock
+- Issue tracker: https://github.com/jjba23/lambdock/issues
 - Zulip community: https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock
 - Changelog: [[file:NEWS.org]]
 

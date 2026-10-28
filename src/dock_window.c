@@ -820,7 +820,7 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 
   // Repository Web Links
   gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
-                               "https://codeberg.org/jjba23/lambdock");
+                               "https://github.com/jjba23/lambdock");
   gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
                                      _("Find the project's source code here"));
 

@@ -28,7 +28,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "0.13.3";
+  version = "0.15.0";
 
   strictDeps = true;
   __structuredAttrs = true;
@@ -93,7 +93,7 @@ stdenv.mkDerivation (finalAttrs: {
 
   meta = with lib; {
     description = "Wayland desktop dock customizable with GNU Guile Scheme";
-    homepage = "https://codeberg.org/jjba23/lambdock";
+    homepage = "https://github.com/jjba23/lambdock";
     license = licenses.mit;
     platforms = platforms.linux;
     mainProgram = "lambdock";

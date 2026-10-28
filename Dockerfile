@@ -119,7 +119,7 @@ ENV LANG=C.UTF-8 \
 
 LABEL org.opencontainers.image.title="Lambdock" \
       org.opencontainers.image.description="Wayland desktop dock customizable with GNU Guile Scheme" \
-      org.opencontainers.image.url="https://codeberg.org/jjba23/lambdock" \
+      org.opencontainers.image.url="https://github.com/jjba23/lambdock" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="${VERSION}"
 

@@ -36,9 +36,9 @@
 
   <launchable type="desktop-id">org.jointhefreeworld.lambdock.desktop</launchable>
 
-  <url type="homepage">https://codeberg.org/jjba23/lambdock</url>
-  <url type="bugtracker">https://codeberg.org/jjba23/lambdock/issues</url>
-  <url type="vcs-browser">https://codeberg.org/jjba23/lambdock</url>
+  <url type="homepage">https://github.com/jjba23/lambdock</url>
+  <url type="bugtracker">https://github.com/jjba23/lambdock/issues</url>
+  <url type="vcs-browser">https://github.com/jjba23/lambdock</url>
 
   <translation type="gettext">lambdock</translation>
 
@@ -77,6 +77,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.15.0" date="2026-10-28">
+      <description>
+        <p>Lambdock is now licensed under the MIT License, and every source file says so. Stacks no longer offer the fan view: the icon grid and the list remain, and a settings file that still asks for the fan reads back as the grid. Under the hood the C side was rebuilt around explicit models -- the launchpad, the preferences window and the set of active docks -- with their arithmetic and filtering moved into pure functions that are tested without a display.</p>
+      </description>
+    </release>
     <release version="0.13.3" date="2026-10-27">
       <description>
         <p>The launchpad shows one tile per application again: desktop files that describe the same program, such as the distro package and the Flatpak export of it, are collapsed. A tile whose application is installed more than once offers which copy to start from its context menu, with where each copy comes from and the command it runs. The backdrop is denser, so the labels read over a busy desktop.</p>

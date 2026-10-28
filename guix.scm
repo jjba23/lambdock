@@ -37,7 +37,7 @@
                   gtk4-layer-shell
                   guile-3.0
                   wlr-protocols))
-    (home-page "https://codeberg.org/jjba23/lambdock")
+    (home-page "https://github.com/jjba23/lambdock")
     (synopsis "Wayland desktop dock customizable with GNU Guile Scheme")
     (description
      "Lambdock is a Wayland-native desktop dock built with GTK4 and

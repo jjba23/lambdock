@@ -16,11 +16,11 @@
 #
 
 Name:           lambdock
-Version:        0.13.3
+Version:        0.15.0
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        MIT
-URL:            https://codeberg.org/jjba23/lambdock
+URL:            https://github.com/jjba23/lambdock
 Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  gcc
 BuildRequires:  gettext
@@ -78,6 +78,12 @@ Wayfire, Niri, and other compatible compositors.
 %{_datadir}/guile/site/3.0/lambdock
 
 %changelog
+* Wed Oct 28 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.15.0
+- The project is licensed under the MIT License instead of the GPL-3.0-or-later
+- Stacks drop the fan view; the icon grid and the list remain, and a settings
+  file that still says 'fan reads back as the grid
+- Internal pass over the C side for state and memory safety, with the launchpad,
+  the preferences window and the dock pieces rebuilt around explicit models
 * Tue Oct 27 2026 Josep Bigorra <jjbigorra@gmail.com> - 0.13.3
 - The launchpad shows one tile per application again, and a tile whose
   application is installed more than once offers which copy to start

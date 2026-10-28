@@ -28,7 +28,7 @@ a rebuild without ever restarting the process or dropping a frame.
 #+caption: The dock sliding in from the screen edge with eased auto-hide, launching applications, the fish-eye magnification under the pointer, the multi-window popover listing every open window of the focused app (with =Close All Windows=), and the dock's own right-click menu with =About lambdock= and =Quit=.
 [[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
 
-- 🐑 *Read the source (and send PR/issue/patches):* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
+- 🐑 *Read the source (and send PR/issue/patches):* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 📦 *Install it:* [[https://build.opensuse.org/package/show/home:jjba23/lambdock][openSUSE Build Service]], [[https://search.nixos.org/packages?query=lambdock][NixPkgs]], Guix, Docker Hub, and the packaged tarballs
 - 📚 *Hack on it:* [[file:HACKING.org][the Developer Onboarding & Architecture Guide]]
 - 💬 *Ask anything:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
@@ -704,7 +704,7 @@ You need [[https://guix.gnu.org/][GNU Guix]] for this path (the other paths are 
 
 #+begin_src sh
 # 1. Get the source
-git clone https://codeberg.org/jjba23/lambdock.git
+git clone https://github.com/jjba23/lambdock.git
 cd lambdock
 
 # 2. Write a settings file
@@ -867,14 +867,14 @@ rpmbuild -ba ~/rpmbuild/SPECS/lambdock.spec
 
 Then you should get the RPM files successfully generated:
 #+begin_src shell
-~/rpmbuild/RPMS/x86_64/lambdock-0.13.3-0.x86_64.rpm
-~/rpmbuild/SRPMS/lambdock-0.13.3-0.src.rpm
+~/rpmbuild/RPMS/x86_64/lambdock-0.15.0-0.x86_64.rpm
+~/rpmbuild/SRPMS/lambdock-0.15.0-0.src.rpm
 #+end_src
 
 Test the resulting package. Install it:
 
 #+begin_src shell
-sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.13.3-0.x86_64.rpm
+sudo zypper install ~/rpmbuild/RPMS/x86_64/lambdock-0.15.0-0.x86_64.rpm
 #+end_src
 
 Then you can run ~lambdock~.
@@ -2690,12 +2690,12 @@ See [[#translations][Translation status]] above. ~po/~ is the place to be, and
 Join the ~lambdock~ community to ask questions, discuss development, share
 configurations, screenshots, report issues, or just hang out:
 
-- *Issues & development:* [[https://codeberg.org/jjba23/lambdock][Codeberg repository]]
+- *Issues & development:* [[https://github.com/jjba23/lambdock][GitHub repository]]
 - *Chat, support, discussion, announcements (Zulip):*
   [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
 
-If you're unsure where to start, Zulip is recommended. Codeberg issues is also a
-good place to add ideas, report bugs or improvements.
+If you're unsure where to start, Zulip is recommended. The GitHub issue tracker
+is also a good place to add ideas, report bugs or improvements.
 
 ------------------
 
@@ -2762,7 +2762,7 @@ screenshot of your desktop.
 :CUSTOM_ID: reporting-a-bug
 :END:
 
-Open an issue on the [[https://codeberg.org/jjba23/lambdock][repository's homepage]],
+Open an issue on the [[https://github.com/jjba23/lambdock][repository's homepage]],
 or bring it up on [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][Zulip]]
 first if you are not sure yet whether it is a bug.
 
@@ -2867,7 +2867,7 @@ respect is essential to creating excellent free software.
 :CUSTOM_ID: about
 :END:
 
-- 📦 *Read the source:* [[https://codeberg.org/jjba23/lambdock][codeberg.org/jjba23/lambdock]]
+- 📦 *Read the source:* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 📚 *Read the internals:* [[file:HACKING.org][HACKING.org]]
 - 📰 *Read the changelog:* [[file:NEWS.org][NEWS.org]]
 - 💬 *Talk to us:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
