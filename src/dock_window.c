@@ -3,26 +3,96 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+/* =========================================================================
+ * THE DOCK WINDOW
+ * =========================================================================
+ * This module wires one dock's window: the layer-shell surface, the slide and
+ * hover animations, auto-hide, the mode CSS classes, and the teardown that
+ * takes it all down again.
+ *
+ * It is organised in four layers, in this order:
+ *
+ *   1. types            -- values that describe what to do (no widgets touched)
+ *   2. pure helpers     -- decisions from the state alone; no side effects
+ *   3. small helpers    -- one widget concern each, plus the row walk and the
+ *                          timer plumbing every callback goes through
+ *   4. callbacks & API  -- thin GTK entry points that read inputs, call the
+ *                          helpers above, and return
+ *
+ * The arithmetic that used to be inline in the animation and fisheye code now
+ * lives in `core/dock_motion.h`, where it is unit tested without a display.
+ */
+
 #include "dock_window.h"
-#include "core/dock_dims.h"
+
 #include "accessibility.h"
+#include "core/dock_dims.h"
+#include "core/dock_motion.h"
 #include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
-#include "ui/shelf.h"
 #include "ui/dock_item.h"
 #include "ui/icon_resolver.h"
 #include "ui/icon_zoom.h"
 #include "ui/launchpad.h"
 #include "ui/popover_menu.h"
+#include "ui/shelf.h"
 #include "ui/theme_engine.h"
+#include "ui/widget_utils.h"
 #include <glib/gi18n.h>
-#include <locale.h>
-#include <stdlib.h>
+#include <math.h>
 
 /* =========================================================================
- * CROSS-AXIS GEOMETRY (SHARED BY DIMENSIONS & AUTO-HIDE)
- * ========================================================================= */
+ * TYPES
+ * =========================================================================
+ * Small value structs that say *what* the window should look like. Each one is
+ * produced by a pure function below and consumed by a single applier, so the
+ * decision and the widget calls never mix.
+ */
+
+/* Everything the layer-shell surface needs to know, as a value. */
+typedef struct DockSurfacePolicy {
+  gboolean anchor_top;
+  gboolean anchor_bottom;
+  gboolean anchor_left;
+  gboolean anchor_right;
+  int exclusive_zone_px;
+} DockSurfacePolicy;
+
+/* Monitor geometry in pixels; 0 x 0 means "no monitor". */
+typedef struct DockMonitorSize {
+  int width;
+  int height;
+} DockMonitorSize;
+
+/* What the fisheye needs for one frame, computed once per pointer position. */
+typedef struct FisheyeFrame {
+  const LambdockState *state;
+  double pointer_axis; /* pointer position along the dock's main axis */
+  int base_size_px;
+  double radius_px;
+  double max_scale;
+} FisheyeFrame;
+
+/* Callback for the dock-row walk. */
+typedef void (*DockItemVisitor)(DockItem *item, gpointer data);
+
+/* How long after a slide settles a pointer crossing is still treated as an echo
+ * of the slide itself. The crossings that make the dock bounce arrive within a
+ * frame or two of the animation stopping. */
+#define AUTO_HIDE_SETTLE_MS 300
+
+/* =========================================================================
+ * PURE HELPERS
+ * =========================================================================
+ * No widget is mutated below this line until the next section: everything here
+ * is a function of the state (and, at most, of the monotonic clock).
+ */
+
+/** The icon size actually in use, with the default for partly built states. */
+static int dock_icon_size(const LambdockState *state) {
+  return (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+}
 
 /**
  * dock_capsule_cross_dim:
@@ -35,10 +105,7 @@
  * this is exactly the classic `icon + CAPSULE_PADDING_PX` capsule.
  */
 int dock_capsule_cross_dim(const LambdockState *state) {
-  int icon =
-      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-
-  return lambdock_shelf_geometry_for(state, icon).capsule_px;
+  return lambdock_shelf_geometry_for(state, dock_icon_size(state)).capsule_px;
 }
 
 /**
@@ -47,93 +114,120 @@ int dock_capsule_cross_dim(const LambdockState *state) {
  * headroom, plus the outer glass, plus any icon overhang past the inner edge.
  */
 int dock_cross_axis_dim(const LambdockState *state) {
-  int icon =
-      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, icon);
+  int icon_px = dock_icon_size(state);
+  LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, icon_px);
 
-  int dim = (int)(icon * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
-  dim += geometry.outer_px + geometry.overhang_px;
+  int headroom_px =
+      (int)(icon_px * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
 
-  return dim;
+  return headroom_px + geometry.outer_px + geometry.overhang_px;
+}
+
+/**
+ * dock_is_settling:
+ * @state: Pointer to the dock state.
+ *
+ * Whether the dock is sliding, or has only just stopped. Crossings reported in
+ * that moment are echoes of the dock's own movement rather than the pointer
+ * moving, and auto-hide must not act on them: believing one hides the dock,
+ * which puts the revealing strip back under a pointer that never moved, which
+ * reveals it again -- the dock bounces at the screen edge.
+ *
+ * Returns: TRUE while crossings are echoes of the dock's movement.
+ */
+gboolean dock_is_settling(const LambdockState *state) {
+  if (!state)
+    return FALSE;
+
+  return lambdock_settling(state->tick_cb_id != 0, state->margin_anim_end_us,
+                           g_get_monotonic_time(), AUTO_HIDE_SETTLE_MS);
+}
+
+/** CSS class naming the screen edge a shelf is docked to. */
+static const char *shelf_edge_class(GtkLayerShellEdge edge) {
+  switch (edge) {
+  case GTK_LAYER_SHELL_EDGE_TOP:
+    return "shelf-top";
+  case GTK_LAYER_SHELL_EDGE_LEFT:
+    return "shelf-left";
+  case GTK_LAYER_SHELL_EDGE_RIGHT:
+    return "shelf-right";
+  case GTK_LAYER_SHELL_EDGE_BOTTOM:
+  default:
+    return "shelf-bottom";
+  }
+}
+
+/**
+ * shelf_tilt_for_edge:
+ * Sign of the shelf tilt: the edge touching the screen stays pinned while the
+ * inner edge recedes away from the viewer, so top/left docks tilt backwards.
+ */
+static double shelf_tilt_for_edge(GtkLayerShellEdge edge, double degrees) {
+  switch (edge) {
+  case GTK_LAYER_SHELL_EDGE_TOP:
+  case GTK_LAYER_SHELL_EDGE_LEFT:
+    return -degrees;
+  case GTK_LAYER_SHELL_EDGE_RIGHT:
+  case GTK_LAYER_SHELL_EDGE_BOTTOM:
+  default:
+    return degrees;
+  }
+}
+
+/** The axis running across the dock: vertical for a top or bottom dock. */
+static GtkOrientation dock_cross_orientation(GtkLayerShellEdge edge) {
+  gboolean horizontal_edge = (edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                              edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+
+  return horizontal_edge ? GTK_ORIENTATION_VERTICAL : GTK_ORIENTATION_HORIZONTAL;
+}
+
+/**
+ * dock_surface_policy_for:
+ * Reads the dock's configuration and returns the layer-shell surface it
+ * describes: which edges to anchor, and how much desktop to reserve.
+ *
+ * Two rules, both about not taking space the dock is not using:
+ *   - taskbar mode also anchors the perpendicular edges, so the surface is
+ *     stretched across the monitor while a floating dock keeps its natural,
+ *     content-hugging size;
+ *   - an auto-hiding dock reserves nothing, or the space would stay reserved
+ *     while the dock sits off screen.
+ */
+static DockSurfacePolicy dock_surface_policy_for(const LambdockState *state) {
+  gboolean horizontal_edge = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
+                              state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
+
+  DockSurfacePolicy policy = {
+      .anchor_top = (state->edge == GTK_LAYER_SHELL_EDGE_TOP),
+      .anchor_bottom = (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM),
+      .anchor_left = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT),
+      .anchor_right = (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT),
+      .exclusive_zone_px = state->auto_hide ? 0 : dock_capsule_cross_dim(state),
+  };
+
+  if (!state->taskbar)
+    return policy;
+
+  if (horizontal_edge) {
+    policy.anchor_left = TRUE;
+    policy.anchor_right = TRUE;
+  } else {
+    policy.anchor_top = TRUE;
+    policy.anchor_bottom = TRUE;
+  }
+
+  return policy;
 }
 
 /* =========================================================================
- * ANIMATION ENGINE & EASING FUNCTIONS
- * ========================================================================= */
-
-/**
- * ease_out_cubic:
- * Calculates a Cubic Ease-Out curve for smooth deceleration.
- * * Formula: f(t) = 1 - (1 - t)^3
- *
- * @param t Progress normalized between 0.0 (start) and 1.0 (end).
- * @return Eased interpolation value between 0.0 and 1.0.
+ * SMALL SIDE-EFFECTING HELPERS
+ * =========================================================================
+ * One widget concern each. Everything below is idempotent, so it can be
+ * re-applied on every reload or frame without bookkeeping.
  */
-static double ease_out_cubic(double t) {
-  double p = 1.0 - t;
-  return 1.0 - (p * p * p);
-}
 
-/**
- * animate_margin_cb:
- * GTK Tick callback executed on every display frame update while animating.
- * * Smoothly interpolates `current_margin` towards `target_margin` using
- * elapsed frame-clock timestamps.
- *
- * @param widget The GTK window widget being animated.
- * @param frame_clock The monitor frame clock driving updates.
- * @param user_data Pointer to the active LambdockState structure.
- * @return G_SOURCE_CONTINUE to keep ticking, or G_SOURCE_REMOVE when finished.
- */
-static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
-                                  gpointer user_data) {
-  (void)widget; // Unused parameter
-  LambdockState *state = (LambdockState *)user_data;
-
-  // Retrieve current frame timestamp in microseconds
-  gint64 now = gdk_frame_clock_get_frame_time(frame_clock);
-
-  // Initialize animation start time on first frame tick
-  if (state->anim_start_time == 0) {
-    state->anim_start_time = now;
-  }
-
-  // Calculate normalized animation progress ratio [0.0, 1.0]
-  double progress =
-      (double)(now - state->anim_start_time) / (double)ANIMATION_DURATION_US;
-
-  // --- Animation Complete Handler ---
-  if (progress >= 1.0) {
-    state->current_margin = state->target_margin;
-    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge,
-                         state->current_margin);
-    state->tick_cb_id = 0;  // Reset callback ID
-    /* Crossings for a moment after this are echoes of the slide, not the
-     * pointer moving: see dock_is_settling(). */
-    state->margin_anim_end_us = g_get_monotonic_time();
-    return G_SOURCE_REMOVE; // Stop frame tick callback loop
-  }
-
-  // --- Intermediate Frame Interpolation ---
-  double eased = ease_out_cubic(progress);
-  state->current_margin =
-      state->start_margin +
-      (int)((state->target_margin - state->start_margin) * eased);
-
-  // Apply new calculated margin to Wayland layer shell surface
-  gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge,
-                       state->current_margin);
-
-  return G_SOURCE_CONTINUE; // Request next frame tick
-}
-
-/**
- * start_margin_animation:
- * Initiates or updates a margin transition animation toward a target value.
- *
- * @param state Pointer to LambdockState.
- * @param target_margin Target layer shell margin (in pixels).
- */
 /* gtk_layer_set_margin() only means something on a layer-shell surface: the
  * preferences window and the test fixtures build ordinary windows. */
 static void set_window_margin(LambdockState *state, int margin) {
@@ -143,42 +237,52 @@ static void set_window_margin(LambdockState *state, int margin) {
     gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, margin);
 }
 
-static void start_margin_animation(LambdockState *state, int target_margin) {
-  // Ignore if already positioned at target
-  if (state->current_margin == target_margin)
-    return;
+/** Stops the slide frame callback, if one is running. */
+static void stop_margin_animation(LambdockState *state) {
+  if (state->tick_cb_id != 0 && state->window)
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
 
-  /* Reduced motion: the dock still has to get out of the way (or come back),
-   * it just does it in one step instead of sliding. */
-  if (!lambdock_animations_enabled(state)) {
-    if (state->tick_cb_id != 0) {
-      gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
-      state->tick_cb_id = 0;
-    }
-    state->start_margin = target_margin;
-    state->current_margin = target_margin;
-    state->target_margin = target_margin;
-    state->anim_start_time = 0;
-    state->margin_anim_end_us = g_get_monotonic_time();
-    set_window_margin(state, target_margin);
-    return;
-  }
-
-  state->start_margin = state->current_margin;
-  state->target_margin = target_margin;
-  state->anim_start_time = 0; // Reset timer anchor
-  state->margin_anim_end_us = 0;
-
-  // Register frame tick callback if not currently active
-  if (state->tick_cb_id == 0) {
-    state->tick_cb_id = gtk_widget_add_tick_callback(
-        state->window, animate_margin_cb, state, NULL);
-  }
+  state->tick_cb_id = 0;
 }
 
-/* =========================================================================
- * FISHEYE HOVER MAGNIFICATION ENGINE
- * ========================================================================= */
+/** Parks the dock at @margin without animating there. */
+static void snap_margin_to(LambdockState *state, int margin) {
+  state->start_margin = margin;
+  state->current_margin = margin;
+  state->target_margin = margin;
+  state->anim_start_time = 0;
+  /* Crossings for a moment after this are echoes of the move, not the pointer
+   * moving: see dock_is_settling(). */
+  state->margin_anim_end_us = g_get_monotonic_time();
+
+  set_window_margin(state, margin);
+}
+
+/** Drops a queued fisheye frame, so a stale position cannot be applied. */
+static void stop_pointer_tick(LambdockState *state) {
+  if (state->pointer_tick_id != 0 && state->window &&
+      GTK_IS_WIDGET(state->window)) {
+    gtk_widget_remove_tick_callback(state->window, state->pointer_tick_id);
+  }
+
+  state->pointer_tick_id = 0;
+}
+
+/**
+ * for_each_dock_item:
+ * Runs @visit over the dock row, skipping NULL items.
+ *
+ * g_list_foreach() would do the walk, but it takes a GFunc over gpointer, and
+ * casting dock-item callbacks to it gives up the type checking that keeps these
+ * visitors honest. The loop is four lines; the signature is worth it.
+ */
+static void for_each_dock_item(GList *items, DockItemVisitor visit,
+                               gpointer data) {
+  for (GList *node = items; node != NULL; node = node->next) {
+    if (node->data)
+      visit((DockItem *)node->data, data);
+  }
+}
 
 /**
  * get_item_zoom_widget:
@@ -210,42 +314,116 @@ static GtkWidget *get_item_zoom_widget(DockItem *item) {
   return NULL;
 }
 
+/** Puts one dock item back at its resting size, reflection included. */
+static void reset_item_scale(DockItem *item, gpointer data) {
+  const LambdockState *state = (const LambdockState *)data;
+
+  if (!item->button)
+    return;
+
+  int base_px = dock_icon_size(state);
+
+  if (state->orientation == GTK_ORIENTATION_HORIZONTAL)
+    gtk_widget_set_size_request(item->button, -1, base_px);
+  else
+    gtk_widget_set_size_request(item->button, base_px, -1);
+
+  /* The icon itself is never re-rasterised: it rests at its base scale. */
+  GtkWidget *zoom = get_item_zoom_widget(item);
+  if (zoom)
+    lambdock_icon_zoom_set_scale(zoom, 1.0);
+
+  /* Keep the glass-shelf reflection at the base icon size too. */
+  if (item->reflection)
+    shelf_reflection_set_icon_size(item->reflection, base_px);
+}
+
 /**
  * reset_dock_items_scale:
- * Resets all dock item icons back to their default base pixel size and resets
- * widget size requests cleanly.
+ * Resets every dock item to its default base pixel size.
  */
 static void reset_dock_items_scale(LambdockState *state) {
   if (!state || !state->dock_items)
     return;
 
-  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button)
-      continue;
-
-    // Preserve cross-axis base size for all buttons
-    if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-      gtk_widget_set_size_request(item->button, -1, base_sz);
-    } else {
-      gtk_widget_set_size_request(item->button, base_sz, -1);
-    }
-
-    /* The icon itself is never re-rasterised: it rests at its base scale. */
-    GtkWidget *zoom = get_item_zoom_widget(item);
-    if (zoom)
-      lambdock_icon_zoom_set_scale(zoom, 1.0);
-
-    /* Keep the glass-shelf reflection at the base icon size too. */
-    if (item->reflection)
-      shelf_reflection_set_icon_size(item->reflection, base_sz);
-  }
+  for_each_dock_item(state->dock_items, reset_item_scale, state);
 
   /* The row is back at rest, so the next frame has to apply the pointer again
    * even if it has not moved. */
   state->pointer_applied = FALSE;
+}
+
+/* =========================================================================
+ * SLIDE ANIMATION
+ * ========================================================================= */
+
+/**
+ * animate_margin_cb:
+ * GTK tick callback executed on every display frame update while animating.
+ * Smoothly interpolates `current_margin` towards `target_margin` using elapsed
+ * frame-clock timestamps.
+ *
+ * Returns: G_SOURCE_CONTINUE to keep ticking, G_SOURCE_REMOVE when finished.
+ */
+static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
+                                  gpointer user_data) {
+  (void)widget;
+  LambdockState *state = (LambdockState *)user_data;
+
+  gint64 now_us = gdk_frame_clock_get_frame_time(frame_clock);
+
+  /* Anchor the clock on the first frame: the animation starts when the
+   * compositor first ticked, not when it was requested. */
+  if (state->anim_start_time == 0)
+    state->anim_start_time = now_us;
+
+  double progress = lambdock_slide_progress(state->anim_start_time, now_us,
+                                            ANIMATION_DURATION_US);
+
+  /* --- Animation complete --- */
+  if (progress >= 1.0) {
+    state->current_margin = state->target_margin;
+    set_window_margin(state, state->current_margin);
+    state->tick_cb_id = 0;
+    state->margin_anim_end_us = g_get_monotonic_time();
+    return G_SOURCE_REMOVE;
+  }
+
+  /* --- Intermediate frame --- */
+  state->current_margin =
+      lambdock_slide_position(state->start_margin, state->target_margin,
+                              progress);
+  set_window_margin(state, state->current_margin);
+
+  return G_SOURCE_CONTINUE;
+}
+
+/**
+ * start_margin_animation:
+ * Initiates or updates a margin transition animation toward a target value.
+ */
+static void start_margin_animation(LambdockState *state, int target_margin) {
+  /* Nothing to do if the dock is already where it is wanted. */
+  if (state->current_margin == target_margin)
+    return;
+
+  /* Reduced motion: the dock still has to get out of the way (or come back),
+   * it just does it in one step instead of sliding. */
+  if (!lambdock_animations_enabled(state)) {
+    stop_margin_animation(state);
+    snap_margin_to(state, target_margin);
+    return;
+  }
+
+  state->start_margin = state->current_margin;
+  state->target_margin = target_margin;
+  state->anim_start_time = 0; /* reset the timer anchor */
+  state->margin_anim_end_us = 0;
+
+  if (state->tick_cb_id == 0) {
+    state->tick_cb_id = gtk_widget_add_tick_callback(
+        state->window, animate_margin_cb, state, NULL);
+  }
 }
 
 /**
@@ -264,164 +442,124 @@ void dock_apply_motion_preference(LambdockState *state) {
   if (lambdock_animations_enabled(state))
     return;
 
-  if (state->tick_cb_id != 0) {
-    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
-    state->tick_cb_id = 0;
-  }
-
+  stop_margin_animation(state);
   state->current_margin = state->target_margin;
   set_window_margin(state, state->current_margin);
 
-  if (state->pointer_tick_id != 0) {
-    gtk_widget_remove_tick_callback(state->window, state->pointer_tick_id);
-    state->pointer_tick_id = 0;
+  stop_pointer_tick(state);
+  reset_dock_items_scale(state);
+}
+
+/* =========================================================================
+ * FISHEYE HOVER MAGNIFICATION
+ * =========================================================================
+ * The bell curve itself is in core/dock_motion.c; this half only reads widget
+ * bounds and pushes the resulting sizes into the row.
+ */
+
+/** Grows the glass reflection with a magnified icon, keeping the band fixed. */
+static void apply_reflection_extent(const DockItem *item,
+                                    const LambdockState *state, int icon_px,
+                                    int base_px) {
+  if (!item->reflection || !lambdock_shelf_active(state))
+    return;
+
+  double band_ratio =
+      lambdock_shelf_params_effective(state).reflection_ratio;
+  int band_px = (int)round((double)base_px * band_ratio);
+
+  if (band_px > 0)
+    shelf_reflection_set_extent(item->reflection, icon_px, band_px);
+}
+
+/**
+ * apply_fisheye_to_item:
+ * Sizes one dock item for the pointer position described by @data.
+ */
+static void apply_fisheye_to_item(DockItem *item, gpointer data) {
+  const FisheyeFrame *frame = (const FisheyeFrame *)data;
+  const LambdockState *state = frame->state;
+
+  /* Guard: the button has to be a GtkButton, and the item has to allow hover
+   * magnification (separators and meters do not). */
+  if (!item->hover_animate || !item->button || !GTK_IS_BUTTON(item->button))
+    return;
+
+  GtkWidget *zoom = get_item_zoom_widget(item);
+  if (!zoom)
+    return;
+
+  graphene_rect_t bounds;
+  if (!gtk_widget_compute_bounds(item->button, state->window, &bounds))
+    return;
+
+  gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
+  double center = horizontal
+                      ? bounds.origin.x + bounds.size.width / 2.0
+                      : bounds.origin.y + bounds.size.height / 2.0;
+
+  double scale =
+      lambdock_fisheye_scale(frame->pointer_axis - center, frame->radius_px,
+                             frame->max_scale);
+  int target_px = lambdock_scaled_size(frame->base_size_px, scale);
+
+  if (lambdock_icon_zoom_target_size(zoom) != target_px) {
+    /* Expand along the dock axis; preserve the base size across it. */
+    if (horizontal)
+      gtk_widget_set_size_request(item->button, target_px, frame->base_size_px);
+    else
+      gtk_widget_set_size_request(item->button, frame->base_size_px, target_px);
+
+    /* Mirror the magnified icon in its reflection: the copy grows along the
+     * dock axis but keeps the band thickness, so the row of icons does not
+     * shift while hovering. */
+    apply_reflection_extent(item, state, target_px, frame->base_size_px);
   }
 
-  reset_dock_items_scale(state);
+  /* The layout steps in whole pixels, the icon does not: the zoom paints the
+   * artwork through a transform, so magnification follows the pointer
+   * continuously and costs no rasterisation at all. */
+  lambdock_icon_zoom_set_scale(zoom, scale);
 }
 
 /**
  * update_dock_items_fisheye:
- * Computes fisheye magnification for dock icons based on current
- * cursor coordinates relative to dock item centers.
+ * Computes fisheye magnification for dock icons based on current cursor
+ * coordinates relative to dock item centers.
  */
 static void update_dock_items_fisheye(LambdockState *state, double x,
                                       double y) {
-  // Do not run hover magnification if disabled, hidden, or animating slide
+  /* Hover magnification only applies to a settled, visible dock: while it
+   * slides (or is hidden) the widget bounds below are stale and the pointer
+   * position is not the user's. */
   if (!state || !state->dock_items || !state->hover_animate ||
       !lambdock_animations_enabled(state) || state->is_hidden ||
       state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
-  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  double base_size = (double)base_sz;
-  const double max_scale = FISHEYE_MAX_SCALE; // Max size magnification
-  const double radius = FISHEYE_RADIUS_PX;    // Influence radius in pixels
+  gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
 
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
+  FisheyeFrame frame = {
+      .state = state,
+      .pointer_axis = horizontal ? x : y,
+      .base_size_px = dock_icon_size(state),
+      .radius_px = FISHEYE_RADIUS_PX,
+      .max_scale = FISHEYE_MAX_SCALE,
+  };
 
-    // Guard: check that button is a GtkButton AND item allows hover animation
-    if (!item || !item->hover_animate || !item->button ||
-        !GTK_IS_BUTTON(item->button))
-      continue;
-
-    graphene_rect_t bounds;
-    if (gtk_widget_compute_bounds(item->button, state->window, &bounds)) {
-      double center_x = bounds.origin.x + bounds.size.width / 2.0;
-      double center_y = bounds.origin.y + bounds.size.height / 2.0;
-
-      double dist = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
-                        ? fabs(x - center_x)
-                        : fabs(y - center_y);
-
-      double scale = 1.0;
-      if (dist < radius) {
-        // Cosine bell curve scaling from 1.0 (at radius edge) to max_scale (at
-        // center)
-        double factor = 0.5 * (1.0 + cos(M_PI * dist / radius));
-        scale = 1.0 + (max_scale - 1.0) * factor;
-      }
-
-      int target_size = (int)lround(base_size * scale);
-      GtkWidget *zoom = get_item_zoom_widget(item);
-
-      if (!zoom)
-        continue;
-
-      if (lambdock_icon_zoom_target_size(zoom) != target_size) {
-        if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-          // Expand width along X axis; preserve base_sz along Y axis
-          gtk_widget_set_size_request(item->button, target_size, base_sz);
-        } else {
-          // Expand height along Y axis; preserve base_sz along X axis
-          gtk_widget_set_size_request(item->button, base_sz, target_size);
-        }
-
-        // Mirror the magnified icon in its reflection: the copy grows along
-        // the dock axis but keeps the band thickness, so the row of icons
-        // does not shift up while hovering.
-        if (item->reflection && lambdock_shelf_active(state)) {
-          int band = (int)round(base_size * lambdock_shelf_params_effective(state)
-                                               .reflection_ratio);
-          if (band > 0)
-            shelf_reflection_set_extent(item->reflection, target_size, band);
-        }
-      }
-
-      /* The layout steps in whole pixels, the icon does not: the zoom paints
-       * the artwork through a transform, so magnification follows the pointer
-       * continuously and costs no rasterisation at all. */
-      lambdock_icon_zoom_set_scale(zoom, scale);
-    }
-  }
+  for_each_dock_item(state->dock_items, apply_fisheye_to_item, &frame);
 }
 
 /* =========================================================================
- * AUTO-HIDE & REVEAL LOGIC
+ * AUTO-HIDE & REVEAL
  * ========================================================================= */
-
-/**
- * reveal_dock:
- * Cancels pending hide timers and animates the dock back into full view (margin
- * = 0).
- *
- * @param state Pointer to LambdockState.
- */
-void reveal_dock(LambdockState *state) {
-  // Cancel any scheduled auto-hide timeout
-  if (state->hide_timer_id > 0) {
-    g_source_remove(state->hide_timer_id);
-    state->hide_timer_id = 0;
-  }
-
-  // Trigger reveal animation if hidden or moving away from visible state
-  if (state->is_hidden || state->target_margin != 0) {
-    start_margin_animation(state, 0);
-    state->is_hidden = FALSE;
-  }
-}
 
 /* How long after a slide settles a pointer crossing is still treated as an echo
  * of the slide itself. The crossings that make the dock bounce arrive within a
  * frame or two of the animation stopping. */
 #define AUTO_HIDE_SETTLE_MS 300
 
-/**
- * dock_is_settling:
- * @state: Pointer to the dock state.
- *
- * Whether the dock is sliding, or has only just stopped.
- *
- * While the dock slides it moves under the pointer: a pointer that is not moving
- * still ends up over a different part of the dock, or off it, and compositors
- * report the crossings that follow from that as if the pointer had moved. Those
- * reports are what used to bounce the dock at the screen edge -- a leave hides it,
- * the strip comes back under the pointer, an enter reveals it, and round it goes.
- *
- * Returns: TRUE while crossings are echoes of the dock's own movement.
- */
-gboolean dock_is_settling(const LambdockState *state) {
-  if (!state)
-    return FALSE;
-
-  if (state->tick_cb_id != 0)
-    return TRUE;
-
-  if (state->margin_anim_end_us == 0)
-    return FALSE;
-
-  gint64 settled_for_us = g_get_monotonic_time() - state->margin_anim_end_us;
-  return settled_for_us < (gint64)AUTO_HIDE_SETTLE_MS * 1000;
-}
-
-/**
- * on_hide_timeout:
- * Timer callback triggered after mouse-leave grace period expires.
- *
- * @param user_data Pointer to LambdockState.
- * @return G_SOURCE_REMOVE to unregister timer.
- */
+/* Adapter: GLib timeouts hand the state back as a plain pointer. */
 static gboolean on_hide_timeout(gpointer user_data) {
   LambdockState *state = (LambdockState *)user_data;
   state->hide_timer_id = 0;
@@ -430,93 +568,96 @@ static gboolean on_hide_timeout(gpointer user_data) {
   return G_SOURCE_REMOVE;
 }
 
+/** Drops any pending auto-hide timer. Safe to call at any time. */
+static void cancel_hide_timer(LambdockState *state) {
+  if (!state || state->hide_timer_id == 0)
+    return;
+
+  g_source_remove(state->hide_timer_id);
+  state->hide_timer_id = 0;
+}
+
+/** (Re)schedules the auto-hide timeout, replacing a pending one. */
+static void schedule_hide_timer(LambdockState *state, guint delay_ms) {
+  cancel_hide_timer(state);
+  state->hide_timer_id = g_timeout_add(delay_ms, on_hide_timeout, state);
+}
+
+/**
+ * dock_measured_main_axis_px:
+ * The surface's current size along the dock's main axis, or 0 before GTK has
+ * laid it out (which lambdock_hide_margin() knows how to handle).
+ */
+static int dock_measured_main_axis_px(const LambdockState *state) {
+  if (!state->window)
+    return 0;
+
+  return (dock_cross_orientation(state->edge) == GTK_ORIENTATION_VERTICAL)
+             ? gtk_widget_get_height(state->window)
+             : gtk_widget_get_width(state->window);
+}
+
+/**
+ * reveal_dock:
+ * Cancels pending hide timers and animates the dock back into full view (margin
+ * = 0).
+ */
+void reveal_dock(LambdockState *state) {
+  cancel_hide_timer(state);
+
+  if (state->is_hidden || state->target_margin != 0) {
+    start_margin_animation(state, 0);
+    state->is_hidden = FALSE;
+  }
+}
+
 /**
  * hide_dock:
- * Calculates window dimensions and slides the dock off-screen into hidden
- * margin. Keeps a trigger strip visible on screen edge to receive mouse hover
- * events.
- *
- * @param state Pointer to LambdockState.
+ * Slides the dock off screen, keeping a trigger strip visible on the screen
+ * edge so the pointer can bring it back.
  */
 void hide_dock(LambdockState *state) {
-  // Do not hide if autohide is disabled or user has open popover menus
+  /* --- Guards: nothing to hide behind --- */
+
+  /* Respect the auto-hide setting, and never hide under an open menu. */
   if (!state->auto_hide || state->active_popovers > 0)
     return;
 
-  // Do not hide if show-when-clear is active and no open windows exist
+  /* `show-when-clear' means the dock belongs on screen while nothing runs. */
   if (state->show_when_clear && state->window_trackers == NULL)
     return;
 
-  // Reset icon scaling to base size before calculating window dimensions
-  if (state->hover_animate) {
+  /* The row has to be at rest before its size is measured, or the measurement
+   * is the magnified one. */
+  if (state->hover_animate)
     reset_dock_items_scale(state);
-  }
 
-  GtkOrientation dim_orient = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
-                               state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM)
-                                  ? GTK_ORIENTATION_VERTICAL
-                                  : GTK_ORIENTATION_HORIZONTAL;
+  int hidden_margin =
+      lambdock_hide_margin(dock_measured_main_axis_px(state),
+                           dock_cross_axis_dim(state), CROSS_DIM_TOLERANCE_PX,
+                           AUTOHIDE_TRIGGER_STRIP_PX);
 
-  int window_dim = 0;
-  if (state->window) {
-    window_dim = (dim_orient == GTK_ORIENTATION_VERTICAL)
-                     ? gtk_widget_get_height(state->window)
-                     : gtk_widget_get_width(state->window);
-  }
-
-  // Ensure window_dim is deterministic even before initial GTK layout/mapping.
-  // If GTK layout hasn't run yet after an orientation hot-reload, window_dim
-  // can hold stale main-axis dimensions from the previous orientation.
-  int max_cross_dim = dock_cross_axis_dim(state);
-  if (window_dim <= 0 || window_dim > max_cross_dim + CROSS_DIM_TOLERANCE_PX) {
-    window_dim = max_cross_dim;
-  }
-
-  // Leave exposed strip on screen edge to trigger hover re-entry
-  int hide_margin = -(window_dim - AUTOHIDE_TRIGGER_STRIP_PX);
-
-  if (!state->is_hidden || state->target_margin != hide_margin) {
-    start_margin_animation(state, hide_margin);
+  if (!state->is_hidden || state->target_margin != hidden_margin) {
+    start_margin_animation(state, hidden_margin);
     state->is_hidden = TRUE;
   }
 }
 
 /* =========================================================================
- * EVENT CONTROLLERS & CALLBACKS
- * ========================================================================= */
-
-/**
- * on_popover_closed:
- * Decrements active popover counter when a context menu is dismissed.
- * Re-schedules auto-hide if no open popovers remain.
+ * MOTION CONTROLLER CALLBACKS
+ * =========================================================================
+ * Thin: read the inputs, call one helper, return. The decisions they encode are
+ * documented where they are made.
  */
-void on_popover_closed(GtkPopover *popover, gpointer user_data) {
-  (void)popover;
-  LambdockState *state = (LambdockState *)user_data;
 
-  if (state->active_popovers > 0) {
-    state->active_popovers--;
-  }
-
-  // If no menus remain open, schedule autohide after delay
-  if (state->auto_hide && state->active_popovers == 0) {
-    if (state->hide_timer_id != 0) {
-      g_source_remove(state->hide_timer_id);
-    }
-    state->hide_timer_id =
-        g_timeout_add(AUTOHIDE_POPOVER_DELAY_MS, on_hide_timeout, state);
-  }
-}
-
-/**
- * on_motion_enter:
- * Mouse motion controller event when pointer enters the dock region.
- */
+/** Pointer entered the dock: whatever was queued is stale, and it must be
+ * revealed. */
 static void on_motion_enter(GtkEventControllerMotion *controller, double x,
                             double y, gpointer user_data) {
   (void)controller;
   (void)x;
   (void)y;
+
   LambdockState *state = (LambdockState *)user_data;
   state->pointer_moved_since_enter = FALSE;
   state->pointer_applied = FALSE;
@@ -544,14 +685,17 @@ static gboolean on_hover_tick(GtkWidget *widget, GdkFrameClock *frame_clock,
   if (!state)
     return G_SOURCE_REMOVE;
 
-  state->pointer_tick_id = 0; // one-shot: the next motion schedules the next one
+  /* One-shot: the next motion schedules the next one. */
+  state->pointer_tick_id = 0;
 
   /* Nothing moved since the last frame (the pointer can repeat a position), so
-   * the icons are already right where they belong. */
+   * the icons are already where they belong. */
   if (state->pointer_applied &&
-      fabs(state->pointer_x - state->applied_pointer_x) < 1.0 &&
-      fabs(state->pointer_y - state->applied_pointer_y) < 1.0)
+      !lambdock_points_differ(state->pointer_x, state->pointer_y,
+                              state->applied_pointer_x,
+                              state->applied_pointer_y, 1.0)) {
     return G_SOURCE_REMOVE;
+  }
 
   state->applied_pointer_x = state->pointer_x;
   state->applied_pointer_y = state->pointer_y;
@@ -564,73 +708,68 @@ static gboolean on_hover_tick(GtkWidget *widget, GdkFrameClock *frame_clock,
 
 /**
  * on_motion_leave:
- * Mouse motion controller event when pointer leaves the dock surface.
- * Resets icon scaling and schedules an auto-hide check after interval.
+ * Pointer left the dock surface: stop magnifying, and start the hide countdown.
  */
 static void on_motion_leave(GtkEventControllerMotion *controller,
                             gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
 
-  if (state) {
-    /* Not every leave means the pointer went anywhere. The dock slides under a
-     * pointer that is not moving -- the window moves, the pointer does not -- and
-     * compositors report crossings that follow from that, which is what used to
-     * bounce the dock at its screen edge: a leave hides it, the revealing strip
-     * comes back under the pointer, an enter reveals it, and round it goes. So a
-     * leave only counts when the dock is sitting still *and* the pointer has
-     * actually moved since it arrived; a pointer that has not moved cannot have
-     * left. */
-    if (dock_is_settling(state) || !state->pointer_moved_since_enter)
-      return;
+  if (!state)
+    return;
 
-    /* A frame that is already queued must not magnify anything after the
-     * pointer has left. */
-    if (state->pointer_tick_id != 0 && state->window) {
-      gtk_widget_remove_tick_callback(state->window, state->pointer_tick_id);
-      state->pointer_tick_id = 0;
-    }
-    state->pointer_applied = FALSE;
+  /* Not every leave means the pointer went anywhere. The dock slides under a
+   * pointer that is not moving -- the window moves, the pointer does not -- and
+   * compositors report crossings that follow from that, which is what used to
+   * bounce the dock at its screen edge: a leave hides it, the revealing strip
+   * comes back under the pointer, an enter reveals it, and round it goes. So a
+   * leave only counts when the dock is sitting still *and* the pointer has
+   * actually moved since it arrived; a pointer that has not moved cannot have
+   * left. */
+  if (dock_is_settling(state) || !state->pointer_moved_since_enter)
+    return;
 
-    if (state->hover_animate) {
-      reset_dock_items_scale(state);
-    }
-    if (state->auto_hide) {
-      if (state->hide_timer_id != 0) {
-        g_source_remove(state->hide_timer_id);
-      }
-      state->hide_timer_id =
-          g_timeout_add(AUTOHIDE_LEAVE_DELAY_MS, on_hide_timeout, state);
-    }
-  }
+  stop_pointer_tick(state);
+  state->pointer_applied = FALSE;
+
+  if (state->hover_animate)
+    reset_dock_items_scale(state);
+
+  if (state->auto_hide)
+    schedule_hide_timer(state, AUTOHIDE_LEAVE_DELAY_MS);
 }
 
 /**
  * on_motion_notify:
- * Mouse motion callback tracking cursor position across dock items for fisheye.
+ * Records where the pointer is; the frame clock does the magnifying.
  */
 static void on_motion_notify(GtkEventControllerMotion *controller, double x,
                              double y, gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
+
   if (!state || !state->hover_animate || state->is_hidden ||
       state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
-  /* Remember where the pointer is and let the frame clock do the work, at most
-   * once per frame. A motion only counts as the pointer moving when the dock
-   * itself is still: while it slides, the window moves under the pointer and the
-   * positions that come back are its own movement. */
+  /* A motion only counts as the pointer moving when the dock itself is still:
+   * while it slides, the window moves under the pointer and the positions that
+   * come back are its own movement. */
   if (!dock_is_settling(state))
     state->pointer_moved_since_enter = TRUE;
 
   state->pointer_x = x;
   state->pointer_y = y;
 
-  if (state->pointer_tick_id == 0 && state->window)
+  if (state->pointer_tick_id == 0 && state->window) {
     state->pointer_tick_id =
         gtk_widget_add_tick_callback(state->window, on_hover_tick, state, NULL);
+  }
 }
+
+/* =========================================================================
+ * BACKGROUND CONTEXT MENU
+ * ========================================================================= */
 
 /**
  * on_right_click:
@@ -645,32 +784,150 @@ void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
   if (!state->popover)
     return;
 
-  // Set popover arrow positioning anchor at right-click coordinates
+  /* Point the popover's arrow at the click, so the menu grows away from it. */
   GdkRectangle rect = {(int)x, (int)y, 1, 1};
   gtk_popover_set_pointing_to(GTK_POPOVER(state->popover), &rect);
 
-  if (!gtk_widget_get_visible(state->popover)) {
+  if (!gtk_widget_get_visible(state->popover))
     state->active_popovers++;
-  }
 
   gtk_popover_popup(GTK_POPOVER(state->popover));
 }
 
+/**
+ * on_popover_closed:
+ * Decrements active popover counter when a context menu is dismissed, and
+ * resumes auto-hide once the last one is gone.
+ */
+void on_popover_closed(GtkPopover *popover, gpointer user_data) {
+  (void)popover;
+  LambdockState *state = (LambdockState *)user_data;
+
+  if (state->active_popovers > 0)
+    state->active_popovers--;
+
+  if (state->auto_hide && state->active_popovers == 0)
+    schedule_hide_timer(state, AUTOHIDE_POPOVER_DELAY_MS);
+}
+
 /* =========================================================================
- * LAYER SHELL & STATE INITIALIZATION
+ * DOCK MODE & CSS CLASSES
  * ========================================================================= */
 
 /**
- * setup_layer_shell_window:
- * Converts standard GTK window to a Wayland Layer Shell surface and sets
- * anchors.
+ * apply_shelf_css_classes:
+ * Tags the capsule and the window with the shelf's state classes, plus the
+ * class naming the edge the shelf is docked to.
  *
- * @param state Pointer to LambdockState.
+ * Both widgets are tagged on purpose: user CSS can then target the whole dock
+ * (the window) or the shelf itself (the capsule, which carries the theme).
+ */
+static void apply_shelf_css_classes(const LambdockState *state,
+                                    gboolean shelf_active,
+                                    gboolean mirroring) {
+  static const char *const edge_classes[] = {"shelf-bottom", "shelf-top",
+                                             "shelf-left", "shelf-right"};
+  const gsize n_edge_classes = G_N_ELEMENTS(edge_classes);
+
+  /* Edges are mutually exclusive: clear them all, then set the current one. */
+  lambdock_toggle_css_classes(state->bg_capsule, edge_classes, n_edge_classes,
+                             FALSE);
+  lambdock_toggle_css_classes(state->window, edge_classes, n_edge_classes, FALSE);
+
+  lambdock_set_css_class(state->bg_capsule, "shelf-mode", shelf_active);
+  lambdock_set_css_class(state->window, "shelf-mode", shelf_active);
+
+  /* `shelf-mirror` means the glass actually shows icon reflections: the
+   * reflection widget then draws the running indicator itself, so the CSS one
+   * must stay quiet. */
+  lambdock_set_css_class(state->bg_capsule, "shelf-mirror", mirroring);
+  lambdock_set_css_class(state->window, "shelf-mirror", mirroring);
+
+  if (!shelf_active)
+    return;
+
+  const char *edge_class = shelf_edge_class(state->edge);
+  lambdock_set_css_class(state->bg_capsule, edge_class, TRUE);
+  lambdock_set_css_class(state->window, edge_class, TRUE);
+}
+
+/**
+ * apply_shelf_shape:
+ * Projects the styled capsule onto the shape described by the shelf parameters:
+ * the tilt, the keystone (flare) or both. With neither, the frame is a
+ * pass-through.
+ */
+static void apply_shelf_shape(const LambdockState *state) {
+  if (!state->bg_shelf)
+    return;
+
+  shelf_frame_set_shape(state->bg_shelf, state->edge,
+                        shelf_tilt_for_edge(state->edge, state->shelf.tilt_deg),
+                        state->shelf.perspective, state->shelf.flare_px);
+}
+
+/**
+ * apply_dock_mode_classes:
+ * Toggles the `taskbar` CSS class on the background capsule so themes can give
+ * taskbar mode its own rectangular, edge-to-edge styling, and the `shelf-*`
+ * classes that let any theme restyle the glass shelf.
+ */
+void apply_dock_mode_classes(LambdockState *state) {
+  if (!state || !state->bg_capsule)
+    return;
+
+  gboolean shelf_active = lambdock_shelf_active(state);
+  gboolean mirroring =
+      shelf_active &&
+      lambdock_shelf_geometry_for(state, state->icon_size).band_px > 0;
+
+  lambdock_set_css_class(state->bg_capsule, "taskbar", state->taskbar);
+  apply_shelf_css_classes(state, shelf_active, mirroring);
+  apply_shelf_shape(state);
+}
+
+/* =========================================================================
+ * LAYER-SHELL SURFACE & MODE
+ * ========================================================================= */
+
+/** Puts @policy's anchors onto the surface. */
+static void apply_surface_anchors(GtkWindow *window,
+                                  const DockSurfacePolicy *policy) {
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, policy->anchor_top);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM,
+                       policy->anchor_bottom);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, policy->anchor_left);
+  gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT,
+                       policy->anchor_right);
+}
+
+/**
+ * dock_apply_exclusive_zone:
+ * Reserves desktop space for the dock, or nothing at all while it auto-hides.
+ *
+ * The rule lives in dock_surface_policy_for(), and this is the one way to apply
+ * it: the surface is created with it, and every configuration reload re-applies
+ * it (auto-hide and the capsule thickness can both change).
+ */
+void dock_apply_exclusive_zone(LambdockState *state) {
+  if (!state || !state->window || !GTK_IS_WINDOW(state->window))
+    return;
+  if (!gtk_layer_is_layer_window(GTK_WINDOW(state->window)))
+    return;
+
+  gtk_layer_set_exclusive_zone(
+      GTK_WINDOW(state->window),
+      dock_surface_policy_for(state).exclusive_zone_px);
+}
+
+/**
+ * setup_layer_shell_window:
+ * Converts a standard GTK window to a Wayland Layer Shell surface and anchors
+ * it to the docked edge.
  */
 void setup_layer_shell_window(LambdockState *state) {
   GtkWindow *window = GTK_WINDOW(state->window);
 
-  // Initialize GTK Layer Shell integration for window
   gtk_layer_init_for_window(window);
   gtk_layer_set_namespace(window, "lambdock");
 
@@ -681,40 +938,33 @@ void setup_layer_shell_window(LambdockState *state) {
    * keyboard. */
   gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 
-  // Assign window to specific GdkMonitor output if specified
-  if (state->monitor != NULL) {
+  if (state->monitor != NULL)
     gtk_layer_set_monitor(window, state->monitor);
-  }
 
-  // Set desktop render layer (Top layer renders above normal application
-  // windows)
+  /* The dock renders on the top layer, above normal application windows. */
   gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_TOP);
 
-  // Anchor window to screen edge (Top, Bottom, Left, or Right)
-  gtk_layer_set_anchor(window, state->edge, TRUE);
+  DockSurfacePolicy policy = dock_surface_policy_for(state);
+  apply_surface_anchors(window, &policy);
 
-  // Taskbar mode: also anchor the two perpendicular edges so the surface is
-  // stretched to span the whole monitor (full-width bottom/top bar, or
-  // full-height left/right bar). A floating dock leaves them unanchored and
-  // keeps its natural, content-hugging size.
-  if (state->taskbar) {
-    if (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
-        state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
-      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
-    } else {
-      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, TRUE);
-      gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-    }
-  }
+  /* Exclusive zone reserves desktop space so windows do not overlap the dock. */
+  gtk_layer_set_exclusive_zone(window, policy.exclusive_zone_px);
+}
 
-  // Exclusive zone reserves desktop space so windows do not overlap dock.
-  // Reserve exact background capsule thickness when auto-hide is disabled.
-  if (state->auto_hide) {
-    gtk_layer_set_exclusive_zone(window, 0);
-  } else {
-    gtk_layer_set_exclusive_zone(window, dock_capsule_cross_dim(state));
-  }
+/**
+ * refresh_dock_mode:
+ * Re-applies layer-shell anchors, mode CSS classes and dimension requests after
+ * a live configuration reload toggles dock <-> taskbar mode.
+ */
+void refresh_dock_mode(LambdockState *state) {
+  if (!state || !state->window)
+    return;
+
+  DockSurfacePolicy policy = dock_surface_policy_for(state);
+  apply_surface_anchors(GTK_WINDOW(state->window), &policy);
+
+  apply_dock_mode_classes(state);
+  update_dock_dimensions(state);
 }
 
 /**
@@ -736,171 +986,79 @@ void setup_dock_motion_controller(LambdockState *state) {
  * Schedules initial hide timer on application launch if auto-hide is enabled.
  */
 void schedule_initial_autohide(LambdockState *state) {
-  if (state->auto_hide) {
-    state->hide_timer_id =
-        g_timeout_add(AUTOHIDE_INITIAL_DELAY_MS, on_hide_timeout, state);
-  }
+  if (state->auto_hide)
+    schedule_hide_timer(state, AUTOHIDE_INITIAL_DELAY_MS);
 }
 
 /* =========================================================================
- * GTK APPLICATION ACTIONS (ABOUT & QUIT)
- * ========================================================================= */
-
-/**
- * on_quit_action:
- * Action handler for menu 'Quit' option. Terminates GTK application loop.
- */
-void on_quit_action(GSimpleAction *action, GVariant *parameter,
-                    gpointer user_data) {
-  (void)action;
-  (void)parameter;
-  GtkApplication *app = GTK_APPLICATION(user_data);
-  g_application_quit(G_APPLICATION(app));
-}
-
-/**
- * on_about_action:
- * Action handler for menu 'About Lambdock' option. Constructs and displays
- * modal `GtkAboutDialog` with metadata, license, and logo assets.
- */
-/* Single About dialog instance: repeatedly invoking the action must reuse it
- * rather than accumulate windows. */
-static GtkWidget *g_about_dialog = NULL;
-
-static gboolean on_about_close_request(GtkWindow *window, gpointer user_data) {
-  (void)user_data;
-  g_about_dialog = NULL;
-  gtk_window_destroy(window);
-  return TRUE; /* handled: do not fall back to the default close behaviour */
-}
-
-void on_about_action(GSimpleAction *action, GVariant *parameter,
-                     gpointer user_data) {
-  (void)action;
-  (void)parameter;
-  (void)user_data;
-
-  if (g_about_dialog != NULL && GTK_IS_WINDOW(g_about_dialog)) {
-    gtk_window_present(GTK_WINDOW(g_about_dialog));
-    return;
-  }
-
-  GtkWidget *about = gtk_about_dialog_new();
-  g_signal_connect(about, "close-request",
-                   G_CALLBACK(on_about_close_request), NULL);
-  g_about_dialog = about;
-  gtk_widget_add_css_class(about, "about-dialog");
-
-  // Basic Details
-  gtk_about_dialog_set_program_name(GTK_ABOUT_DIALOG(about), "lambdock");
-
-#ifdef PACKAGE_VERSION
-  gtk_about_dialog_set_version(GTK_ABOUT_DIALOG(about), PACKAGE_VERSION);
-#endif
-
-  gtk_about_dialog_set_comments(
-      GTK_ABOUT_DIALOG(about),
-      _("A modern Wayland-native hackable desktop dock bar.\n\n"
-        "Engineered with the performance of C and GTK4 Layer Shell for smooth "
-        "auto-hide and animations, featuring dynamic Wayland toplevel window "
-        "tracking, live CSS hot-reloading, and dynamic configuration powered "
-        "by GNU Guile Scheme."));
-
-  // Authors & Copyright
-  const char *authors[] = {"Josep Bigorra (jjbigorra@gmail.com)", NULL};
-  gtk_about_dialog_set_authors(GTK_ABOUT_DIALOG(about), authors);
-
-  gtk_about_dialog_set_copyright(
-      GTK_ABOUT_DIALOG(about),
-      "Copyright © Josep Bigorra <jjbigorra@gmail.com>");
-
-  // License (MIT)
-  gtk_about_dialog_set_license_type(GTK_ABOUT_DIALOG(about),
-                                    GTK_LICENSE_MIT_X11);
-
-  // Repository Web Links
-  gtk_about_dialog_set_website(GTK_ABOUT_DIALOG(about),
-                               "https://github.com/jjba23/lambdock");
-  gtk_about_dialog_set_website_label(GTK_ABOUT_DIALOG(about),
-                                     _("Find the project's source code here"));
-
-  // Logo Loading Logic from compiled GResource bundle
-  const char *logo_resource =
-      "/org/jointhefreeworld/lambdock/img/agnus-dei.png";
-  GdkTexture *texture = gdk_texture_new_from_resource(logo_resource);
-
-  if (texture) {
-    gtk_about_dialog_set_logo(GTK_ABOUT_DIALOG(about), GDK_PAINTABLE(texture));
-    g_object_unref(texture); // Drop local texture reference
-  } else {
-    LOG_C_WARN("About", "Failed to load logo from GResource: %s",
-               logo_resource);
-    gtk_about_dialog_set_logo_icon_name(GTK_ABOUT_DIALOG(about), "lambdock");
-  }
-
-  // Display dialog modally
-  gtk_window_set_modal(GTK_WINDOW(about), TRUE);
-  gtk_window_present(GTK_WINDOW(about));
-}
-
-/* =========================================================================
- * MONITOR VALIDATION & DIMENSION UPDATES
- * ========================================================================= */
-
-gboolean is_monitor_valid(GdkMonitor *mon) {
-  if (!mon)
-    return FALSE;
-  GdkDisplay *display = gdk_display_get_default();
-  if (!display)
-    return FALSE;
-  GListModel *monitors = gdk_display_get_monitors(display);
-  if (!monitors)
-    return FALSE;
-  guint n = g_list_model_get_n_items(monitors);
-  for (guint i = 0; i < n; i++) {
-    gpointer item = g_list_model_get_item(monitors, i);
-    gboolean match = (item == mon);
-    if (item)
-      g_object_unref(item);
-    if (match)
-      return TRUE;
-  }
-  return FALSE;
-}
-
-/* =========================================================================
- * DOCK DIMENSIONS
+ * MONITORS & DIMENSIONS
  * =========================================================================
  * The numbers are decided by the pure `lambdock_dock_dims_compute()`; the
- * functions below only apply them, one widget concern each.
+ * functions below only gather what it needs and apply the result, one widget
+ * concern each.
  */
 
-/** Reads the monitor's geometry, falling back to the first monitor. */
-static void dock_monitor_size(const LambdockState *state, int *width,
-                              int *height) {
-  *width = 0;
-  *height = 0;
-
-  GdkMonitor *monitor = state->monitor;
-  if (!monitor || !is_monitor_valid(monitor))
-    monitor = NULL;
-
+/** First monitor of the default display. Caller owns the reference. */
+static GdkMonitor *first_monitor(void) {
   GdkDisplay *display = gdk_display_get_default();
   GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
 
-  if (!monitor && monitors && g_list_model_get_n_items(monitors) > 0)
-    monitor = GDK_MONITOR(g_list_model_get_item(monitors, 0));
-  else if (monitor)
-    g_object_ref(monitor);
+  if (!monitors || g_list_model_get_n_items(monitors) == 0)
+    return NULL;
+
+  return g_list_model_get_item(monitors, 0);
+}
+
+/**
+ * is_monitor_valid:
+ * Checks if a given GdkMonitor pointer is currently present in the display's
+ * active monitor list.
+ */
+gboolean is_monitor_valid(GdkMonitor *mon) {
+  if (!mon)
+    return FALSE;
+
+  GdkDisplay *display = gdk_display_get_default();
+  GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
+  if (!monitors)
+    return FALSE;
+
+  guint n_monitors = g_list_model_get_n_items(monitors);
+  for (guint i = 0; i < n_monitors; i++) {
+    g_autoptr(GObject) item = g_list_model_get_item(monitors, i);
+
+    /* Plain pointer comparison on purpose: @mon may be a stale (freed) monitor,
+     * and G_OBJECT() would dereference it to check its type. */
+    if ((gpointer)item == (gpointer)mon)
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+/** The dock's monitor geometry, falling back to the first monitor. */
+static DockMonitorSize dock_monitor_size(const LambdockState *state) {
+  DockMonitorSize size = {0, 0};
+
+  g_autoptr(GdkMonitor) fallback = NULL;
+  GdkMonitor *monitor = state->monitor;
+
+  /* A monitor that has been unplugged is a dangling pointer: only trust one the
+   * display still lists. */
+  if (!is_monitor_valid(monitor)) {
+    fallback = first_monitor();
+    monitor = fallback;
+  }
 
   if (!monitor)
-    return;
+    return size;
 
   GdkRectangle geometry;
   gdk_monitor_get_geometry(monitor, &geometry);
-  *width = geometry.width;
-  *height = geometry.height;
-  g_object_unref(monitor);
+  size.width = geometry.width;
+  size.height = geometry.height;
+
+  return size;
 }
 
 /** Size-group mode follows the dock's orientation. */
@@ -1054,19 +1212,21 @@ static void dock_dims_mirror_shelf_alignment(const LambdockState *state) {
                         gtk_widget_get_valign(state->bg_capsule));
 }
 
+/**
+ * update_dock_dimensions:
+ * Recalculates and updates size requests for overlay surface and background
+ * capsule based on the active icon size, orientation, and screen edge.
+ */
 void update_dock_dimensions(LambdockState *state) {
   if (!state || !state->bg_capsule || !state->overlay)
     return;
 
-  int monitor_width = 0;
-  int monitor_height = 0;
-  dock_monitor_size(state, &monitor_width, &monitor_height);
-
+  DockMonitorSize monitor = dock_monitor_size(state);
   LambdockShelfGeometry shelf =
       lambdock_shelf_geometry_for(state, state->icon_size);
   LambdockDockDims dims =
       lambdock_dock_dims_compute(state->icon_size, state->capsule_padding,
-                                 shelf, monitor_width, monitor_height);
+                                 shelf, monitor.width, monitor.height);
 
   gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
 
@@ -1083,246 +1243,286 @@ void update_dock_dimensions(LambdockState *state) {
   dock_dims_mirror_shelf_alignment(state);
 }
 
-/*
- * apply_dock_mode_classes:
- * Toggles the `taskbar` CSS class on the background capsule so themes can give
- * taskbar mode its own rectangular, edge-to-edge styling, and the `shelf-*`
- * classes that let any theme restyle the glass shelf.
+/* =========================================================================
+ * APPLICATION ACTIONS (QUIT & ABOUT)
+ * ========================================================================= */
+
+/**
+ * on_quit_action:
+ * Action handler for menu 'Quit' option. Terminates GTK application loop.
  */
-static const char *shelf_edge_class(GtkLayerShellEdge edge) {
-  switch (edge) {
-  case GTK_LAYER_SHELL_EDGE_TOP:
-    return "shelf-top";
-  case GTK_LAYER_SHELL_EDGE_LEFT:
-    return "shelf-left";
-  case GTK_LAYER_SHELL_EDGE_RIGHT:
-    return "shelf-right";
-  case GTK_LAYER_SHELL_EDGE_BOTTOM:
-  default:
-    return "shelf-bottom";
+void on_quit_action(GSimpleAction *action, GVariant *parameter,
+                    gpointer user_data) {
+  (void)action;
+  (void)parameter;
+  GtkApplication *app = GTK_APPLICATION(user_data);
+  g_application_quit(G_APPLICATION(app));
+}
+
+/* The About dialog is created from an app-level action and must be singular.
+ * The live instance is hung off the GtkApplication -- the object that outlives
+ * every window here -- instead of a file-scope pointer, so there is no hidden
+ * global and its lifetime is the application's. */
+#define ABOUT_DIALOG_KEY "lambdock-about-dialog"
+#define ABOUT_LOGO_RESOURCE "/org/jointhefreeworld/lambdock/img/agnus-dei.png"
+
+/** The open About dialog, or NULL. Borrowed: the window owns itself. */
+static GtkWindow *about_dialog_open(GtkApplication *app) {
+  GtkWindow *about = (GtkWindow *)g_object_get_data(G_OBJECT(app),
+                                                    ABOUT_DIALOG_KEY);
+
+  return (about != NULL && GTK_IS_WINDOW(about)) ? about : NULL;
+}
+
+/* Adapter: the "close-request" signal carries no application, so the
+ * application rides along as the handler's user data. */
+static gboolean on_about_close_request(GtkWindow *window, gpointer user_data) {
+  GtkApplication *app = GTK_APPLICATION(user_data);
+
+  /* Forget first: the dialog is about to go away, and the next invocation of
+   * the action has to build a fresh one. */
+  g_object_set_data(G_OBJECT(app), ABOUT_DIALOG_KEY, NULL);
+  gtk_window_destroy(window);
+
+  return TRUE; /* handled: no default close behaviour */
+}
+
+/** Fills the identity fields: name, version, description, copyright. */
+static void about_dialog_set_identity(GtkAboutDialog *about) {
+  gtk_about_dialog_set_program_name(about, "lambdock");
+
+#ifdef PACKAGE_VERSION
+  gtk_about_dialog_set_version(about, PACKAGE_VERSION);
+#endif
+
+  gtk_about_dialog_set_comments(
+      about,
+      _("A modern Wayland-native hackable desktop dock bar.\n\n"
+        "Engineered with the performance of C and GTK4 Layer Shell for smooth "
+        "auto-hide and animations, featuring dynamic Wayland toplevel window "
+        "tracking, live CSS hot-reloading, and dynamic configuration powered "
+        "by GNU Guile Scheme."));
+
+  gtk_about_dialog_set_copyright(about,
+                                 "Copyright © Josep Bigorra "
+                                 "<jjbigorra@gmail.com>");
+}
+
+/** Fills the credits: authors, license and project links. */
+static void about_dialog_set_credits(GtkAboutDialog *about) {
+  static const char *authors[] = {"Josep Bigorra (jjbigorra@gmail.com)", NULL};
+
+  gtk_about_dialog_set_authors(about, authors);
+  gtk_about_dialog_set_license_type(about, GTK_LICENSE_MIT_X11);
+  gtk_about_dialog_set_website(about, "https://github.com/jjba23/lambdock");
+  gtk_about_dialog_set_website_label(about,
+                                     _("Find the project's source code here"));
+}
+
+/** Uses the bundled logo when it loads, and the icon theme otherwise. */
+static void about_dialog_set_logo(GtkAboutDialog *about) {
+  g_autoptr(GdkTexture) texture =
+      gdk_texture_new_from_resource(ABOUT_LOGO_RESOURCE);
+
+  if (!texture) {
+    LOG_C_WARN("About", "Failed to load logo from GResource: %s",
+               ABOUT_LOGO_RESOURCE);
+    gtk_about_dialog_set_logo_icon_name(about, "lambdock");
+    return;
   }
+
+  gtk_about_dialog_set_logo(about, GDK_PAINTABLE(texture));
+}
+
+/** Builds the dialog, registers it as the live instance, and returns it. */
+static GtkWindow *about_dialog_build(GtkApplication *app) {
+  GtkWidget *about = gtk_about_dialog_new();
+
+  gtk_widget_add_css_class(about, "about-dialog");
+  about_dialog_set_identity(GTK_ABOUT_DIALOG(about));
+  about_dialog_set_credits(GTK_ABOUT_DIALOG(about));
+  about_dialog_set_logo(GTK_ABOUT_DIALOG(about));
+  gtk_window_set_modal(GTK_WINDOW(about), TRUE);
+
+  g_object_set_data(G_OBJECT(app), ABOUT_DIALOG_KEY, about);
+  g_signal_connect(about, "close-request",
+                   G_CALLBACK(on_about_close_request), app);
+
+  return GTK_WINDOW(about);
 }
 
 /**
- * shelf_tilt_for_edge:
- * Sign of the shelf tilt: the edge touching the screen stays pinned while the
- * inner edge recedes away from the viewer, so top/left docks tilt backwards.
+ * on_about_action:
+ * Action handler for menu 'About Lambdock' option. Shows the About dialog,
+ * reusing the one already open if there is one.
  */
-static double shelf_tilt_for_edge(GtkLayerShellEdge edge, double degrees) {
-  switch (edge) {
-  case GTK_LAYER_SHELL_EDGE_TOP:
-  case GTK_LAYER_SHELL_EDGE_LEFT:
-    return -degrees;
-  case GTK_LAYER_SHELL_EDGE_RIGHT:
-  case GTK_LAYER_SHELL_EDGE_BOTTOM:
-  default:
-    return degrees;
-  }
-}
+void on_about_action(GSimpleAction *action, GVariant *parameter,
+                     gpointer user_data) {
+  (void)action;
+  (void)parameter;
 
-static void set_css_class(GtkWidget *widget, const char *name, gboolean enabled) {
-  if (!widget)
-    return;
+  GtkApplication *app = GTK_APPLICATION(user_data);
 
-  if (enabled) {
-    if (!gtk_widget_has_css_class(widget, name))
-      gtk_widget_add_css_class(widget, name);
-  } else if (gtk_widget_has_css_class(widget, name)) {
-    gtk_widget_remove_css_class(widget, name);
-  }
-}
+  GtkWindow *about = about_dialog_open(app);
+  if (about == NULL)
+    about = about_dialog_build(app);
 
-void apply_dock_mode_classes(LambdockState *state) {
-  if (!state || !state->bg_capsule)
-    return;
-
-  set_css_class(state->bg_capsule, "taskbar", state->taskbar);
-
-  /* Shelf classes. They are set on both the window (so user CSS can target the
-   * whole dock) and the capsule (so the shelf itself, and the matching
-   * modifier stylesheet, can be styled per docked edge). They appear whenever
-   * the shelf parameters differ from the plain capsule. */
-  gboolean shelf_active = lambdock_shelf_active(state);
-  static const char *edge_classes[] = {"shelf-bottom", "shelf-top",
-                                       "shelf-left", "shelf-right"};
-  for (gsize i = 0; i < G_N_ELEMENTS(edge_classes); i++) {
-    set_css_class(state->bg_capsule, edge_classes[i], FALSE);
-    set_css_class(state->window, edge_classes[i], FALSE);
-  }
-
-  set_css_class(state->bg_capsule, "shelf-mode", shelf_active);
-  set_css_class(state->window, "shelf-mode", shelf_active);
-
-  /* `shelf-mirror` means the glass actually shows icon reflections: the
-   * reflection widget then draws the running indicator itself, so the CSS one
-   * must stay quiet. */
-  gboolean mirroring =
-      shelf_active &&
-      lambdock_shelf_geometry_for(state, state->icon_size).band_px > 0;
-  set_css_class(state->bg_capsule, "shelf-mirror", mirroring);
-  set_css_class(state->window, "shelf-mirror", mirroring);
-
-  if (shelf_active) {
-    const char *edge_class = shelf_edge_class(state->edge);
-    set_css_class(state->bg_capsule, edge_class, TRUE);
-    set_css_class(state->window, edge_class, TRUE);
-  }
-
-  /* Project the styled capsule onto the shape described by the shelf
-   * parameters: the tilt, the keystone (flare) or both. With neither, the frame
-   * is a pass-through. */
-  if (state->bg_shelf) {
-    shelf_frame_set_shape(state->bg_shelf, state->edge,
-                          shelf_tilt_for_edge(state->edge,
-                                              state->shelf.tilt_deg),
-                          state->shelf.perspective, state->shelf.flare_px);
-  }
-}
-
-/*
- * refresh_dock_mode:
- * Re-applies layer-shell anchors, mode CSS classes and dimension requests so a
- * live config reload can switch between floating dock and full-width taskbar
- * without restarting.
- */
-void refresh_dock_mode(LambdockState *state) {
-  if (!state || !state->window)
-    return;
-
-  gboolean horizontal_edge = (state->edge == GTK_LAYER_SHELL_EDGE_TOP ||
-                              state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM);
-  GtkWindow *window = GTK_WINDOW(state->window);
-
-  if (horizontal_edge) {
-    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, state->taskbar);
-    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_RIGHT, state->taskbar);
-  } else {
-    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_TOP, state->taskbar);
-    gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, state->taskbar);
-  }
-
-  apply_dock_mode_classes(state);
-  update_dock_dimensions(state);
+  gtk_window_present(about);
 }
 
 /* =========================================================================
  * MEMORY & DESTRUCTORS
- * ========================================================================= */
+ * =========================================================================
+ * destroy_dock_instance() is a sequence of named steps, one per kind of
+ * resource a dock owns. Each step checks and clears its own pointers, so the
+ * body of the destructor reads as an inventory and a step can never be run
+ * twice by accident.
+ */
 
+/** Removes and drops this dock's CSS providers. */
+static void destroy_css_providers(LambdockState *state) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return;
+
+  GtkCssProvider **providers[] = {
+      &state->base_css_provider,
+      &state->taskbar_css_provider,
+      &state->shelf_css_provider,
+      &state->user_css_provider,
+  };
+
+  for (gsize i = 0; i < G_N_ELEMENTS(providers); i++) {
+    if (*providers[i] == NULL)
+      continue;
+
+    gtk_style_context_remove_provider_for_display(display,
+                                                  GTK_STYLE_PROVIDER(
+                                                      *providers[i]));
+    g_clear_object(providers[i]);
+  }
+}
+
+/** Stops the auto-hide timeout and the frame callbacks this dock owns. */
+static void destroy_timers(LambdockState *state) {
+  cancel_hide_timer(state);
+
+  if (state->tick_cb_id != 0 && state->window && GTK_IS_WIDGET(state->window))
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+  state->tick_cb_id = 0;
+
+  stop_pointer_tick(state);
+}
+
+/** Detaches every handler carrying @state, so teardown cannot re-enter. */
+static void detach_window_handlers(LambdockState *state) {
+  if (state->window && GTK_IS_WIDGET(state->window))
+    g_signal_handlers_disconnect_by_data(state->window, state);
+}
+
+/** Unparents the background context menu without letting its handlers run. */
+static void destroy_background_popover(LambdockState *state) {
+  if (!state->popover)
+    return;
+
+  if (GTK_IS_WIDGET(state->popover)) {
+    /* The popover "closed" handler is connected with `state` as data and would
+     * schedule a hide timer on this soon-to-be-freed state; disconnect it
+     * before unparenting so no callback runs against freed memory. */
+    g_signal_handlers_disconnect_by_data(state->popover, state);
+
+    if (gtk_widget_get_parent(state->popover))
+      gtk_widget_unparent(state->popover);
+  }
+
+  state->popover = NULL;
+}
+
+/** Frees the dock items, and their individual polling timers and popovers. */
+static void destroy_dock_items(LambdockState *state) {
+  GList *items = state->dock_items;
+  state->dock_items = NULL; /* clear first: freeing an item may call back */
+
+  for (GList *node = items; node != NULL; node = node->next)
+    free_dock_item((DockItem *)node->data);
+
+  g_list_free(items);
+}
+
+/** Frees the Wayland toplevel window trackers. */
+static void destroy_window_trackers(LambdockState *state) {
+  GList *trackers = state->window_trackers;
+  state->window_trackers = NULL;
+
+  for (GList *node = trackers; node != NULL; node = node->next)
+    free_window_tracker(node->data);
+
+  g_list_free(trackers);
+}
+
+/** Destroys the GTK window, safing the widget pointers before GTK can emit
+ * "destroy". */
+static void destroy_window(LambdockState *state) {
+  if (!state->window || !GTK_IS_WINDOW(state->window))
+    return;
+
+  GtkWidget *window = state->window;
+  state->window = NULL;
+  state->bg_shelf = NULL;
+  state->bg_capsule = NULL;
+
+  gtk_layer_set_monitor(GTK_WINDOW(window), NULL);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+/** Drops the borrowed monitor reference, and its handlers, together. */
+static void destroy_monitor(LambdockState *state) {
+  if (!state->monitor)
+    return;
+
+  g_signal_handlers_disconnect_by_data(state->monitor, state);
+  g_clear_object(&state->monitor);
+}
+
+/**
+ * destroy_dock_instance:
+ * @state: Pointer to LambdockState context.
+ *
+ * Unparents popovers and widgets, cleans up window trackers and dock items,
+ * and destroys the GTK window safely without disposal warnings. Takes the state
+ * with it: the pointer is invalid on return.
+ */
 void destroy_dock_instance(LambdockState *state) {
-  // Re-entrancy Guard: Prevent recursive re-entry during GTK signal emission
+  /* Re-entrancy guard: a "destroy" signal emitted while this runs must not
+   * free the state a second time. */
   if (!state || state->is_destroying)
     return;
 
   state->is_destroying = TRUE;
 
-  GdkDisplay *display = gdk_display_get_default();
-  if (display) {
-    if (state->base_css_provider) {
-      gtk_style_context_remove_provider_for_display(
-          display, GTK_STYLE_PROVIDER(state->base_css_provider));
-      g_clear_object(&state->base_css_provider);
-    }
-    if (state->taskbar_css_provider) {
-      gtk_style_context_remove_provider_for_display(
-          display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
-      g_clear_object(&state->taskbar_css_provider);
-    }
-    if (state->shelf_css_provider) {
-      gtk_style_context_remove_provider_for_display(
-          display, GTK_STYLE_PROVIDER(state->shelf_css_provider));
-      g_clear_object(&state->shelf_css_provider);
-    }
-    if (state->user_css_provider) {
-      gtk_style_context_remove_provider_for_display(
-          display, GTK_STYLE_PROVIDER(state->user_css_provider));
-      g_clear_object(&state->user_css_provider);
-    }
-  }
-
-  if (state->active_theme_class) {
-    g_free(state->active_theme_class);
-    state->active_theme_class = NULL;
-  }
+  destroy_css_providers(state);
+  g_clear_pointer(&state->active_theme_class, g_free);
 
   /* The launchpad is a global overlay that belongs to no single dock: take it
    * down with the dock it was opened from (it is recreated lazily). */
   lambdock_launchpad_shutdown();
 
-  // Unregister from active global state list
   unregister_dock_state(state);
 
-  // Cancel pending GLib autohide timers immediately
-  if (state->hide_timer_id > 0) {
-    g_source_remove(state->hide_timer_id);
-    state->hide_timer_id = 0;
-  }
+  destroy_timers(state);
 
-  // Remove active GTK tick animation callbacks
-  if (state->tick_cb_id > 0 && state->window && GTK_IS_WIDGET(state->window)) {
-    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
-    state->tick_cb_id = 0;
-  }
+  /* Window handlers go before the widgets: nothing they carry may fire while
+   * the tree below is being taken apart. */
+  detach_window_handlers(state);
+  destroy_background_popover(state);
+  destroy_dock_items(state);
+  destroy_window_trackers(state);
+  destroy_window(state);
 
-  // Disconnect signal handlers from window to prevent "destroy" signal
-  // re-entrancy
-  if (state->window && GTK_IS_WIDGET(state->window)) {
-    g_signal_handlers_disconnect_by_data(state->window, state);
-  }
+  g_clear_object(&state->size_group);
+  destroy_monitor(state);
 
-  // Unparent the main background context menu popover
-  if (state->popover) {
-    if (GTK_IS_WIDGET(state->popover)) {
-      /* The popover "closed" handler is connected with `state` as data and would
-       * schedule a hide timer on this soon-to-be-freed state; disconnect it
-       * before unparenting so no callback runs against freed memory. */
-      g_signal_handlers_disconnect_by_data(state->popover, state);
-      if (gtk_widget_get_parent(state->popover)) {
-        gtk_widget_unparent(state->popover);
-      }
-    }
-    state->popover = NULL;
-  }
-
-  // Clear and free dock items (and their individual polling timers/popovers)
-  GList *items = state->dock_items;
-  state->dock_items = NULL; // Clear pointer first to prevent dangling access
-  for (GList *l = items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
-    free_dock_item(item);
-  }
-  g_list_free(items);
-
-  // Clear and free Wayland window trackers
-  GList *trackers = state->window_trackers;
-  state->window_trackers = NULL; // Clear pointer first
-  for (GList *l = trackers; l != NULL; l = l->next) {
-    free_window_tracker(l->data);
-  }
-  g_list_free(trackers);
-
-  // Destroy the GTK Window widget safely
-  if (state->window && GTK_IS_WINDOW(state->window)) {
-    GtkWidget *win = state->window;
-    state->window = NULL; // Nullify reference prior to GTK destruction
-    state->bg_shelf = NULL;
-    state->bg_capsule = NULL;
-    gtk_layer_set_monitor(GTK_WINDOW(win), NULL);
-    gtk_window_destroy(GTK_WINDOW(win));
-  }
-
-  if (state->size_group) {
-    g_object_unref(state->size_group);
-    state->size_group = NULL;
-  }
-
-  if (state->monitor) {
-    g_signal_handlers_disconnect_by_data(state->monitor, state);
-    g_object_unref(state->monitor);
-    state->monitor = NULL;
-  }
-
-  g_free(state->config_path);
-  g_free(state->theme);
+  g_clear_pointer(&state->config_path, g_free);
+  g_clear_pointer(&state->theme, g_free);
   g_free(state);
 }

@@ -6,6 +6,7 @@
 #include "dock_item.h"
 #include "../app_window.h"
 #include "../core/config_values.h" // Struct definitions for DockItem, LambdockState, AppWindow
+#include "../core/item_text.h"     // Pure wording for labels, tooltips and gauges
 #include "../accessibility.h"    // Screen reader labels and motion preferences
 #include "../dock_window.h"      // Recording whether the dock is mid-animation
 #include "../guile_bridge.h"     // Scheme/Guile configuration interface
@@ -23,7 +24,7 @@
 #include "stack.h"         // Folder stacks (Downloads-style dock icons)
 #include "theme_engine.h" // CSS and theme engine utilities
 #include "trash.h"         // Desktop trash (count, empty, open)
-#include <glib/gi18n.h>
+#include "widget_utils.h" // Idempotent CSS-class helpers
 
 /* ============================================================================
  * FISHEYE ZOOM WRAPPER
@@ -62,16 +63,13 @@ void dock_item_activate_stack(DockItem *item);
 void dock_item_activate_launchpad(DockItem *item);
 void dock_item_activate_trash(DockItem *item);
 
-static void describe_app_item(const DockItem *item, char **label,
-                              char **description);
-static void describe_dynamic_item(const DockItem *item, char **label,
-                                  char **description);
-static void describe_stack_item(const DockItem *item, char **label,
-                                char **description);
-static void describe_launchpad_item(const DockItem *item, char **label,
-                                    char **description);
-static void describe_trash_item(const DockItem *item, char **label,
-                                char **description);
+/* The per-kind accessible text; see ITEM_KIND_OPS. Each one only reads the item
+ * and hands plain values to core/item_text.c, which owns the wording. */
+static LambdockItemText describe_app_item(const DockItem *item);
+static LambdockItemText describe_dynamic_item(const DockItem *item);
+static LambdockItemText describe_stack_item(const DockItem *item);
+static LambdockItemText describe_launchpad_item(const DockItem *item);
+static LambdockItemText describe_trash_item(const DockItem *item);
 
 /**
  * LambdockItemKindOps:
@@ -86,12 +84,13 @@ typedef struct {
   const char *key_name; /* stable identity prefix, e.g. "app" */
   const char *css_class; /* extra CSS class, NULL for none */
   void (*activate)(DockItem *item); /* NULL means "app behaviour" */
-  void (*describe)(const DockItem *item, char **label, char **description);
+  LambdockItemText (*describe)(const DockItem *item);
 } LambdockItemKindOps;
 
 static const LambdockItemKindOps ITEM_KIND_OPS[] = {
     [LAMBDOCK_ITEM_APP] = {"app", NULL, NULL, describe_app_item},
-    [LAMBDOCK_ITEM_DYNAMIC] = {"dynamic", NULL, NULL, describe_dynamic_item},
+    [LAMBDOCK_ITEM_DYNAMIC] = {"dynamic", "dynamic-item", NULL,
+                               describe_dynamic_item},
     [LAMBDOCK_ITEM_SEPARATOR] = {"separator", NULL, NULL, NULL},
     [LAMBDOCK_ITEM_STACK] = {"stack", "stack-item", dock_item_activate_stack,
                              describe_stack_item},
@@ -135,27 +134,44 @@ const char *lambdock_item_title(const DockItem *item, const char *fallback) {
 }
 
 
+/* The key deferred callbacks use to get from a widget back to its item. */
+#define DOCK_ITEM_DATA_KEY "lambdock-item"
+
 /**
- * dock_item_attach_data:
- * Stores the owning DockItem on every widget of the item that deferred callbacks
- * may hold on to, and clears it again in free_dock_item(). This is what makes
- * drag-and-drop removals safe across hot reloads: the widget survives (it is
- * referenced by the drag machinery) but the data becomes NULL when the item is
- * destroyed, so the callback can bail out instead of touching freed memory.
+ * dock_item_set_backpointers:
+ * Stores @owner (or, with NULL, clears) on every widget of the item that
+ * deferred callbacks may hold on to.
  */
-static void dock_item_attach_data(DockItem *item) {
+static void dock_item_set_backpointers(DockItem *item, DockItem *owner) {
   if (!item)
     return;
+
   if (item->button)
-    g_object_set_data(G_OBJECT(item->button), "lambdock-item", item);
+    g_object_set_data(G_OBJECT(item->button), DOCK_ITEM_DATA_KEY, owner);
   if (item->container)
-    g_object_set_data(G_OBJECT(item->container), "lambdock-item", item);
+    g_object_set_data(G_OBJECT(item->container), DOCK_ITEM_DATA_KEY, owner);
+}
+
+/**
+ * dock_item_attach_data:
+ * Stores the owning DockItem on the item's widgets, so a drag callback can find
+ * it. dock_item_detach_data() clears it again in free_dock_item(): the widget
+ * survives a hot reload (the drag machinery references it) but the data becomes
+ * NULL, so the callback bails out instead of touching freed memory.
+ */
+static void dock_item_attach_data(DockItem *item) {
+  dock_item_set_backpointers(item, item);
+}
+
+/** Clears the back pointers, so deferred callbacks see "no item". */
+static void dock_item_detach_data(DockItem *item) {
+  dock_item_set_backpointers(item, NULL);
 }
 
 DockItem *dock_item_from_widget(GtkWidget *widget) {
   if (!widget || !G_IS_OBJECT(widget))
     return NULL;
-  return g_object_get_data(G_OBJECT(widget), "lambdock-item");
+  return g_object_get_data(G_OBJECT(widget), DOCK_ITEM_DATA_KEY);
 }
 
 /* ============================================================================
@@ -169,77 +185,29 @@ DockItem *dock_item_from_widget(GtkWidget *widget) {
  * whole dock can be used without a pointer.
  */
 
-/* What a screen reader should say about an app item besides its name. */
-static char *dock_item_running_text(const DockItem *item) {
-  guint count = item->windows ? g_list_length(item->windows) : 0;
-
-  if (count == 0)
-    return g_strdup(_("Not running"));
-
-  return g_strdup_printf(
-      ngettext("Running, %u window", "Running, %u windows", count), count);
+/* What a screen reader should say about each kind of item. The wording itself
+ * lives in core/item_text.c; these only extract the inputs from the item. */
+static LambdockItemText describe_app_item(const DockItem *item) {
+  return lambdock_item_text_app(item->name, g_list_length(item->windows));
 }
 
-/* The per-kind half of the accessibility text; see ITEM_KIND_OPS. */
-static void describe_app_item(const DockItem *item, char **label,
-                              char **description) {
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
-
-  *label = g_strdup(name ? name : _("Application"));
-  *description = dock_item_running_text(item);
+static LambdockItemText describe_dynamic_item(const DockItem *item) {
+  /* The item's tooltip already carries the latest reading (meter readings are
+   * written as "name: reading"), so that is the value to describe. */
+  return lambdock_item_text_dynamic(item->name,
+                                    gtk_widget_get_tooltip_text(item->button));
 }
 
-static void describe_dynamic_item(const DockItem *item, char **label,
-                                  char **description) {
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
-  const char *reading = gtk_widget_get_tooltip_text(item->button);
-
-  if (reading && *reading != '\0') {
-    /* Meter items already put "name: reading" in the tooltip. */
-    *label = g_str_has_prefix(reading, name ? name : "")
-                 ? g_strdup(reading)
-                 : g_strdup_printf("%s: %s", name ? name : _("Reading"),
-                                   reading);
-  } else {
-    *label = g_strdup(name ? name : _("Reading"));
-  }
-
-  *description = g_strdup(_("Live reading from the dock."));
+static LambdockItemText describe_stack_item(const DockItem *item) {
+  return lambdock_item_text_stack(item->name);
 }
 
-static void describe_stack_item(const DockItem *item, char **label,
-                                char **description) {
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
-
-  *label = g_strdup_printf(_("%s, folder stack"), name ? name : _("Stack"));
-  *description = g_strdup(_("Opens the folder's contents."));
+static LambdockItemText describe_launchpad_item(const DockItem *item) {
+  return lambdock_item_text_launchpad(item->name);
 }
 
-static void describe_launchpad_item(const DockItem *item, char **label,
-                                    char **description) {
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
-
-  *label = g_strdup(name ? name : _("Applications"));
-  *description = g_strdup(_("Opens the application grid. Escape closes it."));
-}
-
-static void describe_trash_item(const DockItem *item, char **label,
-                                char **description) {
-  const char *name = (item->name && *item->name != '\0') ? item->name : NULL;
-
-  *label = g_strdup(name ? name : _("Trash"));
-
-  if (item->trash_count == 0) {
-    *description = g_strdup(_("The trash is empty. Opens the trash."));
-    return;
-  }
-
-  char *count = g_strdup_printf(
-      ngettext("%u item in the trash", "%u items in the trash",
-               item->trash_count),
-      item->trash_count);
-  *description = g_strdup_printf(_("%s. Opens the trash."), count);
-  g_free(count);
+static LambdockItemText describe_trash_item(const DockItem *item) {
+  return lambdock_item_text_trash(item->name, item->trash_count);
 }
 
 void dock_item_update_accessible(DockItem *item) {
@@ -250,13 +218,9 @@ void dock_item_update_accessible(DockItem *item) {
   if (!ops->describe)
     return;
 
-  char *label = NULL;
-  char *description = NULL;
-  ops->describe(item, &label, &description);
-
-  lambdock_accessible_update(item->button, label, description);
-  g_free(label);
-  g_free(description);
+  LambdockItemText text = ops->describe(item);
+  lambdock_accessible_update(item->button, text.label, text.description);
+  lambdock_item_text_clear(&text);
 }
 
 /* Separators are decoration: they must not take focus, and they have no
@@ -475,43 +439,51 @@ gboolean lambdock_dock_items_close_popovers(LambdockState *state) {
   return closed;
 }
 
+/** How far a key moves along the dock (-1, 0 = "not a step key", +1). */
+static int dock_key_step(GtkOrientation orientation, guint keyval) {
+  if (orientation == GTK_ORIENTATION_HORIZONTAL) {
+    if (keyval == GDK_KEY_Left)
+      return -1;
+    if (keyval == GDK_KEY_Right)
+      return 1;
+    return 0;
+  }
+
+  if (keyval == GDK_KEY_Up)
+    return -1;
+  if (keyval == GDK_KEY_Down)
+    return 1;
+  return 0;
+}
+
+/** The Menu key and Shift+F10 are the keyboard's right click. */
+static gboolean dock_key_opens_menu(guint keyval, GdkModifierType modifiers) {
+  return keyval == GDK_KEY_Menu ||
+         (keyval == GDK_KEY_F10 && (modifiers & GDK_SHIFT_MASK) != 0);
+}
+
 gboolean lambdock_dock_items_handle_key(LambdockState *state, guint keyval,
                                         GdkModifierType modifiers) {
   if (!state)
     return FALSE;
 
-  gboolean ctrl = (modifiers & GDK_CONTROL_MASK) != 0;
-  DockItem *focused = focused_dock_item(state);
-
   if (keyval == GDK_KEY_Escape)
     return lambdock_dock_items_close_popovers(state);
 
-  /* The Menu key and Shift+F10 are the keyboard's right click. */
-  if (keyval == GDK_KEY_Menu ||
-      (keyval == GDK_KEY_F10 && (modifiers & GDK_SHIFT_MASK) != 0)) {
+  DockItem *focused = focused_dock_item(state);
+
+  if (dock_key_opens_menu(keyval, modifiers)) {
     if (!focused)
       return FALSE;
     lambdock_dock_item_show_menu(focused);
     return TRUE;
   }
 
-  int step = 0;
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    if (keyval == GDK_KEY_Left)
-      step = -1;
-    else if (keyval == GDK_KEY_Right)
-      step = 1;
-  } else {
-    if (keyval == GDK_KEY_Up)
-      step = -1;
-    else if (keyval == GDK_KEY_Down)
-      step = 1;
-  }
-
+  int step = dock_key_step(state->orientation, keyval);
   if (step != 0) {
     /* Ctrl+arrow rearranges the dock, so the pointer drag is not the only way
      * to move an icon. */
-    if (ctrl) {
+    if ((modifiers & GDK_CONTROL_MASK) != 0) {
       if (!focused)
         return FALSE;
       return lambdock_dock_item_move(state, focused, step);
@@ -557,13 +529,76 @@ void lambdock_dock_attach_key_navigation(GtkWidget *root, LambdockState *state) 
 /* ============================================================================
  * ALIGNMENT HELPERS
  * ============================================================================
+ * Alignment is a decision (which edge is the dock on?) followed by three widget
+ * calls (size request, alignment, centring the content). The decision is a
+ * value, so it is written once and read by every applier.
  */
 
 /**
- * apply_dock_item_alignment:
- * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
- * ensuring non-animated items and separators remain anchored to the dock edge.
+ * dock_item_icon_size:
+ * The icon size in use, with the default for partly built states.
  */
+static int dock_item_icon_size(const LambdockState *state) {
+  return (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+}
+
+/** How an item's widgets align themselves on a dock attached to an edge. */
+typedef struct DockItemAlignment {
+  GtkAlign halign;
+  GtkAlign valign;
+} DockItemAlignment;
+
+static DockItemAlignment dock_item_alignment_for_edge(GtkLayerShellEdge edge) {
+  switch (edge) {
+  case GTK_LAYER_SHELL_EDGE_BOTTOM:
+    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_END};
+  case GTK_LAYER_SHELL_EDGE_TOP:
+    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_START};
+  case GTK_LAYER_SHELL_EDGE_LEFT:
+    return (DockItemAlignment){GTK_ALIGN_START, GTK_ALIGN_CENTER};
+  case GTK_LAYER_SHELL_EDGE_RIGHT:
+    return (DockItemAlignment){GTK_ALIGN_END, GTK_ALIGN_CENTER};
+  default:
+    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_CENTER};
+  }
+}
+
+/** Every button asks for the full icon headroom across the dock, icon or not. */
+static void apply_dock_item_size_request(DockItem *item) {
+  int icon_size = dock_item_icon_size(item->state);
+
+  if (item->state->orientation == GTK_ORIENTATION_HORIZONTAL)
+    gtk_widget_set_size_request(item->button, -1, icon_size);
+  else
+    gtk_widget_set_size_request(item->button, icon_size, -1);
+}
+
+static void apply_alignment(GtkWidget *widget, DockItemAlignment alignment) {
+  gtk_widget_set_halign(widget, alignment.halign);
+  gtk_widget_set_valign(widget, alignment.valign);
+}
+
+/** The content of the button (icon, label) rides centred inside it. */
+static void centre_button_content(GtkWidget *button) {
+  if (!GTK_IS_BUTTON(button))
+    return;
+
+  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(button));
+  if (!child)
+    return;
+
+  gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
+
+  if (!GTK_IS_BOX(child))
+    return;
+
+  for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
+       w = gtk_widget_get_next_sibling(w)) {
+    gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
+  }
+}
+
 /**
  * apply_dock_item_alignment:
  * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
@@ -573,55 +608,17 @@ void apply_dock_item_alignment(DockItem *item) {
   if (!item || !item->button || !item->state)
     return;
 
-  LambdockState *state = item->state;
-  int base_sz = (state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+  apply_dock_item_size_request(item);
 
-  // Ensure ALL buttons (icons, text-only, separators) request full base_sz
-  // cross-axis headroom
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    gtk_widget_set_size_request(item->button, -1, base_sz);
-  } else {
-    gtk_widget_set_size_request(item->button, base_sz, -1);
-  }
-
-  GtkAlign halign = GTK_ALIGN_CENTER;
-  GtkAlign valign = GTK_ALIGN_CENTER;
-
-  if (state->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) {
-    valign = GTK_ALIGN_END;
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_TOP) {
-    valign = GTK_ALIGN_START;
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_LEFT) {
-    halign = GTK_ALIGN_START;
-  } else if (state->edge == GTK_LAYER_SHELL_EDGE_RIGHT) {
-    halign = GTK_ALIGN_END;
-  }
-
-  gtk_widget_set_valign(item->button, valign);
-  gtk_widget_set_halign(item->button, halign);
+  DockItemAlignment alignment = dock_item_alignment_for_edge(item->state->edge);
+  apply_alignment(item->button, alignment);
 
   /* The per-item container holds the button plus (when reflections are on)
    * its glass shelf reflection, so it hugs the same dock edge as the button. */
-  if (item->container) {
-    gtk_widget_set_valign(item->container, valign);
-    gtk_widget_set_halign(item->container, halign);
-  }
+  if (item->container)
+    apply_alignment(item->container, alignment);
 
-  GtkWidget *child = NULL;
-  if (GTK_IS_BUTTON(item->button)) {
-    child = gtk_button_get_child(GTK_BUTTON(item->button));
-  }
-
-  if (child) {
-    gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-    gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-    if (GTK_IS_BOX(child)) {
-      for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-           w = gtk_widget_get_next_sibling(w)) {
-        gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-      }
-    }
-  }
+  centre_button_content(item->button);
 }
 
 /* ============================================================================
@@ -725,11 +722,13 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
  * ============================================================================
  */
 
+/* Adapter: Guile's catch helper takes the procedure as a void*, not an SCM. */
 static SCM call_guile_proc_safe(void *data) {
   SCM fn = (SCM)data;
   return scm_call_0(fn);
 }
 
+/* Adapter: an error inside a poller is a missing reading, not a dead daemon. */
 static SCM handle_guile_proc_error(void *data, SCM key, SCM args) {
   (void)data;
   (void)key;
@@ -737,10 +736,87 @@ static SCM handle_guile_proc_error(void *data, SCM key, SCM args) {
   return SCM_BOOL_F;
 }
 
+/**
+ * dock_item_set_poller:
+ * Remembers @poll_fn as the item's reading source and protects it from the GC.
+ */
+static void dock_item_set_poller(DockItem *item, SCM poll_fn) {
+  if (!scm_is_true(poll_fn) || !scm_is_true(scm_procedure_p(poll_fn)))
+    return;
+
+  item->poll_fn = poll_fn;
+  scm_gc_protect_object(poll_fn);
+}
+
+/** Whether the item still has a callable Scheme poller. */
+static gboolean dynamic_item_has_poller(const DockItem *item) {
+  return item && scm_is_true(item->poll_fn) &&
+         scm_is_true(scm_procedure_p(item->poll_fn));
+}
+
+/** Calls the item's poller, turning a Scheme error into #f. */
+static SCM poll_dynamic_value(DockItem *item) {
+  return scm_internal_catch(SCM_BOOL_T, call_guile_proc_safe,
+                            (void *)item->poll_fn, handle_guile_proc_error,
+                            NULL);
+}
+
+/**
+ * apply_meter_reading:
+ * Draws a numeric reading on the item's gauge.
+ *
+ * Returns: TRUE when the item is a meter and @value was a number.
+ */
+static gboolean apply_meter_reading(DockItem *item, SCM value) {
+  if (!item->meter || !scm_is_number(value))
+    return FALSE;
+
+  double reading = scm_to_double(value);
+  g_autofree char *text =
+      lambdock_meter_reading_text(reading, item->meter_unit);
+
+  lambdock_meter_set_value(
+      item->meter,
+      lambdock_meter_reading_fraction(reading, item->meter_max), text);
+
+  g_autofree char *tooltip =
+      g_strdup_printf("%s: %s", item->name ? item->name : "", text);
+  gtk_widget_set_tooltip_text(item->button, tooltip);
+  dock_item_update_accessible(item);
+
+  return TRUE;
+}
+
+/** Writes a string reading into the item's label and tooltip. */
+static void apply_text_reading(DockItem *item, SCM value) {
+  if (!scm_is_string(value))
+    return;
+
+  char *text = scm_to_utf8_string(value);
+  if (!text)
+    return;
+
+  if (item->label && GTK_IS_LABEL(item->label))
+    gtk_label_set_text(GTK_LABEL(item->label), text);
+
+  gtk_widget_set_tooltip_text(item->button, text);
+  dock_item_update_accessible(item);
+
+  free(text); /* scm_to_utf8_string() allocates with malloc */
+}
+
+/** Polls the item once and applies whatever the poller returned. */
+static void refresh_dynamic_item(DockItem *item) {
+  SCM value = poll_dynamic_value(item);
+
+  if (!apply_meter_reading(item, value))
+    apply_text_reading(item, value);
+}
+
 static gboolean on_dynamic_item_poll(gpointer user_data) {
   DockItem *item = (DockItem *)user_data;
-  if (!item || !scm_is_true(item->poll_fn) ||
-      !scm_is_true(scm_procedure_p(item->poll_fn))) {
+
+  if (!dynamic_item_has_poller(item)) {
     /* The source is gone once we return: forget its id so teardown does not try
      * to remove it (and cannot remove an unrelated source that reused it). */
     if (item)
@@ -748,49 +824,7 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
     return G_SOURCE_REMOVE;
   }
 
-  SCM res =
-      scm_internal_catch(SCM_BOOL_T, call_guile_proc_safe,
-                         (void *)item->poll_fn, handle_guile_proc_error, NULL);
-
-  /* Meter items read a number: it fills the ring and is written in the middle
-   * with the configured unit ("42%", "54°C"). */
-  if (item->meter && scm_is_number(res)) {
-    double value = scm_to_double(res);
-    double maximum = (item->meter_max > 0.0) ? item->meter_max : 100.0;
-
-    /* A Scheme poller can return NaN or an out-of-range reading; the gauge
-     * takes a 0..1 fraction and must never be handed a non-finite one. */
-    double fraction = lambdock_sanitize_double(
-        (maximum > 0.0) ? value / maximum : 0.0, 0.0, 0.0, 1.0);
-
-    char *text = g_strdup_printf("%.0f%s", lambdock_sanitize_double(value, 0.0,
-                                                                   -1e9, 1e9),
-                                 item->meter_unit ? item->meter_unit : "");
-
-    lambdock_meter_set_value(item->meter, fraction, text);
-
-    char *tooltip = g_strdup_printf("%s: %s", item->name ? item->name : "",
-                                    text);
-    gtk_widget_set_tooltip_text(item->button, tooltip);
-    dock_item_update_accessible(item);
-
-    g_free(tooltip);
-    g_free(text);
-    return G_SOURCE_CONTINUE;
-  }
-
-  if (scm_is_string(res)) {
-    char *text = scm_to_utf8_string(res);
-    if (text) {
-      if (item->label && GTK_IS_LABEL(item->label)) {
-        gtk_label_set_text(GTK_LABEL(item->label), text);
-      }
-      gtk_widget_set_tooltip_text(item->button, text);
-      dock_item_update_accessible(item);
-      free(text); /* scm_to_utf8_string() allocates with malloc */
-    }
-  }
-
+  refresh_dynamic_item(item);
   return G_SOURCE_CONTINUE;
 }
 
@@ -854,105 +888,125 @@ static gboolean icon_is_resolvable(GtkIconTheme *theme, const char *icon) {
   return resolvable;
 }
 
-DockItem *create_dock_item(LambdockState *state, const char *name,
-                           const char *icon, const char *exec,
-                           const char *app_id, gboolean is_favorite,
-                           gboolean hover_animate) {
+/* ----------------------------------------------------------------------------
+ * THE ITEM SHELL
+ * ----------------------------------------------------------------------------
+ * Every kind of item is the same GTK scaffold around different content:
+ *
+ *   button -> content box -> [icon, label?] -> glass reflection
+ *          -> shelf container -> the dock row
+ *
+ * That scaffold used to be copy-pasted into three constructors (~50 lines
+ * each), so touching the popover, the gestures or the drop targets meant
+ * touching all three. A constructor now builds only its content and calls
+ * dock_item_mount(); the scaffold exists once.
+ */
+
+/** What a constructor tells dock_item_new() about the item it is building. */
+typedef struct DockItemShell {
+  LambdockState *state;
+  LambdockItemKind kind;
+  const char *name; /* borrowed: copied into the item */
+  const char *icon;
+  const char *exec;
+  const char *app_id;
+  gboolean is_favorite;
+  gboolean hover_animate;
+} DockItemShell;
+
+/** Allocates an item with its scalar fields filled in; no widgets yet. */
+static DockItem *dock_item_new(const DockItemShell *shell) {
   DockItem *item = g_new0(DockItem, 1);
+
   item->poll_fn = SCM_BOOL_F;
-  item->kind = LAMBDOCK_ITEM_APP;
+  item->kind = shell->kind;
+  item->state = shell->state;
+  item->name = g_strdup(shell->name);
+  item->icon = g_strdup(shell->icon);
+  item->exec = g_strdup(shell->exec);
+  item->app_id = g_strdup(shell->app_id);
+  item->is_favorite = shell->is_favorite;
+  item->hover_animate = shell->hover_animate;
 
-  item->state = state;
-  item->name = g_strdup(name);
-  item->icon = g_strdup(icon);
-  item->exec = g_strdup(exec);
-  item->app_id = g_strdup(app_id ? app_id : icon);
-  item->is_favorite = is_favorite;
-  item->hover_animate = hover_animate;
+  return item;
+}
 
-  GdkDisplay *display = gdk_display_get_default();
-  GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
-
-  /* The desktop entry behind this launcher gives the item its canonical
-   * identity, and a better icon when the configured one is not in the theme
-   * (a preset may name "pavucontrol" while the icon lives under
-   * "org.pulseaudio.pavucontrol"). */
-  const LambdockDesktopEntry *entry = resolve_desktop_entry(exec, icon, app_id);
-  if (entry && entry->stem)
-    item->desktop_id = g_strdup(entry->stem);
-
-  if (entry && entry->icon && *entry->icon != '\0' &&
-      !icon_is_resolvable(icon_theme, item->icon) &&
-      icon_is_resolvable(icon_theme, entry->icon)) {
-    LOG_C_INFO("UI", "Icon '%s' is not in the icon theme; using '%s' from %s",
-               item->icon, entry->icon, entry->id);
-    g_free(item->icon);
-    item->icon = g_strdup(entry->icon);
-  }
-
-  int icon_sz =
-      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
-
-  gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-
+/**
+ * dock_item_begin_content:
+ * Creates the item's button and an empty content box inside it, carrying the
+ * classes every item shares plus the one its kind adds.
+ *
+ * Returns: (transfer none): the box the constructor appends its content to.
+ */
+static GtkWidget *dock_item_begin_content(DockItem *item, int spacing) {
   item->button = gtk_button_new();
   gtk_widget_add_css_class(item->button, "dock-item");
-
-  /* App items host their icon and an (initially hidden) window-title label in
-   * a horizontal box. The label is shown only when `show-window-titles?` is on
-   * and the app has a running window (Windows XP-style taskbar buttons). */
-  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-  gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
-
-  if (image) {
-    GtkWidget *zoom = wrap_icon_for_zoom(image, icon_sz);
-    gtk_box_append(GTK_BOX(content_box), zoom);
-  }
-
-  item->label = gtk_label_new(NULL);
-  gtk_widget_add_css_class(item->label, "window-title-label");
-  gtk_label_set_ellipsize(GTK_LABEL(item->label), PANGO_ELLIPSIZE_END);
-  gtk_label_set_max_width_chars(GTK_LABEL(item->label),
-                                WINDOW_TITLE_MAX_CHARS);
-  gtk_label_set_single_line_mode(GTK_LABEL(item->label), TRUE);
-  gtk_widget_set_valign(item->label, GTK_ALIGN_CENTER);
-  gtk_widget_set_visible(item->label, FALSE);
-  gtk_box_append(GTK_BOX(content_box), item->label);
-  item->window_title_label = TRUE;
-
-  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
-
   gtk_widget_add_css_class(item->button, "flat");
+
+  const char *kind_class = kind_ops(item->kind)->css_class;
+  if (kind_class)
+    gtk_widget_add_css_class(item->button, kind_class);
+
   gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
 
-  /* The icon can cast a mirrored, blurred reflection over the glass shelf.
-   * It stays hidden (and takes no room) while the reflection parameter is 0,
-   * so the flat dock is unaffected. */
-  if (image) {
-    item->reflection = shelf_reflection_new(image);
-    gtk_widget_set_visible(item->reflection, FALSE);
-  }
-  item->container = shelf_wrap_item(state, item->button, item->reflection);
+  GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, spacing);
+  gtk_widget_set_valign(content, GTK_ALIGN_CENTER);
+  gtk_button_set_child(GTK_BUTTON(item->button), content);
 
-  if (state) {
-    apply_dock_item_alignment(item);
-  }
+  return content;
+}
 
-  if (item->name && *item->name != '\0') {
-    gtk_widget_set_tooltip_text(item->button, item->name);
-  }
+/** Loads an item's artwork from the icon theme. */
+static GtkWidget *dock_item_load_icon(const LambdockState *state,
+                                      const char *icon) {
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
 
-  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
-                   item);
+  return create_image_for_icon(theme, icon, dock_item_icon_size(state));
+}
 
+/** Appends @image to the content box, wrapped so the fisheye can scale it. */
+static void dock_item_append_icon(GtkWidget *content, GtkWidget *image,
+                                  int icon_size) {
+  if (!image)
+    return;
+
+  gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
+  gtk_box_append(GTK_BOX(content), wrap_icon_for_zoom(image, icon_size));
+}
+
+/**
+ * dock_item_attach_reflection:
+ * Gives the item a glass-shelf reflection of its artwork. It stays hidden (and
+ * takes no room) until the shelf parameters ask for reflections.
+ */
+static void dock_item_attach_reflection(DockItem *item, GtkWidget *image) {
+  if (!image)
+    return;
+
+  item->reflection = shelf_reflection_new(image);
+  gtk_widget_set_visible(item->reflection, FALSE);
+}
+
+/** The item's own context popover, parented to its button. */
+static void dock_item_install_popover(DockItem *item) {
   item->popover = gtk_popover_new();
   gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
   gtk_widget_set_parent(item->popover, item->button);
   lambdock_popover_close_on_escape(item->popover);
 
-  g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
-                   state);
+  /* on_popover_closed() releases the dock's popover slot, so it is only
+   * connected for items that belong to a dock. */
+  if (item->state) {
+    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
+                     item->state);
+  }
+}
+
+/** Left click activates the item, right click opens its context menu. */
+static void dock_item_install_gestures(DockItem *item) {
+  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
+                   item);
 
   GtkGesture *right_click = gtk_gesture_click_new();
   gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
@@ -960,7 +1014,30 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
                    item);
   gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
+}
 
+/**
+ * dock_item_mount:
+ * Finishes an item once its content exists: the glass-shelf container, its
+ * alignment, the tooltip, the context menu, drag and drop, and its place in the
+ * dock row.
+ *
+ * Returns: (transfer none): @item, so constructors read
+ * `return dock_item_mount(item);`.
+ */
+static DockItem *dock_item_mount(DockItem *item) {
+  LambdockState *state = item->state;
+
+  item->container = shelf_wrap_item(state, item->button, item->reflection);
+
+  if (state)
+    apply_dock_item_alignment(item);
+
+  if (item->name && *item->name != '\0')
+    gtk_widget_set_tooltip_text(item->button, item->name);
+
+  dock_item_install_gestures(item);
+  dock_item_install_popover(item);
   dock_dnd_setup_item(item);
 
   if (state && state->box) {
@@ -977,103 +1054,125 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
   return item;
 }
 
-DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
-                                   const char *icon, const char *exec,
-                                   SCM poll_fn, guint interval_ms,
-                                   gboolean hover_animate) {
-  DockItem *item = g_new0(DockItem, 1);
+/**
+ * apply_desktop_entry_identity:
+ * Gives an application item the desktop entry behind it: its canonical id (what
+ * keeps a pinned launcher and the window it opens one icon) and, when the
+ * configured icon is not in the theme, the entry's icon.
+ */
+static void apply_desktop_entry_identity(DockItem *item) {
+  const LambdockDesktopEntry *entry =
+      resolve_desktop_entry(item->exec, item->icon, item->app_id);
 
-  item->kind = LAMBDOCK_ITEM_DYNAMIC;
-  item->state = state;
-  item->name = g_strdup(name);
-  item->icon = g_strdup(icon);
-  item->exec = g_strdup(exec);
-  item->app_id = g_strdup(name);
-  item->is_favorite = TRUE;
-  item->poll_fn = SCM_BOOL_F;
-  item->hover_animate = hover_animate;
+  if (!entry)
+    return;
 
-  if (scm_is_true(poll_fn) && scm_is_true(scm_procedure_p(poll_fn))) {
-    item->poll_fn = poll_fn;
-    scm_gc_protect_object(poll_fn);
+  if (entry->stem)
+    item->desktop_id = g_strdup(entry->stem);
+
+  /* A preset may name "pavucontrol" while the icon lives under
+   * "org.pulseaudio.pavucontrol". */
+  if (!entry->icon || *entry->icon == '\0')
+    return;
+
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+  if (icon_is_resolvable(theme, item->icon) ||
+      !icon_is_resolvable(theme, entry->icon)) {
+    return;
   }
 
-  item->button = gtk_button_new();
-  gtk_widget_add_css_class(item->button, "dock-item");
+  LOG_C_INFO("UI", "Icon '%s' is not in the icon theme; using '%s' from %s",
+             item->icon, entry->icon, entry->id);
+  g_free(item->icon);
+  item->icon = g_strdup(entry->icon);
+}
 
-  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-  gtk_widget_set_valign(content_box,
-                        GTK_ALIGN_CENTER); // Add explicit vertical centering
+/** The app-item label that taskbar mode shows a running window's title in. */
+static void dock_item_add_window_title_label(DockItem *item,
+                                             GtkWidget *content) {
+  item->label = gtk_label_new(NULL);
+  gtk_widget_add_css_class(item->label, "window-title-label");
+  gtk_label_set_ellipsize(GTK_LABEL(item->label), PANGO_ELLIPSIZE_END);
+  gtk_label_set_max_width_chars(GTK_LABEL(item->label),
+                                WINDOW_TITLE_MAX_CHARS);
+  gtk_label_set_single_line_mode(GTK_LABEL(item->label), TRUE);
+  gtk_widget_set_valign(item->label, GTK_ALIGN_CENTER);
+  gtk_widget_set_visible(item->label, FALSE);
+  gtk_box_append(GTK_BOX(content), item->label);
+  item->window_title_label = TRUE;
+}
 
-  GtkWidget *image = NULL;
-  if (icon && *icon != '\0') {
-    GdkDisplay *display = gdk_display_get_default();
-    GtkIconTheme *icon_theme = gtk_icon_theme_get_for_display(display);
-    int icon_sz =
-        (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-    image = create_image_for_icon(icon_theme, item->icon, icon_sz);
-    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_box_append(GTK_BOX(content_box), wrap_icon_for_zoom(image, icon_sz));
-  }
-
+/** The label a dynamic item writes its polled reading into. */
+static void dock_item_add_dynamic_label(DockItem *item, GtkWidget *content,
+                                        const char *name) {
   item->label = gtk_label_new(name);
   gtk_label_set_yalign(GTK_LABEL(item->label), 0.5f);
   gtk_widget_set_valign(item->label, GTK_ALIGN_CENTER);
   gtk_widget_add_css_class(item->label, "dynamic-item-label");
-  gtk_box_append(GTK_BOX(content_box), item->label);
+  gtk_box_append(GTK_BOX(content), item->label);
+}
 
-  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
-  gtk_widget_add_css_class(item->button, "flat");
-  gtk_widget_add_css_class(item->button, "dynamic-item");
-  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
+DockItem *create_dock_item(LambdockState *state, const char *name,
+                           const char *icon, const char *exec,
+                           const char *app_id, gboolean is_favorite,
+                           gboolean hover_animate) {
+  DockItemShell shell = {
+      .state = state,
+      .kind = LAMBDOCK_ITEM_APP,
+      .name = name,
+      .icon = icon,
+      .exec = exec,
+      .app_id = app_id ? app_id : icon,
+      .is_favorite = is_favorite,
+      .hover_animate = hover_animate,
+  };
+  DockItem *item = dock_item_new(&shell);
 
-  if (image) {
-    item->reflection = shelf_reflection_new(image);
-    gtk_widget_set_visible(item->reflection, FALSE);
-  }
-  item->container = shelf_wrap_item(state, item->button, item->reflection);
+  apply_desktop_entry_identity(item);
 
-  if (state) {
-    apply_dock_item_alignment(item);
-  }
+  /* App items host their icon and an (initially hidden) window-title label in
+   * a horizontal box. The label is shown only when `show-window-titles?` is on
+   * and the app has a running window (Windows XP-style taskbar buttons). */
+  GtkWidget *content = dock_item_begin_content(item, 6);
+  GtkWidget *image = dock_item_load_icon(state, item->icon);
+  dock_item_append_icon(content, image, dock_item_icon_size(state));
+  dock_item_add_window_title_label(item, content);
+  dock_item_attach_reflection(item, image);
 
-  if (item->name && *item->name != '\0') {
-    gtk_widget_set_tooltip_text(item->button, item->name);
-  }
+  return dock_item_mount(item);
+}
 
-  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
-                   item);
+DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
+                                   const char *icon, const char *exec,
+                                   SCM poll_fn, guint interval_ms,
+                                   gboolean hover_animate) {
+  DockItemShell shell = {
+      .state = state,
+      .kind = LAMBDOCK_ITEM_DYNAMIC,
+      .name = name,
+      .icon = icon,
+      .exec = exec,
+      .app_id = name, /* dynamic items are known by their name */
+      .is_favorite = TRUE,
+      .hover_animate = hover_animate,
+  };
+  DockItem *item = dock_item_new(&shell);
 
-  item->popover = gtk_popover_new();
-  gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
-  gtk_widget_set_parent(item->popover, item->button);
-  lambdock_popover_close_on_escape(item->popover);
+  dock_item_set_poller(item, poll_fn);
 
-  if (state) {
-    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
-                     state);
-  }
+  GtkWidget *content = dock_item_begin_content(item, 6);
+  GtkWidget *image =
+      (icon && *icon != '\0') ? dock_item_load_icon(state, item->icon) : NULL;
+  dock_item_append_icon(content, image, dock_item_icon_size(state));
+  dock_item_add_dynamic_label(item, content, name);
+  dock_item_attach_reflection(item, image);
 
-  GtkGesture *right_click = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
-                                GDK_BUTTON_SECONDARY);
-  g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
-                   item);
-  gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
+  dock_item_mount(item);
 
-  dock_dnd_setup_item(item);
-
-  if (state && state->box) {
-    GtkWidget *child = item->container ? item->container : item->button;
-    gtk_box_append(GTK_BOX(state->box), child);
-  }
-
-  if (state)
-    state->dock_items = g_list_append(state->dock_items, item);
-
-  dock_item_attach_data(item);
-
-  on_dynamic_item_poll(item);
+  /* Paint the first reading now instead of after the first interval. */
+  if (dynamic_item_has_poller(item))
+    refresh_dynamic_item(item);
 
   if (interval_ms > 0 && scm_is_true(poll_fn)) {
     item->poll_timer_id =
@@ -1119,12 +1218,8 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
     item->reflection = NULL;
   }
 
-  int icon_size =
-      (item->state && item->state->icon_size > 0) ? item->state->icon_size
-                                                 : DEFAULT_ICON_SIZE;
-
   GtkWidget *meter = lambdock_meter_new();
-  lambdock_meter_set_icon_size(meter, icon_size);
+  lambdock_meter_set_icon_size(meter, dock_item_icon_size(item->state));
   gtk_box_append(GTK_BOX(content), meter);
 
   item->meter = meter;
@@ -1138,71 +1233,84 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
   on_dynamic_item_poll(item);
 }
 
-void free_dock_item(DockItem *item) {
-  if (!item)
-    return;
-
+/** Stops the item's polling timers. */
+static void free_item_timers(DockItem *item) {
   /* g_clear_handle_id() only removes a source that is still alive, so a timer
    * that already fired cannot make us remove an unrelated (recycled) id. */
   g_clear_handle_id(&item->poll_timer_id, g_source_remove);
   g_clear_handle_id(&item->trash_timer_id, g_source_remove);
+}
 
-  /* Detach the back pointers first: deferred drag callbacks may still hold the
-   * widgets, and must see "no item" instead of a freed one. */
-  if (item->button)
-    g_object_set_data(G_OBJECT(item->button), "lambdock-item", NULL);
-  if (item->container)
-    g_object_set_data(G_OBJECT(item->container), "lambdock-item", NULL);
-
-  // Unprotect Scheme procedure thunk
-  if (item->poll_fn != SCM_BOOL_F &&
-      scm_is_true(scm_procedure_p(item->poll_fn))) {
-    scm_gc_unprotect_object(item->poll_fn);
-    item->poll_fn = SCM_BOOL_F;
+/** Releases the Scheme poller's GC protection. */
+static void free_item_poller(DockItem *item) {
+  if (item->poll_fn == SCM_BOOL_F ||
+      !scm_is_true(scm_procedure_p(item->poll_fn))) {
+    return;
   }
 
-  // Disconnect button & popover handlers and unparent
-  if (item->popover && GTK_IS_WIDGET(item->popover)) {
-    g_signal_handlers_disconnect_by_data(item->popover, item->state);
-    g_signal_handlers_disconnect_by_data(item->popover, item);
-    /* If this item is torn down while its popover is still open, the "closed"
-     * handler that normally decrements the counter is now disconnected, so
-     * release the popover slot here. Otherwise active_popovers stays > 0 and
-     * the dock can never auto-hide again. */
-    if (item->state && gtk_widget_get_visible(item->popover) &&
-        item->state->active_popovers > 0) {
-      item->state->active_popovers--;
-    }
-    if (gtk_widget_get_parent(item->popover)) {
-      gtk_widget_unparent(item->popover);
-    }
-    item->popover = NULL;
+  scm_gc_unprotect_object(item->poll_fn);
+  item->poll_fn = SCM_BOOL_F;
+}
+
+/**
+ * free_item_popover:
+ * Unparents the item's context menu.
+ *
+ * A popover torn down while it is still open never emits "closed", so the dock's
+ * popover slot is released here; otherwise active_popovers stays above zero and
+ * the dock can never auto-hide again.
+ */
+static void free_item_popover(DockItem *item) {
+  if (!item->popover || !GTK_IS_WIDGET(item->popover))
+    return;
+
+  g_signal_handlers_disconnect_by_data(item->popover, item->state);
+  g_signal_handlers_disconnect_by_data(item->popover, item);
+
+  if (item->state && gtk_widget_get_visible(item->popover) &&
+      item->state->active_popovers > 0) {
+    item->state->active_popovers--;
   }
 
+  if (gtk_widget_get_parent(item->popover))
+    gtk_widget_unparent(item->popover);
+
+  item->popover = NULL;
+}
+
+/** Detaches the button from the dock, then the container that held it. */
+static void free_item_widgets(DockItem *item) {
   if (item->button && GTK_IS_WIDGET(item->button)) {
     g_signal_handlers_disconnect_by_data(item->button, item);
+
     GtkWidget *parent = gtk_widget_get_parent(item->button);
     if (parent && GTK_IS_BOX(parent))
       gtk_box_remove(GTK_BOX(parent), item->button);
+
     item->button = NULL;
   }
 
-  /* Detach the per-item wrapper from the dock box, keeping a reference while
-   * it is unparented. The reflection (if any) is owned by the wrapper and is
-   * destroyed along with it. */
+  /* The reflection (if any) is owned by the container and dies with it, so the
+   * pointer is dropped before the container goes. */
   item->reflection = NULL;
-  if (item->container && GTK_IS_WIDGET(item->container)) {
-    g_object_ref_sink(item->container);
-    GtkWidget *container_parent = gtk_widget_get_parent(item->container);
-    if (container_parent && GTK_IS_BOX(container_parent))
-      gtk_box_remove(GTK_BOX(container_parent), item->container);
-    g_object_unref(item->container);
-    item->container = NULL;
-  }
 
-  app_windows_free(item->windows);
-  item->windows = NULL;
+  if (!item->container || !GTK_IS_WIDGET(item->container))
+    return;
 
+  /* Keep the container alive across the unparent, which drops the box's
+   * reference to it. */
+  g_object_ref_sink(item->container);
+
+  GtkWidget *parent = gtk_widget_get_parent(item->container);
+  if (parent && GTK_IS_BOX(parent))
+    gtk_box_remove(GTK_BOX(parent), item->container);
+
+  g_object_unref(item->container);
+  item->container = NULL;
+}
+
+/** Frees the item's strings. */
+static void free_item_strings(DockItem *item) {
   g_free(item->name);
   g_free(item->icon);
   g_free(item->exec);
@@ -1211,7 +1319,26 @@ void free_dock_item(DockItem *item) {
   g_free(item->stack_view);
   g_free(item->meter_unit);
   g_free(item->desktop_id);
+}
 
+void free_dock_item(DockItem *item) {
+  if (!item)
+    return;
+
+  free_item_timers(item);
+
+  /* Back pointers go before anything is unparented: deferred drag callbacks may
+   * still hold the widgets, and must see "no item" instead of a freed one. */
+  dock_item_detach_data(item);
+
+  free_item_poller(item);
+  free_item_popover(item);
+  free_item_widgets(item);
+
+  app_windows_free(item->windows);
+  item->windows = NULL;
+
+  free_item_strings(item);
   g_free(item);
 }
 
@@ -1315,43 +1442,47 @@ void dock_item_remove_window(DockItem *item,
   update_dock_item_status(item);
 }
 
+/** Toggles the `running-app` class and the shelf's running indicator together. */
+static void apply_running_state(DockItem *item) {
+  gboolean running = (item->windows != NULL);
+
+  lambdock_set_css_class(item->button, "running-app", running);
+
+  /* The glass shelf draws its own running indicator near the outer edge. */
+  if (item->reflection)
+    shelf_reflection_set_running(item->reflection, running);
+}
+
+/**
+ * apply_window_title_label:
+ * Shows the running window's title inside the button in taskbar mode, and hides
+ * the label otherwise. App items only: a dynamic item's label carries its
+ * reading, and separators have none.
+ */
+static void apply_window_title_label(DockItem *item) {
+  if (!item->window_title_label || !item->label)
+    return;
+
+  AppWindow *window = item->windows ? (AppWindow *)item->windows->data : NULL;
+  const char *text = lambdock_window_title_text(
+      item->state && item->state->show_window_titles, item->windows != NULL,
+      window ? window->title : NULL, item->name, item->app_id);
+
+  if (text)
+    gtk_label_set_text(GTK_LABEL(item->label), text);
+  gtk_widget_set_visible(item->label, text != NULL);
+}
+
 void update_dock_item_status(DockItem *item) {
   if (!item || !item->button)
     return;
 
-  if (item->windows != NULL) {
-    if (!gtk_widget_has_css_class(item->button, "running-app"))
-      gtk_widget_add_css_class(item->button, "running-app");
-  } else {
-    if (gtk_widget_has_css_class(item->button, "running-app"))
-      gtk_widget_remove_css_class(item->button, "running-app");
-  }
+  apply_running_state(item);
 
-  /* The glass shelf draws its own running indicator near the outer edge. */
-  if (item->reflection)
-    shelf_reflection_set_running(item->reflection, item->windows != NULL);
-
-  /* The running state is part of what a screen reader announces, so refresh the
-   * label before anything else can return early. */
+  /* The running state and the title are both part of what a screen reader
+   * announces, so refresh the label before anything else can return early. */
   dock_item_update_accessible(item);
-
-  /* Keep the window-title label in sync for app items (never for dynamic items,
-   * whose label carries polled text, or separators). */
-  if (!item->window_title_label || !item->label)
-    return;
-
-  gboolean show = item->state && item->state->show_window_titles &&
-                  item->windows != NULL;
-  if (show) {
-    AppWindow *win = (AppWindow *)item->windows->data;
-    const char *title = (win && win->title && *win->title != '\0')
-                            ? win->title
-                            : (item->name ? item->name : item->app_id);
-    gtk_label_set_text(GTK_LABEL(item->label), title ? title : "");
-    gtk_widget_set_visible(item->label, TRUE);
-  } else {
-    gtk_widget_set_visible(item->label, FALSE);
-  }
+  apply_window_title_label(item);
 }
 
 /**
@@ -1384,66 +1515,100 @@ static gboolean exec_matches_app_id(const char *exec, const char *app_id) {
   return FALSE;
 }
 
-DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
-  if (!state || !app_id || *app_id == '\0')
-    return NULL;
+/* A predicate over one dock item, plus the value it needs. */
+typedef gboolean (*DockItemPredicate)(const DockItem *item, gconstpointer data);
 
+/** First item of @state matching @predicate, walking the row in order. */
+static DockItem *find_item(const LambdockState *state,
+                           DockItemPredicate predicate, gconstpointer data) {
   for (GList *l = state->dock_items; l != NULL; l = l->next) {
     DockItem *item = (DockItem *)l->data;
-
-    if (item->app_id && g_ascii_strcasecmp(item->app_id, app_id) == 0)
+    if (item && predicate(item, data))
       return item;
-
-    if (item->icon && g_ascii_strcasecmp(item->icon, app_id) == 0)
-      return item;
-
-    if (item->name && g_ascii_strcasecmp(item->name, app_id) == 0)
-      return item;
-
-    if (exec_matches_app_id(item->exec, app_id))
-      return item;
-
-    if (item->desktop_id && g_ascii_strcasecmp(item->desktop_id, app_id) == 0)
-      return item;
-  }
-
-  /* Nothing matched the raw id. The desktop entry behind it knows the names the
-   * application is actually installed under, so use those for a second pass:
-   * a pinned "Files" item (icon "nautilus") tracks a window whose app id is
-   * "org.gnome.Nautilus", and a pinned "Terminal" tracks "org.gnome.Terminal". */
-  const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);
-  if (entry) {
-    for (GList *l = state->dock_items; l != NULL; l = l->next) {
-      DockItem *item = (DockItem *)l->data;
-
-      /* Both sides resolved to the same desktop file: this is the precise
-       * match, and the one that keeps a pinned launcher and a running window
-       * from showing up as two icons (a pinned "IntelliJ" whose exec is `idea`,
-       * and a window reporting app id `jetbrains-idea`, both land on
-       * jetbrains-idea-....desktop). */
-      if (item->desktop_id && entry->stem &&
-          g_ascii_strcasecmp(item->desktop_id, entry->stem) == 0)
-        return item;
-
-      if (item->app_id && (g_ascii_strcasecmp(item->app_id, entry->stem) == 0 ||
-                           g_ascii_strcasecmp(item->app_id, entry->id) == 0))
-        return item;
-
-      if (item->icon && entry->icon &&
-          g_ascii_strcasecmp(item->icon, entry->icon) == 0)
-        return item;
-
-      if (item->exec && entry->exec &&
-          exec_matches_app_id(entry->exec, item->exec))
-        return item;
-    }
   }
 
   return NULL;
 }
 
+/**
+ * item_matches_app_id:
+ * Whether @item is known by @app_id: the spellings a launcher can be written
+ * with, plus the exec heuristic.
+ */
+static gboolean item_matches_app_id(const DockItem *item, const char *app_id) {
+  if (item->app_id && g_ascii_strcasecmp(item->app_id, app_id) == 0)
+    return TRUE;
+
+  if (item->icon && g_ascii_strcasecmp(item->icon, app_id) == 0)
+    return TRUE;
+
+  if (item->name && g_ascii_strcasecmp(item->name, app_id) == 0)
+    return TRUE;
+
+  if (item->desktop_id && g_ascii_strcasecmp(item->desktop_id, app_id) == 0)
+    return TRUE;
+
+  return exec_matches_app_id(item->exec, app_id);
+}
+
+/**
+ * item_matches_entry:
+ * Whether @item resolves to the same desktop entry as @entry.
+ *
+ * This is the precise match: it keeps a pinned launcher and the window it opens
+ * from showing up as two icons when their ids are spelled differently (a pinned
+ * "IntelliJ" whose exec is `idea`, and a window reporting app id
+ * `jetbrains-idea`, both land on jetbrains-idea-....desktop).
+ */
+static gboolean item_matches_entry(const DockItem *item,
+                                   const LambdockDesktopEntry *entry) {
+  if (!entry)
+    return FALSE;
+
+  if (item->desktop_id && entry->stem &&
+      g_ascii_strcasecmp(item->desktop_id, entry->stem) == 0)
+    return TRUE;
+
+  if (item->app_id &&
+      ((entry->stem && g_ascii_strcasecmp(item->app_id, entry->stem) == 0) ||
+       (entry->id && g_ascii_strcasecmp(item->app_id, entry->id) == 0)))
+    return TRUE;
+
+  if (item->icon && entry->icon &&
+      g_ascii_strcasecmp(item->icon, entry->icon) == 0)
+    return TRUE;
+
+  return item->exec && entry->exec &&
+         exec_matches_app_id(entry->exec, item->exec);
+}
+
+/* Adapters: the finder passes the value as gconstpointer. */
+static gboolean matches_app_id(const DockItem *item, gconstpointer data) {
+  return item_matches_app_id(item, (const char *)data);
+}
+
+static gboolean matches_entry(const DockItem *item, gconstpointer data) {
+  return item_matches_entry(item, (const LambdockDesktopEntry *)data);
+}
+
+DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id) {
+  if (!state || !app_id || *app_id == '\0')
+    return NULL;
+
+  DockItem *match = find_item(state, matches_app_id, app_id);
+  if (match)
+    return match;
+
+  /* Nothing matched the raw id. The desktop entry behind it knows the names the
+   * application is actually installed under, so use those for a second pass: a
+   * pinned "Files" item (icon "nautilus") tracks a window whose app id is
+   * "org.gnome.Nautilus", and a pinned "Terminal" tracks "org.gnome.Terminal". */
+  return find_item(state, matches_entry,
+                   lambdock_desktop_entry_lookup(app_id));
+}
+
 /* ============================================================================
- * LAYOUT SEPARATORS & RELOAD HELPERS
+ * LAYOUT SEPARATORS
  * ============================================================================
  */
 
@@ -1502,92 +1667,34 @@ DockItem *create_separator_dock_item(LambdockState *state,
  * ============================================================================
  */
 
-/* Creates the widget shell shared by the icon-only item kinds (stacks and the
- * launchpad): button with the icon, context popover, right click menu, glass
- * reflection, drag source and dock container. */
+/* Creates the widget shell shared by the icon-only item kinds (stacks, the
+ * launchpad and the trash): an icon, no label, and the kind's own CSS class. */
 static DockItem *create_icon_dock_item(LambdockState *state,
                                        LambdockItemKind kind, const char *name,
-                                       const char *icon, gboolean hover_animate) {
-  DockItem *item = g_new0(DockItem, 1);
-  item->poll_fn = SCM_BOOL_F;
-  item->kind = kind;
-  item->state = state;
-  item->name = g_strdup(name);
-  item->icon = g_strdup(icon);
-  item->exec = g_strdup("");
-  item->app_id = g_strdup(name);
-  item->is_favorite = TRUE;
-  item->hover_animate = hover_animate;
+                                       const char *icon,
+                                       gboolean hover_animate) {
+  DockItemShell shell = {
+      .state = state,
+      .kind = kind,
+      .name = name,
+      .icon = icon,
+      .exec = "",
+      .app_id = name,
+      .is_favorite = TRUE,
+      .hover_animate = hover_animate,
+  };
+  DockItem *item = dock_item_new(&shell);
 
-  GtkIconTheme *icon_theme =
-      gtk_icon_theme_get_for_display(gdk_display_get_default());
-  int icon_sz =
-      (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
+  GtkWidget *content = dock_item_begin_content(item, 0);
+  GtkWidget *image = dock_item_load_icon(state, item->icon);
 
-  GtkWidget *image = create_image_for_icon(icon_theme, item->icon, icon_sz);
+  /* Kept so an item whose artwork depends on state (the trash) can swap it. */
   item->icon_image = image;
-  item->button = gtk_button_new();
-  gtk_widget_add_css_class(item->button, "dock-item");
 
-  GtkWidget *content_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  gtk_widget_set_valign(content_box, GTK_ALIGN_CENTER);
-  if (image) {
-    gtk_widget_set_overflow(image, GTK_OVERFLOW_VISIBLE);
-    gtk_box_append(GTK_BOX(content_box), wrap_icon_for_zoom(image, icon_sz));
-  }
-  gtk_button_set_child(GTK_BUTTON(item->button), content_box);
+  dock_item_append_icon(content, image, dock_item_icon_size(state));
+  dock_item_attach_reflection(item, image);
 
-  gtk_widget_add_css_class(item->button, "flat");
-
-  /* The per-kind CSS class comes from the same descriptor as the click
-   * behaviour and the accessibility text. */
-  const char *kind_class = kind_ops(kind)->css_class;
-  if (kind_class)
-    gtk_widget_add_css_class(item->button, kind_class);
-  gtk_widget_set_overflow(item->button, GTK_OVERFLOW_VISIBLE);
-
-  if (image) {
-    item->reflection = shelf_reflection_new(image);
-    gtk_widget_set_visible(item->reflection, FALSE);
-  }
-  item->container = shelf_wrap_item(state, item->button, item->reflection);
-
-  if (state)
-    apply_dock_item_alignment(item);
-
-  if (item->name && *item->name != '\0')
-    gtk_widget_set_tooltip_text(item->button, item->name);
-
-  g_signal_connect(item->button, "clicked", G_CALLBACK(on_dock_item_left_click),
-                   item);
-
-  item->popover = gtk_popover_new();
-  gtk_popover_set_has_arrow(GTK_POPOVER(item->popover), FALSE);
-  gtk_widget_set_parent(item->popover, item->button);
-  lambdock_popover_close_on_escape(item->popover);
-  if (state)
-    g_signal_connect(item->popover, "closed", G_CALLBACK(on_popover_closed),
-                     state);
-
-  GtkGesture *right_click = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click),
-                                GDK_BUTTON_SECONDARY);
-  g_signal_connect(right_click, "pressed", G_CALLBACK(on_dock_item_right_click),
-                   item);
-  gtk_widget_add_controller(item->button, GTK_EVENT_CONTROLLER(right_click));
-
-  dock_dnd_setup_item(item);
-
-  if (state && state->box) {
-    GtkWidget *child = item->container ? item->container : item->button;
-    gtk_box_append(GTK_BOX(state->box), child);
-  }
-  if (state)
-    state->dock_items = g_list_append(state->dock_items, item);
-
-  dock_item_attach_data(item);
-  dock_item_update_accessible(item);
-  return item;
+  return dock_item_mount(item);
 }
 
 DockItem *create_stack_dock_item(LambdockState *state, const char *name,
@@ -1676,21 +1783,12 @@ void dock_item_refresh_trash(DockItem *item) {
       gtk_image_set_from_icon_name(GTK_IMAGE(item->icon_image), icon);
   }
 
-  const char *name =
-      (item->name && *item->name != '\0') ? item->name : _("Trash");
-  char *tooltip = NULL;
-  if (full) {
-    char *items_text =
-        g_strdup_printf(ngettext("%u item", "%u items", count), count);
-    tooltip = g_strdup_printf("%s — %s", name, items_text);
-    g_free(items_text);
-  } else {
-    tooltip = g_strdup(name);
-  }
+  /* The wording (and its plural form) is in core/item_text.c, the same place the
+   * screen-reader description comes from. */
+  g_autofree char *tooltip = lambdock_item_trash_tooltip(item->name, count);
 
   if (item->button)
     gtk_widget_set_tooltip_text(item->button, tooltip);
-  g_free(tooltip);
 
   dock_item_update_accessible(item);
 }
@@ -1720,6 +1818,131 @@ DockItem *create_trash_dock_item(LambdockState *state, const char *name,
   return item;
 }
 
+/* ============================================================================
+ * HOT RELOAD
+ * ============================================================================
+ * reload_dock_instance() is a sequence of named stages rather than one long
+ * body: what a reload *is* is "re-read the settings, move the surface, rebuild
+ * the row, re-apply the derived state, put the dock where it belongs". Each
+ * stage below is one of those sentences.
+ */
+
+/** Mode-relevant settings, captured before a reload so it can be compared
+ * afterwards. */
+typedef struct DockModeSnapshot {
+  gboolean taskbar;
+  LambdockShelfParams shelf;
+} DockModeSnapshot;
+
+/** Re-reads the settings CSS depends on, and reloads the stylesheets. */
+static DockModeSnapshot reload_appearance(LambdockState *state) {
+  DockModeSnapshot before = {
+      .taskbar = state->taskbar,
+      .shelf = state->shelf,
+  };
+
+  g_free(state->theme);
+  state->theme = get_theme_config_for(state->config_path);
+
+  /* Mode flags refresh before the CSS so the taskbar modifier stylesheet is
+   * (un)loaded to match. */
+  state->taskbar = get_taskbar_config_for(state->config_path);
+  state->show_window_titles =
+      get_show_window_titles_config_for(state->config_path);
+  get_shelf_config_for(state->config_path, &state->shelf);
+
+  load_custom_css(state);
+
+  return before;
+}
+
+/** Re-reads the geometry and behaviour settings. */
+static void reload_settings(LambdockState *state) {
+  /* A pending auto-hide timeout would fire against the layout being replaced. */
+  if (state->hide_timer_id != 0) {
+    g_source_remove(state->hide_timer_id);
+    state->hide_timer_id = 0;
+  }
+
+  state->auto_hide = get_autohide_config_for(state->config_path);
+  state->track_windows = get_track_windows_config_for(state->config_path);
+  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
+  state->hover_animate = get_hover_animate_config_for(state->config_path);
+  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
+  state->icon_size = get_icon_size_config_for(state->config_path);
+  state->item_spacing = get_item_spacing_config_for(state->config_path);
+  state->capsule_padding = get_capsule_padding_config_for(state->config_path);
+
+  if (state->box)
+    gtk_box_set_spacing(GTK_BOX(state->box), state->item_spacing);
+}
+
+/** Moves the surface to a new screen edge, re-orienting the dock with it. */
+static void apply_edge_change(LambdockState *state, GtkLayerShellEdge edge) {
+  if (edge == state->edge)
+    return;
+
+  if (state->tick_cb_id != 0) {
+    gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
+    state->tick_cb_id = 0;
+  }
+
+  gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
+  gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
+
+  state->edge = edge;
+  gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, TRUE);
+
+  state->orientation = (edge == GTK_LAYER_SHELL_EDGE_LEFT ||
+                        edge == GTK_LAYER_SHELL_EDGE_RIGHT)
+                           ? GTK_ORIENTATION_VERTICAL
+                           : GTK_ORIENTATION_HORIZONTAL;
+  gtk_orientable_set_orientation(GTK_ORIENTABLE(state->box),
+                                 state->orientation);
+  if (state->bg_capsule) {
+    gtk_orientable_set_orientation(GTK_ORIENTABLE(state->bg_capsule),
+                                   state->orientation);
+  }
+
+  /* A dock that just changed edges is on screen, at rest. */
+  state->current_margin = 0;
+  state->target_margin = 0;
+  state->start_margin = 0;
+  state->is_hidden = FALSE;
+}
+
+/** Rebuilds the row from the configuration and re-syncs the tracked windows. */
+static void reload_items(LambdockState *state) {
+  clear_favorite_dock_items(state);
+  populate_dock_items_for(state);
+
+  /* Re-sync Wayland foreign window handles back to the new launchers. */
+  sync_window_trackers(state);
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = (DockItem *)l->data;
+    if (!item || !item->button)
+      continue;
+
+    apply_dock_item_alignment(item);
+    update_dock_item_status(item);
+  }
+}
+
+/** Reserves space for the dock (or not) and puts it where the setting wants it. */
+static void apply_auto_hide_state(LambdockState *state) {
+  dock_apply_exclusive_zone(state);
+
+  gboolean stay_visible =
+      !state->auto_hide ||
+      (state->show_when_clear && state->window_trackers == NULL);
+
+  if (stay_visible)
+    reveal_dock(state);
+  else
+    hide_dock(state);
+}
+
 /**
  * reload_dock_instance:
  * @state: Global Lambdock application state.
@@ -1736,93 +1959,15 @@ void reload_dock_instance(LambdockState *state) {
   LOG_C_INFO("UI", "Hot-reloading UI layout for config: %s",
              state->config_path ? state->config_path : "default");
 
-  // Reload active theme config and custom CSS for this specific dock instance
-  g_free(state->theme);
-  state->theme = get_theme_config_for(state->config_path);
+  DockModeSnapshot before = reload_appearance(state);
+  reload_settings(state);
+  apply_edge_change(state, get_position_config_for(state->config_path));
+  reload_items(state);
 
-  // Mode flags must refresh before CSS reload so the taskbar modifier
-  // stylesheet is (un)loaded to match.
-  gboolean prev_taskbar = state->taskbar;
-  LambdockShelfParams prev_shelf = state->shelf;
-  state->taskbar = get_taskbar_config_for(state->config_path);
-  state->show_window_titles =
-      get_show_window_titles_config_for(state->config_path);
-  get_shelf_config_for(state->config_path, &state->shelf);
-
-  load_custom_css(state);
-
-  // Cancel any pending auto-hide timer
-  if (state->hide_timer_id != 0) {
-    g_source_remove(state->hide_timer_id);
-    state->hide_timer_id = 0;
-  }
-
-  // Hot-reload Position & Layer Shell Edge Anchoring
-  GtkLayerShellEdge new_edge = get_position_config_for(state->config_path);
-  if (new_edge != state->edge) {
-    if (state->tick_cb_id != 0) {
-      gtk_widget_remove_tick_callback(state->window, state->tick_cb_id);
-      state->tick_cb_id = 0;
-    }
-
-    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
-    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
-
-    state->edge = new_edge;
-    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, TRUE);
-
-    state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
-                          state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
-                             ? GTK_ORIENTATION_VERTICAL
-                             : GTK_ORIENTATION_HORIZONTAL;
-    gtk_orientable_set_orientation(GTK_ORIENTABLE(state->box),
-                                   state->orientation);
-    if (state->bg_capsule) {
-      gtk_orientable_set_orientation(GTK_ORIENTABLE(state->bg_capsule),
-                                     state->orientation);
-    }
-
-    state->current_margin = 0;
-    state->target_margin = 0;
-    state->start_margin = 0;
-    state->is_hidden = FALSE;
-  }
-
-  // Hot-reload Auto-Hide, Hover Animation, Base Icon Size & Layer Shell
-  // Exclusive Zone
-  state->auto_hide = get_autohide_config_for(state->config_path);
-  state->track_windows = get_track_windows_config_for(state->config_path);
-  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
-  state->hover_animate = get_hover_animate_config_for(state->config_path);
-  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
-  state->icon_size = get_icon_size_config_for(state->config_path);
-  state->item_spacing = get_item_spacing_config_for(state->config_path);
-  state->capsule_padding =
-      get_capsule_padding_config_for(state->config_path);
-  if (state->box) {
-    gtk_box_set_spacing(GTK_BOX(state->box), state->item_spacing);
-  }
-
-  // Clear pinned items and repopulate dock launcher layout first
-  clear_favorite_dock_items(state);
-  populate_dock_items_for(state);
-
-  // Re-sync Wayland foreign window handles back to newly populated launchers
-  sync_window_trackers(state);
-
-  // Update widget alignments and status (running indicator + window titles)
-  for (GList *l = state->dock_items; l != NULL; l = l->next) {
-    DockItem *item = (DockItem *)l->data;
-    if (!item || !item->button)
-      continue;
-
-    apply_dock_item_alignment(item);
-    update_dock_item_status(item);
-  }
-
+  /* Mode classes and dimensions depend on both the new flags and the new row. */
   apply_dock_mode_classes(state);
-  if (state->taskbar != prev_taskbar ||
-      memcmp(&state->shelf, &prev_shelf, sizeof(LambdockShelfParams)) != 0) {
+  if (before.taskbar != state->taskbar ||
+      memcmp(&before.shelf, &state->shelf, sizeof(LambdockShelfParams)) != 0) {
     refresh_dock_mode(state);
   }
 
@@ -1831,17 +1976,5 @@ void reload_dock_instance(LambdockState *state) {
   /* A toggle from the preferences window takes effect on the running dock. */
   dock_apply_motion_preference(state);
 
-  if (state->auto_hide) {
-    gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window), 0);
-
-    if (state->show_when_clear && state->window_trackers == NULL) {
-      reveal_dock(state);
-    } else {
-      hide_dock(state);
-    }
-  } else {
-    gtk_layer_set_exclusive_zone(GTK_WINDOW(state->window),
-                                 dock_capsule_cross_dim(state));
-    reveal_dock(state);
-  }
+  apply_auto_hide_state(state);
 }

@@ -140,6 +140,16 @@ gboolean dock_is_settling(const LambdockState *state);
 int dock_capsule_cross_dim(const LambdockState *state);
 
 /**
+ * dock_apply_exclusive_zone:
+ * @state: Pointer to the dock state.
+ *
+ * Reserves desktop space for the dock, or nothing at all while it auto-hides.
+ * Safe to call on a dock whose window is not (yet) a layer surface, where it
+ * does nothing.
+ */
+void dock_apply_exclusive_zone(LambdockState *state);
+
+/**
  * dock_cross_axis_dim:
  * Returns the cross-axis size requested for the overlay surface: fisheye
  * magnification headroom plus the reflection band and the glass floor.
