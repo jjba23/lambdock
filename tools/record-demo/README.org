@@ -25,7 +25,7 @@ The result shows every headline feature and every built-in theme:
 - the launchpad filtered from the REPL,
 - live mutation through the Guile socket REPL (icon size, then themes),
 - hot-swapping the built-in dark and light themes,
-- taskbar mode with window titles, and a closing title card.
+- taskbar mode, and a closing title card.
 
 * Contents
 
@@ -226,9 +226,9 @@ the burnt-in text.
 | 29 s | Stack | the folder item opened as a thumbnail grid, browsed, dismissed |
 | 33 s | Launchpad | opened over the REPL, filtered with =launchpad-search!=, closed |
 | 40 s | REPL | a kitty terminal types real expressions: read the icon size, change it, then define a =swap!= helper |
-| 46 s | Themes | nine themes through =swap!=, wallpaper switching to the light one halfway |
-| 52 s | Taskbar | Windows XP taskbar mode, window titles on |
-| 59 s | Outro | windows closed, dock back to its default, closing title card |
+| 47 s | Themes | eleven themes through =swap!=, wallpaper switching to the light one halfway; the two macOS Mavericks materials switch the dock to its 3D shelf geometry |
+| 64 s | Taskbar | Windows XP taskbar mode |
+| 72 s | Outro | windows closed, dock back to its default, closing title card |
 
 Two rules that keep the recording honest:
 

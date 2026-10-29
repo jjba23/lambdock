@@ -382,6 +382,15 @@ window-rule {
     default-column-width { fixed 900; }
     default-window-height { fixed 430; }
 }
+/* The Preferences dialog is the subject of its own scene.  Opening it floating
+   at its intended size keeps it from tiling full width and then being resized
+   on camera, which is what made the first frames of that scene look wrong. */
+window-rule {
+    match app-id="org.jointhefreeworld.lambdock" title="Lambdock Preferences"
+    open-floating true
+    default-column-width { fixed 620; }
+    default-window-height { fixed 548; }
+}
 EOF
 niri validate -c "$TMP/niri.kdl" >/dev/null 2>&1 || die "generated niri config is invalid"
 

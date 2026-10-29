@@ -90,7 +90,7 @@ The storyboard runs twelve scenes: a title card, auto-hide at the screen edge,
 fish-eye magnification, launching with running indicators, the window popover,
 the dock's own menu and the Preferences window, a folder stack opened as a grid,
 the launchpad filtered from the REPL, a live Guile REPL session (icon size, then
-nine built-in themes), the Windows XP taskbar mode with window titles, and a
+eleven built-in themes), the Windows XP taskbar mode, and a
 closing card.  Each scene is checked frame by frame against its caption before a
 recording is published.  See [[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites
 and options.

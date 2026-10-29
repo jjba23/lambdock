@@ -62,12 +62,39 @@ DOCK_ROW = 708
 
 # Popover rows hang above the dock at fixed offsets from the bottom, so the
 # last two rows do not move with the number of windows.
-POPOVER_CLOSE_ALL = 614
+POPOVER_CLOSE_ALL = 594
+
+# resources/css/macos-mavericks.css is *material*, not geometry: the 3D slab with
+# icons mirrored onto the glass in front of them only appears with the three dock
+# options the stylesheet documents (shelf margin -22, shelf front 18, reflection
+# 0.5).  Everything else in the montage wants the stock flat capsule back.
+#
+# Theme and geometry have to travel in *one* expression: reload-dock! only
+# queues a redraw, so a profile change issued between two reloads can land in
+# the same redraw as the next theme and paint the wrong pair.  That is why the
+# shelf geometry is typed as part of the swap helper instead of being set
+# between themes, and why the reset below is one expression as well.
+SHELF_OFF = "(set-dock-shelf-margin! 24) (set-dock-shelf-front! 0) (set-dock-reflection! 0.0)"
+# Typed into the dock's REPL: swap a theme, and take the shelf geometry with it
+# when a second argument is given.  Short on purpose -- it is on screen.
+SWAP_DEFINITION = (
+    "(define (swap! t . shelf) (set-dock-theme! t) "
+    "(let ((s (pair? shelf))) "
+    "(set-dock-shelf-margin! (if s -22 24)) "
+    "(set-dock-shelf-front! (if s 18 0)) "
+    "(set-dock-reflection! (if s 0.5 0))) (reload-dock!))"
+)
+# The shelf's capsule hangs lower than the flat one's, so the parked pointer
+# sits low enough to be inside both.
+MONTAGE_ROW = 736
+
 
 THEME_LABELS = {
     "vanilla": "Vanilla Glassmorphism",
     "macos-big-sur": "macOS Big Sur",
     "macos-ventura": "macOS Ventura",
+    "macos-mavericks": "macOS Mavericks",
+    "macos-mavericks-dark": "macOS Mavericks Dark",
     "unity": "Unity",
     "nature": "Nature",
     "snow-leopard-dark": "Snow Leopard Dark",
@@ -86,8 +113,15 @@ DARK_THEMES = [
     "unity",
     "snow-leopard-dark",
     "windows-11",
+    "macos-mavericks-dark",
 ]
-LIGHT_THEMES = ["vanilla-light", "snow-leopard", "solarized-light", "windows-xp"]
+LIGHT_THEMES = [
+    "vanilla-light",
+    "snow-leopard",
+    "solarized-light",
+    "windows-xp",
+    "macos-mavericks",
+]
 
 
 class Demo:
@@ -535,7 +569,7 @@ class Demo:
     def phase_intro(self) -> None:
         self.title("lambdock", "a dock you can reprogram while it runs")
         self.park()
-        time.sleep(2.6)
+        time.sleep(2.3)
         self.title_end()
 
     def phase_autohide(self) -> None:
@@ -606,11 +640,22 @@ class Demo:
 
     def phase_preferences(self) -> None:
         self.caption("Right-click the dock for its menu; every setting is live")
+        # Clear the stage: the dialog is the subject of this scene, and a
+        # floating terminal behind it reads as clutter.  Close the windows, then
+        # dismiss any popover they left latched open -- a popover grabs input and
+        # would swallow the right click below.
+        self.close_terminals()
+        time.sleep(0.5)
+        self.move(self.out_w / 2, self.out_h * 0.3)
+        self.click()
+        time.sleep(0.3)
+
         # Freeze the fish-eye animation so the separator stays at a known
         # coordinate while the menu is opened.
         self.dock_eval("(begin (set-dock-hover-animate! #f) (reload-dock!))")
         time.sleep(0.5)
         self.reveal_dock(self.X(ITEM_SEPARATOR))
+        self.move(self.X(ITEM_SEPARATOR), self.Y(MONTAGE_ROW))
 
         before = {int(window["id"]) for window in self.windows()}
         self.move(self.X(ITEM_SEPARATOR), self.Y(DOCK_ROW))
@@ -621,24 +666,27 @@ class Demo:
         self.click()
         time.sleep(1.6)
 
-        dialog = None
-        for _ in range(40):
+        dialog = self.wait_window(title="Lambdock Preferences", timeout=6.0)
+        if dialog is None:
             dialog = next(
                 (window for window in self.windows() if int(window["id"]) not in before),
                 None,
             )
-            if dialog:
-                break
-            time.sleep(0.1)
 
         if dialog is not None:
             window_id = int(dialog["id"])
-            # The dialog opens tiled and full width; floating it is what makes
-            # an exact size and position stick (and puts it above the terminals).
+            # The dialog is tiled unless it is floated, and a tiled window gives
+            # up its own size, so floating it first is what puts it above the
+            # dock at all.  Its own size request then lands late -- one
+            # placement is undone by it -- so the placement is applied twice
+            # with a gap, low enough that the caption pill above it does not sit
+            # on the title bar and short enough to leave the dock in view.
             self.niri_or_log("move-window-to-floating", "--id", str(window_id))
             self.niri_or_log("focus-window", "--id", str(window_id))
-            self.place(window_id, 250, 104, 620, 566)
-            time.sleep(2.6)
+            for _ in range(2):
+                self.place(window_id, 250, 122, 620, 548)
+                time.sleep(0.6)
+            time.sleep(1.8)
             self.close_window(window_id)
         time.sleep(0.5)
         self.dock_eval("(begin (set-dock-hover-animate! #t) (reload-dock!))")
@@ -655,7 +703,7 @@ class Demo:
         self.caption("A folder becomes a stack you can browse")
         self.glide(self.X(ITEM_STACK), self.Y(DOCK_ROW), 550)
         self.click()
-        time.sleep(1.2)
+        time.sleep(1.0)
         for x, y in ((600, 420), (660, 420), (600, 500)):
             self.glide(self.X(x), self.Y(y), 320)
             time.sleep(0.15)
@@ -680,20 +728,30 @@ class Demo:
         time.sleep(1.0)
         self.caption_end()
 
+    def montage_theme(self, theme: str) -> None:
+        """Swap one theme through the REPL, with the shelf for Mavericks."""
+        shelf = theme.startswith("macos-mavericks")
+        call = f"(swap! '{theme} 'shelf)" if shelf else f"(swap! '{theme})"
+        # The Mavericks slab slides in and mirrors the icons onto its glass, so
+        # it needs a beat longer on screen than a straight colour change.
+        self.repl(call, speed_ms=8, hold=1.5 if shelf else 0.4)
+        self.theme(theme)
+
     def phase_repl(self) -> None:
         self.caption("Reprogram the running dock over its socket REPL")
         kitty_id = self.launch_repl_window()
         self.open_repl_writer()
-        # Keep the pointer on the dock's separator: it holds the dock on screen
-        # without magnifying an icon that the montage is about to restyle.
-        self.move(self.X(ITEM_SEPARATOR), self.Y(DOCK_ROW))
+        # Park the pointer on the dock (that is what keeps it on screen) and
+        # freeze the fish-eye, so the icon under it is not magnified -- a
+        # magnified row outgrows its capsule, and the montage is about the
+        # capsule.
+        self.dock_eval("(begin (set-dock-hover-animate! #f) (reload-dock!))")
+        time.sleep(0.4)
+        self.reveal_dock(self.X(ITEM_SEPARATOR))
+        self.move(self.X(ITEM_SEPARATOR), self.Y(MONTAGE_ROW))
 
         self.repl("(use-modules (lambdock core))", speed_ms=10, hold=0.4)
-        self.repl(
-            "(define (swap! t) (set-dock-theme! t) (reload-dock!))",
-            speed_ms=10,
-            hold=0.5,
-        )
+        self.repl(SWAP_DEFINITION, speed_ms=6, hold=0.6)
         self.repl("(get-dock-icon-size)", speed_ms=14, hold=0.7)
         self.repl("(set-dock-icon-size! 64) (reload-dock!)", speed_ms=10, hold=0.9)
         self.repl("(set-dock-icon-size! 48) (reload-dock!)", speed_ms=10, hold=0.6)
@@ -701,15 +759,23 @@ class Demo:
 
         self.caption("Built-in themes, swapped live")
         for theme in DARK_THEMES:
-            self.repl(f"(swap! '{theme})", speed_ms=8, hold=0.35)
-            self.theme(theme)
-
+            self.montage_theme(theme)
         self.switch_wallpaper("mountains.png")
         for theme in LIGHT_THEMES:
-            self.repl(f"(swap! '{theme})", speed_ms=8, hold=0.35)
-            self.theme(theme)
+            self.montage_theme(theme)
+        # The montage stops on a theme, so let the last one stand before its
+        # label goes away: that frame is the only one showing the light
+        # Mavericks slab, and its mirrored icons are the whole point of it.
+        time.sleep(1.5)
         self.theme_end()
         self.caption_end()
+        # Leave the shelf and the frozen fish-eye behind.
+        self.dock_eval(f"(begin {SHELF_OFF} (reload-dock!))")
+        self.dock_eval("(begin (set-dock-hover-animate! #t) (reload-dock!))")
+        # Step off the capsule: a pointer resting on it leaves a tooltip behind
+        # for the next scene.
+        self.move(self.out_w / 2, self.out_h * 0.45)
+        time.sleep(0.3)
 
         if self.repl_fd is not None:
             os.close(self.repl_fd)
@@ -718,32 +784,35 @@ class Demo:
         time.sleep(0.7)
 
     def phase_taskbar(self) -> None:
-        self.caption("Or a taskbar, with window titles")
+        # The windows come first: the caption should cover the moment the bar
+        # changes, not the second and a half it takes to open two terminals.
         self.spawn_terminal("build", "fetch", 66, 118, 500, 330)
         self.spawn_terminal("logs", "files", 562, 118, 500, 330)
-        time.sleep(1.0)
-        self.reveal_dock()
+        time.sleep(0.6)
+        self.caption("Or a Windows XP-style taskbar")
+        self.reveal_dock(self.X(ITEM_SEPARATOR))
+        # Back off the bar before it can grow a tooltip under the pointer.
+        self.move(self.out_w / 2, self.out_h * 0.45)
 
         # The mode change re-anchors the layer surface, which a layout reload
         # only picks up on the next pass: nudge it twice so the bar really is
-        # full width, then show window titles on it.
+        # full width.
+        self.dock_eval(f"(begin {SHELF_OFF} (set-dock-theme! 'windows-xp) (reload-dock!))")
+        time.sleep(0.6)
         self.dock_eval("(begin (set-dock-mode! 'taskbar) (reload-dock!))")
         time.sleep(1.0)
         self.dock_eval("(begin (set-dock-mode! 'taskbar) (reload-dock!))")
-        time.sleep(0.8)
-        self.dock_eval("(begin (set-dock-show-window-titles! #t) (reload-dock!))")
-        time.sleep(1.8)
+        time.sleep(2.0)
         self.caption_end()
 
     def phase_outro(self) -> None:
         # Back to the default look *before* the card goes up, so the closing
         # frame is the same dock the README's hero image shows.
         self.close_terminals()
-        self.dock_eval("(begin (set-dock-show-window-titles! #f) (reload-dock!))")
         time.sleep(0.3)
         self.dock_eval("(begin (set-dock-mode! 'dock) (reload-dock!))")
         time.sleep(0.5)
-        self.dock_eval("(begin (set-dock-theme! 'vanilla) (reload-dock!))")
+        self.dock_eval(f"(begin {SHELF_OFF} (set-dock-theme! 'vanilla) (reload-dock!))")
         self.switch_wallpaper("galaxy.png")
         time.sleep(0.5)
         self.move(self.out_w / 2, self.out_h * 0.45)

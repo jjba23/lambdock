@@ -9,7 +9,39 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-Nothing yet.
+- The two macOS Mavericks materials are in the showcase, and shown as the shelf
+  they are written for.  =macos-mavericks.css= and =macos-mavericks-dark.css=
+  are the *material* only: the polished platinum slab with the icons mirrored
+  onto the glass in front of them only appears once the dock takes the matching
+  shelf geometry (=dock-shelf-margin -22=, =dock-shelf-front 18=,
+  =dock-reflection 0.5=), which is exactly the trio the stylesheet documents.
+  The montage ends its dark half on macOS Mavericks Dark and its light half on
+  macOS Mavericks, each held for a beat longer than a straight colour swap (the
+  slab slides in, and the mirrors have to be readable), and the light one stays
+  on screen after the last swap instead of losing its label in the same frame.
+  The REPL helper the scene teaches now takes the shelf as a second argument --
+  ~(swap! 'macos-mavericks 'shelf)~ -- because a theme and its geometry have to
+  travel in one expression: ~reload-dock!~ only queues a redraw, so a geometry
+  change issued between two reloads lands in the same redraw as the neighbouring
+  theme and paints the wrong pair.
+- The Preferences scene of the recording shows the dialog on its own.  Two
+  things were wrong: the window popover's *Close All Windows* row was being
+  clicked twenty pixels into the separator below it (the row coordinates had been
+  measured against an older layout, and the rows are anchored from the bottom so
+  the number of windows moves them), so the demo's terminals never closed and
+  then sat behind the dialog; and the dialog is a tiled window unless it is
+  explicitly floated, so it opened full width with the floating terminals on top
+  of it.  The rows are re-measured, the scene clears the stage itself, the
+  recorder's niri config opens the dialog floating at the size the scene uses
+  (instead of tiling it full width and resizing it on camera), and the dialog is
+  floated, sized and focused before it is held -- low enough that the caption
+  pill no longer sits on its title bar.
+- The taskbar scene is captioned for what it shows.  It said "with window
+  titles", but the label taskbar mode adds for a running window is measured away
+  in this layout -- the button is allocated less than its content asks for and
+  the title ellipsizes to "..." -- so the scene now says "Or a Windows XP-style
+  taskbar" and the recording no longer promises a detail that is not on screen.
+  The toggle itself is unchanged and still in Preferences.
 
 ---------
 
