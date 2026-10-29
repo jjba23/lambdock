@@ -15,6 +15,40 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.2 (2026-10-29)
+- Auto-hide works again. v0.19.1 cut the surface's input region down to the dock
+  to stop the room it reserves from eating clicks -- but a tucked-away dock is
+  only on screen as the trigger strip at the screen edge, and that strip is the
+  surface's *headroom*, exactly what the region had just cut away. With nothing
+  to enter, the pointer could never bring the dock back. While the dock is hidden
+  or sliding the whole surface now takes input (the off-screen part cannot be
+  clicked anyway); once it is out and settled the region is the slab plus the row
+  of icons again, and it is only re-set when it actually changes, so a slide no
+  longer touches the surface's input state on every frame.
+- The hover path is measured, and the measurements are tests. =render_stats.c=
+  keeps integer counters for the work a frame does -- frames applied, frames
+  dropped, item layout steps, geometry-cache rebuilds, icon and reflection paints,
+  surface resizes -- and =test_render_budget.c= drives the real hover path against
+  a hand-allocated row (no window, no compositor) to assert the budget: over 40
+  frames sweeping eight items, 91 layout steps (of 320 possible), 31 geometry
+  rebuilds (fewer than there are frames) and *zero* surface resizes.
+- Hover geometry is cached. Each item's centre along the dock axis is measured
+  once per layout change and reused, so a pointer frame costs arithmetic instead
+  of a transform query per item; the cache is invalidated by the one function that
+  changes geometry, and by items appearing or disappearing.
+- Sub-pixel pointer movement is dropped before it touches a widget: a trackpad
+  reports fractions of a pixel continuously, and half a pixel cannot change what
+  is painted. Twenty jitter frames now cost zero layout steps and zero geometry
+  rebuilds.
+- The reflection fade's cost is a number instead of a guess:
+  =lambdock_reflection_band_count()= is pure, unit tested, and documents that one
+  reflection repaint costs 14 clipped draws at the 14 px band the macOS Mavericks
+  shelf uses (16 at worst).
+- =HACKING.org= documents the widget tree, the three clocks (layout, animation,
+  data) and the measured per-frame budget.
+
+*[Released]*
+
 ** v0.19.1 (2026-10-29)
 - Hovering the dock no longer resizes it, which is what made it flicker and
   tear along its edges. The fish-eye grows the icons, and growing widgets inside

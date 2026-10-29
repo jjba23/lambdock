@@ -9,7 +9,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '0.19.1',
+  version: '0.19.2',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -243,6 +243,7 @@ sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/render_stats.c',
   'src/core/tracker_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
@@ -301,6 +302,7 @@ full_app_sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/render_stats.c',
   'src/core/tracker_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
@@ -444,6 +446,14 @@ unit_tests = [
     # file plus the two override files in $XDG_STATE_HOME are honoured on the
     # first load (test_guile_bridge mocks Scheme and cannot see this).
     'id': 'config_startup',
+    'extra_sources': full_test_sources,
+  },
+  {
+    # The per-frame budget, measured: a hover sweep must not resize the surface,
+    # must reuse the geometry cache, and one reflection repaint must stay within
+    # its band budget.
+    'id': 'render_budget',
+    'name': 'render_budget_tests',
     'extra_sources': full_test_sources,
   },
   {

@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.19.2" date="2026-10-29">
+      <description>
+        <p>Auto-hide works again: while the dock is tucked away or sliding, the whole surface takes input, because the only part of it on screen is the trigger strip -- which the dock-shaped input region had cut away. Once the dock is out, the region is the slab plus the icons again, and it is only re-set when it changes.</p>
+        <p>The hover path is now measured and tested rather than eyeballed: render counters record layout steps, geometry-cache rebuilds, paints and surface resizes, and a test drives the real hover path to assert the budget (no surface resizes, fewer geometry rebuilds than frames, and no work at all for sub-pixel pointer jitter). Item geometry is cached per layout change instead of re-queried every frame.</p>
+      </description>
+    </release>
     <release version="0.19.1" date="2026-10-29">
       <description>
         <p>Hovering the dock no longer resizes it. Growing the icons under the pointer made GTK resize the window, and on Wayland that means a buffer re-allocation and a compositor reconfigure on every pointer frame -- the flicker and torn pixels along the dock's edges. The room the row spreads into is reserved once, before the pointer starts magnifying, so the surface keeps its size for the whole hover.</p>
