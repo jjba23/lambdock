@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.18.0" date="2026-10-29">
+      <description>
+        <p>The showcase recording is now framed and captioned like a product video, and every scene in it was re-filmed and checked against its caption: auto-hide at the screen edge, fish-eye magnification, launching with running indicators, the window popover, the dock's own menu and the Preferences window, a folder stack, the launchpad filtered from the REPL, a live Guile REPL session changing the icon size and the themes, and the Windows XP taskbar mode. The recording now contains exactly one cursor -- the compositor's own -- instead of one drawn in post.</p>
+        <p>Also in this release: the launchpad search field takes the keyboard as soon as the launchpad opens, launching minimizes and restores the focused window on compositors that support it, larger launchpad tiles, a rebuilt Windows XP theme, and a quality pass over running the dock across compositors without wlr-layer-shell or wlr-foreign-toplevel.</p>
+      </description>
+    </release>
     <release version="0.15.0" date="2026-10-28">
       <description>
         <p>Lambdock is now licensed under the MIT License, and every source file says so. Stacks no longer offer the fan view: the icon grid and the list remain, and a settings file that still asks for the fan reads back as the grid. Under the hood the C side was rebuilt around explicit models -- the launchpad, the preferences window and the set of active docks -- with their arithmetic and filtering moved into pure functions that are tested without a display.</p>

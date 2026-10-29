@@ -9,6 +9,61 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+Nothing yet.
+
+---------
+
+*[Released]*
+
+** v0.18.0 (2026-10-29)
+- The showcase recording is now a two-stage pipeline -- =record-demo.sh= records,
+  =encode-demo.sh= frames and encodes -- and the GIF it produces is presented
+  instead of merely captured: the screen sits inset in a dark backdrop with a
+  rounded, shadowed edge, captions arrived as rounded pills at the top of the
+  screen, theme names get their own label, and the intro and outro are dimmed
+  title cards.  The whole presentation layer (=tools/record-demo/make_overlay.py=)
+  works in output coordinates, so it does not depend on the compositor's layout.
+  A 72-second version of the previous storyboard was 15 MiB; the new ~60-second
+  one fits the same budget with more of the frame in use.
+- The pointer that drives the demo now belongs to the *host* compositor.  A
+  virtual pointer inside the nested session delivers clicks but does not move
+  pointer focus, so a hidden dock never saw the pointer reach its reveal strip
+  and the fish-eye never started -- two headline features could not be filmed at
+  all.  Driving the host pointer makes the nested compositor see an ordinary
+  pointer crossing its window, and because a virtual pointer does not move the
+  host's hardware cursor, the recording contains exactly one cursor: the real one
+  the compositor draws.  The cursor the old encoder painted in post (which
+  drifted out of sync because its ~\move~ used absolute timestamps) is gone.
+- The storyboard was rewritten rather than retimed: twelve scenes, each about
+  four seconds, each one checked frame by frame against its caption.  The window
+  popover, the dock's own menu and the Preferences window are now actually shown
+  (their click targets were calibrated against an older layout and had been
+  missing their marks, so one scene opened the wrong menu and removed a dock
+  item).  The demo terminals run a generated demo shell and show a system
+  summary and a file listing instead of an empty prompt, and closing the REPL
+  terminal no longer leaves kitty's "are you sure?" dialog on screen for the
+  last ten seconds.
+- Recording and event time are now in sync.  The recorder used to wait for a log
+  line current =wf-recorder= builds never print, so it always waited its full
+  timeout and started capturing ten seconds early: every caption landed ten
+  seconds before the thing it described.  It now waits for the capture file to
+  grow, and the encoder trims the tail at the last event, so a slow recorder
+  shutdown cannot add dead air either.
+- The capture is cropped only at the top, at 1440 px, and downsampled once by
+  the encoder: nothing of the dock is cut (a taskbar spans the whole width) and
+  text stays crisp after the palette pass.  The generated wallpapers
+  were rebuilt as low-frequency gradients -- the old jagged mountain ridges and
+  dense star field aliased into visible moire once the GIF was downscaled -- and
+  the light one is now a soft haze instead of hard-edged polygons.
+- The recorder no longer draws its own cursor and no longer needs a checklist of
+  coordinates in the docs: =tools/record-demo/measure_dock.py= measures the dock's
+  capsule and item centres in a recording and prints them ready to paste.  That
+  is how the storyboard's table was rebuilt, and the tool is the answer to
+  "adding an item moved everything".
+- Fixing the run also exposed a real dock bug: while an icon is magnified the
+  capsule keeps its resting width, so the row overflows and the clock is clipped
+  mid-glyph.  It is visible in every hover frame of the old GIF.  (Tracked, not
+  fixed here.)
 - The launchpad search field takes the keyboard the moment the launchpad opens:
   pressing a key filters the grid without clicking the field first.  Two bugs
   behind that: the field was never remembered on the launchpad model, and the
@@ -51,15 +106,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   and press now ease their border and shadow over 120ms. Two new state classes
   back this -- ~window-focused~ and ~window-minimized~ -- and every theme can use
   them.
-- The showcase GIF is now generated from this tree and lives in the repository
-  (=resources/img/lambdock-demo.gif=), as the hero of the README.  The storyboard
-  gained three scenes -- a folder stack browsed as a thumbnail grid, the launchpad
-  filtered through its search field, and the Preferences window -- alongside the
-  existing auto-hide, magnification, launch, window-popover, menu/About, REPL,
-  theme-montage and taskbar segments.  Per-feature stills from the same recording
-  are in =resources/img/screens/=, and the AppStream metadata points at them.
-  The GIF is encoded at 1000 px and 20 fps, which is smaller and smoother than
-  the old 1200 px / 15 fps file.
+- The showcase GIF is generated from this tree and lives in the repository
+  (=resources/img/lambdock-demo.gif=), as the hero of the README.  Per-feature
+  stills from the same recording are in =resources/img/screens/=, and the
+  AppStream metadata points at them.
 - The launchpad is scriptable: the REPL gained ~(show-launchpad!)~,
   ~(launchpad-search! "...")~ and ~(hide-launchpad!)~, which is how the demo
   films its search without a virtual keyboard.
@@ -68,10 +118,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   then applied, and the dynamic-item refresh could apply ~#f~ as a poll
   procedure.  Both are now checked, so a module that lost an export degrades to
   "no items" instead of aborting the process.
-
----------
-
-*[Released]*
 
 ** v0.15.0 (2026-10-28)
 - Stacks no longer offer the *fan* view.  Two views remain, the icon grid and
