@@ -59,20 +59,20 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png</image>
-      <caption>Lambdock as a floating dock with auto-hide</caption>
+      <image>https://raw.githubusercontent.com/jjba23/lambdock/trunk/resources/img/screens/stacks.png</image>
+      <caption>Lambdock as a floating dock, with a folder stack open</caption>
     </screenshot>
     <screenshot>
-      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png</image>
-      <caption>Lambdock with a light GTK CSS theme</caption>
+      <image>https://raw.githubusercontent.com/jjba23/lambdock/trunk/resources/img/screens/launchpad.png</image>
+      <caption>The launchpad, filtered by its search field</caption>
     </screenshot>
     <screenshot>
-      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png</image>
-      <caption>Application launchers and running window indicators</caption>
+      <image>https://raw.githubusercontent.com/jjba23/lambdock/trunk/resources/img/screens/preferences.png</image>
+      <caption>Preferences: every dock setting, applied live</caption>
     </screenshot>
     <screenshot>
-      <image>https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png</image>
-      <caption>Dynamic widgets for system information</caption>
+      <image>https://raw.githubusercontent.com/jjba23/lambdock/trunk/resources/img/screens/taskbar.png</image>
+      <caption>Taskbar mode with the Windows XP theme and dynamic widgets</caption>
     </screenshot>
   </screenshots>
 

@@ -83,3 +83,10 @@ gboolean lambdock_points_differ(double ax, double ay, double bx, double by,
                                 double epsilon_px) {
   return fabs(ax - bx) >= epsilon_px || fabs(ay - by) >= epsilon_px;
 }
+
+int lambdock_size_step(int size_px, int step_px) {
+  if (step_px <= 1)
+    return size_px;
+
+  return ((size_px + step_px - 1) / step_px) * step_px;
+}

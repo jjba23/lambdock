@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+#include "../src/app_window.h"
 #include "../src/lambdock.h"
 #include "../src/ui/shelf.h"
 #include "../src/ui/desktop_entry.h"
@@ -253,6 +254,68 @@ static void test_update_dock_item_status(void) {
     g_free(w);
   }
   g_list_free(item->windows);
+  g_free(item->app_id);
+  g_free(item);
+}
+
+static void test_window_minimized_class(void) {
+  LambdockState state = {0};
+  DockItem *item = g_new0(DockItem, 1);
+  item->state = &state;
+  item->button = gtk_button_new();
+  item->app_id = g_strdup("app");
+
+  /* Nothing running: no class, whatever the flags say. */
+  dock_item_refresh_window_state(item);
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-minimized"));
+
+  /* A visible window keeps the icon at full contrast. */
+  AppWindow *window = dock_item_add_window(item, DUMMY_1);
+  g_assert_nonnull(window);
+  dock_item_refresh_window_state(item);
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-minimized"));
+
+  /* Minimized: the icon dims (the running indicator stays). */
+  app_window_set_state(window, TRUE, FALSE);
+  dock_item_refresh_window_state(item);
+  g_assert_true(gtk_widget_has_css_class(item->button, "window-minimized"));
+  g_assert_true(gtk_widget_has_css_class(item->button, "running-app"));
+
+  /* Focused: the theme draws the depressed "active task button". */
+  app_window_set_state(window, FALSE, TRUE);
+  dock_item_refresh_window_state(item);
+  g_assert_true(gtk_widget_has_css_class(item->button, "window-focused"));
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-minimized"));
+
+  /* A second window, also focused: the app is on screen again. */
+  AppWindow *second = dock_item_add_window(item, DUMMY_2);
+  app_window_set_state(second, FALSE, TRUE);
+  dock_item_refresh_window_state(item);
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-minimized"));
+  g_assert_true(gtk_widget_has_css_class(item->button, "window-focused"));
+
+  /* Focus leaves: neither window is focused any more. */
+  app_window_set_state(window, FALSE, FALSE);
+  app_window_set_state(second, FALSE, FALSE);
+  dock_item_refresh_window_state(item);
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-focused"));
+
+  /* All of them tucked away: dimmed again, and nothing is focused. */
+  app_window_set_state(window, TRUE, FALSE);
+  app_window_set_state(second, TRUE, FALSE);
+  dock_item_refresh_window_state(item);
+  g_assert_true(gtk_widget_has_css_class(item->button, "window-minimized"));
+  g_assert_false(gtk_widget_has_css_class(item->button, "window-focused"));
+
+  /* Closed window: the class follows the windows that are left. */
+  dock_item_remove_window(item, DUMMY_2);
+  dock_item_refresh_window_state(item);
+  g_assert_true(gtk_widget_has_css_class(item->button, "window-minimized"));
+
+  g_object_ref_sink(item->button);
+  g_object_unref(item->button);
+  app_windows_free(item->windows);
+  item->windows = NULL;
   g_free(item->app_id);
   g_free(item);
 }
@@ -756,8 +819,9 @@ int main(int argc, char **argv) {
   if (gtk_init_check()) {
     g_test_add_func("/ui/dock_item/window_tracking",
                     test_dock_item_window_tracking);
-    g_test_add_func("/ui/dock_item/update_status",
-                    test_update_dock_item_status);
+      g_test_add_func("/ui/dock_item/update_status", test_update_dock_item_status);
+      g_test_add_func("/ui/dock_item/window_minimized_class",
+                      test_window_minimized_class);
     g_test_add_func("/ui/dock_item/clear_tracked_windows",
                     test_clear_tracked_windows);
     g_test_add_func("/ui/dock_item/clear_favorite_items",

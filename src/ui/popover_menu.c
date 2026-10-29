@@ -116,12 +116,16 @@ static void on_popover_focus_window(GtkButton *btn, gpointer user_data) {
   (void)btn; // Mark unused parameter
   WindowActionData *data = (WindowActionData *)user_data;
 
+  /* The window may have closed (and the tracker freed its proxy) while this
+   * menu was open: a stale handle here would be a use-after-free. */
+  if (!data || !data->item || !dock_item_has_window(data->item, data->handle))
+    return;
+
   // Request Wayland compositor to activate (focus) this specific window
-  if (data && data->handle)
-    activate_toplevel_window(data->handle);
+  activate_toplevel_window(data->handle);
 
   // Close/dismiss the active GTK popover popup menu
-  if (data && data->item && data->item->popover)
+  if (data->item->popover)
     gtk_popover_popdown(GTK_POPOVER(data->item->popover));
 }
 
@@ -138,12 +142,15 @@ static void on_popover_close_window(GtkButton *btn, gpointer user_data) {
   (void)btn; // Mark unused parameter
   WindowActionData *data = (WindowActionData *)user_data;
 
+  /* Same stale-handle guard as on_popover_focus_window(). */
+  if (!data || !data->item || !dock_item_has_window(data->item, data->handle))
+    return;
+
   // Request Wayland compositor to close the foreign top-level window
-  if (data && data->handle)
-    close_toplevel_window(data->handle);
+  close_toplevel_window(data->handle);
 
   // Close/dismiss the active GTK popover popup menu
-  if (data && data->item && data->item->popover)
+  if (data->item->popover)
     gtk_popover_popdown(GTK_POPOVER(data->item->popover));
 }
 

@@ -6,6 +6,7 @@
 #include "dock_item.h"
 #include "../app_window.h"
 #include "../core/config_values.h" // Struct definitions for DockItem, LambdockState, AppWindow
+#include "../core/dock_click.h"    // What a left click on an item should do
 #include "../core/item_text.h"     // Pure wording for labels, tooltips and gauges
 #include "../accessibility.h"    // Screen reader labels and motion preferences
 #include "../dock_window.h"      // Recording whether the dock is mid-animation
@@ -651,30 +652,57 @@ void dock_item_activate_trash(DockItem *item) {
     LOG_C_WARN("UI", "Could not open the trash");
 }
 
-/** What a click on an application item does: focus, list or launch. */
+/** Runs @command, reporting a failure without taking the dock down. */
+static void launch_command(const char *command) {
+  GError *error = NULL;
+
+  if (!g_spawn_command_line_async(command, &error)) {
+    LOG_C_WARN("UI", "Failed to launch '%s': %s", command,
+               (error && error->message) ? error->message : "unknown");
+    g_clear_error(&error);
+  }
+}
+
+/**
+ * activate_app_item:
+ * What a left click on an application item does.
+ *
+ * The decision is core/dock_click.c's -- "launch, minimize, restore or list" --
+ * and this only applies it, so the policy stays testable without a compositor.
+ * Clicking the icon of the focused app minimizes it (minimize to dock);
+ * clicking an icon whose window is minimized or behind another brings it
+ * forward.
+ */
 static void activate_app_item(DockItem *item) {
-  if (item->windows == NULL) {
-    if (item->exec && *item->exec != '\0') {
-      GError *error = NULL;
+  AppWindow *only_window = (item->windows && item->windows->next == NULL)
+                               ? (AppWindow *)item->windows->data
+                               : NULL;
 
-      if (!g_spawn_command_line_async(item->exec, &error)) {
-        LOG_C_WARN("UI", "Failed to launch '%s': %s", item->exec,
-                   (error && error->message) ? error->message : "unknown");
-        g_clear_error(&error);
-      }
-    }
+  LambdockClickAction action =
+      lambdock_click_action_for(g_list_length(item->windows),
+                                only_window && only_window->minimized,
+                                only_window && only_window->activated,
+                                item->exec);
+
+  switch (action) {
+  case LAMBDOCK_CLICK_MINIMIZE:
+    if (only_window)
+      minimize_toplevel_window(only_window->handle);
+    return;
+  case LAMBDOCK_CLICK_ACTIVATE:
+    if (only_window)
+      activate_toplevel_window(only_window->handle);
+    return;
+  case LAMBDOCK_CLICK_MENU:
+    /* Several windows: let the user pick one from the menu. */
+    dock_item_popup_menu(item);
+    return;
+  case LAMBDOCK_CLICK_LAUNCH:
+    launch_command(item->exec);
+    return;
+  case LAMBDOCK_CLICK_NOTHING:
     return;
   }
-
-  if (g_list_length(item->windows) == 1) {
-    AppWindow *win = (AppWindow *)item->windows->data;
-    if (win && win->handle)
-      activate_toplevel_window(win->handle);
-    return;
-  }
-
-  /* Several windows: let the user pick one from the menu. */
-  dock_item_popup_menu(item);
 }
 
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
@@ -807,10 +835,31 @@ static void apply_text_reading(DockItem *item, SCM value) {
 
 /** Polls the item once and applies whatever the poller returned. */
 static void refresh_dynamic_item(DockItem *item) {
+  /* An item whose Scheme side gave it no procedure has nothing to poll. Calling
+   * it anyway would apply #f -- "Wrong type to apply" raised on the GTK thread,
+   * where Guile has no handler, which aborts the process. */
+  if (!dynamic_item_has_poller(item))
+    return;
+
   SCM value = poll_dynamic_value(item);
 
   if (!apply_meter_reading(item, value))
     apply_text_reading(item, value);
+}
+
+/** TRUE when this item's dock is not on screen (hidden, unmapped or going away). */
+static gboolean dock_is_off_screen(const DockItem *item) {
+  if (!item || !item->state)
+    return FALSE;
+
+  const LambdockState *state = item->state;
+  if (state->is_hidden || state->is_destroying)
+    return TRUE;
+
+  if (!state->window || !gtk_widget_get_mapped(state->window))
+    return TRUE;
+
+  return FALSE;
 }
 
 static gboolean on_dynamic_item_poll(gpointer user_data) {
@@ -824,8 +873,32 @@ static gboolean on_dynamic_item_poll(gpointer user_data) {
     return G_SOURCE_REMOVE;
   }
 
+  /* A hidden dock with a clock, a CPU gauge and a trash count would wake the
+   * process several times a second to update widgets nobody can see. Skip the
+   * work; dock_items_refresh_polls() catches every item up the moment the dock
+   * comes back, so the values are current when they are visible again. */
+  if (dock_is_off_screen(item))
+    return G_SOURCE_CONTINUE;
+
   refresh_dynamic_item(item);
   return G_SOURCE_CONTINUE;
+}
+
+void dock_items_refresh_polls(LambdockState *state) {
+  if (!state)
+    return;
+
+  for (GList *node = state->dock_items; node != NULL; node = node->next) {
+    DockItem *item = node->data;
+    if (!item)
+      continue;
+
+    if (dynamic_item_has_poller(item))
+      refresh_dynamic_item(item);
+
+    if (item->trash_timer_id != 0)
+      dock_item_refresh_trash(item);
+  }
 }
 
 /* ============================================================================
@@ -1229,8 +1302,10 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
 
   gtk_widget_add_css_class(item->button, "dynamic-meter");
 
-  /* Paint the first reading now instead of after the first interval. */
-  on_dynamic_item_poll(item);
+  /* Paint the first reading now instead of after the first interval. This is the
+   * explicit read, not the timer callback, so it is not skipped when the dock is
+   * still unmapped (startup, tests). */
+  refresh_dynamic_item(item);
 }
 
 /** Stops the item's polling timers. */
@@ -1442,11 +1517,60 @@ void dock_item_remove_window(DockItem *item,
   update_dock_item_status(item);
 }
 
+gboolean dock_item_has_window(
+    const DockItem *item,
+    const struct zwlr_foreign_toplevel_handle_v1 *handle) {
+  if (!item || !handle)
+    return FALSE;
+
+  for (const GList *node = item->windows; node != NULL; node = node->next) {
+    if (app_window_matches(node->data, handle))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
 /** Toggles the `running-app` class and the shelf's running indicator together. */
+/** TRUE when the item has windows and every one of them is minimized. */
+static gboolean all_windows_minimized(const DockItem *item) {
+  if (!item->windows)
+    return FALSE;
+
+  for (const GList *node = item->windows; node != NULL; node = node->next) {
+    const AppWindow *window = node->data;
+    if (!window || !window->minimized)
+      return FALSE;
+  }
+
+  return TRUE;
+}
+
+/** TRUE when one of the item's windows holds the keyboard focus. */
+static gboolean any_window_focused(const DockItem *item) {
+  for (const GList *node = item->windows; node != NULL; node = node->next) {
+    const AppWindow *window = node->data;
+    if (window && window->activated)
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
 static void apply_running_state(DockItem *item) {
   gboolean running = (item->windows != NULL);
 
   lambdock_set_css_class(item->button, "running-app", running);
+
+  /* Two states every theme can style independently:
+   *  - `window-focused`: the app's window is the one being looked at, which is
+   *    the depressed task button in a taskbar-style theme;
+   *  - `window-minimized`: all of its windows are tucked away (overlays.css
+   *    dims the icon for every theme). */
+  lambdock_set_css_class(item->button, "window-focused",
+                         any_window_focused(item));
+  lambdock_set_css_class(item->button, "window-minimized",
+                         all_windows_minimized(item));
 
   /* The glass shelf draws its own running indicator near the outer edge. */
   if (item->reflection)
@@ -1483,6 +1607,15 @@ void update_dock_item_status(DockItem *item) {
    * announces, so refresh the label before anything else can return early. */
   dock_item_update_accessible(item);
   apply_window_title_label(item);
+}
+
+void dock_item_refresh_window_state(DockItem *item) {
+  if (!item || !item->button)
+    return;
+
+  /* Only the CSS classes: titles and accessible text are handled by the tracker's
+   * title visitor, and re-deriving them here would defeat the memoisation. */
+  apply_running_state(item);
 }
 
 /**
@@ -1798,6 +1931,11 @@ static gboolean on_trash_refresh(gpointer user_data) {
   if (!item)
     return G_SOURCE_REMOVE;
 
+  /* Same rule as on_dynamic_item_poll(): do not scan the trash directories for a
+   * dock nobody can see. */
+  if (dock_is_off_screen(item))
+    return G_SOURCE_CONTINUE;
+
   dock_item_refresh_trash(item);
   return G_SOURCE_CONTINUE;
 }
@@ -1887,11 +2025,17 @@ static void apply_edge_change(LambdockState *state, GtkLayerShellEdge edge) {
     state->tick_cb_id = 0;
   }
 
-  gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
-  gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
+  /* The edge lives in layer-shell anchors; without a layer surface (X11, GNOME)
+   * there is nothing to re-anchor, and every call would log a critical. */
+  if (gtk_layer_is_layer_window(GTK_WINDOW(state->window))) {
+    gtk_layer_set_margin(GTK_WINDOW(state->window), state->edge, 0);
+    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, FALSE);
 
-  state->edge = edge;
-  gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, TRUE);
+    state->edge = edge;
+    gtk_layer_set_anchor(GTK_WINDOW(state->window), state->edge, TRUE);
+  } else {
+    state->edge = edge;
+  }
 
   state->orientation = (edge == GTK_LAYER_SHELL_EDGE_LEFT ||
                         edge == GTK_LAYER_SHELL_EDGE_RIGHT)

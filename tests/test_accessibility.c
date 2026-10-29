@@ -105,11 +105,28 @@ static void test_reduce_motion(void) {
   g_assert_cmpint(lambdock_animations_enabled(&state), ==, system_enabled);
 }
 
+/* hide_dock()/reveal_dock() move a layer-shell margin. Turning the fixture into
+ * a real layer surface (where the compositor has the protocol) lets the slide
+ * tests exercise the shipping path instead of the no-layer fallback. */
+static gboolean fixture_enable_layer_shell(GtkWidget *window) {
+  if (!lambdock_layer_shell_available())
+    return FALSE;
+
+  gtk_layer_init_for_window(GTK_WINDOW(window));
+  return gtk_layer_is_layer_window(GTK_WINDOW(window));
+}
+
 /* The dock still hides and reveals with motion reduced; it just does it in one
  * step instead of starting a frame-clock animation. */
 static void test_reduced_motion_skips_slides(void) {
   DockFixture *fixture = fixture_new(GTK_ORIENTATION_HORIZONTAL);
   LambdockState *state = &fixture->state;
+
+  if (!fixture_enable_layer_shell(fixture->window)) {
+    g_test_skip("no layer shell on this display: the slide needs a surface");
+    fixture_free(fixture);
+    return;
+  }
 
   state->auto_hide = TRUE;
   state->show_when_clear = FALSE; /* Otherwise hide_dock() keeps it visible. */
@@ -129,6 +146,27 @@ static void test_reduced_motion_skips_slides(void) {
   /* The re-entrant preference update is safe to run on a settled dock. */
   dock_apply_motion_preference(state);
   g_assert_cmpuint(state->tick_cb_id, ==, 0);
+
+  fixture_free(fixture);
+}
+
+/* Without layer shell (X11, GNOME) there is no margin to slide, so the dock must
+ * not claim to be hidden while it is still on screen -- that would freeze the
+ * fisheye and the hover animations on a dock the user can see. */
+static void test_hide_requires_layer_surface(void) {
+  DockFixture *fixture = fixture_new(GTK_ORIENTATION_HORIZONTAL);
+  LambdockState *state = &fixture->state;
+
+  /* Deliberately NOT a layer surface. */
+  g_assert_false(gtk_layer_is_layer_window(GTK_WINDOW(fixture->window)));
+
+  state->auto_hide = TRUE;
+  state->show_when_clear = FALSE;
+
+  hide_dock(state);
+  g_assert_false(state->is_hidden);
+  g_assert_cmpuint(state->tick_cb_id, ==, 0);
+  g_assert_cmpint(state->target_margin, ==, 0);
 
   fixture_free(fixture);
 }
@@ -508,6 +546,8 @@ int main(int argc, char **argv) {
 
   g_test_add_func("/accessibility/reduced_motion_slides",
                   test_reduced_motion_skips_slides);
+  g_test_add_func("/accessibility/hide_requires_layer_surface",
+                  test_hide_requires_layer_surface);
   g_test_add_func("/accessibility/labels/app_item", test_app_item_labels);
   g_test_add_func("/accessibility/labels/stack_and_launchpad",
                   test_stack_and_launchpad_labels);

@@ -482,6 +482,53 @@ static SCM scm_reload_dock(void) {
   return SCM_UNSPECIFIED;
 }
 
+/* ---- launchpad primitives -------------------------------------------------
+ * The REPL runs on its own thread, so everything below marshals to the GTK
+ * thread with g_idle_add and hands it a value it owns.
+ */
+
+/** Shows the launchpad of the first active dock (the one a user would see). */
+static gboolean show_launchpad_idle(gpointer user_data) {
+  (void)user_data;
+
+  g_autoptr(GPtrArray) docks = dock_registry_snapshot();
+  if (docks->len > 0)
+    lambdock_launchpad_show(g_ptr_array_index(docks, 0));
+
+  return G_SOURCE_REMOVE;
+}
+
+static gboolean hide_launchpad_idle(gpointer user_data) {
+  (void)user_data;
+
+  lambdock_launchpad_hide();
+  return G_SOURCE_REMOVE;
+}
+
+/** @data is the strdup'd query; owned and freed here. */
+static gboolean launchpad_search_idle(gpointer data) {
+  g_autofree char *query = data;
+
+  lambdock_launchpad_set_query(query);
+  return G_SOURCE_REMOVE;
+}
+
+static SCM scm_show_launchpad(void) {
+  g_idle_add(show_launchpad_idle, NULL);
+  return SCM_UNSPECIFIED;
+}
+
+static SCM scm_hide_launchpad(void) {
+  g_idle_add(hide_launchpad_idle, NULL);
+  return SCM_UNSPECIFIED;
+}
+
+static SCM scm_launchpad_search(SCM query) {
+  char *text = scm_to_utf8_string(query);
+  g_idle_add(launchpad_search_idle, text); /* the idle takes ownership */
+  return SCM_UNSPECIFIED;
+}
+
 /**
  * setup_guile_primitives:
  * Exposes C functions to the Guile Scheme runtime engine.
@@ -497,7 +544,14 @@ static void setup_guile_primitives(void) {
 
   scm_c_define_gsubr("reload-dock!", 0, 0, 0,
                      (scm_t_subr)(intptr_t)scm_reload_dock);
-  scm_c_export("reload-dock!", NULL);
+  scm_c_define_gsubr("show-launchpad!", 0, 0, 0,
+                     (scm_t_subr)(intptr_t)scm_show_launchpad);
+  scm_c_define_gsubr("hide-launchpad!", 0, 0, 0,
+                     (scm_t_subr)(intptr_t)scm_hide_launchpad);
+  scm_c_define_gsubr("launchpad-search!", 1, 0, 0,
+                     (scm_t_subr)(intptr_t)scm_launchpad_search);
+  scm_c_export("reload-dock!", "show-launchpad!", "hide-launchpad!",
+               "launchpad-search!", NULL);
 
   scm_set_current_module(previous);
 }
@@ -575,7 +629,8 @@ static void on_monitor_invalidated(GdkMonitor *monitor, gpointer user_data) {
              "shell output...",
              state->config_path ? state->config_path : "default");
 
-  if (state->window && GTK_IS_WINDOW(state->window)) {
+  if (state->window && GTK_IS_WINDOW(state->window) &&
+      gtk_layer_is_layer_window(GTK_WINDOW(state->window))) {
     // Unbind layer shell surface from the dead output before dispatch cycle
     // fails
     gtk_layer_set_monitor(GTK_WINDOW(state->window), NULL);

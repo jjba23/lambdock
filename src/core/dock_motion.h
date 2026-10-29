@@ -121,4 +121,20 @@ int lambdock_scaled_size(int base_px, double scale);
 gboolean lambdock_points_differ(double ax, double ay, double bx, double by,
                                 double epsilon_px);
 
+/**
+ * lambdock_size_step:
+ * @size_px: a size to lay out, in pixels.
+ * @step_px: layout granularity (1 = every pixel, 2 = every other, ...).
+ *
+ * Returns: @size_px rounded /up/ to the nearest multiple of @step_px, or
+ * @size_px unchanged for a step of 1 or less.
+ *
+ * The fisheye paints through a transform, so the icon follows the pointer
+ * continuously; only the *layout* has to step. Rounding the size request to a
+ * few pixels means the dock re-measures its row a fraction as often while the
+ * pointer moves, and nothing visible changes: the artwork is scaled smoothly
+ * inside the box either way.
+ */
+int lambdock_size_step(int size_px, int step_px);
+
 #endif // LAMBDOCK_CORE_DOCK_MOTION_H

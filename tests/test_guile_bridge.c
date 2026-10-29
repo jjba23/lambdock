@@ -64,7 +64,8 @@ static const char *FAKE_MODULES =
     "(define (get-dock-exclude-apps . a)\n"
     "  (list 'bad-app \"TRACKER-DAEMON\" 42 \"\" 'empty-sym))\n"
     "(define (get-dock-launchpad-icon-size . a)\n"
-    "  (cond ((equal? (arg-or a) \"launch-big\") 120)\n"
+    "  (cond ((not (pair? a)) \"not-configured\")\n"
+    "        ((equal? (arg-or a) \"launch-big\") 120)\n"
     "        ((equal? (arg-or a) \"launch-tiny\") 2)\n"
     "        ((equal? (arg-or a) \"junk\") \"not-a-number\")\n"
     "        (else 64)))\n"
@@ -177,6 +178,8 @@ static void test_launchpad_config_getters(void) {
                   LAUNCHPAD_ICON_SIZE_MIN);
   g_assert_cmpint(get_launchpad_icon_size_config_for("junk"), ==,
                   LAUNCHPAD_ICON_SIZE);
+  /* No path at all: the fake answers with something unusable, which is what the
+   * C-side default is for. */
   g_assert_cmpint(get_launchpad_icon_size_config_for(NULL), ==,
                   LAUNCHPAD_ICON_SIZE);
 

@@ -6,13 +6,38 @@
 
 /* =========================================================================
  * LAMBDOCK STYLESHEET - WINDOWS XP (LUNA BLUE) STYLE
+ * =========================================================================
+ *
+ * What the reference looks like, and why the rules below are these:
+ *
+ *  - The Luna taskbar is a *flat* blue slab: #245edb over most of its height,
+ *    a single lighter line along the very top edge (#4b8cf3) and a darker line
+ *    along the bottom (#133a92). It is not a glossy tube: there is no mirrored
+ *    highlight and no outer drop shadow.
+ *  - Task buttons are square (Luna has no rounded corners), with a 1px *blue*
+ *    border (#1c4aad), one inset top highlight and a soft vertical gradient.
+ *    They never carry a white outline, which is the "aggressive border" look
+ *    this file used to have.
+ *  - The focused window's task button is the depressed one: darker gradient and
+ *    a soft inset shadow. A running-but-unfocused app keeps the normal button
+ *    colour, which is what `running-app` (unfocused) and `window-focused` (the
+ *    focused one) are separated for.
+ *  - Type is Tahoma 8pt, i.e. 11px, semibold, with a 1px dark drop so white text
+ *    stays legible on the gradient.
+ *
+ * Motion: gradients cannot be animated by GTK's CSS, so the hover/press feedback
+ * is carried by the two properties that can be -- border-color and box-shadow --
+ * over 120ms. The geometry never changes between states, so nothing shifts.
  * ========================================================================= */
 
 window {
   background-color: transparent;
 }
 
-/* Luna blue taskbar: rectangular, edge-to-edge, glossy top highlight */
+/* -------------------------------------------------------------------------
+ * THE BAR
+ * ------------------------------------------------------------------------- */
+
 .lambdock-window {
   border-radius: 0;
   padding: 3px 6px;
@@ -20,15 +45,18 @@ window {
 
   background-image: linear-gradient(
     180deg,
-    #3f8cf3 0%,
-    #245edb 8%,
-    #1941a5 45%,
-    #245edb 92%,
-    #3f8cf3 100%
+    #2f74e8 0%,
+    #245edb 6%,
+    #245edb 78%,
+    #1d4cba 94%,
+    #1941a5 100%
   );
 
-  border-top: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  /* The thin bright line at the very top is the one Luna border worth keeping;
+   * the bottom edge is a darker line rather than a second highlight. */
+  border-top: 1px solid #4b8cf3;
+  border-bottom: 1px solid #133a92;
+  box-shadow: none;
 }
 
 .lambdock-window.taskbar {
@@ -38,96 +66,129 @@ window {
 }
 
 /* -------------------------------------------------------------------------
- * ITEMS - raised "task button" look
+ * ITEMS - Quick Launch first, task button second
+ * -------------------------------------------------------------------------
+ * On the real taskbar an icon that is only *available* (Quick Launch, or a
+ * pinned launcher here) has no chrome at all: it is the icon on the blue slab.
+ * Chrome is reserved for the states that mean something -- hover, press, and
+ * "this application has windows". That is also what keeps the bar calm: one
+ * outlined button per running app instead of one per icon.
  * ------------------------------------------------------------------------- */
 
 button.flat {
-  background-image: linear-gradient(
-    180deg,
-    #4993f7 0%,
-    #2c6be0 50%,
-    #2358c9 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 3px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  background-color: transparent;
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
   padding: 3px 6px;
   margin: 2px 2px;
   color: #ffffff;
 
-  transition: background-color 100ms ease;
+  /* Only colour-like properties change between states, so the feedback eases in
+   * instead of snapping (gradients cannot be animated by GTK's CSS). */
+  transition:
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
 }
 
 button.flat:hover {
-  background-image: linear-gradient(
-    180deg,
-    #6aa9fb 0%,
-    #3f7fe8 50%,
-    #2f68d6 100%
-  );
-  color: #ffffff;
+  background-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.35);
 }
 
 button.flat:active {
+  background-color: rgba(10, 34, 92, 0.38);
+  border-color: rgba(0, 0, 0, 0.22);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* A running app is the one thing XP actually draws on the bar: the task button,
+ * raised, with its blue border and single top highlight. */
+button.running-app {
   background-image: linear-gradient(
     180deg,
-    #16419f 0%,
-    #1c4fb5 100%
+    #3d7ee8 0%,
+    #2a63d6 52%,
+    #2358c9 100%
   );
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.45);
+  border-color: #1c4aad;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
+
+button.running-app:hover {
+  background-image: linear-gradient(
+    180deg,
+    #4a8af0 0%,
+    #316cdd 52%,
+    #2960d0 100%
+  );
+  border-color: #1f52bd;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+/* The focused app's task button is the depressed one, and stays depressed while
+ * the pointer is over it (the :hover selector carries the same weight, so this
+ * block has to come last). */
+button.running-app:active,
+button.window-focused,
+button.window-focused:hover {
+  background-image: linear-gradient(
+    180deg,
+    #1c4cb3 0%,
+    #2459c9 100%
+  );
+  border-color: #16388c;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.32);
+}
+
+/* -------------------------------------------------------------------------
+ * TEXT
+ * ------------------------------------------------------------------------- */
 
 .dynamic-item-label {
   color: #ffffff;
   font-weight: 600;
-  font-size: 12px;
-  padding: 0 2px;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  padding: 0 3px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 .window-title-label {
   color: #ffffff;
   font-weight: 600;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
-}
-
-/* Running apps look like a pressed, darker task button */
-button.running-app {
-  background-image: linear-gradient(
-    180deg,
-    #16419f 0%,
-    #1f53bd 50%,
-    #2a63d0 100%
-  );
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
+  font-size: 11px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 
 /* -------------------------------------------------------------------------
- * SEPARATOR
+ * SEPARATOR - the two-tone tray divider
  * ------------------------------------------------------------------------- */
 
 separator {
   margin: 4px 5px;
-  background-color: rgba(255, 255, 255, 0.35);
   min-width: 1px;
+  background-color: #7ba7ef;
+  box-shadow: 1px 0 0 #16388c;
 }
 
 /* -------------------------------------------------------------------------
- * POPOVERS
+ * POPOVERS - a Luna menu: white, thin grey border, short soft shadow
  * ------------------------------------------------------------------------- */
 
 popover > contents {
-  background-color: #ece9d8;
+  background-color: #ffffff;
   color: #000000;
   border-radius: 0;
-  border: 1px solid #0a246a;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
-  padding: 4px;
+  border: 1px solid #8d8d8d;
+  box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.25);
+  padding: 2px;
 }
 
 label.title {
   font-weight: 700;
-  font-size: 12px;
+  font-size: 11px;
   color: #0a246a;
   padding: 4px 8px;
 }
@@ -141,14 +202,16 @@ popover button.flat {
   box-shadow: none;
   padding: 5px 10px;
   margin: 1px 0;
+  transition: none;
 }
 
 popover button.flat:hover {
   background-color: #316ac5;
   color: #ffffff;
-  border: 1px solid #0a246a;
+  border-color: #316ac5;
 }
 
+/* The classic XP dialog face. */
 window.about-dialog {
   background-color: #ece9d8;
   color: #000000;

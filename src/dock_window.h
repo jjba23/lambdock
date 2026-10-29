@@ -204,4 +204,15 @@ void destroy_dock_instance(LambdockState *state);
  */
 gboolean is_monitor_valid(GdkMonitor *mon);
 
+/**
+ * lambdock_layer_shell_available:
+ * Returns: TRUE when the current display is Wayland /and/ the compositor
+ * implements the wlr-layer-shell protocol.
+ *
+ * Always use this instead of gtk_layer_is_supported(): the library asserts that
+ * it is talking to a Wayland display, so asking it on X11 logs a critical (and a
+ * run with G_DEBUG=fatal-warnings aborts there).
+ */
+gboolean lambdock_layer_shell_available(void);
+
 #endif // DOCK_WINDOW_H

@@ -433,7 +433,9 @@ class Demo:
                 break
             time.sleep(0.03)
         else:
-            raise TimeoutError(f"REPL command timed out: {expression}")
+            # One slow reload is not worth throwing away a five-minute
+            # recording: log it and let the next expression resync.
+            self.log(f"REPL command timed out (continuing): {expression}")
         if hold:
             time.sleep(hold)
 
@@ -572,6 +574,103 @@ class Demo:
             )
             time.sleep(0.7)
 
+    def phase_stack(self) -> None:
+        self.caption("Folder stacks: a whole folder behind one icon")
+        # The stack sits where the btop preset used to be: replacing one
+        # icon-only item with another keeps every other coordinate valid.
+        self.glide(self.X(548), self.Y(704), 600)
+        self.click()
+        time.sleep(1.1)
+
+        # Browse the grid, then dismiss it by clicking well outside: the popover
+        # is tall, so a click in the middle of the screen would land inside it.
+        for x, y in ((580, 545), (650, 545), (580, 615)):
+            self.glide(self.X(x), self.Y(y), 340)
+            time.sleep(0.18)
+        self.move(40, 40)
+        self.click()
+        time.sleep(0.6)
+        self.caption_end()
+
+    def phase_launchpad(self) -> None:
+        self.caption("The launchpad: search it by typing -- or from the REPL")
+        # The launchpad is a C widget, so the dock exposes it to Scheme
+        # (show-launchpad! / launchpad-search! / hide-launchpad!). Driving it
+        # this way also shows the point of the socket: the dock is scriptable.
+        self.dock_eval("(show-launchpad!)")
+        time.sleep(1.4)
+        self.dock_eval('(launchpad-search! "term")')
+        time.sleep(1.2)
+        self.dock_eval('(launchpad-search! "calc")')
+        time.sleep(1.2)
+        self.dock_eval("(launchpad-search! \"\")")
+        time.sleep(0.8)
+        self.dock_eval("(hide-launchpad!)")
+        time.sleep(0.9)
+        self.caption_end()
+
+    def phase_preferences(self) -> None:
+        self.caption("Preferences: every setting, applied to the running dock")
+        before = {int(window["id"]) for window in self.windows()}
+
+        # Clear the stage: a floating terminal would sit on top of the dialog.
+        # They come back below, for the taskbar segment.
+        for window in self.windows():
+            if window.get("app_id") == "Alacritty":
+                self.close_window(int(window["id"]))
+        time.sleep(0.6)
+
+        # Dismiss anything a previous scene left latched open: a popover that
+        # grabs input would swallow the right click below.
+        self.move(40, 40)
+        self.click()
+        time.sleep(0.4)
+
+        # Same anchor as the About scene (the menu opens above the click point),
+        # with Preferences as its first row.
+        self.move(self.X(465), self.Y(704))
+        self.right_click()
+        time.sleep(0.8)
+        self.move(self.X(465), self.Y(620))
+        self.click()
+        time.sleep(1.8)
+
+        dialog = None
+        for _ in range(30):
+            dialog = next(
+                (window for window in self.windows() if int(window["id"]) not in before),
+                None,
+            )
+            if dialog:
+                break
+            time.sleep(0.1)
+
+        if dialog is not None:
+            window_id = int(dialog["id"])
+            for action in (
+                ("focus-window", "--id", str(window_id)),
+                ("set-window-width", "--id", str(window_id), "860"),
+                ("set-window-height", "--id", str(window_id), "760"),
+                ("center-window", "--id", str(window_id)),
+            ):
+                try:
+                    self.niri("action", *action)
+                except subprocess.CalledProcessError:
+                    pass
+            time.sleep(2.4)
+            self.close_window(window_id)
+        time.sleep(0.5)
+        self.caption_end()
+
+        # The taskbar segment wants titled windows again.
+        for title in ("Alpha workspace", "Beta notes", "Gamma logs"):
+            self.spawn_sh(
+                "exec alacritty --title "
+                + shlex.quote(title)
+                + " -o window.decorations=none"
+            )
+            time.sleep(0.7)
+
     def phase_repl(self) -> None:
         self.caption("Live socket REPL: mutate the running dock, no restart")
         kitty_id = self.launch_kitty()
@@ -684,6 +783,9 @@ class Demo:
         self.phase_launch()
         self.phase_popover()
         self.phase_menu_about()
+        self.phase_stack()
+        self.phase_launchpad()
+        self.phase_preferences()
         self.phase_repl()
         self.phase_cleanup()
 

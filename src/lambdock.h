@@ -50,10 +50,17 @@
 /* Fisheye Hover Magnification */
 #define FISHEYE_MAX_SCALE 1.45
 #define FISHEYE_RADIUS_PX 140.0
+/* Layout granularity of the magnified sizes, in px. The icon itself is painted
+ * through a continuous transform, so this only decides how often the row has to
+ * be re-measured while the pointer moves. */
+#define FISHEYE_LAYOUT_STEP_PX 2
 
 /* --- Glass shelf / reflection parameters (see LambdockShelfParams) --- */
-/* Number of alpha-faded bands used to draw the reflection falloff. */
-#define SHELF_REFLECTION_BANDS 40
+/* Number of alpha-faded bands used to draw the reflection falloff. Each band is
+ * a clipped copy of the same icon, drawn inside one blur node; 16 steps keep the
+ * ramp smooth (the blur softens the steps anyway) while costing a fraction of
+ * the draws that 40 did on every repaint of the row. */
+#define SHELF_REFLECTION_BANDS 16
 /* Hard limits used to keep user supplied parameters sane. */
 #define SHELF_TILT_MAX_DEG 45.0
 #define SHELF_PERSPECTIVE_MIN 50.0
@@ -130,10 +137,18 @@ typedef enum {
  * @handle: Low-level Wayland protocol handle managing this specific window
  * instance.
  * @title: Dynamically updated window title string (e.g., "Mozilla Firefox").
+ * @minimized: whether the compositor last reported this window as minimized.
+ * @activated: whether it last reported this window as focused.
+ *
+ * The two state flags are a mirror of the compositor's `state` event (see
+ * toplevel_tracker.c). A dock click reads them to decide between minimizing and
+ * restoring, which is what makes "minimize to dock" work.
  */
 typedef struct AppWindow {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
   char *title;
+  gboolean minimized;
+  gboolean activated;
 } AppWindow;
 
 /**

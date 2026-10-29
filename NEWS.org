@@ -9,6 +9,66 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- The launchpad search field takes the keyboard the moment the launchpad opens:
+  pressing a key filters the grid without clicking the field first.  Two bugs
+  behind that: the field was never remembered on the launchpad model, and the
+  grid's column fitting was connected to GTK3's ~size-allocate~ signal, which no
+  longer exists in GTK4 (the grid now fits itself when the surface maps).
+- Launchpad tiles are larger by default (~dock-launchpad-icon-size~ is 80 instead
+  of 64), which is the one setting people changed first.
+- Minimize to dock: clicking the icon of an application whose single window
+  already has the focus now minimizes it, and clicking it again restores it.  The
+  dock tracks the ~minimized~/~activated~ state the compositor reports and asks
+  for ~set_minimized~ through the ~wlr-foreign-toplevel~ protocol, so it depends
+  on the compositor having a minimize concept at all (scrollable tiling
+  compositors such as niri do not, and simply ignore the request).  Applications
+  with several windows still open the window popover.  The icon dims while all of
+  its windows are minimized.
+- A quality pass over the running dock, across compositors.  On a compositor
+  without ~wlr-layer-shell~ (GNOME, or an X11 session) ~lambdock~ now says so once
+  and runs as an ordinary GTK window instead of logging a critical per layer-shell
+  call; the same run also stopped claiming to be "hidden" while it is still on
+  screen, which used to freeze the hover magnification after the first auto-hide.
+  On compositors without ~wlr-foreign-toplevel~ the missing running-app support is
+  reported once, and a missing ~wl_seat~ no longer makes activation fail silently.
+  A window that closed while its popover was open could leave the menu holding a
+  freed Wayland handle; it no longer can.
+- Performance: the fisheye now steps its *layout* by 2 px while keeping the painted
+  magnification continuous, which halves the dock row's re-measures during a hover
+  sweep (23 -> 12 distinct sizes for a full sweep, measured in the test suite).
+  Dynamic-item and trash polls stop firing while the dock is hidden and refresh
+  once when it comes back, the animation-enabled setting is cached instead of read
+  per frame, and identical window titles no longer re-push labels and accessible
+  text.  Reflections draw at most 16 alpha bands instead of 40.
+- Polish: the launchpad fades in when it opens (and simply appears when motion is
+  reduced), and every shipped theme was checked against GTK's CSS parser at
+  runtime -- all of them parse clean.
+- The Windows XP theme was rebuilt against Luna reference material: a flat blue
+  slab with a single bright top line instead of a glossy mirrored gradient, square
+  task buttons with one 1px blue border instead of a white outline on every icon,
+  pinned launchers with no chrome at all (like Quick Launch), Tahoma-sized 11px
+  labels, and the focused application drawn as the depressed task button. Hover
+  and press now ease their border and shadow over 120ms. Two new state classes
+  back this -- ~window-focused~ and ~window-minimized~ -- and every theme can use
+  them.
+- The showcase GIF is now generated from this tree and lives in the repository
+  (=resources/img/lambdock-demo.gif=), as the hero of the README.  The storyboard
+  gained three scenes -- a folder stack browsed as a thumbnail grid, the launchpad
+  filtered through its search field, and the Preferences window -- alongside the
+  existing auto-hide, magnification, launch, window-popover, menu/About, REPL,
+  theme-montage and taskbar segments.  Per-feature stills from the same recording
+  are in =resources/img/screens/=, and the AppStream metadata points at them.
+  The GIF is encoded at 1000 px and 20 fps, which is smaller and smoother than
+  the old 1200 px / 15 fps file.
+- The launchpad is scriptable: the REPL gained ~(show-launchpad!)~,
+  ~(launchpad-search! "...")~ and ~(hide-launchpad!)~, which is how the demo
+  films its search without a virtual keyboard.
+- Fixed a crash that a REPL-driven reload could trigger while reflections were
+  being enabled: the Guile bridge validated only some of the item accessors it
+  then applied, and the dynamic-item refresh could apply ~#f~ as a poll
+  procedure.  Both are now checked, so a module that lost an export degrades to
+  "no items" instead of aborting the process.
+
 ---------
 
 *[Released]*

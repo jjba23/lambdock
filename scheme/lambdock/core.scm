@@ -232,7 +232,7 @@ keeps its default (the plain flat dock)."
                                          'shelf-flare 0)
                                     #:launchpad-icon-size
                                     (cfg 'dock-launchpad-icon-size
-                                         'launchpad-icon-size 64)
+                                         'launchpad-icon-size 80)
                                     #:launchpad-columns
                                     (cfg 'dock-launchpad-columns
                                          'launchpad-columns 0)

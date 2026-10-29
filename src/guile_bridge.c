@@ -576,8 +576,24 @@ static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
   accessors->unit = scm_c_public_ref("lambdock core", "dock-item-unit");
   accessors->max = scm_c_public_ref("lambdock core", "dock-item-max");
 
-  return scm_is_true(accessors->name) && scm_is_true(accessors->icon) &&
-         scm_is_true(accessors->path) && scm_is_true(accessors->view);
+  /* Check *every* accessor, not a sample: the item builders call all of them,
+   * and applying a #f that scm_c_public_ref() could not resolve raises "wrong
+   * type to apply" on the GTK thread -- where Guile has no handler and aborts
+   * the process. A module that failed to export one accessor has to degrade to
+   * "no items", never to a crash. */
+  const SCM *procedures[] = {
+      &accessors->name,      &accessors->icon,     &accessors->exec,
+      &accessors->poll,      &accessors->hover_animate, &accessors->path,
+      &accessors->view,      &accessors->meter,    &accessors->unit,
+      &accessors->max,       &accessors->poll_interval,
+  };
+
+  for (gsize i = 0; i < G_N_ELEMENTS(procedures); i++) {
+    if (!scm_is_true(scm_procedure_p(*procedures[i])))
+      return FALSE;
+  }
+
+  return TRUE;
 }
 
 /** Reads every configured item and builds one dock item per entry. */

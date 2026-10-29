@@ -54,6 +54,11 @@ typedef struct MasterToplevel {
   struct zwlr_foreign_toplevel_handle_v1 *handle;
   char *title;
   char *app_id;
+  /* Last state the compositor reported. Mirrored onto every dock's AppWindow so
+   * a click can decide between minimizing and restoring; see
+   * core/dock_click.c. */
+  gboolean minimized;
+  gboolean activated;
 } MasterToplevel;
 
 /**
@@ -74,7 +79,12 @@ struct ToplevelTracker {
   /* The registry listener is installed once and stays installed; see
    * tracker_teardown() for why re-adding it would be wrong. */
   gboolean registry_listener_installed;
-  GList *toplevels; /* MasterToplevel*, owned here */
+  /* How many globals the registry has announced. Non-zero means the registry
+   * was dispatched at least once, which is what lets "the manager is missing"
+   * be reported as a fact instead of a guess. */
+  guint globals_seen;
+  gboolean warned_no_seat; /* one diagnostic, not one per click */
+  GList *toplevels;        /* MasterToplevel*, owned here */
 };
 
 /* The one tracker. A single named object, rather than a handful of statics,
@@ -157,7 +167,9 @@ static void dock_attach_window(LambdockState *state, MasterToplevel *top) {
   if (!item)
     item = create_item_for_app_id(state, top->app_id);
 
-  app_window_set_title(dock_item_add_window(item, top->handle), top->title);
+  AppWindow *window = dock_item_add_window(item, top->handle);
+  app_window_set_state(window, top->minimized, top->activated);
+  app_window_set_title(window, top->title);
 
   if (!g_list_find(state->window_trackers, top->handle))
     state->window_trackers = g_list_append(state->window_trackers, top->handle);
@@ -210,11 +222,36 @@ static void dock_apply_window_title(LambdockState *state, gpointer data) {
   if (!window)
     return;
 
+  /* The compositor re-announces the title on every change, including changes
+   * that do not touch the text we show. Nothing to do means nothing to rebuild:
+   * no label, no accessible name, no title tooltip. */
+  if (g_strcmp0(window->title, top->title) == 0)
+    return;
+
   app_window_set_title(window, top->title);
 
   /* Refresh the running state, the accessible name and the window-title
    * label, which all read the title back. */
   update_dock_item_status(item);
+}
+
+/** Mirrors @top's minimized/focused state onto the window one dock tracks. */
+static void dock_apply_window_state(LambdockState *state, gpointer data) {
+  const MasterToplevel *top = data;
+
+  DockItem *item = find_dock_item_by_app_id(state, top->app_id);
+  if (!item)
+    return;
+
+  AppWindow *window = find_window_for_handle(item, top->handle);
+  if (!window)
+    return;
+
+  app_window_set_state(window, top->minimized, top->activated);
+
+  /* Minimize to dock is only half done if the icon does not show it: dim the
+   * item when all of its windows are tucked away (two CSS toggles, no text). */
+  dock_item_refresh_window_state(item);
 }
 
 /** The payload of an app-id event: the window, and the id it just reported. */
@@ -409,6 +446,15 @@ toplevel_handle_closed(void *data,
  * listener table below reads as a complete description of the protocol. */
 
 static void
+toplevel_handle_parent(void *data,
+                       struct zwlr_foreign_toplevel_handle_v1 *handle,
+                       struct zwlr_foreign_toplevel_handle_v1 *parent) {
+  (void)data;
+  (void)handle;
+  (void)parent;
+}
+
+static void
 toplevel_handle_output_enter(void *data,
                              struct zwlr_foreign_toplevel_handle_v1 *handle,
                              struct wl_output *output) {
@@ -426,13 +472,43 @@ toplevel_handle_output_leave(void *data,
   (void)output;
 }
 
+/** Reads the two flags the dock cares about out of the compositor's array. */
+static void master_toplevel_read_state(MasterToplevel *top,
+                                       const struct wl_array *states) {
+  gboolean minimized = FALSE;
+  gboolean activated = FALSE;
+
+  const uint32_t *entry;
+  wl_array_for_each(entry, states) {
+    switch (*entry) {
+    case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED:
+      minimized = TRUE;
+      break;
+    case ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED:
+      activated = TRUE;
+      break;
+    default:
+      /* Maximized and fullscreen do not change what a click should do. */
+      break;
+    }
+  }
+
+  top->minimized = minimized;
+  top->activated = activated;
+}
+
 static void
 toplevel_handle_state(void *data,
                       struct zwlr_foreign_toplevel_handle_v1 *handle,
                       struct wl_array *state) {
-  (void)data;
+  MasterToplevel *top = data;
   (void)handle;
-  (void)state;
+
+  if (!top || !state)
+    return;
+
+  master_toplevel_read_state(top, state);
+  dock_registry_foreach(dock_apply_window_state, top);
 }
 
 static void
@@ -442,6 +518,9 @@ toplevel_handle_done(void *data,
   (void)handle;
 }
 
+/* Bound at version 1, so `.parent` (since 3) is never delivered today. It is
+ * filled in anyway: a future version bump must not hand libwayland a NULL
+ * handler for an opcode a compositor may send (that aborts the process). */
 static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
     {
         .title = toplevel_handle_title,
@@ -451,6 +530,7 @@ static const struct zwlr_foreign_toplevel_handle_v1_listener toplevel_listener =
         .state = toplevel_handle_state,
         .done = toplevel_handle_done,
         .closed = toplevel_handle_closed,
+        .parent = toplevel_handle_parent,
 };
 
 /* ---- manager events ---- */
@@ -548,6 +628,8 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
   if (!tracker || !interface)
     return;
 
+  tracker->globals_seen++;
+
   if (g_strcmp0(interface, zwlr_foreign_toplevel_manager_v1_interface.name) ==
       0) {
     if (!tracker->manager)
@@ -557,6 +639,28 @@ static void registry_handle_global(void *data, struct wl_registry *registry,
 
   if (g_strcmp0(interface, wl_seat_interface.name) == 0 && !tracker->seat)
     tracker_bind_seat(tracker, registry, name);
+}
+
+/**
+ * tracker_warn_if_untrackable:
+ * Says once, and only when it is a fact, that this compositor exposes no
+ * foreign-toplevel manager.
+ *
+ * "A fact" means the registry has announced at least one global: before that
+ * the registry has not been dispatched yet, and a missing manager would only be
+ * a guess. GNOME/Mutter is the compositor people hit this on -- the dock still
+ * runs there, it just cannot show running applications.
+ */
+static void tracker_warn_if_untrackable(const ToplevelTracker *tracker) {
+  static const ToplevelTracker *warned_about = NULL;
+
+  if (tracker->manager || tracker->globals_seen == 0 || warned_about == tracker)
+    return;
+
+  warned_about = tracker;
+  LOG_C_WARN("Tracker",
+             "This compositor does not implement wlr-foreign-toplevel: "
+             "running applications and their window menus will not appear.");
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -614,6 +718,8 @@ void sync_window_trackers(LambdockState *state) {
   if (!state || !state->track_windows)
     return;
 
+  tracker_warn_if_untrackable(&g_tracker);
+
   for (GList *node = g_tracker.toplevels; node != NULL; node = node->next) {
     MasterToplevel *top = node->data;
 
@@ -629,8 +735,33 @@ void sync_window_trackers(LambdockState *state) {
 }
 
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
-  if (handle && g_tracker.seat)
-    zwlr_foreign_toplevel_handle_v1_activate(handle, g_tracker.seat);
+  if (!handle)
+    return;
+
+  /* A minimized window has to be un-minimized as well as activated: the
+   * protocol treats the two requests independently, so asking for focus alone
+   * would leave a tucked-away window tucked away on some compositors. */
+  zwlr_foreign_toplevel_handle_v1_unset_minimized(handle);
+
+  /* activate() needs the seat the request is made for. A compositor that
+   * advertises no wl_seat (or withdrew it) can only be half-asked, so say so
+   * once instead of pretending the click did something. */
+  if (!g_tracker.seat) {
+    if (!g_tracker.warned_no_seat) {
+      g_tracker.warned_no_seat = TRUE;
+      LOG_C_WARN("Tracker",
+                 "No wl_seat on this session: the compositor cannot be asked "
+                 "to focus a window.");
+    }
+    return;
+  }
+
+  zwlr_foreign_toplevel_handle_v1_activate(handle, g_tracker.seat);
+}
+
+void minimize_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {
+  if (handle)
+    zwlr_foreign_toplevel_handle_v1_set_minimized(handle);
 }
 
 void close_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle) {

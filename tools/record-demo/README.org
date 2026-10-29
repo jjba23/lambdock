@@ -8,6 +8,10 @@ session, runs lambdock there, drives a virtual pointer through a scripted
 storyboard, records the nested output with =wf-recorder=, and encodes a
 palette-optimised GIF that stays under 15 MiB.
 
+The default output is 1000 px wide at 20 fps. Both are encode-only knobs: the
+storyboard's pointer coordinates live in the nested *logical* space, so changing
+either one never moves a click.
+
 The result shows every headline feature and every built-in theme:
 
 - auto-hide (once, with reveal + hide),
@@ -38,7 +42,7 @@ Useful variants:
 #+begin_src sh
 ./tools/record-demo/record-demo.sh --build          # rebuild before recording
 ./tools/record-demo/record-demo.sh --out /tmp/d.gif --keep
-./tools/record-demo/record-demo.sh --width 1000 --fps 12
+./tools/record-demo/record-demo.sh --width 900 --fps 24
 ./tools/record-demo/record-demo.sh --no-captions
 ./tools/record-demo/record-demo.sh --keep-cursor    # do not hide the host cursor
 ./tools/record-demo/record-demo.sh --help
@@ -73,8 +77,10 @@ clear message if something is missing.
 ** Isolation
 
 The nested niri runs with a temporary =HOME=, =XDG_CONFIG_HOME=,
-=XDG_DATA_HOME= and =XDG_CACHE_HOME=, under =dbus-run-session=, so the host
-lambdock instance and its single-instance lock are never touched.  A generated
+=XDG_DATA_HOME=, =XDG_CACHE_HOME= *and =XDG_STATE_HOME=*, under
+=dbus-run-session=, so the host lambdock instance, its single-instance lock and
+its =layout-/preferences-settings.scm= files are never touched (forgetting the
+state dir made the demo dock read the developer's own overrides).  A generated
 =settings.scm= points lambdock at a REPL socket inside the temporary directory.
 The whole nested process group is killed (SIGTERM, then SIGKILL) on exit.
 
@@ -156,14 +162,37 @@ The timeline is defined in =controller.py=.  Each phase logs
 5. *Menu + About* -- hover animation is frozen through the REPL, the dock's
    context menu is opened on a separator, and *About lambdock* is opened and
    closed.  Hover animation is re-enabled afterwards.
-6. *Live REPL* -- kitty runs =repl_ui.py=, which types real Guile expressions
+6. *Folder stack* -- the generated =$TMP/shots= folder sits in the dock as a
+   =stack-item=; the phase opens it as a thumbnail grid, browses it and
+   dismisses it by clicking the top of the screen (a click inside the popover
+   would launch a file).
+7. *Launchpad* -- the launchpad is a C widget, so the dock exposes it to Scheme
+   (=show-launchpad!=, =launchpad-search!=, =hide-launchpad!=) and the
+   controller drives it over the REPL: open it, filter it with `"term"` and then
+   `"calc"`, clear the query, close it.  The same entry points are what a user
+   scripts from their own scm file.
+8. *Preferences* -- the floating terminals are closed first (they would cover
+   the dialog), the dock's context menu opens on a separator, and its first row
+   (*Preferences...*) is clicked: the settings window is raised, held, and
+   closed; the titled terminals come back for the taskbar segment.
+9. *Live REPL* -- kitty runs =repl_ui.py=, which types real Guile expressions
    into the socket: read the theme and icon size, then change the icon size
    several times.
-7. *Theme montage* -- all eight dark themes, the wallpaper switches to the
-   light mountains image, then all five light themes.
-8. *Taskbar* -- Windows XP theme in taskbar mode with window titles on/off.
-9. *Outro* -- back to Vanilla Light, pointer sweep across the dock, closing
-   caption.
+10. *Theme montage* -- all eight dark themes, the wallpaper switches to the
+    light mountains image, then all five light themes.
+11. *Taskbar* -- Windows XP theme in taskbar mode with window titles on/off.
+12. *Outro* -- back to Vanilla Light, pointer sweep across the dock, closing
+    caption.
+
+Two rules that keep the recording honest:
+
+- *A lost REPL acknowledgement does not abort the run.*  =Demo.repl()= logs the
+  timeout and carries on, because one slow reload is not worth throwing away a
+  five-minute recording.
+- *Popovers must be dismissed before the next scene.*  A popover grabs input, so
+  a right click on the dock would be swallowed; each scene that opens one clicks
+  the top of the screen to close it (the stack popover is tall, which is why the
+  click is at =40,40= and not in the middle).
 
 The pointer waits =0.6 s= after the outer script touches =go=, so that
 =wf-recorder= is already capturing before the first move.
@@ -184,6 +213,42 @@ Output defaults to =tools/record-demo/out/lambdock-demo.gif= (ignored by git).
 With =--keep= the temporary directory is kept and printed; it contains
 =raw.mkv=, =events.tsv=, =controller.log=, =lambdock.log=, =captions.ass= and
 the generated wallpapers, which is handy when tweaking timings.
+
+* Changing the dock layout (read this before adding an app)
+:PROPERTIES:
+:CUSTOM_ID: changing-the-dock-layout
+:END:
+
+The storyboard addresses dock items by hardcoded coordinates in the
+X() / Y() helpers, which were calibrated for the layout the settings file
+builds: 48 px icons, eleven slots (four apps, separator, Emacs, the stack,
+separator, RAM, CPU, clock). The dock is centred, so **adding or removing a slot
+moves every item**, and the pointer coordinates stop landing where the captions
+say they do.
+
+Three things follow:
+
+- Adding an app to the settings file is a *coordinate* change, not just a
+  settings change. Do it as its own commit, re-record, and check the frames of
+  the click scenes (window popover, stack, Preferences).
+- The dock-menu scenes right-click a *separator* (X(465)); if the separator
+  moves, the menu opens on an app's own menu instead and the following row click
+  does nothing -- the recording still "succeeds", it just shows the wrong thing.
+- An item-index model (=DOCK_SLOTS= + =item_x()=) was prototyped and works
+  mechanically, but the calibration it needs (first item centre, pitch,
+  separator width, dock row) must come from an actual recording: measure the
+  dock row in a frame and derive the constants. It is not in this file yet.
+
+** Recording stability
+
+The theme montage drives ~15 reloads through the socket REPL in a few seconds.
+That intermittently trips a Guile concurrency bug -- the GTK thread calls into
+Scheme while the REPL thread is evaluating -- and the dock aborts with
+~Wrong type to apply: #f~. The demo's two hardenings (validated accessors,
+poller guard) reduce it; the proper fix is to serialise Scheme evaluation
+between the two threads (see [[file:../../HACKING.org::#repl-guile-thread-hazard][the Guile thread hazard]]).
+Until then, a long recording can die near the end: bump the holds in the theme
+montage, or drop the ~'none~ theme step, when that happens.
 
 * Reproducibility notes
 

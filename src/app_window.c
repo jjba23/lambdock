@@ -19,8 +19,23 @@ void app_window_set_title(AppWindow *win, const char *title) {
   if (!win || !title)
     return;
 
+  /* Titles arrive on every compositor title event, often with the same text:
+   * re-allocating and re-pushing it would wake the label, the accessible name
+   * and the title tooltip for nothing. */
+  if (g_strcmp0(win->title, title) == 0)
+    return;
+
   g_free(win->title);
   win->title = g_strdup(title);
+}
+
+void app_window_set_state(AppWindow *win, gboolean minimized,
+                          gboolean activated) {
+  if (!win)
+    return;
+
+  win->minimized = minimized;
+  win->activated = activated;
 }
 
 gboolean app_window_matches(const AppWindow *win,

@@ -41,8 +41,21 @@ gboolean init_toplevel_tracker(GError **error);
  * @handle: Pointer to target Wayland foreign toplevel handle struct.
  *
  * Requests compositor window activation to bring target window to user focus.
+ * A minimized window is un-minimized first, so this is also how a dock click
+ * restores a window that was tucked away.
  */
 void activate_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * minimize_toplevel_window:
+ * @handle: Pointer to target Wayland foreign toplevel handle struct.
+ *
+ * Asks the compositor to minimize the window, which is what "minimize to dock"
+ * is: the window stays running, the dock item keeps its running indicator, and
+ * clicking that item brings it back through activate_toplevel_window(). Like
+ * every request in this protocol it is advisory: the compositor may ignore it.
+ */
+void minimize_toplevel_window(struct zwlr_foreign_toplevel_handle_v1 *handle);
 
 /**
  * close_toplevel_window:

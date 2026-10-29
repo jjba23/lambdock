@@ -30,8 +30,10 @@ ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 OUT_GIF="${OUT_GIF:-$SCRIPT_DIR/out/lambdock-demo.gif}"
 KEEP_TMP="${KEEP_TMP:-0}"
 CAPTIONS=1
-FPS="${FPS:-15}"
-WIDTH="${WIDTH:-1200}"
+# --width and --fps only affect the encode: the pointer coordinates are in the
+# nested *logical* space, so a smaller or faster GIF needs no recalibration.
+FPS="${FPS:-20}"
+WIDTH="${WIDTH:-1000}"
 LOSSY="${LOSSY:-30}"
 MAX_BYTES=$((15 * 1024 * 1024))
 BUILD=0
@@ -121,7 +123,7 @@ fi
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/lambdock-demo.XXXXXX")"
 mkdir -p "$TMP/assets" "$TMP/home/.config/lambdock" "$TMP/home/.local/share" \
-         "$TMP/cache" "$TMP/vptr"
+    "$TMP/cache" "$TMP/vptr" "$TMP/state" "$TMP/shots"
 REC_PID=""
 NESTED_GROUP=""
 NIRI_CONFIG_PATH="${NIRI_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl}"
@@ -256,6 +258,16 @@ note "nested output scale: $NESTED_SCALE (physical ${PHYS_W}x${PHYS_H})"
 note "generating wallpapers..."
 python3 "$SCRIPT_DIR/make_wallpapers.py" "$TMP/assets" "$PHYS_W" "$PHYS_H"
 
+# A folder for the folder-stack scene: the wallpapers plus a couple of recolours,
+# so the stack popover has a grid worth browsing.
+mkdir -p "$TMP/shots"
+cp "$TMP/assets/galaxy.png" "$TMP/shots/01-galaxy.png"
+cp "$TMP/assets/mountains.png" "$TMP/shots/02-sunrise.png"
+if command -v magick >/dev/null 2>&1; then
+  magick "$TMP/assets/galaxy.png" -modulate 100,120,82 "$TMP/shots/03-nebula.png"
+  magick "$TMP/assets/mountains.png" -modulate 94,108,118 "$TMP/shots/04-dusk.png"
+fi
+
 REPL_SOCKET="$TMP/repl.sock"
 REPL_FIFO="$TMP/repl.fifo"
 REPL_DONE="$TMP/repl.done"
@@ -278,7 +290,9 @@ cat >"$TMP/home/.config/lambdock/settings.scm" <<EOF
   (append
    (preset-launchers-for 'alacritty 'google-chrome 'nautilus 'gnome-calculator)
    (list (separator-item))
-   (preset-launchers-for 'emacs 'btop)
+   (list (preset-launcher 'emacs)
+         (stack-item #:name "Wallpapers" #:icon "folder"
+                     #:path "$TMP/shots" #:view-mode 'grid))
    (list (separator-item))
    (preset-launchers-for 'ram 'cpu 'clock)))
 EOF
@@ -368,6 +382,7 @@ env -u NIRI_SOCKET \
     XDG_CONFIG_HOME="$TMP/home/.config" \
     XDG_DATA_HOME="$TMP/home/.local/share" \
     XDG_CACHE_HOME="$TMP/cache" \
+    XDG_STATE_HOME="$TMP/state" \
     LANG=en_US.UTF-8 \
     LC_ALL=en_US.UTF-8 \
     OUTER_DISPLAY="$WAYLAND_DISPLAY" \

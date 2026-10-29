@@ -42,6 +42,10 @@
 #include <glib/gi18n.h>
 #include <math.h>
 
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/wayland/gdkwayland.h>
+#endif
+
 /* =========================================================================
  * TYPES
  * =========================================================================
@@ -503,17 +507,24 @@ static void apply_fisheye_to_item(DockItem *item, gpointer data) {
                              frame->max_scale);
   int target_px = lambdock_scaled_size(frame->base_size_px, scale);
 
-  if (lambdock_icon_zoom_target_size(zoom) != target_px) {
+  /* The paint follows the pointer continuously (below); only the layout steps.
+   * Coarsening the magnified sizes to a couple of pixels cuts the row's
+   * re-measures by about half, and the resting size stays exact. */
+  int layout_px = (target_px > frame->base_size_px)
+                      ? lambdock_size_step(target_px, FISHEYE_LAYOUT_STEP_PX)
+                      : target_px;
+
+  if (lambdock_icon_zoom_target_size(zoom) != layout_px) {
     /* Expand along the dock axis; preserve the base size across it. */
     if (horizontal)
-      gtk_widget_set_size_request(item->button, target_px, frame->base_size_px);
+      gtk_widget_set_size_request(item->button, layout_px, frame->base_size_px);
     else
-      gtk_widget_set_size_request(item->button, frame->base_size_px, target_px);
+      gtk_widget_set_size_request(item->button, frame->base_size_px, layout_px);
 
     /* Mirror the magnified icon in its reflection: the copy grows along the
      * dock axis but keeps the band thickness, so the row of icons does not
      * shift while hovering. */
-    apply_reflection_extent(item, state, target_px, frame->base_size_px);
+    apply_reflection_extent(item, state, layout_px, frame->base_size_px);
   }
 
   /* The layout steps in whole pixels, the icon does not: the zoom paints the
@@ -608,6 +619,10 @@ void reveal_dock(LambdockState *state) {
   if (state->is_hidden || state->target_margin != 0) {
     start_margin_animation(state, 0);
     state->is_hidden = FALSE;
+
+    /* The pollers stood still while the dock was away; make every clock, gauge
+     * and trash count current before the first frame is drawn. */
+    dock_items_refresh_polls(state);
   }
 }
 
@@ -618,6 +633,12 @@ void reveal_dock(LambdockState *state) {
  */
 void hide_dock(LambdockState *state) {
   /* --- Guards: nothing to hide behind --- */
+
+  /* Auto-hide slides the surface off-screen with a layer-shell margin. Without
+   * layer shell (X11, GNOME) there is no margin to move, so "hiding" would only
+   * freeze the fisheye while the dock stays visible. */
+  if (!state->window || !gtk_layer_is_layer_window(GTK_WINDOW(state->window)))
+    return;
 
   /* Respect the auto-hide setting, and never hide under an open menu. */
   if (!state->auto_hide || state->active_popovers > 0)
@@ -921,12 +942,50 @@ void dock_apply_exclusive_zone(LambdockState *state) {
 }
 
 /**
+ * lambdock_layer_shell_available:
+ * Returns: TRUE when the current display is Wayland /and/ the compositor
+ * implements the wlr-layer-shell protocol.
+ *
+ * gtk_layer_is_supported() asserts that the display is a Wayland one, so it
+ * cannot be used as the guard on X11 (it logs a critical right there, before it
+ * has a chance to answer FALSE). This checks the backend first.
+ */
+gboolean lambdock_layer_shell_available(void) {
+  GdkDisplay *display = gdk_display_get_default();
+  if (!display)
+    return FALSE;
+
+#ifdef GDK_WINDOWING_WAYLAND
+  if (!GDK_IS_WAYLAND_DISPLAY(display))
+    return FALSE;
+
+  return gtk_layer_is_supported();
+#else
+  /* A GTK without the Wayland backend cannot ever have layer shell. */
+  return FALSE;
+#endif
+}
+
+/**
  * setup_layer_shell_window:
  * Converts a standard GTK window to a Wayland Layer Shell surface and anchors
  * it to the docked edge.
+ *
+ * Layer shell is a Wayland protocol that not every compositor implements (and
+ * that X11 does not have at all). Where it is missing the dock is still a
+ * perfectly good normal window, so this warns once and leaves it alone rather
+ * than letting every later gtk_layer_* call log its own critical.
  */
 void setup_layer_shell_window(LambdockState *state) {
   GtkWindow *window = GTK_WINDOW(state->window);
+
+  if (!lambdock_layer_shell_available()) {
+    LOG_C_WARN("Dock",
+               "This compositor has no wlr-layer-shell support: showing the "
+               "dock as an ordinary window (no screen-edge docking, no "
+               "auto-hide).");
+    return;
+  }
 
   gtk_layer_init_for_window(window);
   gtk_layer_set_namespace(window, "lambdock");
@@ -935,10 +994,13 @@ void setup_layer_shell_window(LambdockState *state) {
    * unreachable for keyboard-only users: icons could not be tabbed to, and
    * Escape would never reach an open stack. On-demand keeps the compositor in
    * charge while letting a click (or a compositor shortcut) hand the dock the
-   * keyboard. */
+   * keyboard. Protocol versions below 4 have no on-demand mode and fall back to
+   * "none"; the dock stays usable by pointer there. */
   gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND);
 
-  if (state->monitor != NULL)
+  /* A monitor that has already been unplugged must not be handed to the
+   * compositor; with none set the surface follows the default output. */
+  if (is_monitor_valid(state->monitor))
     gtk_layer_set_monitor(window, state->monitor);
 
   /* The dock renders on the top layer, above normal application windows. */
@@ -960,8 +1022,11 @@ void refresh_dock_mode(LambdockState *state) {
   if (!state || !state->window)
     return;
 
-  DockSurfacePolicy policy = dock_surface_policy_for(state);
-  apply_surface_anchors(GTK_WINDOW(state->window), &policy);
+  /* Anchors only exist on a layer surface (no layer shell on X11 / GNOME). */
+  if (gtk_layer_is_layer_window(GTK_WINDOW(state->window))) {
+    DockSurfacePolicy policy = dock_surface_policy_for(state);
+    apply_surface_anchors(GTK_WINDOW(state->window), &policy);
+  }
 
   apply_dock_mode_classes(state);
   update_dock_dimensions(state);
@@ -986,7 +1051,9 @@ void setup_dock_motion_controller(LambdockState *state) {
  * Schedules initial hide timer on application launch if auto-hide is enabled.
  */
 void schedule_initial_autohide(LambdockState *state) {
-  if (state->auto_hide)
+  /* Same reason as hide_dock(): without a layer surface there is no slide. */
+  if (state->auto_hide && state->window &&
+      gtk_layer_is_layer_window(GTK_WINDOW(state->window)))
     schedule_hide_timer(state, AUTOHIDE_INITIAL_DELAY_MS);
 }
 
@@ -1036,6 +1103,19 @@ gboolean is_monitor_valid(GdkMonitor *mon) {
   return FALSE;
 }
 
+/** The monitor the dock's surface is on, or NULL before it is realized. */
+static GdkMonitor *surface_monitor(const LambdockState *state) {
+  if (!state->window || !GTK_IS_WINDOW(state->window))
+    return NULL;
+
+  GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(state->window));
+  if (!surface)
+    return NULL;
+
+  return gdk_display_get_monitor_at_surface(
+      gtk_widget_get_display(state->window), surface);
+}
+
 /** The dock's monitor geometry, falling back to the first monitor. */
 static DockMonitorSize dock_monitor_size(const LambdockState *state) {
   DockMonitorSize size = {0, 0};
@@ -1046,8 +1126,14 @@ static DockMonitorSize dock_monitor_size(const LambdockState *state) {
   /* A monitor that has been unplugged is a dangling pointer: only trust one the
    * display still lists. */
   if (!is_monitor_valid(monitor)) {
-    fallback = first_monitor();
-    monitor = fallback;
+    /* A dock with no monitor of its own is placed by the compositor, which may
+     * well be a monitor that is not the first one: measure the surface's. */
+    monitor = surface_monitor(state);
+
+    if (!monitor) {
+      fallback = first_monitor();
+      monitor = fallback;
+    }
   }
 
   if (!monitor)
@@ -1471,7 +1557,8 @@ static void destroy_window(LambdockState *state) {
   state->bg_shelf = NULL;
   state->bg_capsule = NULL;
 
-  gtk_layer_set_monitor(GTK_WINDOW(window), NULL);
+  if (gtk_layer_is_layer_window(GTK_WINDOW(window)))
+    gtk_layer_set_monitor(GTK_WINDOW(window), NULL);
   gtk_window_destroy(GTK_WINDOW(window));
 }
 

@@ -97,6 +97,17 @@ button.flat.dragging {
 window.launchpad {
   background-color: rgba(18, 18, 24, 0.94);
   color: #f5f5f7;
+
+  /* The launchpad fades in: lambdock_launchpad_show() adds
+   * `.launchpad-fading-in` before presenting and drops it on the next idle, so
+   * the surface animates from transparent to opaque. With motion reduced (or the
+   * desktop's animations off) the class is never added and it just appears. */
+  opacity: 1;
+  transition: opacity 140ms ease-out;
+}
+
+window.launchpad.launchpad-fading-in {
+  opacity: 0;
 }
 
 /* The surface fills the overlay. In frosted mode the window itself becomes
@@ -246,4 +257,17 @@ button.stack-row:focus-visible {
 .lambdock-preferences spinbutton:focus-visible,
 .lambdock-preferences dropdown:focus-visible {
   box-shadow: inset 0 0 0 2px alpha(currentColor, 0.75);
+}
+
+/* -------------------------------------------------------------------------
+ * MINIMIZE TO DOCK
+ * -------------------------------------------------------------------------
+ * A minimized window is still running, so the icon keeps its running indicator
+ * and only loses contrast, the way macOS dims a hidden app. The class is added
+ * to the button when every window the item tracks is minimized, and removed the
+ * moment one comes back; see dock_item.c:apply_running_state().
+ * ------------------------------------------------------------------------- */
+
+button.dock-item.window-minimized image {
+  opacity: 0.55;
 }

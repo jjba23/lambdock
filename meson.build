@@ -239,6 +239,7 @@ sources = files(
   'src/accessibility.c',
   'src/app_window.c',
   'src/core/config_values.c',
+  'src/core/dock_click.c',
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
@@ -294,6 +295,7 @@ full_app_sources = files(
   'src/accessibility.c',
   'src/app_window.c',
   'src/core/config_values.c',
+  'src/core/dock_click.c',
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
@@ -379,6 +381,12 @@ unit_tests = [
     'id': 'dock_dims',
     'extra_sources': ['src/core/dock_dims.c', 'src/ui/shelf.c',
                       'src/ui/icon_zoom.c', lambdock_resources],
+  },
+  {
+    # Click policy: counts and flags in, one enum out. No GTK, no Wayland.
+    'id': 'dock_click',
+    'extra_sources': ['src/core/dock_click.c'],
+    'deps': [dependency('glib-2.0')],
   },
   {
     # Deliberately no GTK here: dock_motion.c is pure arithmetic, and the test

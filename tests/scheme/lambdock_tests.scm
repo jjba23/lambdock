@@ -876,8 +876,8 @@
 
 ;; --- the launchpad -----------------------------------------------------------
 
-(check-equal "launchpad icon size defaults to 64"
-             64 (get-dock-launchpad-icon-size (tmp-path "no-launchpad.scm")))
+(check-equal "launchpad icon size defaults to 80"
+             80 (get-dock-launchpad-icon-size (tmp-path "no-launchpad.scm")))
 (check-equal "launchpad columns default to automatic"
              0 (get-dock-launchpad-columns (tmp-path "no-launchpad.scm")))
 (check-equal "the launchpad is solid unless asked otherwise"

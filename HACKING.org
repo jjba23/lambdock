@@ -298,6 +298,7 @@ lambdock/
 │   ├── logger.h               # LOG_C_* colored logging macros
 │   ├── core/                  # Layer 1: decisions from values, no widgets
 │   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
+│   │   ├── dock_click.c/.h    # What a left click does: launch/minimize/restore/list
 │   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
 │   │   ├── dock_motion.c/.h   # Easing + slide/fisheye arithmetic, GTK-free
 │   │   ├── item_text.c/.h     # All item wording: labels, tooltips, gauges, plurals, GTK-free
@@ -444,7 +445,8 @@ C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~. The pure o
 link nothing but GLib (plus libm), which is the point: they prove a module needs no
 display to be tested.
 
-- *Pure, no GTK by design* -- =test_dock_motion= (easing/geometry),
+- *Pure, no GTK by design* -- =test_dock_click= (the click policy: launch,
+  minimize, restore or list), =test_dock_motion= (easing/geometry),
   =test_item_text= (all wording and plurals), =test_tracker_rules= (window-tracking
   decisions), =test_dock_registry= (the dock list, snapshot and ~foreach~).
 - *Pure logic, GTK-linked* -- =test_config_values= (clamps, name→enum rules),
@@ -815,6 +817,38 @@ accessors can change freely as long as the public wrappers stay stable.
 The item DSL as users see it (including the presets and dynamic widgets) is
 documented in [[file:README.org::#the-dock-dsl][README: The dock DSL: items and presets]].
 
+** What a click does (minimize to dock)
+:PROPERTIES:
+:CUSTOM_ID: data-flow-click
+:END:
+
+A left click on an application item is one function:
+=core/dock_click.c:lambdock_click_action_for(window_count, window_minimized,
+window_active, launcher_command)= returns one of
+
+| Action                     | When                                                | Applied by                                              |
+|----------------------------+-----------------------------------------------------+---------------------------------------------------------|
+| =LAMBDOCK_CLICK_LAUNCH=    | no window, and a launcher command exists            | ~g_spawn_command_line_async~                            |
+| =LAMBDOCK_CLICK_MINIMIZE=  | one window, focused and not minimized               | ~minimize_toplevel_window~ (set_minimized)              |
+| =LAMBDOCK_CLICK_ACTIVATE=  | one window, minimized or in the background          | ~activate_toplevel_window~ (unset_minimized + activate)  |
+| =LAMBDOCK_CLICK_MENU=      | two or more windows                                 | the window popover                                      |
+| =LAMBDOCK_CLICK_NOTHING=   | no window and no launcher command                   | nothing                                                 |
+
+The two flags come from the compositor: =toplevel_tracker.c= parses the ~state~
+event's array into ~MasterToplevel.minimized~/~.activated~ and mirrors them onto
+every dock's ~AppWindow~ (the records ~DockItem.windows~ points at). That is why
+the rule is testable without a compositor -- =tests/test_dock_click.c= passes
+counts and booleans in.
+
+Two consequences worth knowing:
+
+- *Minimize is a request, not a command.* ~set_minimized~ is advisory, and a
+  compositor with no minimize concept (scrollable tiling ones, niri included)
+  ignores it: the click becomes a no-op instead of doing something wrong.
+- *Multi-window items do not minimize.* With several windows the click still
+  opens the popover, because "which window did you mean" has no good answer; the
+  popover's per-window rows are the place for per-window actions.
+
 ** 3. Window tracking: compositor → items → popover
 :PROPERTIES:
 :CUSTOM_ID: data-flow-windows
@@ -832,7 +866,7 @@ flowchart TD
     APPID --> WT["state->window_trackers append handle"]
     CLOSED --> REMW["dock_item_remove_window + free empty dynamic item"]
     CLOSED --> WTR["window_trackers remove handle; reveal if clear"]
-    ADDW --> UPD["update_dock_item_status -> 'running-app' CSS class"]
+    ADDW --> UPD["update_dock_item_status -> 'running-app',\n'window-focused', 'window-minimized' classes"]
 #+end_src
 
 - ~init_toplevel_tracker()~ binds the manager exactly once (guarded by
@@ -905,6 +939,47 @@ directly. ~reload-dock!~ therefore schedules work onto the main loop with
 Getters (~get-dock-*~), and the setters in =state.scm=, are safe to call from the
 REPL because they only touch the Scheme hash table -- the setters end by calling
 ~trigger-ui-reload!~, which is where the hop back to the main thread happens.
+
+The same hop is what the *launchpad* primitives use, so a dock is scriptable
+beyond its configuration:
+
+| Primitive                        | Does                                    |
+|----------------------------------+-----------------------------------------|
+| ~(show-launchpad!)~              | opens the launchpad of the first dock   |
+| ~(launchpad-search! "calc")~     | types into its search field             |
+| ~(hide-launchpad!)~              | closes it                               |
+
+They are what =tools/record-demo/= drives to film the launchpad without a
+virtual keyboard, and they are useful from a settings file or a REPL session:
+
+#+begin_src scheme
+(begin (show-launchpad!) (launchpad-search! "term"))
+#+end_src
+
+** The one thing that is *not* safe from two threads: Guile itself
+:PROPERTIES:
+:CUSTOM_ID: repl-guile-thread-hazard
+:END:
+
+Marshalling widgets to the main loop is enough for GTK, but the main thread also
+*calls into* Scheme (every ~get-dock-*~ getter, every item accessor). If the REPL
+thread is evaluating at the same moment, the two evaluators share module state.
+A Scheme error raised from the main thread has no handler there, so Guile aborts
+the process -- that is how "In thread: Wrong type to apply: #f" became a crash
+while a REPL-driven reload was rebuilding the dock with reflections on.
+
+Two defences are in place, and both are worth keeping:
+
+- =guile_bridge.c:resolve_item_accessors()= validates *every* accessor it will
+  later call, not a sample. A module that failed to export one of them degrades
+  to "no items" instead of applying ~#f~.
+- =ui/dock_item.c:refresh_dynamic_item()= returns early when the item has no
+  poll procedure, so nothing can apply ~#f~ from a poll path.
+
+The remaining hazard is inherent to embedding a REPL in the same process: do not
+assume a REPL-driven reload and a REPL expression are isolated from each other.
+Serialise them (wait for the reload to settle) when a script depends on the
+result, which is what the recorder's storyboard does.
 
 The GTK *Preferences* window (=src/ui/preferences.c=) is the other caller of the
 same setters. It runs on the main thread, so it can call them directly; each edit
@@ -1030,6 +1105,7 @@ pointer dies:
 |-------+------------------------+--------------------------------------------------------------------------------+
 | 1     | =core/config_values.c= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf params, edges) |
 | 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
+| 1     | =core/dock_click.c=    | What a left click on an app item does: launch, minimize, restore, list -- GTK-free |
 | 1     | =core/dock_motion.c=   | Easing and slide/fisheye arithmetic -- GTK-free, GLib only                       |
 | 1     | =core/item_text.c=     | All item wording: labels, tooltips, gauges, plurals -- GTK-free                  |
 | 1     | =core/tracker_rules.c= | Window-tracking decisions: own app id, stale item, hide/reveal -- GTK-free       |
@@ -1265,6 +1341,25 @@ Scoping rules: ~.foo~ becomes ~.theme-<name> .foo~; a selector starting with
 ~window~ becomes ~window.theme-<name>...~; ~@~-rules/comments pass through. This
 is why a user override still needs to target the dock's own classes.
 
+** State classes a theme can style
+:PROPERTIES:
+:CUSTOM_ID: css-state-classes
+:END:
+
+An item button carries ~dock-item~ and ~flat~ always, plus these as the running
+state changes (all applied by =dock_item.c:apply_running_state()=):
+
+| Class              | Means                                                    | Typical use                        |
+|--------------------+----------------------------------------------------------+------------------------------------|
+| ~running-app~      | the application has at least one window                  | the raised "task button"           |
+| ~window-focused~   | one of its windows holds the keyboard focus              | the depressed/active task button   |
+| ~window-minimized~ | all of its windows are minimized                         | dim the icon (overlays.css does)   |
+
+~window-focused~ and ~window-minimized~ are mirrored from the compositor's
+~state~ event, so they flip within a frame of the user switching windows. A theme
+that only cares about "is it running" can ignore the other two; that is what the
+macOS-shaped themes do.
+
 Only [[https://docs.gtk.org/gtk4/css-overview.html][GTK CSS]] applies here, not
 browser CSS; the properties are listed in
 [[https://docs.gtk.org/gtk4/css-properties.html][the GTK CSS property reference]].
@@ -1326,6 +1421,96 @@ classic ~icon + 24~ capsule, so the flat dock is untouched.
 
 Real backdrop blur needs the compositor (a layer-shell surface cannot sample what
 is behind it); the frosted glass is drawn with gradients instead.
+
+------------------
+
+* Performance notes
+:PROPERTIES:
+:CUSTOM_ID: performance
+:END:
+
+The dock animates whenever the pointer moves, so these rules exist to keep
+per-frame work proportional to *visible* items and nothing else.
+
+** One layout pass per frame, not per event
+Motion events only record a position and arm one one-shot frame-clock tick
+(=on_motion_notify= → =gtk_widget_add_tick_callback=, =dock_window.c=). The row is
+scaled once per frame in =update_dock_items_fisheye()=, and skipped entirely when
+the dock is hidden, sliding, or motion is reduced.
+
+** Paint continuously, lay out coarsely
+The fisheye magnifies by painting a transform (=ui/icon_zoom.c=), so the icon
+follows the pointer exactly; only the *size request* steps. =lambdock_size_step()=
+rounds magnified sizes to =FISHEYE_LAYOUT_STEP_PX= (2 px), which halves the row's
+re-measures during a hover sweep -- =test_dock_motion.c= measures it: 23 distinct
+sizes without quantising, 12 with, while the painted scale still changes at every
+sampled position. The resting size is never rounded.
+
+** Idle costs nothing
+- No tick callback survives a settled animation: both are one-shot and removed on
+  completion or on teardown.
+- The dynamic-item and trash poll timers skip their work while the dock is off
+  screen (=dock_is_off_screen()=), and =dock_items_refresh_polls()= catches every
+  item up on reveal, so the first visible frame shows current values.
+- =gtk-enable-animations= is cached and refreshed by its notify handler instead of
+  being a =g_object_get= per frame.
+
+** An event touches one item, not the row
+A title event is dropped when the text did not change (=app_window_set_title()=
+and the tracker's visitor both compare before doing anything), accessible text is
+memoised on the widget (=lambdock_accessible_update()=), and window state events
+only toggle two CSS classes (=dock_item_refresh_window_state()=).
+
+** Where the pixels go
+Reflections are at most =SHELF_REFLECTION_BANDS= (16) clipped draws inside one blur
+node, down from 40, and they are off by default (=SHELF_DEFAULT_REFLECTION=). Meters
+rebuild their paths per repaint, which is fine at one repaint per poll interval and
+is listed in [[#rough-edges][Known rough edges]].
+
+When you add work to a per-frame path, ask whether it runs per *item* or per
+*frame*, and whether it allocates. The two places to look are
+=update_dock_items_fisheye()= and the paint functions in =ui/shelf.c=.
+
+------------------
+
+* Portability across compositors
+:PROPERTIES:
+:CUSTOM_ID: portability
+:END:
+
+Two Wayland protocols are optional here, and both are treated as optional. The
+backends exercised during development are niri (layer shell and foreign toplevel,
+both present) and X11 through XWayland (=GDK_BACKEND=x11=), which has neither.
+
+| Question                                   | API                                | When the answer is no                                              |
+|--------------------------------------------+------------------------------------+--------------------------------------------------------------------|
+| Wayland with layer shell?                  | ~lambdock_layer_shell_available()~ | the dock is an ordinary window; one log line                       |
+| Will a ~gtk_layer_*~ call do anything?      | ~gtk_layer_is_layer_window()~      | callers skip margins, anchors and the exclusive zone               |
+| Is there a foreign-toplevel manager?       | =toplevel_tracker.c=               | no running-app items; one warning once the registry is dispatched  |
+| Is there a ~wl_seat~?                       | =activate_toplevel_window()=       | activation is skipped with one warning; close/minimize still work  |
+
+Three rules that are easy to get wrong:
+
+- *Never call =gtk_layer_is_supported()= directly.* It asserts that the display is
+  a Wayland one, so on X11 it logs a critical /before/ returning FALSE. Use
+  =lambdock_layer_shell_available()=, which checks the backend first.
+- *Auto-hide is a layer-shell feature.* =hide_dock()= returns early when the window
+  is not a layer surface: pretending to hide would leave the dock visible with its
+  fisheye frozen. =test_accessibility.c= covers both branches.
+- *The foreign-toplevel manager is bound at version 1.* Every event the code uses
+  is v1, and the listener table still fills in the v3-only ~parent~ handler,
+  because libwayland aborts the process when a compositor sends an opcode whose
+  listener is NULL. Raise the version only together with that handler.
+
+Monitor geometry follows the same "ask the most specific source" rule: the dock's
+own monitor when it has one, otherwise the monitor the surface landed on (a
+monitor-less layer surface is placed by the compositor, which need not be the first
+output), otherwise the first monitor.
+
+Minimize, activate and close are *requests*: the protocol says the compositor may
+ignore them, and niri has no minimize concept at all. The click policy therefore
+degrades to "focus it again" instead of pretending something happened; see
+[[#data-flow-click][What a click does]].
 
 ------------------
 

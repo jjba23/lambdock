@@ -7,6 +7,7 @@
 #include "../src/ui/launchpad.h"
 #include <glib.h>
 #include <gtk/gtk.h>
+#include <libguile.h>
 #include <string.h>
 
 /* ============================================================================
@@ -279,7 +280,78 @@ static void test_columns(void) {
                   <, lambdock_launchpad_columns_for(1168, 32, 0));
 }
 
-int main(int argc, char **argv) {
+/* A GtkSearchEntry is composite: focusing it moves the focus to its inner text
+ * widget, so "the keyboard is in the search field" means "the focused widget is
+ * the entry or one of its children". */
+static gboolean focus_is_within(GtkWidget *ancestor) {
+  GtkRoot *root = gtk_widget_get_root(ancestor);
+  GtkWidget *focus = root ? gtk_root_get_focus(root) : NULL;
+
+  for (GtkWidget *widget = focus; widget != NULL;
+       widget = gtk_widget_get_parent(widget)) {
+    if (widget == ancestor)
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+/* ============================================================================
+ * FOCUS
+ * ============================================================================
+ */
+
+/* Presents and hides happen asynchronously: run the loop until the surface is
+ * in the state expected, so the assertions test the settled state, not a race. */
+static void spin_until_mapped(GtkWidget *widget, gboolean wanted) {
+  for (int i = 0; i < 200 && gtk_widget_get_mapped(widget) != wanted; i++)
+    g_main_context_iteration(NULL, FALSE);
+}
+
+/* Opening the launchpad has to leave the keyboard in the search field: no click
+ * first. The window's focus widget is what the compositor's exclusive keyboard
+ * goes to, so that is what this asserts. */
+static void test_search_focus(void) {
+  GtkApplication *app = gtk_application_new("dev.lambdock.test.launchpad",
+                                            G_APPLICATION_NON_UNIQUE);
+  g_assert_nonnull(app);
+  /* GTK refuses to add windows before the application has started up. */
+  g_assert_true(g_application_register(G_APPLICATION(app), NULL, NULL));
+
+  LambdockState state = {0};
+  state.window = gtk_application_window_new(app);
+
+  lambdock_launchpad_show(&state);
+
+  GtkWidget *search = lambdock_launchpad_search_entry();
+  g_assert_nonnull(search);
+  g_assert_true(GTK_IS_SEARCH_ENTRY(search));
+
+  GtkRoot *root = gtk_widget_get_root(search);
+  g_assert_true(GTK_IS_WINDOW(root));
+  spin_until_mapped(GTK_WIDGET(root), TRUE);
+  g_assert_true(focus_is_within(search));
+
+  /* A second open reuses the window and must focus the field again. */
+  lambdock_launchpad_hide();
+  spin_until_mapped(GTK_WIDGET(root), FALSE);
+  lambdock_launchpad_show(&state);
+  spin_until_mapped(GTK_WIDGET(root), TRUE);
+  g_assert_true(focus_is_within(search));
+
+  lambdock_launchpad_shutdown();
+  gtk_window_destroy(GTK_WINDOW(state.window));
+  g_object_unref(app);
+}
+
+/* ============================================================================
+ * RUNNER
+ * ============================================================================
+ */
+
+static void inner_test_launchpad(void *data, int argc, char **argv) {
+  (void)data;
+
   g_test_init(&argc, &argv, NULL);
 
   g_test_add_func("/launchpad/entry_matches", test_entry_matches);
@@ -297,14 +369,43 @@ int main(int argc, char **argv) {
 
   g_setenv("XDG_DATA_HOME", data_dir, TRUE);
   g_setenv("HOME", data_dir, TRUE);
+  /* Keep the launchpad's own application scan away from the host's
+   * applications: this suite is about focus and layout, not about whichever
+   * icons the machine happens to have (a missing icon is a warning, and
+   * warnings are fatal here). */
+  g_setenv("XDG_DATA_DIRS", data_dir, TRUE);
 
   if (!gtk_init_check()) {
     g_print("Skipping launchpad widget tests: No display server available\n");
-    return g_test_run();
+    g_test_run();
+    g_free(data_dir);
+    return;
   }
+
+  /* The launchpad resolves its tile size through the Guile bridge, so the real
+   * modules have to be loaded, exactly as at startup. */
+  scm_c_eval_string("(set! %load-path (cons \"scheme\" %load-path))");
+  scm_c_use_module("lambdock core");
+
+  char *config_path = g_build_filename(data_dir, "settings.scm", NULL);
+  g_assert_true(
+      g_file_set_contents(config_path, "(define dock-theme 'vanilla)\n", -1,
+                          NULL));
+  SCM load_fn = scm_c_public_ref("lambdock core", "load-dock-config!");
+  scm_call_1(load_fn, scm_from_utf8_string(config_path));
 
   g_test_add_data_func("/launchpad/tile_copies", data_dir,
                        (GTestDataFunc)test_tile_copies);
+  g_test_add_func("/launchpad/search_focus", test_search_focus);
 
-  return g_test_run();
+  g_test_run();
+
+  g_free(config_path);
+  g_free(data_dir);
 }
+
+int main(int argc, char **argv) {
+  scm_boot_guile(argc, argv, inner_test_launchpad, NULL);
+  return 0;
+}
+

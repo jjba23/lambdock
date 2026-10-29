@@ -19,8 +19,9 @@
  * single instance; everything else takes the model as a parameter.
  */
 
-/* Icon size of a launchpad tile, in pixels. */
-#define LAUNCHPAD_ICON_SIZE 64
+/* Icon size of a launchpad tile, in pixels. Deliberately larger than a dock
+ * icon: the launchpad is browsed at a distance, one tile at a time. */
+#define LAUNCHPAD_ICON_SIZE 80
 #define LAUNCHPAD_ICON_SIZE_MIN 32
 #define LAUNCHPAD_ICON_SIZE_MAX 160
 
@@ -65,6 +66,28 @@ void lambdock_launchpad_hide(void);
  * Returns: TRUE when the launchpad overlay is mapped.
  */
 gboolean lambdock_launchpad_is_open(void);
+
+/**
+ * lambdock_launchpad_search_entry:
+ * Returns: (transfer none) (nullable): the launchpad's search field, or NULL
+ * before the launchpad has ever been opened. Borrowed, like every widget in
+ * this API: it belongs to the launchpad window.
+ *
+ * Read-only handle, exposed so tests (and the REPL) can assert that opening the
+ * launchpad hands the keyboard to the search field.
+ */
+GtkWidget *lambdock_launchpad_search_entry(void);
+
+/**
+ * lambdock_launchpad_set_query:
+ * @query: (nullable): the text to search for; NULL or "" shows everything.
+ *
+ * Types into the search field for the user, which is what makes the launchpad
+ * scriptable: the dock's REPL exposes this as ~(launchpad-search! "fire")~, and
+ * the demo recorder uses it to show the grid filtering. Ignored when the
+ * launchpad has never been opened.
+ */
+void lambdock_launchpad_set_query(const char *query);
 
 /**
  * lambdock_launchpad_shutdown:

@@ -172,6 +172,66 @@ static void test_points_differ(void) {
   g_assert_true(lambdock_points_differ(10.0, 10.0, 8.0, 10.0, 1.0));
 }
 
+static void test_size_step(void) {
+  /* A step of 1 (or nonsense) means "no quantising". */
+  g_assert_cmpint(lambdock_size_step(53, 1), ==, 53);
+  g_assert_cmpint(lambdock_size_step(53, 0), ==, 53);
+  g_assert_cmpint(lambdock_size_step(53, -4), ==, 53);
+
+  /* Exact multiples stay put... */
+  g_assert_cmpint(lambdock_size_step(48, 2), ==, 48);
+  g_assert_cmpint(lambdock_size_step(60, 4), ==, 60);
+
+  /* ...and everything else rounds up to the next multiple. */
+  g_assert_cmpint(lambdock_size_step(49, 2), ==, 50);
+  g_assert_cmpint(lambdock_size_step(53, 2), ==, 54);
+  g_assert_cmpint(lambdock_size_step(61, 4), ==, 64);
+  g_assert_cmpint(lambdock_size_step(1, 2), ==, 2);
+}
+
+/* The layout cost of a hover sweep is the number of *distinct* sizes the row is
+ * asked to re-measure for. Quantising halves it, while the painted scale keeps
+ * changing every pixel (that is what `lambdock_fisheye_scale` is for). */
+static void test_size_step_halves_layout_passes(void) {
+  const int base = 48;
+  const double radius = 140.0;
+
+  int exact = 0;
+  int stepped = 0;
+  int previous_exact = -1;
+  int previous_stepped = -1;
+  int changed_scale = 0;
+  double previous_scale = -1.0;
+
+  for (int offset = 0; offset <= (int)radius; offset += 2) {
+    double scale = lambdock_fisheye_scale((double)offset, radius, 1.45);
+    int size = lambdock_scaled_size(base, scale);
+
+    if (size != previous_exact) {
+      exact++;
+      previous_exact = size;
+    }
+
+    int quantised = lambdock_size_step(size, 2);
+    if (quantised != previous_stepped) {
+      stepped++;
+      previous_stepped = quantised;
+    }
+
+    if (fabs(scale - previous_scale) > 0.0) {
+      changed_scale++;
+      previous_scale = scale;
+    }
+  }
+
+  g_test_message("sweep: %d sizes exact, %d stepper, %d painted scales", exact,
+                 stepped, changed_scale);
+
+  g_assert_cmpint(stepped, <, exact);
+  /* Every pointer position still gets its own magnification. */
+  g_assert_cmpint(changed_scale, ==, (int)(radius / 2) + 1);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -183,6 +243,9 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dock_motion/fisheye_scale", test_fisheye_scale);
   g_test_add_func("/core/dock_motion/scaled_size", test_scaled_size);
   g_test_add_func("/core/dock_motion/points_differ", test_points_differ);
+  g_test_add_func("/core/dock_motion/size_step", test_size_step);
+  g_test_add_func("/core/dock_motion/size_step_halves_layout_passes",
+                  test_size_step_halves_layout_passes);
 
   return g_test_run();
 }

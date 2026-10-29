@@ -87,10 +87,48 @@ void dock_item_remove_window(DockItem *item,
                              struct zwlr_foreign_toplevel_handle_v1 *handle);
 
 /**
+ * dock_item_has_window:
+ * @item: (nullable): the item to ask.
+ * @handle: (nullable): a Wayland toplevel handle captured earlier.
+ *
+ * Returns: TRUE when @item still tracks @handle.
+ *
+ * The tracker owns and frees the proxies, so a handle stored elsewhere -- a
+ * popover row's action data, built when the menu opened -- can be freed while
+ * that menu is still on screen. Callers that act on a captured handle must ask
+ * this first, or they would call a Wayland request on a destroyed proxy.
+ */
+gboolean dock_item_has_window(
+    const DockItem *item,
+    const struct zwlr_foreign_toplevel_handle_v1 *handle);
+
+/**
+ * dock_items_refresh_polls:
+ * @state: (nullable): the dock whose polling items should be updated now.
+ *
+ * Polls every dynamic and trash item immediately. The poll timers skip their
+ * work while the dock is off screen (nothing to see), so this is what makes the
+ * first frame after a reveal show current values instead of the ones from when
+ * the dock hid.
+ */
+void dock_items_refresh_polls(LambdockState *state);
+
+/**
  * update_dock_item_status:
  * Toggles 'running-app' CSS styling depending on active window counts.
  */
 void update_dock_item_status(DockItem *item);
+
+/**
+ * dock_item_refresh_window_state:
+ * @item: (nullable): the item whose windows' state changed.
+ *
+ * Re-applies the styling that depends on what the compositor reports for the
+ * item's windows -- currently the `window-minimized` class that dims the icon of
+ * an app whose windows are all minimized. Cheap by design: two CSS-class toggles
+ * and one scan of a short list, so it can run on every state event.
+ */
+void dock_item_refresh_window_state(DockItem *item);
 
 /**
  * find_dock_item_by_app_id:

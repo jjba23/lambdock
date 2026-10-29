@@ -36,6 +36,19 @@ AppWindow *app_window_new(struct zwlr_foreign_toplevel_handle_v1 *handle,
 void app_window_set_title(AppWindow *win, const char *title);
 
 /**
+ * app_window_set_state:
+ * @win: (nullable): the window record.
+ * @minimized: whether the compositor reports the window as minimized.
+ * @activated: whether it reports the window as focused.
+ *
+ * Records the last known state of @win. NULL is a no-op, like every other
+ * helper here, so a late state event cannot crash a window that is already
+ * gone. The dock's click policy reads these flags.
+ */
+void app_window_set_state(AppWindow *win, gboolean minimized,
+                          gboolean activated);
+
+/**
  * app_window_matches:
  * Returns: TRUE when @win is non-NULL and tracks @handle.
  */

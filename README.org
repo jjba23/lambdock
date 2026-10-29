@@ -25,8 +25,8 @@ over a *live socket [[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93pr
 a rebuild without ever restarting the process or dropping a frame.
 
 #+name: lambdock-showcase
-#+caption: The dock sliding in from the screen edge with eased auto-hide, launching applications, the fish-eye magnification under the pointer, the multi-window popover listing every open window of the focused app (with =Close All Windows=), and the dock's own right-click menu with =About lambdock= and =Quit=.
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-07_22-32-33.gif]]
+#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1000 px, 20 fps): auto-hide and the fish-eye under the pointer, launching applications, the multi-window popover, the dock's own menu and About window, a folder stack opened as a grid, the launchpad filtered by its search field, the Preferences window, a live Guile REPL changing the icon size and every theme, and the Windows XP taskbar mode.
+[[file:resources/img/lambdock-demo.gif]]
 
 - 🐑 *Read the source (and send PR/issue/patches):* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 📦 *Install it:* [[https://build.opensuse.org/package/show/home:jjba23/lambdock][openSUSE Build Service]], [[https://search.nixos.org/packages?query=lambdock][NixPkgs]], Guix, Docker Hub, and the packaged tarballs
@@ -69,8 +69,10 @@ auto-hiding directly to your setup.
 
 [[file:resources/img/lambdock-demo.gif]]
 
-=tools/record-demo/= records a scripted showcase of every feature and every
-built-in theme in a nested niri session, then encodes it as a GIF under 15 MiB:
+=tools/record-demo/= records that showcase in a nested niri session -- the dock
+itself, driven by a virtual pointer and the socket REPL -- and encodes it as a
+GIF: the file above is its output, so what you see is what the current tree
+does.
 
 #+begin_src sh
 ./tools/record-demo/record-demo.sh
@@ -78,9 +80,16 @@ built-in theme in a nested niri session, then encodes it as a GIF under 15 MiB:
 #+end_src
 
 The storyboard covers auto-hide, fish-eye magnification, launching, the window
-popover, the right-click menu, the About window, a live Guile REPL session,
-theme hot-swapping and taskbar mode.  See
+popover, the right-click menu and the About window, a folder stack opened as a
+grid, the launchpad filtered by its search field, the Preferences window, a live
+Guile REPL session (icon size, then every built-in theme), the Windows XP
+taskbar mode with window titles, and the closing sweep.  See
 [[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites and options.
+
+Four stills from the same recording, for a closer look:
+
+| [[file:resources/img/screens/stacks.png]]      | [[file:resources/img/screens/launchpad.png]] |
+| [[file:resources/img/screens/preferences.png]] | [[file:resources/img/screens/taskbar.png]]   |
 
 ** Who it is for
 :PROPERTIES:
@@ -194,6 +203,14 @@ compositors that implement the ~wlr-layer-shell-unstable-v1~ protocol, including
 Note: [[https://en.wikipedia.org/wiki/Mutter_(software)][GNOME (Mutter)]] is
 currently not supported, because it does not implement the protocol.
 
+What happens on a compositor *without* layer shell (GNOME, or an X11 session) is
+defined, not undefined: ~lambdock~ says so once in the log and then runs as an
+ordinary window -- no screen-edge docking, no auto-hide and no exclusive zone,
+because those are layer-shell features.  Window tracking is independent of it:
+where the compositor implements ~wlr-foreign-toplevel~ (Niri, Sway, Hyprland,
+Plasma, ...) running applications and their window menus work; where it does not
+(GNOME), the log says that too and the dock keeps its pinned items.
+
 ** Why it exists (a note from the author)
 :PROPERTIES:
 :CUSTOM_ID: why-it-exists
@@ -218,7 +235,7 @@ favourite language (GNU Guile) and allow me a frictionless setup with GTK and
 native super performance.
 
 #+BEGIN_EXPORT html
-<img src="https://jointhefreeworld.org/static-assets/lambdock/Agnus_Dei_red_flag.svg" width="380" alt="Agnus Dei">
+<img src="resources/img/agnus-dei.svg" width="380" alt="Agnus Dei">
 #+END_EXPORT
 
 #+begin_quote
@@ -330,6 +347,15 @@ your screen.
 
 - *Left click a pinned launcher*: the app starts.  If the app is already running,
   its window is focused and raised instead of a second instance being spawned.
+- *Left click a running app with one window*: the window is focused -- or
+  *minimized*, if it already had the focus.  That is the "minimize to dock"
+  behaviour: clicking the icon of the app you are looking at tucks it away, and
+  clicking again brings it back.  While it is tucked away the icon keeps its
+  running indicator but dims, so you can see at a glance which apps are only
+  minimized.  It uses the compositor's ~wlr-foreign-toplevel~ minimize request, so
+  it works on compositors that have a minimize concept (sway, Hyprland, KWin,
+  ...); on a scrollable tiling compositor such as niri, where windows are always
+  visible, the request is accepted and the window simply stays where it is.
 - *Left click a running app with several windows*: the window popover opens (see
   below), so you pick which window you meant.
 - *Right click a running app with several windows*: the same popover, useful when
@@ -340,9 +366,11 @@ your screen.
 :CUSTOM_ID: the-window-popover
 :END:
 
-When an app has one window, clicking it just focuses it.  When it has more than
-one, ~lambdock~ opens a floating GTK popover built from what the compositor told
-it:
+When an app has one window, clicking it focuses it -- or minimizes it when it is
+the window you are already looking at (see
+[[#launching-focusing-and-switching][Launching, focusing and switching]]).  When it
+has more than one, ~lambdock~ opens a floating GTK popover built from what the
+compositor told it:
 
 - a *header* with the application's name, then a separator;
 - *one row per open window*, with the window title as a button (ellipsized at 30
@@ -463,16 +491,17 @@ One item puts every installed application one click (and half a keystroke) away:
 
 Clicking it covers the screen with a layer-shell overlay: a search field, and
 below it every application found in the XDG application directories, sorted by
-name and shown as icon tiles.  Type to filter (the name and the command line are
-both searched), press *Enter* on a result... nothing else: click a tile to launch
-it, press *Escape*, click the *X* in the top right corner or click the backdrop
-to go back to whatever you were doing.
+name and shown as icon tiles.  The search field has the keyboard the moment the
+launchpad opens, so you can just start typing.  Type to filter (the name and the
+command line are both searched), press *Enter* on a result... nothing else: click
+a tile to launch it, press *Escape*, click the *X* in the top right corner or
+click the backdrop to go back to whatever you were doing.
 
 Its appearance follows the settings of the dock that opened it:
 
 | Option                       | Default | What it does                                             |
 |------------------------------+---------+-----------------------------------------------------------|
-| ~dock-launchpad-icon-size~   | ~64~    | Pixel size of an application icon in the grid (32 … 160). |
+| ~dock-launchpad-icon-size~   | ~80~    | Pixel size of an application icon in the grid (32 … 160). |
 | ~dock-launchpad-columns~     | ~0~     | Tiles per row. 0 fits as many as the screen allows; 3 … 14 is an upper bound (the grid still shrinks to fit). |
 | ~dock-launchpad-blur?~       | ~#f~    | Frosted, translucent background instead of the near-opaque one. |
 
@@ -1091,7 +1120,7 @@ nothing at all.
 | ~dock-reflection-intensity~   | ~0.55~                       | Alpha of the reflection where it touches the icon.                              |
 | ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections.                           |
 | ~dock-shelf-flare~            | ~0~                          | Keystone: px the slab is wider per side at the screen edge (-80 … 80).          |
-| ~dock-launchpad-icon-size~    | ~64~                         | Icon pixel size inside the launchpad grid (32 … 160).                          |
+| ~dock-launchpad-icon-size~    | ~80~                         | Icon pixel size inside the launchpad grid (32 … 160).                          |
 | ~dock-launchpad-columns~      | ~0~                          | Launchpad tiles per row; 0 fits the screen, 3 … 14 is an upper bound.          |
 | ~dock-launchpad-blur?~        | ~#f~                         | Frosted, translucent launchpad backdrop (see [[#launchpad][The launchpad]]).                  |
 | ~dock-reduce-motion?~         | ~#f~                         | Turn off the slide and fish-eye animations (see [[#accessibility][accessibility]]).             |
@@ -1398,17 +1427,6 @@ across different screen edges or monitors.
 
 Also, here is a small demo of hot-reload:
 
-#+begin_export html
-<details>
-  <summary>see GIF</summary>
-#+end_export
-
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_09-27-07.gif]]
-
-#+begin_export html
-</details>
-#+end_export
-
 ** Changing settings from the GUI (Preferences) 🎛️
 :PROPERTIES:
 :CUSTOM_ID: preferences-window
@@ -1456,38 +1474,23 @@ edits that dock and not another one.
 ~lambdock~ ships with pre-baked themes embedded via build defines, and every one
 of them is a CSS file you are free to read, copy and argue with.
 
-#+begin_export html
-<details>
-  <summary>See <strong>some screenshots of the themes here</strong></summary>
-#+end_export
-
 - *Vanilla Glassmorphism* 🧊 (~'vanilla~): Modern translucent dark pill layout
   with soft backdrop reflections, glow indicators, and spring physics button
   effects.
-
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-49.png]]
 
 - *Vanilla Light Glassmorphism* 🧊 (~'vanilla-light~): Modern frosted glass
   translucent pill layout with soft backdrop reflections, glow indicators, and
   spring physics button effects.
 
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-17.png]]
-
 - *Snow Leopard 3D Glass* 🍎 (~'snow-leopard~, ~'snow-leopard-dark~): Classic 3D
   glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots,
   and vertical lift displacement.
 
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-31.png]]
-
 - *Solarized Light* ☀️ (~'solarized-light~): Timeless palette, easy on the eyes,
   ivory, roasted, off-white goodness.
 
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-24.png]]
-
 - *Nature* 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted
   specular borders, and a lively Emerald Leaf glowing running app indicator.
-
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-32-58.png]]
 
 - *Unity* 🪘 (~'unity~): signature Yaru/Canonical design language: rich dark
   aubergine glass background, Ubuntu warm orange highlights, and an active
@@ -1503,26 +1506,18 @@ of them is a CSS file you are free to read, copy and argue with.
   (see [[#shelf][The glass shelf]]) for the full 3D shelf with mirrored icons. Its
   dark sibling, ~'macos-mavericks-dark~, is the same slab in smoked graphite for
   a dark session, with the same geometry.
-- *Windows XP (Luna)* 🪟 (~'windows-xp~): glossy Luna-blue taskbar with raised,
-  beveled task buttons; running apps look pressed.
-
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-03.png]]
+- *Windows XP (Luna)* 🪟 (~'windows-xp~): the Luna taskbar as it was -- a flat
+  blue slab with one bright line along its top edge, square-pressed task buttons
+  with a single blue border, and pinned launchers sitting chrome-less on the bar
+  like Quick Launch icons. The focused application's button is the depressed one;
+  a running app that is not focused keeps a raised button, and a fully minimized
+  one dims its icon.
 
 - *Windows 10* 🪟 (~'windows-10~): flat, near-black rectangular taskbar with a
   thin blue accent underline on running apps.
 - *Windows 11* 🪟 (~'windows-11~): translucent, subtly-rounded dark surface with
   a small accent pill running indicator.
 - *None* (~'none~): no styling applied, using default GTK appearance.
-
-  [[https://jointhefreeworld.org/static-assets/lambdock/screen-2026-08-06-09-33-09.png]]
-
-#+begin_export html
-</details>
-#+end_export
-
-And here is the same dock wearing WhiteSur icons, over a Niri session:
-
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-09-07_23-32-42.gif]]
 
 ** Overriding a theme with your own CSS
 :PROPERTIES:
@@ -2088,17 +2083,6 @@ If you use [[https://www.gnu.org/software/emacs/][Emacs]] with
 2. Select ~guile~ as the Scheme implementation.
 3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
 
-#+begin_export html
-<details>
-  <summary>see Emacs + Geiser GIF</summary>
-#+end_export
-
-[[https://jointhefreeworld.org/static-assets/lambdock/gif_2026-08-06_13-13-17.gif]]
-
-#+begin_export html
-</details>
-#+end_export
-
 ** Other options
 :PROPERTIES:
 :CUSTOM_ID: repl-other-options
@@ -2366,11 +2350,11 @@ For example, when ~(reload-dock!)~ is called over the socket REPL, C safely
 schedules the UI teardown and rebuild onto the GTK main loop without blocking or
 crashing the application.
 
+------------------
+
 #+begin_export html
 </details>
 #+end_export
-
-------------------
 
 * Animations
 :PROPERTIES:

@@ -5,6 +5,7 @@
 
 #include "launchpad.h"
 #include "../accessibility.h"
+#include "../dock_window.h"
 #include "../guile_bridge.h"
 #include "../logger.h"
 #include "desktop_entry.h"
@@ -700,14 +701,37 @@ static int columns_for_width(const LambdockLaunchpad *launchpad, int width) {
                                         launchpad->appearance.columns);
 }
 
-/* Adapter: the window was resized, so re-fit the columns. */
-static void on_grid_size_allocate(GtkWidget *widget, int width, int height,
-                                  gpointer user_data) {
-  (void)widget; /* The width is what matters; the model holds the grid. */
-  (void)height;
+/**
+ * launchpad_fit_columns:
+ * Chooses how many tiles fit across the launchpad and applies it.
+ *
+ * GTK4 has no "this widget was resized" signal (GTK3's size-allocate is gone),
+ * so this runs when the surface maps and when the launchpad is shown. The
+ * window is a full-screen layer-shell surface, so the monitor width is what the
+ * grid will get; before the first allocation (@width is 0) that is the only
+ * sensible answer, and on the normal-window fallback the real width is used
+ * once it exists.
+ */
+static void launchpad_fit_columns(LambdockLaunchpad *launchpad,
+                                  GtkWidget *window) {
+  if (!launchpad->grid || !window)
+    return;
 
-  LambdockLaunchpad *launchpad = user_data;
-  if (!launchpad->grid)
+  int width = gtk_widget_get_width(window);
+
+  if (width <= 0) {
+    GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(window));
+    GdkDisplay *display = gtk_widget_get_display(window);
+    GdkMonitor *monitor =
+        surface ? gdk_display_get_monitor_at_surface(display, surface) : NULL;
+    GdkRectangle geometry = {0};
+    if (monitor) {
+      gdk_monitor_get_geometry(monitor, &geometry);
+      width = geometry.width;
+    }
+  }
+
+  if (width <= 0)
     return;
 
   grid_apply_columns(launchpad, columns_for_width(launchpad, width));
@@ -780,10 +804,8 @@ static void launchpad_apply_appearance(LambdockLaunchpad *launchpad,
   else
     gtk_widget_remove_css_class(launchpad->window, "launchpad-frosted");
 
-  if (launchpad->grid) {
-    int width = gtk_widget_get_width(launchpad->window);
-    grid_apply_columns(launchpad, columns_for_width(launchpad, width));
-  }
+  if (launchpad->grid)
+    launchpad_fit_columns(launchpad, launchpad->window);
 }
 
 /* ============================================================================
@@ -866,7 +888,7 @@ static void on_close_clicked(GtkButton *button, gpointer user_data) {
 static void configure_layer_shell(GtkWidget *window, LambdockState *state) {
   GtkWindow *gtk_window = GTK_WINDOW(window);
 
-  if (!gtk_layer_is_supported())
+  if (!lambdock_layer_shell_available())
     return;
 
   gtk_layer_init_for_window(gtk_window);
@@ -881,7 +903,7 @@ static void configure_layer_shell(GtkWidget *window, LambdockState *state) {
   gtk_layer_set_anchor(gtk_window, GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
   gtk_layer_set_anchor(gtk_window, GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
 
-  if (state && state->monitor)
+  if (state && is_monitor_valid(state->monitor))
     gtk_layer_set_monitor(gtk_window, state->monitor);
 }
 
@@ -935,6 +957,12 @@ static GtkWidget *make_search_entry(LambdockLaunchpad *launchpad) {
                    launchpad);
   gtk_widget_add_controller(search, keys);
 
+  /* Remember it on the model: this pointer is what keyboards focus, what
+   * launchpad_reset_query() clears and what lambdock_launchpad_search_entry()
+   * hands out. Leaving it NULL is why typing into a freshly opened launchpad
+   * used to do nothing until the field was clicked. */
+  launchpad->search = search;
+
   return search;
 }
 
@@ -974,6 +1002,26 @@ static GtkWidget *make_window_body(LambdockLaunchpad *launchpad) {
 
 /* Escape (capture phase, because the search entry consumes it itself) and the
  * backdrop click that closes the launchpad. */
+/**
+ * on_window_mapped:
+ * Hands the keyboard to the search field the moment the surface appears, and
+ * sizes the grid for the surface it just got.
+ *
+ * The launchpad is a layer-shell overlay whose keyboard mode is EXCLUSIVE, so
+ * the compositor gives it the keyboard as soon as it maps. `set_focus` is the
+ * right call here rather than `grab_focus`: it records the widget the window
+ * should focus and lets GTK apply it once the children are mapped too (a
+ * GtkSearchEntry focuses its inner text widget, not itself).
+ */
+static void on_window_mapped(GtkWidget *window, gpointer user_data) {
+  LambdockLaunchpad *launchpad = user_data;
+
+  launchpad_fit_columns(launchpad, window);
+
+  if (launchpad->search)
+    gtk_window_set_focus(GTK_WINDOW(window), launchpad->search);
+}
+
 static void install_window_controllers(LambdockLaunchpad *launchpad,
                                        GtkWidget *window) {
   GtkEventController *keys = gtk_event_controller_key_new();
@@ -987,8 +1035,8 @@ static void install_window_controllers(LambdockLaunchpad *launchpad,
   g_signal_connect(click, "pressed", G_CALLBACK(on_backdrop_click), launchpad);
   gtk_widget_add_controller(window, GTK_EVENT_CONTROLLER(click));
 
-  g_signal_connect(window, "size-allocate", G_CALLBACK(on_grid_size_allocate),
-                   launchpad);
+  /* Typing must work as soon as the launchpad appears, without a click. */
+  g_signal_connect(window, "map", G_CALLBACK(on_window_mapped), launchpad);
 }
 
 /** The application to parent the launchpad to, or NULL when there is none. */
@@ -1039,6 +1087,16 @@ static void launchpad_reset_query(LambdockLaunchpad *launchpad) {
     gtk_editable_set_text(GTK_EDITABLE(launchpad->search), "");
 }
 
+/** Drops the fade-in class on the next idle, which is what runs the transition. */
+static gboolean clear_fade_in_idle(gpointer user_data) {
+  LambdockLaunchpad *launchpad = user_data;
+
+  if (launchpad->window)
+    gtk_widget_remove_css_class(launchpad->window, "launchpad-fading-in");
+
+  return G_SOURCE_REMOVE;
+}
+
 void lambdock_launchpad_show(LambdockState *state) {
   LambdockLaunchpad *launchpad = launchpad_instance();
   LaunchpadAppearance appearance = appearance_for(state);
@@ -1065,8 +1123,21 @@ void lambdock_launchpad_show(LambdockState *state) {
 
   gtk_window_present(GTK_WINDOW(launchpad->window));
 
-  if (launchpad->search)
+  /* Fade in, unless motion is reduced: the class is dropped on the next idle so
+   * the first frame is drawn transparent and the CSS transition runs. */
+  if (lambdock_animations_enabled(state)) {
+    gtk_widget_add_css_class(launchpad->window, "launchpad-fading-in");
+    g_idle_add(clear_fade_in_idle, launchpad);
+  }
+
+  /* Name the focus widget before presenting, so the window has one to give the
+   * keyboard to, and grab it now for the case where the window is already
+   * mapped. on_window_mapped() repeats this for the first open, where the
+   * surface appears asynchronously. */
+  if (launchpad->search) {
+    gtk_window_set_focus(GTK_WINDOW(launchpad->window), launchpad->search);
     gtk_widget_grab_focus(launchpad->search);
+  }
 }
 
 void lambdock_launchpad_hide(void) {
@@ -1075,14 +1146,33 @@ void lambdock_launchpad_hide(void) {
   /* The copy menu belongs to a tile of this window. */
   launchpad_copy_menu_close(launchpad);
 
-  if (launchpad->window)
+  if (launchpad->window) {
+    /* Hiding during the fade would otherwise leave the surface transparent for
+     * the next open, which starts a fresh fade anyway. */
+    gtk_widget_remove_css_class(launchpad->window, "launchpad-fading-in");
     gtk_widget_set_visible(launchpad->window, FALSE);
+  }
 }
 
 gboolean lambdock_launchpad_is_open(void) {
   LambdockLaunchpad *launchpad = launchpad_instance();
 
   return launchpad->window && gtk_widget_get_visible(launchpad->window);
+}
+
+GtkWidget *lambdock_launchpad_search_entry(void) {
+  return launchpad_instance()->search;
+}
+
+void lambdock_launchpad_set_query(const char *query) {
+  LambdockLaunchpad *launchpad = launchpad_instance();
+
+  if (!launchpad->search || !GTK_IS_EDITABLE(launchpad->search))
+    return;
+
+  /* Setting the text emits "search-changed", which is the same path typing
+   * takes: the grid filters exactly as it would for a person. */
+  gtk_editable_set_text(GTK_EDITABLE(launchpad->search), query ? query : "");
 }
 
 void lambdock_launchpad_shutdown(void) {

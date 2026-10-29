@@ -175,7 +175,7 @@
                     0.55    ; reflection-intensity
                     0.05    ; reflection-blur (blur radius / icon size)
                     0       ; shelf-flare (keystone px per side)
-                    64      ; launchpad-icon-size (px)
+                    80      ; launchpad-icon-size (px)
                     0       ; launchpad-columns (0 = fit the screen)
                     #f      ; launchpad-blur? (frosted backdrop)
                     #f))    ; reduce-motion? (disable animations)
@@ -210,7 +210,7 @@
                           (reflection-intensity 0.55)
                           (reflection-blur 0.05)
                           (shelf-flare 0)
-                          (launchpad-icon-size 64)
+                          (launchpad-icon-size 80)
                           (launchpad-columns 0)
                           (launchpad-blur? #f)
                           (reduce-motion? #f))
