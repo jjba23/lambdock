@@ -161,6 +161,9 @@ typedef struct AppWindow {
  * @is_favorite: TRUE if pinned launcher configured from Scheme; FALSE if
  * dynamic running app.
  * @button: Pointer to the GTK 4 button widget rendered inside the dock layout.
+ * @cell: The icon-sized cell that holds the item's content. The theme's button
+ * padding sits outside it, so a label, a gauge and a separator are exactly as
+ * tall as an icon.
  * @container: Wrapper box holding @button and, if enabled, @reflection.
  * @reflection: Mirrored glass-shelf reflection (shown when reflections are on).
  * @popover: Context menu GTK Popover widget attached to this dock button.
@@ -191,6 +194,7 @@ typedef struct DockItem {
   char *app_id;
   gboolean is_favorite;
   GtkWidget *button;
+  GtkWidget *cell;       /* Icon-sized content cell inside @button */
   GtkWidget *container;  /* Wrapper box: [button] + [reflection] */
   GtkWidget *reflection; /* Mirrored glass-shelf icon reflection */
   GtkWidget *separator_follow; /* Separators only: the shelf-following body */

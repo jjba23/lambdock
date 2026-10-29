@@ -326,17 +326,45 @@ static void test_populate_dock_items(void) {
   g_assert_cmpstr(gauge->meter_unit, ==, "%");
   g_assert_cmpfloat(gauge->meter_max, ==, 100.0);
   g_assert_null(gauge->label);
-  g_assert_null(gauge->reflection);
+  /* The gauge mirrors nothing, but it keeps its reflection slot: the band that
+   * slot reserves is part of the cell's height, which is what keeps the gauges
+   * level with the icons on a shelf theme. It draws nothing and takes no room
+   * while the shelf is off. */
+  g_assert_nonnull(gauge->reflection);
+  g_assert_false(gtk_widget_get_visible(gauge->reflection));
   {
     const char *tooltip = gtk_widget_get_tooltip_text(gauge->button);
     g_assert_nonnull(tooltip);
     g_assert_true(strstr(tooltip, "42%") != NULL);
   }
 
+  /* The icon-sized cell carries the cross size, not the button: the theme's
+   * button padding sits outside the cell, so a label or a gauge ends up exactly
+   * as tall as an icon. */
+  {
+    int width = 0;
+    int height = 0;
+    gtk_widget_get_size_request(gauge->cell, &width, &height);
+    g_assert_cmpint(width, ==, -1);
+    g_assert_cmpint(height, ==, state.icon_size);
+  }
+
   DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 5);
   g_assert_nonnull(sep);
   g_assert_true(GTK_IS_SEPARATOR(sep->button));
   g_assert_true(sep->is_favorite);
+  /* The line is shorter than an icon, so it lives in an icon-sized cell and
+   * keeps a reflection slot: both are what centre it on the row instead of
+   * leaving it hanging at the bottom edge. */
+  g_assert_nonnull(sep->cell);
+  g_assert_nonnull(sep->reflection);
+  {
+    int width = 0;
+    int height = 0;
+    gtk_widget_get_size_request(sep->cell, &width, &height);
+    g_assert_cmpint(width, ==, -1);
+    g_assert_cmpint(height, ==, state.icon_size);
+  }
 
   DockItem *trash = (DockItem *)g_list_nth_data(state.dock_items, 6);
   g_assert_nonnull(trash);

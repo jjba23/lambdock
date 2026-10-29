@@ -78,6 +78,17 @@ void shelf_reflection_set_running(GtkWidget *reflection, gboolean running);
 GtkWidget *shelf_reflection_new(GtkWidget *source);
 
 /**
+ * shelf_reflection_clear_source:
+ * @reflection: A widget created by shelf_reflection_new().
+ *
+ * Drops the artwork being mirrored while keeping the widget, so the band it
+ * reserves in the row stays reserved. Used when an item's artwork goes away (a
+ * dynamic item that turns into a gauge) but its slot must still line up with
+ * the icons.
+ */
+void shelf_reflection_clear_source(GtkWidget *reflection);
+
+/**
  * shelf_reflection_configure:
  * @reflection: A widget created by shelf_reflection_new().
  * @edge: Screen edge the dock is attached to. Decides the mirror axis and the

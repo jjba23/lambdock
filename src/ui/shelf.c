@@ -963,6 +963,25 @@ void shelf_reflection_configure(GtkWidget *reflection, GtkLayerShellEdge edge,
   gtk_widget_queue_draw(reflection);
 }
 
+void shelf_reflection_clear_source(GtkWidget *reflection) {
+  if (!shelf_reflection_is_reflection(reflection))
+    return;
+
+  LambdockReflection *self = LAMBDOCK_REFLECTION(reflection);
+
+  if (self->source) {
+    g_object_remove_weak_pointer(G_OBJECT(self->source),
+                                 (gpointer *)&self->source);
+    self->source = NULL;
+  }
+  g_clear_object(&self->paintable);
+
+  /* Nothing left to bind, and nothing that could ever appear again: the widget
+   * is now a plain slot of the band's height. */
+  self->paintable_ready = TRUE;
+  gtk_widget_queue_draw(reflection);
+}
+
 void shelf_reflection_set_extent(GtkWidget *reflection, int icon_size,
                                  int band_size) {
   if (!shelf_reflection_is_reflection(reflection) || icon_size <= 0 ||

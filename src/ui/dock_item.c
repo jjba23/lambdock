@@ -564,14 +564,21 @@ static DockItemAlignment dock_item_alignment_for_edge(GtkLayerShellEdge edge) {
   }
 }
 
-/** Every button asks for the full icon headroom across the dock, icon or not. */
+/** Every item's content asks for one icon-sized cell across the dock.
+ *
+ * The theme's button padding sits outside that cell, so an icon, a label
+ * ("Thu Oct 29") and a gauge all end up exactly as tall as each other. Sizing
+ * the button instead leaves the theme's padding out of the sum, and the shorter
+ * items then hang at the bottom of the row. */
 static void apply_dock_item_size_request(DockItem *item) {
   int icon_size = dock_item_icon_size(item->state);
+  gboolean horizontal = item->state->orientation == GTK_ORIENTATION_HORIZONTAL;
+  GtkWidget *target = item->cell ? item->cell : item->button;
 
-  if (item->state->orientation == GTK_ORIENTATION_HORIZONTAL)
-    gtk_widget_set_size_request(item->button, -1, icon_size);
+  if (horizontal)
+    gtk_widget_set_size_request(target, -1, icon_size);
   else
-    gtk_widget_set_size_request(item->button, icon_size, -1);
+    gtk_widget_set_size_request(target, icon_size, -1);
 }
 
 static void apply_alignment(GtkWidget *widget, DockItemAlignment alignment) {
@@ -613,6 +620,18 @@ void apply_dock_item_alignment(DockItem *item) {
 
   DockItemAlignment alignment = dock_item_alignment_for_edge(item->state->edge);
   apply_alignment(item->button, alignment);
+
+  /* A separator's line fills the cell it sits in -- the cell is what follows the
+   * dock edge, and the line is all that is inside it -- so it spans the icons'
+   * height instead of collapsing to the one-pixel separator default. */
+  if (item->kind == LAMBDOCK_ITEM_SEPARATOR) {
+    gboolean horizontal =
+        item->state->orientation == GTK_ORIENTATION_HORIZONTAL;
+    gtk_widget_set_valign(item->button,
+                          horizontal ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER);
+    gtk_widget_set_halign(item->button,
+                          horizontal ? GTK_ALIGN_CENTER : GTK_ALIGN_FILL);
+  }
 
   /* The per-item container holds the button plus (when reflections are on)
    * its glass shelf reflection, so it hugs the same dock edge as the button. */
@@ -1025,6 +1044,7 @@ static GtkWidget *dock_item_begin_content(DockItem *item, int spacing) {
   GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, spacing);
   gtk_widget_set_valign(content, GTK_ALIGN_CENTER);
   gtk_button_set_child(GTK_BUTTON(item->button), content);
+  item->cell = content;
 
   return content;
 }
@@ -1050,13 +1070,15 @@ static void dock_item_append_icon(GtkWidget *content, GtkWidget *image,
 
 /**
  * dock_item_attach_reflection:
- * Gives the item a glass-shelf reflection of its artwork. It stays hidden (and
- * takes no room) until the shelf parameters ask for reflections.
+ * Gives the item its glass-shelf reflection slot. It stays hidden (and takes no
+ * room) until the shelf parameters ask for reflections.
+ *
+ * Every item gets the slot, including the ones with nothing to mirror -- a
+ * gauge, a separator, an item whose icon did not load. The band the slot
+ * reserves is part of the cell's height, so dropping it would leave those items
+ * a band lower than the icons next to them on a shelf theme.
  */
 static void dock_item_attach_reflection(DockItem *item, GtkWidget *image) {
-  if (!image)
-    return;
-
   item->reflection = shelf_reflection_new(image);
   gtk_widget_set_visible(item->reflection, FALSE);
 }
@@ -1281,15 +1303,11 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
   while ((child = gtk_widget_get_first_child(content)) != NULL)
     gtk_box_remove(GTK_BOX(content), child);
 
-  /* A gauge has no icon to mirror on the shelf. */
-  if (item->reflection) {
-    GtkWidget *parent = gtk_widget_get_parent(item->reflection);
-    if (parent && GTK_IS_BOX(parent))
-      gtk_box_remove(GTK_BOX(parent), item->reflection);
-    else if (parent)
-      gtk_widget_unparent(item->reflection);
-    item->reflection = NULL;
-  }
+  /* The gauge mirrors nothing, but it keeps its reflection slot: the band the
+   * slot reserves is what holds the row at one height, and an empty slot draws
+   * nothing. Removing it dropped the gauges a band below the icons on a shelf
+   * theme. */
+  shelf_reflection_clear_source(item->reflection);
 
   GtkWidget *meter = lambdock_meter_new();
   lambdock_meter_set_icon_size(meter, dock_item_icon_size(item->state));
@@ -1765,26 +1783,46 @@ DockItem *create_separator_dock_item(LambdockState *state,
     gtk_widget_set_margin_bottom(item->button, SEPARATOR_MARGIN_PX);
   }
 
-  if (state) {
-    apply_dock_item_alignment(item);
-  }
+  /* The line is shorter than an icon on purpose. It sits in the same icon-sized
+   * cell as every other item's content, so it is centred on the row instead of
+   * hanging at its bottom edge; vexpand is what makes it fill the cell (minus
+   * its own margins) now that the cell, not the line, carries the size. */
+  GtkWidget *cell = gtk_box_new(
+      (orientation == GTK_ORIENTATION_VERTICAL) ? GTK_ORIENTATION_VERTICAL
+                                                : GTK_ORIENTATION_HORIZONTAL,
+      0);
+  gtk_widget_set_halign(cell, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(cell, GTK_ALIGN_CENTER);
+  /* Along the cell's own axis the line has to claim the spare room; across it
+   * the cell is exactly as wide as the line plus its margins. */
+  gtk_widget_set_vexpand(item->button,
+                         orientation == GTK_ORIENTATION_VERTICAL);
+  gtk_widget_set_hexpand(item->button,
+                         orientation == GTK_ORIENTATION_HORIZONTAL);
+  gtk_box_append(GTK_BOX(cell), item->button);
+  item->cell = cell;
 
   /* A separator stands *on* the shelf, so it follows the slab's projection: on
    * a keystoned or tilted dock it leans with the glass instead of standing
    * upright in front of it. On a flat capsule the follower is a pass-through. */
-  GtkWidget *body = item->button;
+  GtkWidget *body = cell;
   if (state && state->bg_shelf) {
-    body = shelf_follow_new(item->button, state->bg_shelf,
-                            state->bg_capsule);
+    body = shelf_follow_new(cell, state->bg_shelf, state->bg_capsule);
     item->separator_follow = body;
   }
 
-  /* Separators carry no icon, so they only get the wrapper box (keeping the
-   * item list uniform); no reflection is created for them. */
-  item->container = shelf_wrap_item(state, body, NULL);
+  /* Nothing to mirror, but the slot still reserves the shelf's band, which is
+   * what keeps the line level with the icons. */
+  dock_item_attach_reflection(item, NULL);
+  item->container = shelf_wrap_item(state, body, item->reflection);
+
+  if (state) {
+    /* After the cell exists: the size request goes to the cell, not the line. */
+    apply_dock_item_alignment(item);
+  }
 
   if (state && state->box) {
-    GtkWidget *child = item->container ? item->container : item->button;
+    GtkWidget *child = item->container ? item->container : item->cell;
     gtk_box_append(GTK_BOX(state->box), child);
   }
   if (state)
@@ -2087,6 +2125,7 @@ static void apply_auto_hide_state(LambdockState *state) {
     hide_dock(state);
 }
 
+
 /**
  * reload_dock_instance:
  * @state: Global Lambdock application state.
@@ -2122,3 +2161,4 @@ void reload_dock_instance(LambdockState *state) {
 
   apply_auto_hide_state(state);
 }
+
