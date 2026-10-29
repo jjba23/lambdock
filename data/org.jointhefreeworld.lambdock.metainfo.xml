@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.19.0" date="2026-10-29">
+      <description>
+        <p>The clock item is an analogue face instead of a time string: a squircle body with a brushed bezel, a paper dial, tick marks, three hands and a sweep of glass, all drawn from geometry so it stays crisp at any dock-icon-size. It keeps its own colours -- a watch face is an object -- and takes one icon cell instead of a string's width, and its hands follow the system clock while the item's poller keeps naming the reading for the tooltip and the screen reader.</p>
+        <p>The face's geometry is a pure function with its own test, and the showcase recording and stills are re-recorded with it.</p>
+      </description>
+    </release>
     <release version="0.18.2" date="2026-10-29">
       <description>
         <p>Dynamic items line up with the icons beside them. A gauge, a separator and the clock used to measure shorter than an icon and hang at the bottom of the row; on a shelf theme the gauges also sat a whole reflection band lower, because a meter dropped the reflection slot that reserves that band. Every item now carries one icon-sized cell, keeps its reflection slot whether or not it has artwork to mirror, and a separator fills its cell.</p>

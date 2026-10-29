@@ -15,6 +15,28 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.0 (2026-10-29)
+- The clock item is an analogue face instead of a time string. It is drawn from
+  geometry -- no artwork at any size -- as a squircle body with a brushed bezel,
+  a paper dial shaded from the top-left, twelve hour ticks and sixty minute
+  ticks, an hour, minute and second hand, and one sweep of glass across the body:
+  a watch face is an object, so it keeps its own colours rather than following
+  the theme, and it takes exactly one icon cell instead of pushing a string's
+  worth of width into the row. The poll function keeps its job -- the string it
+  returns is the face's tooltip and what a screen reader announces -- while the
+  hands are read from the system clock, so the dock shows the right time even
+  when its own timer was skipped while it was hidden.
+- The face's geometry (where each hand points, and where a squircle runs) is a
+  pure function with its own test, because an hour hand on the wrong minute is
+  the kind of bug nobody notices until it is three o'clock.
+- The showcase recording and its stills are re-recorded, and the recorder's item
+  coordinates are re-measured: a face is a cell narrower than the string it
+  replaced, and the dock is centred, so every item before it moved.
+
+---------
+
+*[Released]*
+
 ** v0.18.2 (2026-10-29)
 - Dynamic items line up with the icons next to them. Three things were off, and
   all three came from sizing the wrong widget:
