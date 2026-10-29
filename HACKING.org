@@ -592,7 +592,8 @@ meson compile -C build
 
 It covers auto-hide, magnification, launching, the popover HUD, the dock's own
 menu and the Preferences window, folder stacks, the launchpad, live REPL
-mutation, the built-in themes, and taskbar mode with window titles.  Features
+mutation, the built-in themes (including the two macOS Mavericks materials with
+their 3D shelf), and taskbar mode.  Features
 that change should usually update the storyboard in =controller.py= -- treat
 the recorder as part of the test surface for user-visible behaviour -- and the
 recording is checked frame by frame against its captions before it is
