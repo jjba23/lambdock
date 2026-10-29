@@ -103,11 +103,18 @@ never share their GUI choices."
 
 The overrides are prepended, so the loader's `assq' lookups find them before the
 values the settings file defined. This is what makes a regenerated settings file
-keep the user's GUI choices."
+keep the user's GUI choices.
+
+Logged on every load: \"which preferences were in effect at startup\" was
+otherwise only answerable by opening the Preferences window."
   (let ((overrides (dock-preferences-read config-path)))
     (if (null? overrides)
         settings
-        (append overrides settings))))
+        (begin
+          (log-info "Preferences"
+                    "Applied ~a GUI preference(s) for ~a: ~{~a~^, ~}"
+                    (length overrides) config-path (map car overrides))
+          (append overrides settings)))))
 
 (define (save-dock-preference! config-path key value)
   "Remembers KEY => VALUE for CONFIG-PATH in the GUI preference override file.

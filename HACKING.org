@@ -212,7 +212,7 @@ Files are ordered the same way, so a reader always knows where to look:
 =dock_window.c=, =toplevel_tracker.c=, =ui/launchpad.c= and =ui/preferences.c=
 all follow it and say so in their header comment; when a file needs a sixth
 section, it is usually two modules. Functions stay under ~40~ lines: the largest
-one left (=load_custom_css= in =ui/theme_engine.c=) is the next thing to split.
+one left (=lambdock_meter_snapshot= in =ui/meter.c=) is the next thing to split.
 
 ** The tables (one row or visitor per case)
 :PROPERTIES:
@@ -457,7 +457,13 @@ display to be tested.
   alignment, exec matching), =test_guile_bridge= (every C↔Scheme getter,
   exclusions, populate), =test_dock_window= (monitor validation, dimension maths,
   auto-hide, teardown), =test_popover_menu= (menu layouts per window count),
-  =test_stack=, =test_launchpad=, =test_preferences=, =test_dock_dnd=.
+  =test_stack=, =test_launchpad=, =test_preferences=, =test_dock_dnd=,
+  =test_config_startup=.
+- =test_config_startup= is the one to know about: =test_guile_bridge= swaps in a
+  *mock* ~(lambdock core)~, so nothing there proves that a real settings file plus
+  the two override files in =$XDG_STATE_HOME= produce the values the dock reads.
+  This binary loads the real Scheme modules through the real bridge, in a
+  throwaway ~HOME~, and asserts the theme, a shelf number and the item order.
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
@@ -727,6 +733,42 @@ Details:
 - C reads this table through =guile_bridge.c=, which resolves public procedures
   (~scm_c_public_ref~) and calls them with the dock's ~config_path~, converting
   Scheme values to C.
+
+** The two override files (and when they are read)
+:PROPERTIES:
+:CUSTOM_ID: data-flow-overrides
+:END:
+
+The settings file is the source of truth, but two state files are layered on top
+of it. Both are read *during* ~load-dock-config!~ -- i.e. at startup, on every
+settings-file change, and on every reload -- so they need no "apply" action:
+
+| File (under =$XDG_STATE_HOME/lambdock/=) | Written by        | Applied in                                  |
+|-----------------------------------------+-------------------+---------------------------------------------|
+| =preferences-<stem>.scm=                | Preferences window | ~load-dock-config!~: ~apply-dock-preferences~ prepends the pairs to the settings alist |
+| =layout-<stem>.scm=                     | drag and drop     | ~state.scm:get-dock-items~: ~apply-dock-overrides~ rewrites the item list on every read |
+
+Four things are worth knowing before debugging "my layout/preferences are not
+applied":
+
+- *The stem is the settings file's basename.* =settings.scm= → =layout-settings.scm=,
+  so a second settings file (=settings-desktop.scm=) has its own pair.
+- *Preferences are prepended, so they win.* ~assq~ finds them before the value
+  the settings file defined; deleting the file restores the settings value.
+- *=order= only reorders; it cannot resurrect an item.* Restoring an item needs
+  its icon and command, and only the =added= section stores those (because only
+  items dragged *in from outside* are recorded there). A key that is in =order=
+  but in neither the settings file nor =added= is skipped -- loudly, since
+  v0.15.0: ~N stored order key(s) are not in this dock any more~.
+- *There is no in-process cache of either file.* They are re-read whenever they
+  are needed, so a file written by another dock, by hand, or by a regenerated
+  settings file is always current. (Layout mutations pass the layout they just
+  built to the writer instead of reading it back, which is what makes a
+  read-modify-write safe without a cache.)
+
+Both loaders log what they did, which is the fastest way to answer "did it read
+my file?": =Applied N GUI preference(s) for <path>: <keys>= and =Applied layout
+for <path>: N ordered, N removed, N added=.
 
 The bridge helpers are the pattern to copy:
 
@@ -1103,15 +1145,18 @@ taken all the way yet. Listed biggest win first; none of them is a bug.
 
 | Where                                   | What is rough                                                        | First move                                                        |
 |-----------------------------------------+----------------------------------------------------------------------+-------------------------------------------------------------------|
-| =ui/theme_engine.c= ~load_custom_css~   | 147 lines: chooses the theme, swaps the window class, then tears down and reloads four providers | return a ~ThemeRequest~ value from a pure helper, then one applier |
 | =ui/meter.c= ~..._snapshot~             | 122 lines of geometry interleaved with ~gtk_snapshot_*~ calls         | extract ~MeterGeometry~ + a pure compute, as =core/dock_motion.c= |
 | =core/dock_dims.h=, =core/config_values.h= | include =lambdock.h= / =ui/shelf.h=, so layer 1 is pure in content but not in headers | move the shelf/dock value structs into =core/=                    |
-| =ui/shelf_follow.c= ~set_css_class~     | private copy of ~lambdock_set_css_class()~                            | delete it, include =widget_utils.h=                               |
 | =ui/desktop_entry.c= cache              | three file statics for a process-wide cache                           | one named ~DesktopEntryCache~ value, as =dock_registry.c= does     |
 | =main.c=, =ui/preferences.c=            | hand-rolled snapshot loops, two loose timer ids                       | ~dock_registry_foreach()~ + one timers struct                     |
 | =ui/dock_item.c=                        | 1980 lines / 83 functions: items, window tracking and pollers at once | split window tracking into =ui/dock_item_windows.c=               |
 | =ui/dock_item.c= pollers                | call ~scm_*~ directly, so Guile's API leaks past the bridge           | one bridge function that calls a stored poll procedure            |
 | =ui/icon_resolver.c= ~setup_icon_theme~ | 89 lines assembling search paths                                      | build the path list purely, then apply it                         |
+
+Done and off the list, for reference: ~load_custom_css~ (now a pure
+~LambdockThemeRequest~ plus four single-concern appliers), and the private
+~set_css_class~ in =ui/shelf_follow.c= (now ~lambdock_set_css_class()~).
+
 
 Deprecated GTK3 patterns are *not* on this list: there are none left
 (~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and
@@ -1132,6 +1177,7 @@ Deprecated GTK3 patterns are *not* on this list: there are none left
 | =(lambdock loader)=  | ~resolve-dock-configuration~, ~get-config-path~                                    |
 | =(lambdock presets)= | ~preset-icons~, ~preset-launchers~, ~preset-icon~, ~preset-launcher~, ~preset-launchers-for~ |
 | =(lambdock logger)=  | ~log-debug/info/warn/error~                                                        |
+| =(lambdock layout)=  | ~dock-layout-path~, ~dock-layout-ref~, ~apply-dock-overrides~, ~dock-layout-add!/remove!/set-order!/set-view!~, ~dock-layout-reset!~ |
 | =(lambdock prefs)=   | ~dock-preferences-path~, ~dock-preferences-read~, ~apply-dock-preferences~, ~save-dock-preference!~, ~set-dock-preference!~, ~reset-dock-preferences!~ |
 
 The setter side matters for the REPL: every ~set-dock-*!~ goes through
@@ -1197,14 +1243,23 @@ and [[file:README.org::#the-preset-zoo][README: The preset zoo]].
 :END:
 
 Themes are GResource files at ~/org/jointhefreeworld/lambdock/css/<theme>.css~.
-~load_custom_css~:
+~load_custom_css~ is two halves: ~lambdock_theme_request~ (a pure function in the
+same file) turns the dock's settings into a ~LambdockThemeRequest~ -- normalised
+theme name, ~theme-<name>~ class, and which modifiers apply -- and the appliers
+act on that value:
 
-1. Sets a per-instance scope class ~theme-<name>~ on the window.
-2. Loads the built-in theme and rewrites every selector through
-   ~scope_css_selectors~ so rules only affect this dock and cannot leak between
-   instances.
-3. Optionally loads user overrides from =~/.config/lambdock/styles.css= at
+1. Swaps the per-instance scope class ~theme-<name>~ on the window.
+2. Detaches the four providers the previous load installed (base theme, taskbar,
+   shelf, user CSS) in one pass, so a reload swaps rather than stacks.
+3. Loads the modifiers (~taskbar.css~ when taskbar mode or window titles are on,
+   ~shelf.css~ when the glass geometry is), then the built-in theme, rewriting
+   every selector through ~scope_css_selectors~ so rules only affect this dock
+   and cannot leak between instances.
+4. Layers user overrides from =~/.config/lambdock/styles.css= on top at
    ~GTK_STYLE_PROVIDER_PRIORITY_USER~.
+
+Theme `none` is the request's ~disabled~ flag: the class and providers are still
+swapped, but nothing is loaded.
 
 Scoping rules: ~.foo~ becomes ~.theme-<name> .foo~; a selector starting with
 ~window~ becomes ~window.theme-<name>...~; ~@~-rules/comments pass through. This

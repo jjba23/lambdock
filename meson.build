@@ -421,6 +421,13 @@ unit_tests = [
     'extra_sources': full_test_sources,
   },
   {
+    # The real Scheme modules behind the real C bridge: proves that a settings
+    # file plus the two override files in $XDG_STATE_HOME are honoured on the
+    # first load (test_guile_bridge mocks Scheme and cannot see this).
+    'id': 'config_startup',
+    'extra_sources': full_test_sources,
+  },
+  {
     'id': 'preferences',
     'extra_sources': full_test_sources,
   },

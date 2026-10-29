@@ -9,6 +9,81 @@
 #include <string.h>
 
 /* ============================================================================
+ * THEME REQUEST (pure: same arguments, same value)
+ * ============================================================================ */
+
+static void test_theme_request_defaults(void) {
+  /* A dock with no theme configured gets vanilla, not an empty class. */
+  g_auto(LambdockThemeRequest) request =
+      lambdock_theme_request(NULL, FALSE, FALSE, FALSE);
+
+  g_assert_cmpstr(request.theme_name, ==, "vanilla");
+  g_assert_cmpstr(request.theme_class, ==, "theme-vanilla");
+  g_assert_false(request.disabled);
+  g_assert_false(request.taskbar_modifier);
+  g_assert_false(request.shelf_modifier);
+}
+
+static void test_theme_request_normalises(void) {
+  g_auto(LambdockThemeRequest) empty =
+      lambdock_theme_request("", FALSE, FALSE, FALSE);
+  g_assert_cmpstr(empty.theme_name, ==, "vanilla");
+
+  g_auto(LambdockThemeRequest) unity =
+      lambdock_theme_request("unity", FALSE, FALSE, FALSE);
+  g_assert_cmpstr(unity.theme_name, ==, "unity");
+  g_assert_cmpstr(unity.theme_class, ==, "theme-unity");
+  g_assert_false(unity.disabled);
+}
+
+static void test_theme_request_none_disables(void) {
+  g_auto(LambdockThemeRequest) none =
+      lambdock_theme_request("none", TRUE, TRUE, TRUE);
+
+  /* 'none' still names a class (so the old one can be swapped out) but loads
+   * nothing, whatever the modifiers say. */
+  g_assert_true(none.disabled);
+  g_assert_cmpstr(none.theme_class, ==, "theme-none");
+
+  g_auto(LambdockThemeRequest) upper =
+      lambdock_theme_request("NONE", FALSE, FALSE, FALSE);
+  g_assert_true(upper.disabled);
+}
+
+static void test_theme_request_modifiers(void) {
+  /* Taskbar mode needs the modifier... */
+  g_auto(LambdockThemeRequest) taskbar =
+      lambdock_theme_request("vanilla", TRUE, FALSE, FALSE);
+  g_assert_true(taskbar.taskbar_modifier);
+
+  /* ...and so do window titles, on their own. */
+  g_auto(LambdockThemeRequest) titles =
+      lambdock_theme_request("vanilla", FALSE, TRUE, TRUE);
+  g_assert_true(titles.taskbar_modifier);
+  g_assert_true(titles.shelf_modifier);
+
+  /* Neither means neither. */
+  g_auto(LambdockThemeRequest) plain =
+      lambdock_theme_request("vanilla", FALSE, FALSE, FALSE);
+  g_assert_false(plain.taskbar_modifier);
+  g_assert_false(plain.shelf_modifier);
+}
+
+/* The cleanup has to be safe to run twice, because ~g_auto~ runs it on the way
+ * out even for a request whose strings were already released. */
+static void test_theme_request_clear_is_idempotent(void) {
+  LambdockThemeRequest request =
+      lambdock_theme_request("unity", FALSE, FALSE, FALSE);
+
+  lambdock_theme_request_clear(&request);
+  g_assert_null(request.theme_name);
+  g_assert_null(request.theme_class);
+
+  lambdock_theme_request_clear(&request);
+  lambdock_theme_request_clear(NULL);
+}
+
+/* ============================================================================
  * SELECTOR SCOPING
  * ============================================================================ */
 
@@ -328,6 +403,16 @@ int main(int argc, char **argv) {
     return 77;
   }
 
+  g_test_add_func("/ui/theme_engine/request_defaults",
+                  test_theme_request_defaults);
+  g_test_add_func("/ui/theme_engine/request_normalises",
+                  test_theme_request_normalises);
+  g_test_add_func("/ui/theme_engine/request_none",
+                  test_theme_request_none_disables);
+  g_test_add_func("/ui/theme_engine/request_modifiers",
+                  test_theme_request_modifiers);
+  g_test_add_func("/ui/theme_engine/request_clear_idempotent",
+                  test_theme_request_clear_is_idempotent);
   g_test_add_func("/ui/theme_engine/scope_null_empty",
                   test_scope_null_and_empty);
   g_test_add_func("/ui/theme_engine/scope_class_selectors",

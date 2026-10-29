@@ -97,26 +97,203 @@ char *theme_scope_css_selectors(const char *css_text,
 }
 
 /* ============================================================================
- * HELPER: CSS PROVIDER GENERATOR
+ * THE THEME REQUEST (PURE)
+ * ============================================================================
+ * What load_custom_css() must decide before touching a widget, as a value.
+ * Nothing here reads the display or allocates a provider, which is what makes
+ * the rules below unit testable.
+ */
+
+LambdockThemeRequest lambdock_theme_request(const char *requested_theme,
+                                            gboolean taskbar,
+                                            gboolean show_window_titles,
+                                            gboolean shelf_active) {
+  const char *theme_name =
+      (requested_theme && *requested_theme != '\0') ? requested_theme : "vanilla";
+
+  LambdockThemeRequest request = {
+      .theme_name = g_strdup(theme_name),
+      .theme_class = g_strdup_printf("theme-%s", theme_name),
+      .disabled = g_ascii_strcasecmp(theme_name, "none") == 0,
+      .taskbar_modifier = taskbar || show_window_titles,
+      .shelf_modifier = shelf_active,
+  };
+
+  return request;
+}
+
+void lambdock_theme_request_clear(LambdockThemeRequest *request) {
+  if (!request)
+    return;
+
+  g_clear_pointer(&request->theme_name, g_free);
+  g_clear_pointer(&request->theme_class, g_free);
+  request->disabled = FALSE;
+  request->taskbar_modifier = FALSE;
+  request->shelf_modifier = FALSE;
+}
+
+/* ============================================================================
+ * APPLIERS (the only part that touches GTK)
  * ============================================================================
  */
 
-static GtkCssProvider *create_scoped_provider(GdkDisplay *display,
-                                              const char *raw_css,
-                                              const char *scope_class,
-                                              guint priority) {
+/** "default" for the config-less fallback dock, matching every other log line. */
+static const char *dock_name(const LambdockState *state) {
+  return (state && state->config_path) ? state->config_path : "default";
+}
+
+/**
+ * provider_from_scoped_css:
+ * Scopes @raw_css under @theme_class, installs it on @display and returns it.
+ * NULL when there is nothing to load, so callers can chain modifiers freely.
+ */
+static GtkCssProvider *provider_from_scoped_css(GdkDisplay *display,
+                                                const char *raw_css,
+                                                const char *theme_class,
+                                                guint priority) {
   if (!raw_css || *raw_css == '\0')
     return NULL;
 
-  char *scoped_css = theme_scope_css_selectors(raw_css, scope_class);
+  g_autofree char *scoped_css =
+      theme_scope_css_selectors(raw_css, theme_class);
   GtkCssProvider *provider = gtk_css_provider_new();
   gtk_css_provider_load_from_string(provider, scoped_css);
 
   gtk_style_context_add_provider_for_display(
       display, GTK_STYLE_PROVIDER(provider), priority);
 
-  g_free(scoped_css);
   return provider;
+}
+
+/** The same, for a stylesheet embedded in the GResource bundle. */
+static GtkCssProvider *provider_from_resource(GdkDisplay *display,
+                                              const char *resource_path,
+                                              const char *theme_class,
+                                              guint priority) {
+  g_autoptr(GBytes) bytes = g_resources_lookup_data(
+      resource_path, G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
+  if (!bytes)
+    return NULL;
+
+  gsize size = 0;
+  const char *raw_css = g_bytes_get_data(bytes, &size);
+
+  return provider_from_scoped_css(display, raw_css, theme_class, priority);
+}
+
+/** Removes the previous theme class and tags the window with the new one. */
+static void theme_swap_window_class(LambdockState *state,
+                                    const char *theme_class) {
+  if (state->active_theme_class) {
+    gtk_widget_remove_css_class(state->window, state->active_theme_class);
+    g_clear_pointer(&state->active_theme_class, g_free);
+  }
+
+  state->active_theme_class = g_strdup(theme_class);
+  gtk_widget_add_css_class(state->window, theme_class);
+}
+
+/**
+ * theme_detach_providers:
+ * Unhooks every provider this engine installed for @state, in one pass.
+ *
+ * A reload must swap providers, never stack them: the dock state holds the four
+ * pointers precisely so they can be released here.
+ */
+static void theme_detach_providers(LambdockState *state, GdkDisplay *display) {
+  GtkCssProvider **providers[] = {
+      &state->base_css_provider, &state->taskbar_css_provider,
+      &state->shelf_css_provider, &state->user_css_provider,
+  };
+
+  for (gsize i = 0; i < G_N_ELEMENTS(providers); i++) {
+    if (!*providers[i])
+      continue;
+
+    gtk_style_context_remove_provider_for_display(
+        display, GTK_STYLE_PROVIDER(*providers[i]));
+    g_clear_object(providers[i]);
+  }
+}
+
+/**
+ * theme_attach_modifiers:
+ * Layers the taskbar and shelf modifiers in before the theme, so a theme rule of
+ * equal specificity still wins over them.
+ */
+static void theme_attach_modifiers(LambdockState *state, GdkDisplay *display,
+                                   const LambdockThemeRequest *request) {
+  const guint priority = GTK_STYLE_PROVIDER_PRIORITY_APPLICATION;
+
+  if (request->taskbar_modifier) {
+    state->taskbar_css_provider = provider_from_resource(
+        display, "/org/jointhefreeworld/lambdock/css/taskbar.css",
+        request->theme_class, priority);
+    if (state->taskbar_css_provider)
+      LOG_C_INFO("UI", "Loaded taskbar/window-title modifier for [%s]",
+                 dock_name(state));
+  }
+
+  if (request->shelf_modifier) {
+    state->shelf_css_provider = provider_from_resource(
+        display, "/org/jointhefreeworld/lambdock/css/shelf.css",
+        request->theme_class, priority);
+    if (state->shelf_css_provider)
+      LOG_C_INFO("UI", "Loaded glass shelf modifier for [%s]",
+                 dock_name(state));
+  }
+}
+
+/** Loads the base theme, falling back to vanilla when it is not shipped. */
+static void theme_attach_base_theme(LambdockState *state, GdkDisplay *display,
+                                    const LambdockThemeRequest *request) {
+  g_autofree char *resource_path = g_strdup_printf(
+      "/org/jointhefreeworld/lambdock/css/%s.css", request->theme_name);
+
+  GtkCssProvider *provider =
+      provider_from_resource(display, resource_path, request->theme_class,
+                             GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+
+  if (!provider) {
+    LOG_C_WARN("UI", "Theme resource '%s' not found, falling back to vanilla",
+               resource_path);
+    provider = provider_from_resource(
+        display, "/org/jointhefreeworld/lambdock/css/vanilla.css",
+        request->theme_class, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+  }
+
+  state->base_css_provider = provider;
+
+  if (provider)
+    LOG_C_INFO("UI", "Loaded & scoped CSS theme [%s] for [%s]",
+               request->theme_name, dock_name(state));
+}
+
+/**
+ * theme_attach_user_css:
+ * Layers ~/.config/lambdock/styles.css on top of everything, at user priority,
+ * so a hand-written override wins over any shipped theme.
+ */
+static void theme_attach_user_css(LambdockState *state, GdkDisplay *display,
+                                  const LambdockThemeRequest *request) {
+  g_autofree char *path =
+      g_build_filename(g_get_user_config_dir(), "lambdock", "styles.css", NULL);
+
+  if (!g_file_test(path, G_FILE_TEST_EXISTS))
+    return;
+
+  g_autofree char *raw_css = NULL;
+  if (!g_file_get_contents(path, &raw_css, NULL, NULL))
+    return;
+
+  state->user_css_provider =
+      provider_from_scoped_css(display, raw_css, request->theme_class,
+                               GTK_STYLE_PROVIDER_PRIORITY_USER);
+
+  if (state->user_css_provider)
+    LOG_C_INFO("UI", "Loaded & scoped user CSS override for [%s]",
+               dock_name(state));
 }
 
 /* ============================================================================
@@ -132,142 +309,22 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
-  const char *raw_theme =
-      (state->theme && *state->theme != '\0') ? state->theme : "vanilla";
-  const char *theme_name =
-      (raw_theme && *raw_theme != '\0') ? raw_theme : "vanilla";
+  g_auto(LambdockThemeRequest) request =
+      lambdock_theme_request(state->theme, state->taskbar,
+                             state->show_window_titles,
+                             lambdock_shelf_active(state));
 
-  // Formulate unique CSS class name for this theme (e.g. "theme-unity")
-  char *theme_class = g_strdup_printf("theme-%s", theme_name);
+  theme_swap_window_class(state, request.theme_class);
+  theme_detach_providers(state, display);
 
-  // Clean up previous theme classes on the window widget
-  if (state->active_theme_class) {
-    gtk_widget_remove_css_class(state->window, state->active_theme_class);
-    g_free(state->active_theme_class);
-  }
-  state->active_theme_class = theme_class;
-  gtk_widget_add_css_class(state->window, theme_class);
-
-  // Unbind previous providers from display if present
-  if (state->base_css_provider) {
-    gtk_style_context_remove_provider_for_display(
-        display, GTK_STYLE_PROVIDER(state->base_css_provider));
-    g_clear_object(&state->base_css_provider);
-  }
-  if (state->taskbar_css_provider) {
-    gtk_style_context_remove_provider_for_display(
-        display, GTK_STYLE_PROVIDER(state->taskbar_css_provider));
-    g_clear_object(&state->taskbar_css_provider);
-  }
-  if (state->shelf_css_provider) {
-    gtk_style_context_remove_provider_for_display(
-        display, GTK_STYLE_PROVIDER(state->shelf_css_provider));
-    g_clear_object(&state->shelf_css_provider);
-  }
-  if (state->user_css_provider) {
-    gtk_style_context_remove_provider_for_display(
-        display, GTK_STYLE_PROVIDER(state->user_css_provider));
-    g_clear_object(&state->user_css_provider);
-  }
-
-  // Early return if theme is set to 'none'
-  if (g_ascii_strcasecmp(theme_name, "none") == 0) {
-    LOG_C_INFO("UI", "Theme set to 'none' for [%s].",
-               state->config_path ? state->config_path : "default");
+  if (request.disabled) {
+    LOG_C_INFO("UI", "Theme set to 'none' for [%s].", dock_name(state));
     return;
   }
 
-  // --------------------------------------------------------------------------
-  // 1a. TASKBAR / WINDOW-TITLE MODIFIER (loaded before the theme so theme rules
-  // can still override equal-specificity modifiers)
-  // --------------------------------------------------------------------------
-  if (state->taskbar || state->show_window_titles) {
-    GBytes *mod = g_resources_lookup_data(
-        "/org/jointhefreeworld/lambdock/css/taskbar.css",
-        G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
-    if (mod) {
-      gsize mod_size = 0;
-      const char *mod_css = g_bytes_get_data(mod, &mod_size);
-      state->taskbar_css_provider = create_scoped_provider(
-          display, mod_css, theme_class,
-          GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-      LOG_C_INFO("UI", "Loaded taskbar/window-title modifier for [%s]",
-                 state->config_path ? state->config_path : "default");
-      g_bytes_unref(mod);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // 1b. GLASS SHELF MODIFIER (loaded before the theme, like the taskbar
-  // modifier, so the shelf is styled for *any* active theme while theme rules
-  // keep winning on equal specificity). It only ships the glass material and
-  // the shelf-specific tweaks; the geometry comes from LambdockShelfParams.
-  // --------------------------------------------------------------------------
-  if (lambdock_shelf_active(state)) {
-    GBytes *mod = g_resources_lookup_data(
-        "/org/jointhefreeworld/lambdock/css/shelf.css",
-        G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
-    if (mod) {
-      gsize mod_size = 0;
-      const char *mod_css = g_bytes_get_data(mod, &mod_size);
-      state->shelf_css_provider = create_scoped_provider(
-          display, mod_css, theme_class,
-          GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-      LOG_C_INFO("UI", "Loaded glass shelf modifier for [%s]",
-                 state->config_path ? state->config_path : "default");
-      g_bytes_unref(mod);
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // 1. BASE THEME (Loaded from GResource Bundle)
-  // --------------------------------------------------------------------------
-  char *resource_path =
-      g_strdup_printf("/org/jointhefreeworld/lambdock/css/%s.css", theme_name);
-  GBytes *data = g_resources_lookup_data(resource_path,
-                                         G_RESOURCE_LOOKUP_FLAGS_NONE, NULL);
-
-  if (!data) {
-    LOG_C_WARN("UI", "Theme resource '%s' not found, falling back to vanilla",
-               resource_path);
-    g_free(resource_path);
-    resource_path = g_strdup("/org/jointhefreeworld/lambdock/css/vanilla.css");
-    data = g_resources_lookup_data(resource_path, G_RESOURCE_LOOKUP_FLAGS_NONE,
-                                   NULL);
-  }
-
-  if (data) {
-    gsize size = 0;
-    const char *raw_css = g_bytes_get_data(data, &size);
-
-    state->base_css_provider = create_scoped_provider(
-        display, raw_css, theme_class, GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-
-    LOG_C_INFO("UI", "Loaded & scoped CSS theme [%s] for [%s]", theme_name,
-               state->config_path ? state->config_path : "default");
-
-    g_bytes_unref(data);
-  }
-  g_free(resource_path);
-
-  // --------------------------------------------------------------------------
-  // 2. USER OVERRIDE CSS (~/.config/lambdock/styles.css)
-  // --------------------------------------------------------------------------
-  const char *config_dir = g_get_user_config_dir();
-  char *user_css_path =
-      g_build_filename(config_dir, "lambdock", "styles.css", NULL);
-
-  if (g_file_test(user_css_path, G_FILE_TEST_EXISTS)) {
-    char *user_raw = NULL;
-    if (g_file_get_contents(user_css_path, &user_raw, NULL, NULL)) {
-      state->user_css_provider = create_scoped_provider(
-          display, user_raw, theme_class, GTK_STYLE_PROVIDER_PRIORITY_USER);
-
-      LOG_C_INFO("UI", "Loaded & scoped user CSS override for [%s]",
-                 state->config_path ? state->config_path : "default");
-
-      g_free(user_raw);
-    }
-  }
-  g_free(user_css_path);
+  /* Order matters: modifiers first, then the theme over them, then the user's
+   * own stylesheet over everything. */
+  theme_attach_modifiers(state, display, &request);
+  theme_attach_base_theme(state, display, &request);
+  theme_attach_user_css(state, display, &request);
 }

@@ -742,12 +742,42 @@
              '("app:A" "app:B" "separator:" "app:C")
              (map dock-item-key (get-dock-items %layout-cfg)))
 
-;; Paths that are not settings files keep the plain configured items.
-(check-equal "a symbol config key never reads overrides"
-             '("app:A")
-             (begin (configure-dock! #:config-path 'default
-                                     #:items (list (app-item #:name "A")))
-                    (map dock-item-key (get-dock-items))))
+;; The override file is re-read every time it is needed, so a layout written by
+;; another dock instance (or by hand) is visible on the next load instead of
+;; being masked by a copy parsed at startup.
+(define %reread-cfg (tmp-path "layout/reread-settings.scm"))
+(configure-dock! #:config-path %reread-cfg
+                 #:items (list (app-item #:name "A" #:icon "a" #:exec "a")
+                               (app-item #:name "B" #:icon "b" #:exec "b")
+                               (app-item #:name "C" #:icon "c" #:exec "c")))
+(dock-layout-set-order! %reread-cfg '("app:C" "app:B" "app:A"))
+(check-equal "the first read applies the stored order"
+             '("app:C" "app:B" "app:A")
+             (map dock-item-key (get-dock-items %reread-cfg)))
+
+;; A second writer replaces the file while the dock is running.
+(write-file (dock-layout-path %reread-cfg)
+            "((order \"app:B\" \"app:C\" \"app:A\") (removed) (added) (views))\n")
+(check-equal "a layout changed on disk is picked up without a restart"
+             '("app:B" "app:C" "app:A")
+             (map dock-item-key (get-dock-items %reread-cfg)))
+
+;; A dock with no settings path of its own -- the fallback dock, or a REPL call
+;; with no arguments -- uses the layout written for the default settings file
+;; instead of dropping its overrides because the key is not a string.
+(define %fallback-root (tmp-path "fallback"))
+(define %fallback-cfg (string-append %fallback-root "/lambdock/settings.scm"))
+
+(with-env `(("XDG_CONFIG_HOME" . ,%fallback-root))
+  (lambda ()
+    (configure-dock! #:config-path %fallback-cfg
+                     #:items (list (app-item #:name "A" #:icon "a" #:exec "a")
+                                   (app-item #:name "B" #:icon "b" #:exec "b")))
+    (dock-layout-set-order! %fallback-cfg '("app:B" "app:A"))
+    (check-equal "a PATH-less dock applies the default settings layout"
+                 '("app:B" "app:A")
+                 (map dock-item-key (get-dock-items)))
+    (dock-layout-reset! %fallback-cfg)))
 
 ;; =============================================================================
 ;; Meter items, the numeric poll helpers and the shelf flare

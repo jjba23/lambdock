@@ -24,6 +24,15 @@
 ;; The overrides are applied on top of whatever the settings file says, so a
 ;; changed settings file keeps working: new items appear, removed ones stay
 ;; removed, and nothing is lost. Deleting the file resets the dock layout.
+;;
+;; Two rules matter when debugging "my layout was not applied":
+;;
+;;   * the file is re-read whenever the dock asks for its items (there is no
+;;     cache), so an edit, a second instance or a restart all see the same data;
+;;   * `order' only reorders. An item that the settings file no longer defines
+;;     cannot be restored from `order' alone -- only the `added' section carries
+;;     the icon and command an item needs -- so such keys are skipped with a
+;;     warning instead of silently doing nothing.
 ;; =============================================================================
 
 (define-module (lambdock layout)
@@ -31,6 +40,7 @@
   #:use-module (ice-9 format)
   #:use-module (srfi srfi-1)
   #:use-module (lambdock items)
+  #:use-module (lambdock loader)
   #:use-module (lambdock logger)
   #:export (dock-layout-path
             dock-layout-ref
@@ -72,8 +82,28 @@ never share their layout."
 ;; Reading & writing the override file
 ;; =============================================================================
 
-;; Parsed layouts, keyed by config path, so the file is read once per dock.
-(define *dock-layouts* (make-hash-table))
+;; There is deliberately no cache of the parsed layout: the file is a few
+;; hundred bytes and is read whenever the dock asks for its items, so a layout
+;; written by the Preferences window, by another dock instance or by hand is
+;; never masked by a copy parsed at startup. Mutations carry the layout they just
+;; built and write it directly (see %write-layout!), so they never have to read
+;; it back either.
+
+(define (dock-layout-target config-path)
+  "The settings path whose override file belongs to CONFIG-PATH.
+
+A dock created without a settings path -- the fallback dock, or a REPL call with
+no arguments -- still has a layout: the one belonging to the default settings
+file. Resolving it here is what keeps those docks reading the same override file
+as a PATH-ed one, instead of silently dropping it because the key is not a
+string."
+  (let ((candidate (if (and (string? config-path)
+                            (not (string-null? config-path)))
+                       config-path
+                       (get-config-path))))
+    (and (string? candidate)
+         (not (string-null? candidate))
+         candidate)))
 
 (define (%empty-layout)
   (list (cons 'order '())
@@ -106,42 +136,44 @@ sections. A missing, unreadable or malformed file simply means \"no overrides\".
         (%empty-layout))))
 
 (define (dock-layout-ref config-path)
-  "Returns (and caches) the parsed override layout of CONFIG-PATH."
-  (let ((key (if (string? config-path) config-path 'default)))
-    (or (hash-ref *dock-layouts* key #f)
-        (let ((layout (dock-layout-read key)))
-          (hash-set! *dock-layouts* key layout)
-          layout))))
+  "Returns the parsed override layout of CONFIG-PATH, read fresh from disk.
 
-(define (dock-layout-save! config-path)
-  "Writes the in-memory override layout of CONFIG-PATH back to disk."
-  (let* ((key (if (string? config-path) config-path 'default))
-         (path (dock-layout-path key))
-         (layout (dock-layout-ref key)))
-    (ensure-directory (dirname path))
-    (catch #t
-           (lambda ()
-             (call-with-output-file path
-               (lambda (port)
-                 (format port ";; lambdock dock layout for ~a~%" key)
-                 (format port
-                         ";; Written automatically by drag and drop in the dock.~%")
-                 (format port
-                         ";; Delete this file to go back to the items in your settings file.~%")
-                 (write layout port)
-                 (newline port)))
-             (log-info "Layout" "Saved dock layout overrides to ~a" path)
-             #t)
-           (lambda (err . args)
-             (log-error "Layout" "Could not write dock layout ~a (~a ~s)"
-                        path err args)
-             #f))))
+Reading every time is what makes the answer always current: a reload, a second
+dock on another monitor and a hand edit all see the same file."
+  (let ((target (dock-layout-target config-path)))
+    (if target (dock-layout-read target) (%empty-layout))))
+
+(define (%write-layout! config-path layout)
+  "Writes LAYOUT as the override layout of CONFIG-PATH.
+
+Takes the layout as a value instead of re-reading it: a mutation already holds
+the layout it just built, and re-reading would write the file it is replacing."
+  (let ((target (dock-layout-target config-path)))
+    (if (not target)
+        #f
+        (let ((path (dock-layout-path target)))
+          (ensure-directory (dirname path))
+          (catch #t
+                 (lambda ()
+                   (call-with-output-file path
+                     (lambda (port)
+                       (format port ";; lambdock dock layout for ~a~%" target)
+                       (format port
+                               ";; Written automatically by drag and drop in the dock.~%")
+                       (format port
+                               ";; Delete this file to go back to the items in your settings file.~%")
+                       (write layout port)
+                       (newline port)))
+                   (log-info "Layout" "Saved dock layout overrides to ~a" path)
+                   #t)
+                 (lambda (err . args)
+                   (log-error "Layout" "Could not write dock layout ~a (~a ~s)"
+                              path err args)
+                   #f))))))
 
 (define (dock-layout-reset! config-path)
   "Forgets every override of CONFIG-PATH (used by tests and by the REPL)."
-  (let ((key (if (string? config-path) config-path 'default)))
-    (hash-set! *dock-layouts* key (%empty-layout))
-    (dock-layout-save! key)))
+  (%write-layout! config-path (%empty-layout)))
 
 ;; =============================================================================
 ;; Applying overrides to a list of dock items
@@ -222,41 +254,71 @@ explicitly (which is what the running dock writes as soon as the drop lands)."
                  (rank (or stored (+ previous 0.5))))
             (base-loop (cdr rest) rank (cons (cons rank item) ranked)))))))
 
+(define (%log-overrides target layout items)
+  "Say what the stored layout does to ITEMS, and flag stale order keys.
+
+A key that the settings file no longer defines cannot be shown: only the `added'
+section carries the icon and command an item needs. That is the usual reason a
+layout looks like it was not applied at all, so it is worth one warning instead
+of silently ignoring it."
+  (let* ((order (assq-ref layout 'order))
+         (removed (assq-ref layout 'removed))
+         (added (assq-ref layout 'added))
+         (known (append (map dock-item-key items)
+                        (filter-map (lambda (desc)
+                                      (and (list? desc)
+                                           (>= (length desc) 2)
+                                           (%descriptor-key desc)))
+                                    added)))
+         (unknown (remove (lambda (key) (member key known)) order)))
+    (when (or (pair? order) (pair? removed) (pair? added))
+      (log-info "Layout"
+                "Applied layout for ~a: ~a ordered, ~a removed, ~a added"
+                target (length order) (length removed) (length added)))
+    (when (pair? unknown)
+      (log-warn "Layout"
+                "~a stored order key(s) are not in this dock any more (~s); only `added' items can be restored. Drag them in again, or delete ~a to forget them."
+                (length unknown) unknown (dock-layout-path target)))))
+
 (define (apply-dock-overrides items config-path)
   "Returns ITEMS with the override layout stored for CONFIG-PATH applied.
 
 Overrides never replace the configured items, they only reorder them, drop the
 ones the user removed, append the ones the user added and patch stack view
 modes. Items the override does not mention keep their configured relative
-order, which is why the sort is stable."
-  (if (not (and (string? config-path) (not (string-null? config-path))))
-      items
-      (let* ((layout (dock-layout-ref config-path))
-             (order (assq-ref layout 'order))
-             (removed (assq-ref layout 'removed))
-             (views (assq-ref layout 'views))
-             (base (filter (lambda (item)
-                             (not (member (dock-item-key item) removed)))
-                           items))
-             (base (map (lambda (item) (%apply-view item views)) base))
-             (existing (map dock-item-key base))
-             (added (filter (lambda (item)
-                              (not (member (dock-item-key item) existing)))
-                            (map (lambda (item) (%apply-view item views))
-                                 (filter-map %descriptor->item
-                                             (assq-ref layout 'added)))))
-             (ranked (%rank-items base added order)))
-        (map cdr (stable-sort ranked
-                              (lambda (a b) (< (car a) (car b))))))))
+order, which is why the sort is stable.
+
+A dock with no settings path of its own uses the default settings file's layout
+(see dock-layout-target), so it behaves like a path-ed dock instead of quietly
+losing its layout."
+  (let ((target (dock-layout-target config-path)))
+    (if (not target)
+        items
+        (let* ((layout (dock-layout-ref config-path))
+               (order (assq-ref layout 'order))
+               (removed (assq-ref layout 'removed))
+               (views (assq-ref layout 'views))
+               (base (filter (lambda (item)
+                               (not (member (dock-item-key item) removed)))
+                             items))
+               (base (map (lambda (item) (%apply-view item views)) base))
+               (existing (map dock-item-key base))
+               (added (filter (lambda (item)
+                                (not (member (dock-item-key item) existing)))
+                              (map (lambda (item) (%apply-view item views))
+                                   (filter-map %descriptor->item
+                                               (assq-ref layout 'added)))))
+               (ranked (%rank-items base added order)))
+          (%log-overrides target layout items)
+          (map cdr (stable-sort ranked
+                                (lambda (a b) (< (car a) (car b)))))))))
 
 ;; =============================================================================
 ;; Mutation (called from the C side for drag and drop)
 ;; =============================================================================
 
-(define (%store! config-path layout)
-  (let ((key (if (string? config-path) config-path 'default)))
-    (hash-set! *dock-layouts* key layout)
-    (dock-layout-save! key)))
+;; Every mutation ends here: the caller built the new layout, this writes it.
+(define (%store! config-path layout) (%write-layout! config-path layout))
 
 (define (%with-sections layout order removed added views)
   (list (cons 'order order)

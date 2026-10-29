@@ -6,6 +6,7 @@
 #include "shelf_follow.h"
 
 #include "shelf.h"
+#include "widget_utils.h"
 
 #include <math.h>
 
@@ -23,22 +24,6 @@ struct _LambdockShelfFollow {
 };
 
 G_DEFINE_FINAL_TYPE(LambdockShelfFollow, shelf_follow, GTK_TYPE_WIDGET)
-
-/**
- * set_css_class:
- * Adds or removes a CSS class, touching the widget only when it changes.
- */
-static void set_css_class(GtkWidget *widget, const char *name, gboolean enabled) {
-  if (!widget)
-    return;
-
-  if (enabled) {
-    if (!gtk_widget_has_css_class(widget, name))
-      gtk_widget_add_css_class(widget, name);
-  } else if (gtk_widget_has_css_class(widget, name)) {
-    gtk_widget_remove_css_class(widget, name);
-  }
-}
 
 /* ============================================================================
  * THE PROJECTION, MEASURED AT THE CHILD'S PLACE
@@ -196,7 +181,8 @@ static void shelf_follow_size_allocate(GtkWidget *widget, int width, int height,
 
   /* Stylesheets get to know that this widget sits on a projected slab: the
    * tilted separators have their own look, and the flat dock keeps the theme's. */
-  set_css_class(widget, "shelf-projected", shelf_follow_is_projected(widget));
+  lambdock_set_css_class(widget, "shelf-projected",
+                         shelf_follow_is_projected(widget));
 
   GtkAllocation allocation = {0, 0, width, height};
 
