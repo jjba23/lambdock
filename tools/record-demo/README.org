@@ -4,53 +4,73 @@
 
 This directory contains a reproducible end-to-end recorder for the lambdock
 demo GIF.  One command starts a *nested niri session* inside your current
-session, runs lambdock there, drives a virtual pointer through a scripted
-storyboard, records the nested output with =wf-recorder=, and encodes a
-palette-optimised GIF that stays under 15 MiB.
+session, runs lambdock there, drives the dock through a scripted storyboard,
+records the nested output with =wf-recorder=, and encodes a framed,
+palette-optimised GIF.
 
-The default output is 1000 px wide at 20 fps. Both are encode-only knobs: the
-storyboard's pointer coordinates live in the nested *logical* space, so changing
-either one never moves a click.
+#+begin_src sh
+meson setup build && meson compile -C build
+./tools/record-demo/record-demo.sh
+# writes resources/img/lambdock-demo.gif
+#+end_src
 
 The result shows every headline feature and every built-in theme:
 
-- auto-hide (once, with reveal + hide),
-- native fish-eye magnification (several passes),
-- launching applications and the running-app indicator,
-- the window popover HUD (focus / new instance / close all),
-- right-click dock menu and the *About lambdock* window,
-- live mutation through the Guile socket REPL (icon size, dock mode, titles),
-- hot-swapping all built-in dark and light themes,
-- taskbar mode with window titles,
-- matching generated wallpapers (dark galaxy / light mountains).
+- a title card, then auto-hide once (reveal at the edge, slide away),
+- native fish-eye magnification (a slow pass across the dock),
+- launching applications, with running indicators,
+- the window popover HUD and *Close All*,
+- the dock's own right-click menu, then the Preferences window,
+- a folder stack browsed as a thumbnail grid,
+- the launchpad filtered from the REPL,
+- live mutation through the Guile socket REPL (icon size, then themes),
+- hot-swapping the built-in dark and light themes,
+- taskbar mode with window titles, and a closing title card.
 
-* Quick start
+* Contents
+
+| File                        | Purpose                                                    |
+|-----------------------------+------------------------------------------------------------|
+| =record-demo.sh=            | entrypoint: session, storyboard, capture; then encodes     |
+| =encode-demo.sh=            | raw recording + events -> presentation -> optimised GIF    |
+| =controller.py=             | storyboard, niri actions, pointer, REPL driving, events    |
+| =make_overlay.py=           | backdrop, rounded mask, captions (ASS) for the GIF frame   |
+| =make_wallpapers.py=        | seeded galaxy + mountain haze wallpapers                   |
+| =repl_ui.py=                | terminal front-end that types real expressions into the dock |
+| =make_empty_cursor.py=      | transparent Xcursor theme for the nested compositor        |
+| =measure_dock.py=           | measures dock item centres in a recording (for calibration) |
+| =vptr.c=                    | virtual-pointer helper (=move=, =glide=, =click=, ...)     |
+| =wlr-virtual-pointer-unstable-v1.xml= | vendored protocol description                    |
+
+** Options
 
 #+begin_src sh
-# Build lambdock first, or let the script do it:
-meson setup build && meson compile -C build
-
-# Record the default GIF:
-./tools/record-demo/record-demo.sh
-
-# Output:
-#   tools/record-demo/out/lambdock-demo.gif
+./tools/record-demo/record-demo.sh --keep            # keep raw.mkv + events.tsv
+./tools/record-demo/record-demo.sh --width 1200      # bigger GIF, same story
+./tools/record-demo/record-demo.sh --fps 24          # smoother (bigger) GIF
+./tools/record-demo/record-demo.sh --capture-width 1728
+./tools/record-demo/record-demo.sh --keep-cursor     # never touch the host config
+./tools/record-demo/record-demo.sh --build
+./tools/record-demo/encode-demo.sh --raw raw.mkv --events events.tsv --out demo.gif
 #+end_src
 
-Useful variants:
+=tools/record-demo/out/lambdock-demo.gif= is the default output and is ignored
+by git; the copy that ships lives in =resources/img/=.
+
+Recording and encoding are deliberately two programs.  Re-encoding is cheap and
+needs no compositor, so tuning the frame, the captions or the palette works on
+a recording you already have:
 
 #+begin_src sh
-./tools/record-demo/record-demo.sh --build          # rebuild before recording
-./tools/record-demo/record-demo.sh --out /tmp/d.gif --keep
-./tools/record-demo/record-demo.sh --width 900 --fps 24
-./tools/record-demo/record-demo.sh --no-captions
-./tools/record-demo/record-demo.sh --keep-cursor    # do not hide the host cursor
-./tools/record-demo/record-demo.sh --help
+./tools/record-demo/encode-demo.sh \
+    --raw /tmp/lambdock-demo.XXXX/raw.mkv \
+    --events /tmp/lambdock-demo.XXXX/events.tsv \
+    --out /tmp/look.gif --keep
 #+end_src
 
 * Requirements
 
-The script must run *inside a running niri session* (it uses =niri msg= and
+The recorder must run *inside a running niri session* (it uses =niri msg= and
 spawns a nested niri).  It refuses to start otherwise.
 
 | Thing                        | Why                                                        |
@@ -59,14 +79,17 @@ spawns a nested niri).  It refuses to start otherwise.
 | wlr-virtual-pointer support  | pointer motion, buttons and scroll for the storyboard      |
 | =wf-recorder=                | screen capture of the nested output                        |
 | =ffmpeg= with =libass=       | captions, palette generation, GIF encoding                 |
-| =gifsicle=                   | final lossy/colour optimisation                            |
+| =gifsicle=                   | final lossless optimisation of the GIF                     |
 | =wayland-scanner=            | generates the virtual-pointer protocol bindings            |
 | =gcc=, =pkg-config=          | builds the tiny =vptr= helper                              |
-| =python3= + =numpy=, =Pillow= | wallpapers, captions and the storyboard                   |
+| =python3= + =numpy=, =Pillow= | wallpapers, framing, captions, storyboard                 |
 | =kitty=                      | the terminal that hosts the live REPL demo                 |
+| =alacritty=                  | the application the dock launches                          |
+| =fastfetch=                  | content for the demo terminals (optional, skipped if absent) |
 | =swaybg=                     | wallpaper rendering inside the nested session              |
 | =dbus-run-session=, =setsid= | private session bus and process-group cleanup              |
 | =jq=                         | parses =niri msg -j= output                                |
+| =Noto Sans=                  | the caption font                                           |
 
 Also required: =wayland-client= development files (=pkg-config
 wayland-client=).  The script checks all of this up front and exits with a
@@ -84,185 +107,191 @@ state dir made the demo dock read the developer's own overrides).  A generated
 =settings.scm= points lambdock at a REPL socket inside the temporary directory.
 The whole nested process group is killed (SIGTERM, then SIGKILL) on exit.
 
+The terminals in the recording run a generated =lambdock-demo-shell= instead of
+your shell (it is the =$SHELL= of the nested session only), so the frames show
+deterministic, readable content instead of an empty prompt.
+
 ** Output geometry and cropping
 
 The outer output is queried with =niri msg -j outputs=.  The nested output
-(=winit=) uses a scale chosen from the physical width (2.0 / 1.5 / 1.0), and
-the nested window is fullscreened so the recording is a clean rectangle.
-
-The host pointer is parked in the top-left corner and a margin (=EDGE=, 64 px
-by default) is cropped away, so the hardware cursor never appears in the
-recording.  The crop is applied *during* capture:
+(=winit=) uses a scale chosen from the physical width (2.0 / 1.5 / 1.0), the
+nested window is fullscreened, and the capture is cropped *while recording*:
 
 #+begin_src sh
-wf-recorder -r 20 -D \
-  -F "crop=W:H:EDGE:EDGE,scale=1200:-2:flags=lanczos" -f raw.mkv
+wf-recorder -r 20 -D -F "crop=W:H:0:56,scale=1440:-2:flags=lanczos" -f raw.mkv
 #+end_src
 
-Recording directly at the final width keeps the lossless intermediate small.
-The GIF is then produced with =fps=, =palettegen=, =paletteuse= and finally
-=gifsicle -O3 --lossy=30 --colors 256=; the lossy value is raised
-automatically (45, 60, 75, ...) until the file fits in 15 MiB.
+Only the top is cropped.  The dock lives on the bottom edge and a taskbar spans
+the full width, so cutting the sides would clip the clock in taskbar mode; the
+top margin is where the pointer rests before the storyboard starts, so the
+cursor cannot enter the recording from there either.  The capture is 1440 px
+wide and the GIF screen is 1100, so text is downsampled once, by the encoder,
+rather than twice.
 
 ** Pointer control
 
 =niri= supports =zwlr_virtual_pointer_manager_v1= but *not*
 =wp_pointer_warp_v1=, so =vptr.c= is a ~150-line Wayland client that binds a
 virtual pointer and exposes =move=, =glide=, =click=, =rightclick= and scroll
-subcommands.  Coordinates are given in physical (nested) pixels.
+subcommands.
 
-Nested virtual-pointer motion alone does not reliably trigger layer-shell
-enter/leave events for lambdock, so the controller drives the *outer*
-compositor's pointer as well, translating nested coordinates to the outer
-logical space with
+The pointer that drives the storyboard is bound to the *host* compositor, not to
+the nested one.  A virtual pointer inside the nested session moves events but
+not pointer focus: clicks land, but a hidden dock never sees the pointer reach
+its reveal strip and the fish-eye never starts.  Driving the host pointer makes
+the nested compositor see an ordinary pointer crossing its window, which is
+exactly what a real user does.  Coordinates are translated with
 
 #+begin_src python
 factor = nested_scale / outer_scale
 #+end_src
 
-That is what makes auto-hide and fish-eye magnification behave exactly as they
-do for a real user.  The outer cursor is invisible because of the cursor-hide
-step below; the GIF gets a synthetic cursor drawn from the controller's own
-pointer events (see =make_subtitles.py=).
+A virtual pointer does not move the host compositor's *cursor*, but niri draws
+its cursor wherever the last pointer motion was, so the cursor that ends up in
+the recording is the host's own -- the one a user would see.  The *nested*
+compositor is given a fully transparent Xcursor theme
+(=make_empty_cursor.py=) so it draws nothing: two cursors a few pixels apart was
+exactly what the previous version of this recording had.
 
-** Host cursor hiding (temporary config edit)
+** Keeping the host cursor visible (temporary config edit)
 
-The compositor draws its hardware cursor itself, and a Wayland client cannot
-move or hide it.  The script therefore backs up the outer niri config
-(=~/.config/niri/config.kdl=, or =$NIRI_CONFIG=), inserts
-=hide-after-inactive-ms 100= into the existing =cursor { ... }= block, and
-reloads niri for the duration of the recording.  The backup is restored
-byte-for-byte on exit, including on failure (=trap ... EXIT INT TERM=).
-Pass =--keep-cursor= to skip this edit if you prefer the real cursor in the
-recording.
+The host compositor hides its cursor after a second of inactivity by default,
+which would make the cursor blink out during every pause in a demo that is all
+pauses.  The script therefore backs up the host niri config
+(=~/.config/niri/config.kdl=, or =$NIRI_CONFIG=), sets
+=hide-after-inactive-ms 3600000= in the existing =cursor { ... }= block, and lets
+niri reload it for the duration of the recording.  The backup is restored
+byte-for-byte on exit, including on failure (=trap ... EXIT INT TERM=).  This is
+the only thing the recorder touches outside its temporary directory; pass
+=--keep-cursor= to skip it (and expect the cursor to disappear between scenes).
 
-** Captions and the synthetic cursor
+** Timing
 
-The controller writes a timestamped =events.tsv= (=caption=, =caption_end=,
-=theme=, =pointer_move=, =pointer_glide=, =pointer_click=, ...).
-=make_subtitles.py= turns that into an ASS subtitle file with lower-third
-captions, theme labels and a white arrow cursor with a yellow click dot.  ASS
-was chosen over =drawtext= because it keeps the cursor smooth and the text
-crisp at any GIF size.
+The recorder starts =wf-recorder= *before* it tells the controller to begin, and
+waits for the capture file to actually grow (the log line that used to signal
+readiness never appears in current wf-recorder builds, and waiting on it put ten
+seconds of dead air in front of the storyboard, which made every caption early).
+Video time zero is therefore within ~100 ms of event time zero.
+
+The encoder cuts the tail at the last event plus 1.4 s, so a slow recorder
+shutdown cannot add a frozen frame at the end of the GIF.
+
+** Presentation
+
+=make_overlay.py= produces the three inputs the encoder composites:
+
+- =frame.png= -- a dark gradient backdrop with a soft two-layer shadow and a
+  hairline border, drawn supersampled so the corners are clean;
+- =mask.png= -- a greyscale rounded rectangle, one pixel smaller than the
+  screen so the backdrop's border survives the overlay;
+- =captions.ass= -- captions, theme labels and title cards, positioned in
+  *canvas* coordinates so they never depend on the compositor's layout.
+
+Captions are drawn as rounded pills (an ASS drawing command, since ASS has no
+rounded rectangle primitive) at the top of the screen, because the dock owns
+the bottom.  Theme labels appear top-right during the montage; the intro and
+outro are dimmed title cards.  Everything fades in and out with a small rise.
+
+** Encoding
+
+Three passes, because feeding =palettegen= and =paletteuse= from one =split=
+makes ffmpeg buffer the whole second branch -- an out-of-memory kill on a
+recording this long:
+
+1. composite the recording into the frame, caption it, write a lossless
+   intermediate (=ffv1=);
+2. build one global palette (=palettegen=max_colors=256:stats_mode=full=);
+3. quantise (=paletteuse=dither=sierra2_4a:diff_mode=rectangle=) and optimise
+   with =gifsicle -O3 --colors 256=.
+
+The budget is 12 MiB; if the result is bigger, =gifsicle --lossy= is tried in
+steps (20, 35, 50, 70), and the script suggests a smaller =--width= or =--fps=
+if even that is not enough.  The palette is global on purpose: per-frame
+palettes flicker on the static parts of the frame.
 
 * Storyboard
 
-The timeline is defined in =controller.py=.  Each phase logs
-=caption=/=caption_end= events that become the burnt-in text:
+The timeline is defined in =controller.py=; each phase logs =caption_start= /
+=caption_end=, =theme= / =theme_end= or =title= / =title_end= events that become
+the burnt-in text.
 
-1. *Auto-hide* -- pointer jumps to the 2 px strip at the bottom edge, the dock
-   slides in, the pointer glides away and it hides.  Then the settings file is
-   edited (=dock-auto-hide? #f=) to showcase the file watcher; the dock comes
-   back and stays.
-2. *Magnification* -- two slow passes across the dock.
-3. *Launch* -- the calculator preset is launched, then three titled Alacritty
-   windows; running apps get an indicator.
-4. *Popover HUD* -- right-click a launcher, glide through windows, focus one,
-   open a new instance, then *Close All*.
-5. *Menu + About* -- hover animation is frozen through the REPL, the dock's
-   context menu is opened on a separator, and *About lambdock* is opened and
-   closed.  Hover animation is re-enabled afterwards.
-6. *Folder stack* -- the generated =$TMP/shots= folder sits in the dock as a
-   =stack-item=; the phase opens it as a thumbnail grid, browses it and
-   dismisses it by clicking the top of the screen (a click inside the popover
-   would launch a file).
-7. *Launchpad* -- the launchpad is a C widget, so the dock exposes it to Scheme
-   (=show-launchpad!=, =launchpad-search!=, =hide-launchpad!=) and the
-   controller drives it over the REPL: open it, filter it with `"term"` and then
-   `"calc"`, clear the query, close it.  The same entry points are what a user
-   scripts from their own scm file.
-8. *Preferences* -- the floating terminals are closed first (they would cover
-   the dialog), the dock's context menu opens on a separator, and its first row
-   (*Preferences...*) is clicked: the settings window is raised, held, and
-   closed; the titled terminals come back for the taskbar segment.
-9. *Live REPL* -- kitty runs =repl_ui.py=, which types real Guile expressions
-   into the socket: read the theme and icon size, then change the icon size
-   several times.
-10. *Theme montage* -- all eight dark themes, the wallpaper switches to the
-    light mountains image, then all five light themes.
-11. *Taskbar* -- Windows XP theme in taskbar mode with window titles on/off.
-12. *Outro* -- back to Vanilla Light, pointer sweep across the dock, closing
-    caption.
+| Time | Scene | What it shows |
+|------+-------+---------------|
+| 0 s  | Title | wordmark and one-line summary over the dimmed desktop |
+| 3 s  | Auto-hide | pointer to the bottom edge reveals the dock, leaving hides it; the settings file is then edited (=dock-auto-hide? #f=) and the dock returns and stays |
+| 8 s  | Magnification | one slow pass across the row, icons growing under the pointer |
+| 11 s | Launch | two clicks on the terminal launcher, two windows, running indicators |
+| 15 s | Popover | right-click the running app, glide the window rows, *Close All* |
+| 20 s | Menu + Preferences | right-click a separator, *Preferences...*, the dialog applied to the running dock |
+| 29 s | Stack | the folder item opened as a thumbnail grid, browsed, dismissed |
+| 33 s | Launchpad | opened over the REPL, filtered with =launchpad-search!=, closed |
+| 40 s | REPL | a kitty terminal types real expressions: read the icon size, change it, then define a =swap!= helper |
+| 46 s | Themes | nine themes through =swap!=, wallpaper switching to the light one halfway |
+| 52 s | Taskbar | Windows XP taskbar mode, window titles on |
+| 59 s | Outro | windows closed, dock back to its default, closing title card |
 
 Two rules that keep the recording honest:
 
-- *A lost REPL acknowledgement does not abort the run.*  =Demo.repl()= logs the
-  timeout and carries on, because one slow reload is not worth throwing away a
-  five-minute recording.
-- *Popovers must be dismissed before the next scene.*  A popover grabs input, so
-  a right click on the dock would be swallowed; each scene that opens one clicks
-  the top of the screen to close it (the stack popover is tall, which is why the
-  click is at =40,40= and not in the middle).
+- *Every caption describes something visible in its window.*  A scene that
+  fails to open its window logs it and the run continues, but the frames are
+  checked before the result is published (see below).
+- *Popovers must be dismissed before the next scene.*  A popover grabs input,
+  so a right click on the dock would be swallowed; each scene that opens one
+  clicks the empty top of the screen to close it.
 
-The pointer waits =0.6 s= after the outer script touches =go=, so that
-=wf-recorder= is already capturing before the first move.
+** Checking a recording before publishing it
 
-* Files
+Decode the GIF with something GIF-correct (=PIL=, not =ffmpeg=, which mis-renders
+the frames gifsicle writes) and look at one frame per second: the dock must be
+centred with both rounded ends visible, there must be exactly one cursor,
+captions must not cover the UI they describe, and no scene may be empty.
 
-| File                                | Purpose                                                  |
-|-------------------------------------+----------------------------------------------------------|
-| =record-demo.sh=                    | entrypoint: options, deps, assets, session, capture, GIF |
-| =controller.py=                     | storyboard, niri actions, pointer, events, REPL driving  |
-| =repl_ui.py=                        | fake-but-real terminal REPL front-end (kitty)            |
-| =make_wallpapers.py=                | seeded galaxy + mountains wallpapers                     |
-| =make_subtitles.py=                 | ASS captions, theme labels, synthetic cursor overlay     |
-| =vptr.c=                            | virtual-pointer helper (=move=, =glide=, =click=, ...)   |
-| =wlr-virtual-pointer-unstable-v1.xml= | vendored protocol description                          |
-
-Output defaults to =tools/record-demo/out/lambdock-demo.gif= (ignored by git).
-With =--keep= the temporary directory is kept and printed; it contains
-=raw.mkv=, =events.tsv=, =controller.log=, =lambdock.log=, =captions.ass= and
-the generated wallpapers, which is handy when tweaking timings.
-
-* Changing the dock layout (read this before adding an app)
+* Calibrating the dock item coordinates
 :PROPERTIES:
-:CUSTOM_ID: changing-the-dock-layout
+:CUSTOM_ID: calibrating-the-dock-item-coordinates
 :END:
 
-The storyboard addresses dock items by hardcoded coordinates in the
-X() / Y() helpers, which were calibrated for the layout the settings file
-builds: 48 px icons, eleven slots (four apps, separator, Emacs, the stack,
-separator, RAM, CPU, clock). The dock is centred, so **adding or removing a slot
-moves every item**, and the pointer coordinates stop landing where the captions
-say they do.
+The storyboard addresses dock items by coordinate, and the item list comes from
+the settings file the recorder generates.  Adding, removing or resizing an item
+moves every item, so the numbers in =controller.py=
+(=ITEM_ALACRITTY=, =ITEM_SEPARATOR=, ...) have to be re-measured.  Do it from a
+recording rather than by eye:
 
-Three things follow:
+#+begin_src sh
+./tools/record-demo/measure_dock.py --raw /tmp/lambdock-demo.XXXX/raw.mkv --time 12
+#+end_src
 
-- Adding an app to the settings file is a *coordinate* change, not just a
-  settings change. Do it as its own commit, re-record, and check the frames of
-  the click scenes (window popover, stack, Preferences).
-- The dock-menu scenes right-click a *separator* (X(465)); if the separator
-  moves, the menu opens on an app's own menu instead and the following row click
-  does nothing -- the recording still "succeeds", it just shows the wrong thing.
-- An item-index model (=DOCK_SLOTS= + =item_x()=) was prototyped and works
-  mechanically, but the calibration it needs (first item centre, pitch,
-  separator width, dock row) must come from an actual recording: measure the
-  dock row in a frame and derive the constants. It is not in this file yet.
+It prints the capsule and item centres in the same nested-logical coordinate
+space the controller uses, ready to paste.  The reference layout (48 px icons,
+eleven slots) looks like this:
 
-** Recording stability
+#+begin_src python
+ITEM_ALACRITTY = 251   ITEM_CHROME = 315      ITEM_NAUTILUS = 379
+ITEM_CALCULATOR = 443  ITEM_SEPARATOR = 490   ITEM_EMACS = 535
+ITEM_STACK = 600       ITEM_SEPARATOR_2 = 650 ITEM_RAM = 702
+ITEM_CPU = 762         DOCK_ROW = 708
+#+end_src
 
-The theme montage drives ~15 reloads through the socket REPL in a few seconds.
-That intermittently trips a Guile concurrency bug -- the GTK thread calls into
-Scheme while the REPL thread is evaluating -- and the dock aborts with
-~Wrong type to apply: #f~. The demo's two hardenings (validated accessors,
-poller guard) reduce it; the proper fix is to serialise Scheme evaluation
-between the two threads (see [[file:../../HACKING.org::#repl-guile-thread-hazard][the Guile thread hazard]]).
-Until then, a long recording can die near the end: bump the holds in the theme
-montage, or drop the ~'none~ theme step, when that happens.
+The Y coordinates are absolute too: =DOCK_ROW= is the item row, and the
+popover's last row (=Close All=) sits at a fixed offset above the dock, so it
+does not move with the number of windows.
 
 * Reproducibility notes
 
 - Wallpapers and all storyboard timings are deterministic; the only source of
   variation is compositor timing.  If a click lands during an animation, bump
-  the preceding =sleep= in =controller.py= (the storyboard is deliberately
-  written with generous holds).
-- Coordinates in =controller.py= are designed for the reference nested output
-  =1128x752= (physical =2256x1504= at scale 2) and translated by
-  =self.X()= / =self.Y()=, so other output sizes work as long as the dock
-  stays at the bottom edge.
+  the preceding =sleep= in =controller.py= (the storyboard is written with
+  generous holds).
+- Wallpapers are generated at the *physical* output size and drawn with
+  =-m fill=; keep their gradients low-frequency, because high-frequency detail
+  (the first version had jagged mountain ridges) aliases into moire after the
+  downscale and the 256-colour pass.
 - Do not switch =wf-recorder= to a realtime codec: VP9 shimmering at low CRF
-  inflated the GIF past 100 MB.  The lossless utvideo default is both smaller
-  to encode and cleaner after palette reduction.
-- =wf-recorder= is started *after* the controller says it is ready and with
-  =-D= (no damage tracking), otherwise static frames (the final caption) are
-  dropped from the raw video.
+  inflated the GIF past 100 MB.  The lossless utvideo default is both cheaper to
+  encode and cleaner after palette reduction.
+- =wf-recorder= is started with =-D= (no damage tracking), otherwise static
+  frames (the closing title card) are dropped from the raw video.
+- The Guile thread hazard described in
+  [[file:../../HACKING.org::#repl-guile-thread-hazard][the Guile thread hazard]] can still abort a long recording when many
+  reloads run in a few seconds.  The demo's validated accessors and poller guard
+  reduce it; if a run dies near the end, bump the holds in the theme montage.

@@ -25,7 +25,7 @@ over a *live socket [[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93pr
 a rebuild without ever restarting the process or dropping a frame.
 
 #+name: lambdock-showcase
-#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1000 px, 20 fps): auto-hide and the fish-eye under the pointer, launching applications, the multi-window popover, the dock's own menu and About window, a folder stack opened as a grid, the launchpad filtered by its search field, the Preferences window, a live Guile REPL changing the icon size and every theme, and the Windows XP taskbar mode.
+#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1100 px, 20 fps): auto-hide at the screen edge, the fish-eye under the pointer, launching applications with running indicators, the multi-window popover, the dock's own menu and the Preferences window, a folder stack opened as a grid, the launchpad filtered from the REPL, a live Guile REPL changing the icon size and every theme, and the Windows XP taskbar mode.
 [[file:resources/img/lambdock-demo.gif]]
 
 - 🐑 *Read the source (and send PR/issue/patches):* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
@@ -79,12 +79,21 @@ does.
 # output: tools/record-demo/out/lambdock-demo.gif
 #+end_src
 
-The storyboard covers auto-hide, fish-eye magnification, launching, the window
-popover, the right-click menu and the About window, a folder stack opened as a
-grid, the launchpad filtered by its search field, the Preferences window, a live
-Guile REPL session (icon size, then every built-in theme), the Windows XP
-taskbar mode with window titles, and the closing sweep.  See
-[[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites and options.
+Recording and encoding are separate programs, so the look of the thing can be
+iterated without touching the compositor:
+
+#+begin_src sh
+./tools/record-demo/encode-demo.sh --raw raw.mkv --events events.tsv --out demo.gif
+#+end_src
+
+The storyboard runs twelve scenes: a title card, auto-hide at the screen edge,
+fish-eye magnification, launching with running indicators, the window popover,
+the dock's own menu and the Preferences window, a folder stack opened as a grid,
+the launchpad filtered from the REPL, a live Guile REPL session (icon size, then
+nine built-in themes), the Windows XP taskbar mode with window titles, and a
+closing card.  Each scene is checked frame by frame against its caption before a
+recording is published.  See [[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites
+and options.
 
 Four stills from the same recording, for a closer look:
 

@@ -576,31 +576,37 @@ And the checklist that goes with it:
 :END:
 
 =tools/record-demo/= turns a real running dock into a reproducible demo GIF
-under 15 MiB.  It starts a nested niri session (isolated =HOME= and a private
-DBus session, so your own lambdock is untouched), generates a matching
-wallpaper, drives a virtual pointer through a fixed storyboard, records the
-nested output with =wf-recorder=, and burns captions, theme labels and a
-synthetic cursor into the GIF.
+under 12 MiB.  It starts a nested niri session (isolated =HOME= and a private
+DBus session, so your own lambdock is untouched), generates matching
+wallpapers, drives a virtual pointer through a fixed storyboard, records the
+nested output with =wf-recorder=, and then frames it: the capture is inset on a
+backdrop with rounded corners and a shadow, and captions, theme labels and
+title cards are burnt in by =encode-demo.sh= / =make_overlay.py=.
 
 #+begin_src sh
 meson compile -C build
 ./tools/record-demo/record-demo.sh              # -> tools/record-demo/out/lambdock-demo.gif
 ./tools/record-demo/record-demo.sh --keep       # keep raw.mkv + events.tsv for tweaking
+./tools/record-demo/encode-demo.sh --raw raw.mkv --events events.tsv --out look.gif
 #+end_src
 
-It covers auto-hide, magnification, launching, the popover HUD, the right-click
-menu, About lambdock, live REPL mutation, every built-in theme, and taskbar
-mode with window titles.  Features that change should usually update the
-storyboard in =controller.py= and, if needed, the captions in
-=make_subtitles.py= -- treat the recorder as part of the test surface for
-user-visible behaviour.
+It covers auto-hide, magnification, launching, the popover HUD, the dock's own
+menu and the Preferences window, folder stacks, the launchpad, live REPL
+mutation, the built-in themes, and taskbar mode with window titles.  Features
+that change should usually update the storyboard in =controller.py= -- treat
+the recorder as part of the test surface for user-visible behaviour -- and the
+recording is checked frame by frame against its captions before it is
+published.
 
 #+begin_quote
-*Warning:* to keep the compositor's hardware cursor out of the recording, the
-script temporarily adds =hide-after-inactive-ms 100= to the outer niri config
-and then restores it byte-for-byte on exit (including failures).  Pass
-=--keep-cursor= to skip that edit.  Requirements, storyboard details and the
-reproducibility notes live in [[file:tools/record-demo/README.org][tools/record-demo/README.org]].
+*Warning:* so that the recording has exactly one, steady cursor, the script
+temporarily sets =hide-after-inactive-ms 3600000= in the outer niri config (the
+host cursor is the one in the GIF; the nested compositor gets a transparent
+cursor theme) and then restores the file byte-for-byte on exit, including
+failures.  Pass =--keep-cursor= to skip that edit.  That is the only thing the
+recorder touches outside its temporary directory.  Requirements, storyboard details, the dock
+item calibration and the reproducibility notes live in
+[[file:tools/record-demo/README.org][tools/record-demo/README.org]].
 #+end_quote
 
 ------------------

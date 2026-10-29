@@ -10,8 +10,19 @@ This program is started by niri as the nested session's startup command, so it
 inherits WAYLAND_DISPLAY, NIRI_SOCKET, HOME and the private DBus session created
 by record-demo.sh.  It sets up the wallpaper, the dock and a virtual pointer,
 waits for the outer script to say "go", then performs the demo with explicit
-sleeps and coordinates.  Every phase is timestamped in events.tsv so the outer
-script can burn matching captions into the final GIF.
+sleeps and coordinates.  Every scene is timestamped in events.tsv so the encoder
+can burn matching captions into the final GIF.
+
+Two pointer decisions are worth knowing about:
+
+* The pointer that drives the demo is a virtual pointer bound to the *nested*
+  compositor.  It moves that compositor's own cursor, so the recording shows a
+  single, real, always-accurate cursor -- no cursor is drawn in post.
+* The *outer* pointer is parked once at (5,5), inside the margin the recorder
+  crops away, so the host compositor's hardware cursor never reaches the GIF
+  and no host configuration is touched.
+
+Nothing here writes outside $TMP except through the compositor.
 """
 
 from __future__ import annotations
@@ -19,7 +30,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import shlex
 import signal
 import socket
@@ -29,13 +39,31 @@ import time
 import traceback
 from pathlib import Path
 
-# The storyboard coordinates below were designed on a 1128x752 logical output
-# (2256x1504 physical at scale 2).  The dock is anchored to the bottom edge and
-# centered horizontally, so a different output size only needs a translation.
+# The storyboard is authored against a 1128x752 logical output (2256x1504
+# physical at scale 2).  The dock is anchored to the bottom edge, so another
+# output size only needs a translation.
 REF_W = 1128
 REF_H = 752
 
-# Friendly names for the theme overlay burnt into the GIF.
+# Dock item centres, in the coordinates above.  Measured from the reference
+# recording with tools/record-demo/measure_dock.py; the settings file this
+# recorder generates is what fixes them.
+ITEM_ALACRITTY = 251
+ITEM_CHROME = 315
+ITEM_NAUTILUS = 379
+ITEM_CALCULATOR = 443
+ITEM_SEPARATOR = 490
+ITEM_EMACS = 535
+ITEM_STACK = 600
+ITEM_SEPARATOR_2 = 650
+ITEM_RAM = 702
+ITEM_CPU = 762
+DOCK_ROW = 708
+
+# Popover rows hang above the dock at fixed offsets from the bottom, so the
+# last two rows do not move with the number of windows.
+POPOVER_CLOSE_ALL = 614
+
 THEME_LABELS = {
     "vanilla": "Vanilla Glassmorphism",
     "macos-big-sur": "macOS Big Sur",
@@ -53,22 +81,13 @@ THEME_LABELS = {
 }
 
 DARK_THEMES = [
-    "vanilla",
     "macos-big-sur",
     "macos-ventura",
     "unity",
-    "nature",
     "snow-leopard-dark",
-    "windows-10",
     "windows-11",
 ]
-LIGHT_THEMES = [
-    "vanilla-light",
-    "snow-leopard",
-    "solarized-light",
-    "windows-xp",
-    "none",
-]
+LIGHT_THEMES = ["vanilla-light", "snow-leopard", "solarized-light", "windows-xp"]
 
 
 class Demo:
@@ -79,7 +98,6 @@ class Demo:
         self.log_path = self.tmp / "controller.log"
         self.events_file = None
         self.t0 = 0.0
-        self.proc = None
         self.vptr = None
         self.repl_fd: int | None = None
         self.repl_index = 0
@@ -87,6 +105,8 @@ class Demo:
         self.wallpaper_pid_file = self.tmp / "swaybg.pid"
         self.pointer_x = 0.0
         self.pointer_y = 0.0
+        self.out_w = REF_W
+        self.out_h = REF_H
 
     # ------------------------------------------------------------------ io
     def log(self, message: str) -> None:
@@ -137,21 +157,34 @@ class Demo:
                 return window
         return None
 
+    def wait_window(self, timeout: float = 10.0, **matches) -> dict | None:
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            window = self.find_window(**matches)
+            if window:
+                return window
+            time.sleep(0.08)
+        return None
+
     def close_window(self, window_id: int) -> None:
         try:
             self.niri("action", "close-window", "--id", str(window_id))
         except subprocess.CalledProcessError:
             pass
 
+    def place(self, window_id: int, x: int, y: int, width: int, height: int) -> None:
+        """Pin a floating window to an exact screen rectangle."""
+        for action in (
+            ("set-window-width", "--id", str(window_id), str(width)),
+            ("set-window-height", "--id", str(window_id), str(height)),
+            ("move-floating-window", "--id", str(window_id), "--x", str(x), "--y", str(y)),
+        ):
+            try:
+                self.niri("action", *action)
+            except subprocess.CalledProcessError as error:
+                self.log(f"{action[0]} failed: {error}")
+
     # ---------------------------------------------------------- coordinates
-    @property
-    def width(self) -> int:
-        return self.out_w
-
-    @property
-    def height(self) -> int:
-        return self.out_h
-
     def X(self, reference: float) -> int:
         return int(round(reference + (self.out_w - REF_W) / 2.0))
 
@@ -178,29 +211,40 @@ class Demo:
     def theme_end(self) -> None:
         self.event("theme_end")
 
-    # ---------------------------------------------------------- vptr driver
-    def start_vptr(self) -> None:
-        """Drive the *outer* compositor's pointer.
+    def title(self, text: str, subtitle: str = "") -> None:
+        self.event("title", f"{text}\t{subtitle}")
 
-        Motion events from a virtual pointer are not enough for layer-shell
-        enter/leave and fish-eye effects in a nested niri, but the outer
-        compositor forwards its pointer as a normal pointer to the nested
-        window.  So we move the outer pointer and translate nested coordinates
-        to outer logical coordinates.
+    def title_end(self) -> None:
+        self.event("title_end")
+
+    # ---------------------------------------------------------- vptr driver
+    def vptr_path(self) -> str:
+        return str(self.tmp / "vptr" / "vptr")
+
+    def start_vptr(self) -> None:
+        """Bind a virtual pointer to the *host* compositor.
+
+        The nested compositor ignores a virtual pointer of its own when it
+        comes to pointer focus: motion from it is delivered to whatever surface
+        already has focus, so a hidden dock never sees the pointer reach its
+        reveal strip and the fish-eye never starts.  Driving the host pointer
+        instead makes the nested compositor see an ordinary pointer crossing
+        its window, which is what a real user does -- and because a virtual
+        pointer does not move the host's hardware cursor, the only cursor in
+        the recording is the nested compositor's own.
         """
-        self.outer_display = os.environ.get("OUTER_DISPLAY", os.environ.get("WAYLAND_DISPLAY", ""))
-        self.outer_w = int(os.environ.get("OUTER_W", self.out_w))
-        self.outer_h = int(os.environ.get("OUTER_H", self.out_h))
-        self.outer_scale = float(os.environ.get("OUTER_SCALE", "1"))
-        self.nested_scale = float(os.environ.get("NESTED_SCALE", "1"))
-        self.log(
-            f"outer pointer {self.outer_w}x{self.outer_h} display={self.outer_display!r} "
-            f"(outer scale {self.outer_scale}, nested scale {self.nested_scale})"
-        )
+        self.outer_display = os.environ.get("OUTER_DISPLAY", "")
+        self.outer_w = int(os.environ.get("OUTER_W", self.out_w) or self.out_w)
+        self.outer_h = int(os.environ.get("OUTER_H", self.out_h) or self.out_h)
+        self.outer_scale = float(os.environ.get("OUTER_SCALE", "1") or 1)
+        self.nested_scale = float(os.environ.get("NESTED_SCALE", "1") or 1)
+        if not self.outer_display:
+            raise RuntimeError("OUTER_DISPLAY is not set; cannot drive the pointer")
+
         env = dict(os.environ)
         env["WAYLAND_DISPLAY"] = self.outer_display
         self.vptr = subprocess.Popen(
-            [str(self.tmp / "vptr" / "vptr"), str(self.outer_w), str(self.outer_h)],
+            [self.vptr_path(), str(self.outer_w), str(self.outer_h)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -212,7 +256,10 @@ class Demo:
         ready = self.vptr.stdout.readline().strip()
         if not ready.startswith("READY"):
             raise RuntimeError(f"vptr failed to start: {ready!r}")
-        self.log(f"virtual pointer ready on {self.out_w}x{self.out_h}")
+        self.log(
+            f"virtual pointer ready on the host {self.outer_w}x{self.outer_h} "
+            f"(host scale {self.outer_scale}, nested scale {self.nested_scale})"
+        )
 
     def vp(self, command: str) -> None:
         assert self.vptr is not None and self.vptr.stdin is not None
@@ -222,57 +269,49 @@ class Demo:
         self.vptr.stdin.flush()
 
     def to_outer(self, x: float, y: float) -> tuple[float, float]:
+        """Nested logical coordinates -> host logical coordinates.
+
+        The nested window is a rectangle on the host output, and both
+        compositors have their own scale factor.
+        """
         factor = self.nested_scale / self.outer_scale
         return x * factor, y * factor
 
-    def normalize(self, x: float, y: float) -> tuple[float, float]:
-        """Nested logical pointer coordinates -> cropped GIF fractions."""
-        edge = float(os.environ.get("DEMO_EDGE", "0"))
-        phys_w = float(os.environ.get("DEMO_PHYS_W", "1"))
-        phys_h = float(os.environ.get("DEMO_PHYS_H", "1"))
-        nx = (x * self.nested_scale - edge) / (phys_w - edge)
-        ny = (y * self.nested_scale - edge) / (phys_h - edge)
-        return nx, ny
-
-    def pointer_event(self, kind: str, text: str) -> None:
-        if self.t0:
-            self.event(kind, text)
-
-    def park(self) -> None:
-        """Leave the pointer in the corner removed by the GIF crop."""
-        self.vp("move 5 5")
-        self.pointer_x = 0.0
-        self.pointer_y = 0.0
-        time.sleep(0.06)
-
     def move(self, x: float, y: float) -> None:
         ox, oy = self.to_outer(x, y)
-        nx, ny = self.normalize(x, y)
-        self.pointer_event("pointer_move", f"{nx:.5f},{ny:.5f}")
         self.vp(f"move {ox:.0f} {oy:.0f}")
         self.pointer_x, self.pointer_y = x, y
-        time.sleep(0.06)
+        time.sleep(0.05)
 
     def glide(self, x: float, y: float, ms: int) -> None:
         ox, oy = self.to_outer(x, y)
-        sx, sy = self.normalize(self.pointer_x, self.pointer_y)
-        ex, ey = self.normalize(x, y)
-        self.pointer_event("pointer_glide", f"{sx:.5f},{sy:.5f},{ex:.5f},{ey:.5f},{ms}")
         self.vp(f"glide {ox:.0f} {oy:.0f} {ms}")
         self.pointer_x, self.pointer_y = x, y
-        time.sleep(ms / 1000.0 + 0.04)
+        time.sleep(ms / 1000.0 + 0.03)
 
     def click(self) -> None:
-        nx, ny = self.normalize(self.pointer_x, self.pointer_y)
-        self.pointer_event("pointer_click", f"{nx:.5f},{ny:.5f}")
         self.vp("click")
-        time.sleep(0.12)
+        time.sleep(0.1)
 
     def right_click(self) -> None:
-        nx, ny = self.normalize(self.pointer_x, self.pointer_y)
-        self.pointer_event("pointer_click", f"{nx:.5f},{ny:.5f}")
         self.vp("rightclick")
-        time.sleep(0.12)
+        time.sleep(0.1)
+
+    def park(self) -> None:
+        self.move(6, 6)
+
+    def reveal_dock(self, x: float | None = None) -> None:
+        """Bring an auto-hidden (or un-tucked) dock back on screen.
+
+        Touching the strip at the bottom edge is what a user does, and it is
+        also the only way to get the dock out of the "hidden" state it can be
+        left in after a reload.
+        """
+        target = self.X(ITEM_ALACRITTY) if x is None else x
+        self.glide(self.out_w / 2, self.out_h - 1, 240)
+        time.sleep(0.6)
+        self.glide(target, self.Y(DOCK_ROW), 280)
+        time.sleep(0.3)
 
     # ---------------------------------------------------------- setup
     def setup(self) -> None:
@@ -294,7 +333,7 @@ class Demo:
             + " 2>&1"
         )
 
-        end = time.monotonic() + 15.0
+        end = time.monotonic() + 20.0
         while time.monotonic() < end:
             if 'Namespace: "lambdock"' in self.niri("layers"):
                 break
@@ -310,11 +349,6 @@ class Demo:
         self.park()
         self.write_atomic(self.tmp / "ready", "1")
         self.log("nested session ready")
-        if os.environ.get("DEMO_PAUSE_AFTER_READY"):
-            self.write_atomic(self.tmp / "paused", "1")
-            while not (self.tmp / "resume").exists():
-                time.sleep(0.1)
-            self.log("resumed after debug pause")
 
     def start_swaybg(self, image_name: str) -> None:
         image = self.tmp / "assets" / image_name
@@ -323,27 +357,55 @@ class Demo:
             f"echo $$ > {shlex.quote(str(pid_file))}; "
             f"exec swaybg -i {shlex.quote(str(image))} -m fill"
         )
-        self.spawn_sh(script)
-        end = time.monotonic() + 5.0
-        while time.monotonic() < end:
-            if pid_file.exists():
-                time.sleep(0.25)
-                return
-            time.sleep(0.05)
-        raise RuntimeError("swaybg did not start")
+        # swaybg occasionally exits on its first frame (a compositor/GL race on
+        # a fresh nested session), which would leave the recording on niri's
+        # fallback colour.  Start it again if it is not alive a moment later.
+        for attempt in range(3):
+            pid_file.unlink(missing_ok=True)
+            self.spawn_sh(script)
+            end = time.monotonic() + 5.0
+            pid = None
+            while time.monotonic() < end:
+                if pid_file.exists():
+                    try:
+                        pid = int(pid_file.read_text().strip())
+                    except ValueError:
+                        pid = None
+                    if pid:
+                        break
+                time.sleep(0.05)
+            if pid is None:
+                self.log(f"swaybg ({image_name}) never reported a pid")
+                continue
+            time.sleep(0.6)
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                self.log(f"swaybg ({image_name}) exited; attempt {attempt + 1}")
+                continue
+            time.sleep(0.2)
+            return
+        raise RuntimeError(f"could not start swaybg for {image_name}")
 
     def switch_wallpaper(self, image_name: str) -> None:
+        """Swap the wallpaper without a black flash.
+
+        The new swaybg gets its own layer surface, which the compositor stacks
+        above the old one, so the picture changes the moment the old instance
+        exits instead of the moment the new one starts.
+        """
         try:
-            pid = int(self.wallpaper_pid_file.read_text().strip())
-            os.kill(pid, signal.SIGTERM)
+            old_pid = int(self.wallpaper_pid_file.read_text().strip())
         except (OSError, ValueError):
-            pass
-        try:
-            self.wallpaper_pid_file.unlink()
-        except FileNotFoundError:
-            pass
+            old_pid = 0
+        self.wallpaper_pid_file.unlink(missing_ok=True)
         self.start_swaybg(image_name)
-        time.sleep(0.35)
+        if old_pid:
+            try:
+                os.kill(old_pid, signal.SIGTERM)
+            except OSError:
+                pass
+        time.sleep(0.3)
 
     # ---------------------------------------------------------- REPL
     def dock_eval(self, expression: str, timeout: float = 4.0) -> None:
@@ -371,14 +433,15 @@ class Demo:
         except OSError as error:
             self.log(f"dock_eval failed ({error}): {expression}")
 
-    def launch_kitty(self) -> int:
+    def launch_repl_window(self) -> int:
         repl_ui = Path(self.args.root) / "tools" / "record-demo" / "repl_ui.py"
         command = (
             "exec kitty --title "
             + shlex.quote("lambdock REPL")
-            + " -o font_size=16 -o background_opacity=0.90"
+            + " -o font_size=13 -o background_opacity=0.94"
             + " -o hide_window_decorations=yes"
-            + " -o window_padding_width=18 python3 "
+            + " -o confirm_os_window_close=0"
+            + " -o window_padding_width=16 python3 "
             + shlex.quote(str(repl_ui))
             + " --socket "
             + shlex.quote(self.args.repl_socket)
@@ -391,13 +454,7 @@ class Demo:
         )
         self.spawn_sh(command)
 
-        window = None
-        end = time.monotonic() + 15.0
-        while time.monotonic() < end:
-            window = self.find_window(title="lambdock REPL")
-            if window:
-                break
-            time.sleep(0.1)
+        window = self.wait_window(title="lambdock REPL", timeout=15.0)
         if not window:
             raise RuntimeError("kitty did not open")
 
@@ -406,12 +463,9 @@ class Demo:
             self.niri("action", "move-window-to-floating", "--id", str(window_id))
         except subprocess.CalledProcessError:
             pass
-        self.niri("action", "set-window-width", "--id", str(window_id), "1000")
-        self.niri("action", "set-window-height", "--id", str(window_id), "500")
-        self.niri("action", "center-window", "--id", str(window_id))
-        self.niri("action", "focus-window", "--id", str(window_id))
+        self.place(window_id, 96, 104, 940, 430)
         self.wait_for(Path(self.args.repl_ready), timeout=15.0)
-        time.sleep(0.4)
+        time.sleep(0.3)
         self.log(f"REPL terminal ready (window {window_id})")
         return window_id
 
@@ -419,7 +473,7 @@ class Demo:
         # Opening the FIFO blocks until repl_ui opens its read end.
         self.repl_fd = os.open(self.args.repl_fifo, os.O_WRONLY)
 
-    def repl(self, expression: str, speed_ms: int = 10, hold: float = 0.0) -> None:
+    def repl(self, expression: str, speed_ms: int = 12, hold: float = 0.0) -> None:
         assert self.repl_fd is not None
         self.repl_index += 1
         os.write(self.repl_fd, f"{speed_ms}\t{expression}\n".encode())
@@ -433,210 +487,142 @@ class Demo:
                 break
             time.sleep(0.03)
         else:
-            # One slow reload is not worth throwing away a five-minute
-            # recording: log it and let the next expression resync.
+            # One slow reload is not worth throwing away the recording: log it
+            # and let the next expression resync.
             self.log(f"REPL command timed out (continuing): {expression}")
         if hold:
             time.sleep(hold)
 
+    # ---------------------------------------------------------- terminals
+    def demo_shell(self) -> str:
+        return str(self.tmp / "bin" / "lambdock-demo-shell")
+
+    def spawn_terminal(
+        self, title: str, mode: str, x: int, y: int, width: int, height: int
+    ) -> int | None:
+        """Open a floating terminal running the demo shell in @mode."""
+        command = (
+            "cd "
+            + shlex.quote(str(self.tmp / "home" / "demo"))
+            + " && exec alacritty --title "
+            + shlex.quote(title)
+            + " -o window.dynamic_title=false -o window.decorations=none"
+            + " -o font.size=9"
+            + " -e "
+            + shlex.quote(self.demo_shell())
+            + " "
+            + shlex.quote(mode)
+        )
+        self.spawn_sh(command)
+        window = self.wait_window(title=title, timeout=10.0)
+        if not window:
+            self.log(f"terminal {title!r} never appeared")
+            return None
+        window_id = int(window["id"])
+        try:
+            self.niri("action", "move-window-to-floating", "--id", str(window_id))
+        except subprocess.CalledProcessError:
+            pass
+        self.place(window_id, x, y, width, height)
+        return window_id
+
+    def close_terminals(self) -> None:
+        for window in self.windows():
+            if window.get("app_id") == "Alacritty":
+                self.close_window(int(window["id"]))
+
     # ---------------------------------------------------------- storyboard
+    def phase_intro(self) -> None:
+        self.title("lambdock", "a dock you can reprogram while it runs")
+        self.park()
+        time.sleep(2.6)
+        self.title_end()
+
     def phase_autohide(self) -> None:
-        self.caption("Auto-hide -- the dock slides away and returns at the screen edge")
+        self.caption("Auto-hide: the dock waits at the screen edge")
         # An instant jump to the reveal strip is important: a stream of motion
-        # events while the dock slides in can make it hide itself again.
-        self.move(self.out_w / 2, self.out_h - 2)
-        time.sleep(0.5)
-        # Move into the revealed dock so it does not immediately hide again.
-        self.move(self.out_w / 2, self.Y(704))
+        # events while the dock slides in can make it hide again.
+        self.move(self.out_w / 2, self.out_h - 1)
+        time.sleep(0.9)
+        # Step onto the dock so it does not immediately hide again.
+        self.move(self.X(ITEM_ALACRITTY), self.Y(DOCK_ROW))
+        time.sleep(0.6)
+        self.glide(self.out_w / 2, self.out_h - 300, 700)
         time.sleep(1.2)
-        self.glide(self.out_w / 2, self.out_h - 220, 800)
-        time.sleep(1.4)
         self.caption_end()
 
         # Hot-reload the settings file, which also showcases the file watcher:
         # the dock comes back and stops auto-hiding for the rest of the demo.
+        # The reload keeps the dock where it is (off screen), so the reveal
+        # strip is touched again to bring it back.
         settings = Path(self.args.settings)
         text = settings.read_text(encoding="utf-8")
         text = text.replace("(define dock-auto-hide? #t)", "(define dock-auto-hide? #f)")
         self.write_atomic(settings, text)
-        self.move(self.out_w / 2, self.out_h - 80)
-        time.sleep(1.4)
+        self.move(self.out_w / 2, self.out_h - 1)
+        time.sleep(0.9)
+        self.move(self.X(ITEM_ALACRITTY), self.Y(DOCK_ROW))
+        time.sleep(0.8)
 
     def phase_magnify(self) -> None:
-        self.caption("Native fish-eye magnification under the pointer")
-        self.move(self.X(180), self.Y(704))
-        time.sleep(0.35)
-        self.glide(self.X(940), self.Y(704), 2200)
-        time.sleep(0.25)
-        self.glide(self.X(180), self.Y(704), 1800)
-        time.sleep(0.25)
+        self.caption("Fish-eye magnification, right under the pointer")
+        # Stay inside the capsule for the whole sweep: the dock tucks itself
+        # away when the pointer leaves it, and a sweep that starts outside would
+        # hide the very thing it is demonstrating.  Stopping before the clock
+        # also keeps the row from outgrowing its capsule.
+        self.move(self.X(238), self.Y(DOCK_ROW))
+        time.sleep(0.4)
+        self.glide(self.X(700), self.Y(DOCK_ROW), 1900)
+        time.sleep(0.2)
+        self.glide(self.X(320), self.Y(DOCK_ROW), 1000)
+        time.sleep(0.15)
         self.caption_end()
 
     def phase_launch(self) -> None:
-        self.caption("Launch applications; running apps get an indicator")
-        self.glide(self.X(404), self.Y(704), 650)
+        self.caption("Click to launch; running apps get an indicator")
+        self.glide(self.X(ITEM_ALACRITTY), self.Y(DOCK_ROW), 450)
         self.click()
-        time.sleep(1.8)
-
-        calculator = self.find_window(app_id="org.gnome.Calculator")
-        if calculator:
-            self.close_window(int(calculator["id"]))
-        time.sleep(0.5)
-
-        for title in ("Alpha workspace", "Beta notes", "Gamma logs"):
-            self.spawn_sh(
-                "exec alacritty --title "
-                + shlex.quote(title)
-                + " -o window.decorations=none"
-            )
-            time.sleep(0.8)
-        time.sleep(0.6)
+        self.spawn_terminal("work", "fetch", 66, 118, 500, 330)
+        time.sleep(0.45)
+        self.spawn_terminal("files", "files", 562, 118, 500, 330)
+        time.sleep(1.3)
         self.caption_end()
 
     def phase_popover(self) -> None:
-        self.caption("Window popover HUD: focus a window, open another, close them")
-        self.glide(self.X(199), self.Y(704), 600)
+        self.caption("Right-click for the windows of a running app")
+        self.glide(self.X(ITEM_ALACRITTY), self.Y(DOCK_ROW), 500)
         self.right_click()
-        time.sleep(0.8)
-
-        for y in (456, 509, 554):
-            self.glide(self.X(199), self.Y(y), 380)
-            time.sleep(0.12)
-        self.glide(self.X(199), self.Y(509), 300)
-        self.click()
-        time.sleep(0.8)
-
-        self.glide(self.X(199), self.Y(704), 350)
-        self.right_click()
-        time.sleep(0.7)
-        self.glide(self.X(199), self.Y(609), 420)
-        self.click()
         time.sleep(0.9)
-        # If New Instance left the popover open, Close All dismisses it and
-        # demonstrates the last row of the popover.
-        self.glide(self.X(199), self.Y(656), 350)
-        self.click()
-        time.sleep(1.0)
-        self.move(self.out_w / 2, self.out_h * 0.35)
-        self.click()
+        # Glide up through the window rows, then press the last one: Close All.
+        for y in (520, 560, 600):
+            self.glide(self.X(ITEM_ALACRITTY), self.Y(y), 340)
+            time.sleep(0.15)
+        self.glide(self.X(ITEM_ALACRITTY), self.Y(POPOVER_CLOSE_ALL), 380)
         time.sleep(0.4)
-        self.caption_end()
-
-    def phase_menu_about(self) -> None:
-        self.caption("Right-click the dock for its own menu and About lambdock")
-        # Make sure no popover is latched open before opening the menu.
-        self.move(self.out_w / 2, self.out_h * 0.35)
-        self.click()
-        time.sleep(0.3)
-
-        # Freeze the fish-eye animation so the separator stays at a known
-        # coordinate while the menu is opened.
-        self.dock_eval("(begin (set-dock-hover-animate! #f) (reload-dock!))")
-        time.sleep(0.4)
-
-        before = {int(window["id"]) for window in self.windows()}
-        self.move(self.X(465), self.Y(704))
-        self.right_click()
-        time.sleep(0.7)
-        self.move(self.X(465), self.Y(653))
         self.click()
         time.sleep(1.2)
-        time.sleep(1.6)
-
-        dialog = None
-        for _ in range(30):
-            dialog = next(
-                (window for window in self.windows() if int(window["id"]) not in before),
-                None,
-            )
-            if dialog:
-                break
-            time.sleep(0.1)
-        if dialog is not None:
-            self.close_window(int(dialog["id"]))
-        else:
-            try:
-                self.niri("action", "close-window")
-            except subprocess.CalledProcessError:
-                pass
-        time.sleep(0.6)
-        self.dock_eval("(begin (set-dock-hover-animate! #t) (reload-dock!))")
-        time.sleep(0.3)
-        self.caption_end()
-
-        # The popover demo closed every Alacritty window.  Open a few fresh
-        # ones for the taskbar-with-titles part of the REPL segment.
-        for title in ("Alpha workspace", "Beta notes", "Gamma logs"):
-            self.spawn_sh(
-                "exec alacritty --title "
-                + shlex.quote(title)
-                + " -o window.decorations=none"
-            )
-            time.sleep(0.7)
-
-    def phase_stack(self) -> None:
-        self.caption("Folder stacks: a whole folder behind one icon")
-        # The stack sits where the btop preset used to be: replacing one
-        # icon-only item with another keeps every other coordinate valid.
-        self.glide(self.X(548), self.Y(704), 600)
-        self.click()
-        time.sleep(1.1)
-
-        # Browse the grid, then dismiss it by clicking well outside: the popover
-        # is tall, so a click in the middle of the screen would land inside it.
-        for x, y in ((580, 545), (650, 545), (580, 615)):
-            self.glide(self.X(x), self.Y(y), 340)
-            time.sleep(0.18)
-        self.move(40, 40)
-        self.click()
-        time.sleep(0.6)
-        self.caption_end()
-
-    def phase_launchpad(self) -> None:
-        self.caption("The launchpad: search it by typing -- or from the REPL")
-        # The launchpad is a C widget, so the dock exposes it to Scheme
-        # (show-launchpad! / launchpad-search! / hide-launchpad!). Driving it
-        # this way also shows the point of the socket: the dock is scriptable.
-        self.dock_eval("(show-launchpad!)")
-        time.sleep(1.4)
-        self.dock_eval('(launchpad-search! "term")')
-        time.sleep(1.2)
-        self.dock_eval('(launchpad-search! "calc")')
-        time.sleep(1.2)
-        self.dock_eval("(launchpad-search! \"\")")
-        time.sleep(0.8)
-        self.dock_eval("(hide-launchpad!)")
-        time.sleep(0.9)
+        self.move(self.out_w / 2, self.out_h * 0.4)
         self.caption_end()
 
     def phase_preferences(self) -> None:
-        self.caption("Preferences: every setting, applied to the running dock")
+        self.caption("Right-click the dock for its menu; every setting is live")
+        # Freeze the fish-eye animation so the separator stays at a known
+        # coordinate while the menu is opened.
+        self.dock_eval("(begin (set-dock-hover-animate! #f) (reload-dock!))")
+        time.sleep(0.5)
+        self.reveal_dock(self.X(ITEM_SEPARATOR))
+
         before = {int(window["id"]) for window in self.windows()}
-
-        # Clear the stage: a floating terminal would sit on top of the dialog.
-        # They come back below, for the taskbar segment.
-        for window in self.windows():
-            if window.get("app_id") == "Alacritty":
-                self.close_window(int(window["id"]))
-        time.sleep(0.6)
-
-        # Dismiss anything a previous scene left latched open: a popover that
-        # grabs input would swallow the right click below.
-        self.move(40, 40)
-        self.click()
-        time.sleep(0.4)
-
-        # Same anchor as the About scene (the menu opens above the click point),
-        # with Preferences as its first row.
-        self.move(self.X(465), self.Y(704))
+        self.move(self.X(ITEM_SEPARATOR), self.Y(DOCK_ROW))
         self.right_click()
         time.sleep(0.8)
-        self.move(self.X(465), self.Y(620))
+        self.glide(self.X(ITEM_SEPARATOR), self.Y(624), 380)
+        time.sleep(0.2)
         self.click()
-        time.sleep(1.8)
+        time.sleep(1.6)
 
         dialog = None
-        for _ in range(30):
+        for _ in range(40):
             dialog = next(
                 (window for window in self.windows() if int(window["id"]) not in before),
                 None,
@@ -647,147 +633,149 @@ class Demo:
 
         if dialog is not None:
             window_id = int(dialog["id"])
-            for action in (
-                ("focus-window", "--id", str(window_id)),
-                ("set-window-width", "--id", str(window_id), "860"),
-                ("set-window-height", "--id", str(window_id), "760"),
-                ("center-window", "--id", str(window_id)),
-            ):
-                try:
-                    self.niri("action", *action)
-                except subprocess.CalledProcessError:
-                    pass
-            time.sleep(2.4)
+            # The dialog opens tiled and full width; floating it is what makes
+            # an exact size and position stick (and puts it above the terminals).
+            self.niri_or_log("move-window-to-floating", "--id", str(window_id))
+            self.niri_or_log("focus-window", "--id", str(window_id))
+            self.place(window_id, 250, 104, 620, 566)
+            time.sleep(2.6)
             self.close_window(window_id)
         time.sleep(0.5)
+        self.dock_eval("(begin (set-dock-hover-animate! #t) (reload-dock!))")
+        time.sleep(0.3)
         self.caption_end()
 
-        # The taskbar segment wants titled windows again.
-        for title in ("Alpha workspace", "Beta notes", "Gamma logs"):
-            self.spawn_sh(
-                "exec alacritty --title "
-                + shlex.quote(title)
-                + " -o window.decorations=none"
-            )
-            time.sleep(0.7)
+    def niri_or_log(self, *action: str) -> None:
+        try:
+            self.niri("action", *action)
+        except subprocess.CalledProcessError as error:
+            self.log(f"{action[0]} failed: {error}")
+
+    def phase_stack(self) -> None:
+        self.caption("A folder becomes a stack you can browse")
+        self.glide(self.X(ITEM_STACK), self.Y(DOCK_ROW), 550)
+        self.click()
+        time.sleep(1.2)
+        for x, y in ((600, 420), (660, 420), (600, 500)):
+            self.glide(self.X(x), self.Y(y), 320)
+            time.sleep(0.15)
+        # Dismiss the popover by clicking the empty top of the screen: a click
+        # inside it would launch a file.
+        self.move(60, 60)
+        self.click()
+        time.sleep(0.7)
+        self.caption_end()
+
+    def phase_launchpad(self) -> None:
+        self.caption("The launchpad: type to filter it, or drive it from Scheme")
+        self.dock_eval("(show-launchpad!)")
+        time.sleep(1.5)
+        self.dock_eval('(launchpad-search! "term")')
+        time.sleep(1.3)
+        self.dock_eval('(launchpad-search! "calc")')
+        time.sleep(1.3)
+        self.dock_eval('(launchpad-search! "")')
+        time.sleep(0.7)
+        self.dock_eval("(hide-launchpad!)")
+        time.sleep(1.0)
+        self.caption_end()
 
     def phase_repl(self) -> None:
-        self.caption("Live socket REPL: mutate the running dock, no restart")
-        kitty_id = self.launch_kitty()
+        self.caption("Reprogram the running dock over its socket REPL")
+        kitty_id = self.launch_repl_window()
         self.open_repl_writer()
+        # Keep the pointer on the dock's separator: it holds the dock on screen
+        # without magnifying an icon that the montage is about to restyle.
+        self.move(self.X(ITEM_SEPARATOR), self.Y(DOCK_ROW))
 
-        self.repl("(use-modules (lambdock core))", speed_ms=10, hold=0.45)
-        self.repl("(get-dock-theme)", speed_ms=18, hold=0.5)
-        self.repl("(get-dock-icon-size)", speed_ms=18, hold=0.5)
-        for size, hold in ((56, 0.55), (64, 0.65), (48, 0.5)):
-            self.repl(
-                f"(begin (set-dock-icon-size! {size}) (reload-dock!))",
-                speed_ms=5,
-                hold=hold,
-            )
-
+        self.repl("(use-modules (lambdock core))", speed_ms=10, hold=0.4)
+        self.repl(
+            "(define (swap! t) (set-dock-theme! t) (reload-dock!))",
+            speed_ms=10,
+            hold=0.5,
+        )
+        self.repl("(get-dock-icon-size)", speed_ms=14, hold=0.7)
+        self.repl("(set-dock-icon-size! 64) (reload-dock!)", speed_ms=10, hold=0.9)
+        self.repl("(set-dock-icon-size! 48) (reload-dock!)", speed_ms=10, hold=0.6)
         self.caption_end()
-        self.caption("Hot-swapping every built-in theme, live")
+
+        self.caption("Built-in themes, swapped live")
         for theme in DARK_THEMES:
-            self.repl(
-                f"(begin (set-dock-theme! '{theme}) (reload-dock!))",
-                speed_ms=4,
-                hold=0.34,
-            )
+            self.repl(f"(swap! '{theme})", speed_ms=8, hold=0.35)
             self.theme(theme)
 
         self.switch_wallpaper("mountains.png")
         for theme in LIGHT_THEMES:
-            self.repl(
-                f"(begin (set-dock-theme! '{theme}) (reload-dock!))",
-                speed_ms=4,
-                hold=0.34,
-            )
+            self.repl(f"(swap! '{theme})", speed_ms=8, hold=0.35)
             self.theme(theme)
         self.theme_end()
         self.caption_end()
-
-        self.caption("Taskbar mode with window titles")
-        self.repl(
-            "(begin (set-dock-theme! 'windows-xp) (reload-dock!))",
-            speed_ms=5,
-            hold=0.5,
-        )
-        self.repl(
-            "(begin (set-dock-mode! 'taskbar) (reload-dock!))",
-            speed_ms=5,
-            hold=1.0,
-        )
-        self.repl(
-            "(begin (set-dock-show-window-titles! #t) (reload-dock!))",
-            speed_ms=5,
-            hold=1.5,
-        )
-        self.caption_end()
-
-        self.repl(
-            "(begin (set-dock-show-window-titles! #f) (reload-dock!))",
-            speed_ms=5,
-            hold=0.35,
-        )
-        self.repl(
-            "(begin (set-dock-mode! 'dock) (reload-dock!))",
-            speed_ms=5,
-            hold=0.8,
-        )
-        self.repl(
-            "(begin (set-dock-theme! 'vanilla-light) (reload-dock!))",
-            speed_ms=5,
-            hold=0.7,
-        )
 
         if self.repl_fd is not None:
             os.close(self.repl_fd)
             self.repl_fd = None
         self.close_window(kitty_id)
-        time.sleep(0.6)
-
-    def phase_cleanup(self) -> None:
-        # Close the extra terminals opened for the taskbar demo.  The popover's
-        # Close All row was already demonstrated earlier.
-        for window in self.windows():
-            if window.get("app_id") == "Alacritty":
-                self.close_window(int(window["id"]))
         time.sleep(0.7)
-        self.move(self.out_w / 2, self.out_h * 0.35)
-        time.sleep(0.4)
 
-        self.caption("Config, CSS, state and window tracking -- all live")
-        self.glide(self.X(180), self.Y(704), 900)
-        self.glide(self.X(900), self.Y(704), 1500)
-        self.move(self.out_w / 2, self.out_h * 0.35)
+    def phase_taskbar(self) -> None:
+        self.caption("Or a taskbar, with window titles")
+        self.spawn_terminal("build", "fetch", 66, 118, 500, 330)
+        self.spawn_terminal("logs", "files", 562, 118, 500, 330)
+        time.sleep(1.0)
+        self.reveal_dock()
+
+        # The mode change re-anchors the layer surface, which a layout reload
+        # only picks up on the next pass: nudge it twice so the bar really is
+        # full width, then show window titles on it.
+        self.dock_eval("(begin (set-dock-mode! 'taskbar) (reload-dock!))")
+        time.sleep(1.0)
+        self.dock_eval("(begin (set-dock-mode! 'taskbar) (reload-dock!))")
+        time.sleep(0.8)
+        self.dock_eval("(begin (set-dock-show-window-titles! #t) (reload-dock!))")
+        time.sleep(1.8)
         self.caption_end()
 
-        self.caption("lambdock -- a dock you can reprogram while it runs")
-        time.sleep(2.0)
-        self.caption_end()
+    def phase_outro(self) -> None:
+        # Back to the default look *before* the card goes up, so the closing
+        # frame is the same dock the README's hero image shows.
+        self.close_terminals()
+        self.dock_eval("(begin (set-dock-show-window-titles! #f) (reload-dock!))")
+        time.sleep(0.3)
+        self.dock_eval("(begin (set-dock-mode! 'dock) (reload-dock!))")
+        time.sleep(0.5)
+        self.dock_eval("(begin (set-dock-theme! 'vanilla) (reload-dock!))")
+        self.switch_wallpaper("galaxy.png")
+        time.sleep(0.5)
+        self.move(self.out_w / 2, self.out_h * 0.45)
+        time.sleep(0.3)
+
+        self.title("lambdock", "github.com/jjba23/lambdock")
+        time.sleep(2.8)
+        self.title_end()
 
     # ---------------------------------------------------------- main
     def run(self) -> None:
         self.events_file = open(self.events_path, "w", encoding="utf-8")
         self.write_atomic(self.tmp / "nested-ready", "1")
         self.setup()
-        self.wait_for(self.tmp / "go", timeout=30.0)
+        self.wait_for(self.tmp / "go", timeout=60.0)
         self.t0 = time.monotonic()
         self.log("storyboard started")
-        # Give wf-recorder a moment to start capturing before the first action.
-        time.sleep(0.6)
+        # The recorder is already capturing: give it a beat of quiet so the
+        # fade-in lands on a still desktop.
+        time.sleep(0.35)
 
+        self.phase_intro()
         self.phase_autohide()
         self.phase_magnify()
         self.phase_launch()
         self.phase_popover()
-        self.phase_menu_about()
+        self.phase_preferences()
         self.phase_stack()
         self.phase_launchpad()
-        self.phase_preferences()
         self.phase_repl()
-        self.phase_cleanup()
+        self.phase_taskbar()
+        self.phase_outro()
 
         self.log(f"storyboard finished at {time.monotonic() - self.t0:.2f}s")
         self.write_atomic(self.tmp / "done", "1")
