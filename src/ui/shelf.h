@@ -78,6 +78,17 @@ void shelf_reflection_set_running(GtkWidget *reflection, gboolean running);
 GtkWidget *shelf_reflection_new(GtkWidget *source);
 
 /**
+ * lambdock_reflection_band_count:
+ * @axis_len: length of the reflection band along its fade axis, in pixels.
+ *
+ * Returns: how many clipped draws one reflection repaint costs. The fade is
+ * painted as a stack of bands, so this is the per-repaint budget of the whole
+ * widget: it is a pure function, and unit tested, because "a few bands" is not a
+ * budget.
+ */
+int lambdock_reflection_band_count(double axis_len);
+
+/**
  * shelf_reflection_clear_source:
  * @reflection: A widget created by shelf_reflection_new().
  *

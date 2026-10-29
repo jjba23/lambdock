@@ -28,6 +28,7 @@
 #include "accessibility.h"
 #include "core/dock_dims.h"
 #include "core/dock_motion.h"
+#include "core/render_stats.h"
 #include "guile_bridge.h"
 #include "logger.h"
 #include "toplevel_tracker.h"
@@ -76,6 +77,9 @@ typedef struct FisheyeFrame {
   int base_size_px;
   double radius_px;
   double max_scale;
+  GArray *centres;      /* item centres along the main axis, cached */
+  guint index;          /* item being visited */
+  gboolean geometry_changed; /* set when a size request moved an item */
 } FisheyeFrame;
 
 /* Callback for the dock-row walk. */
@@ -365,6 +369,7 @@ static void reset_dock_items_scale(LambdockState *state) {
   /* The row is back at rest, so the next frame has to apply the pointer again
    * even if it has not moved, and the surface's room can be re-measured. */
   state->pointer_applied = FALSE;
+  state->hover_axis_valid = FALSE;
   state->fisheye_active = FALSE;
 
   /* The row is back at rest: let the surface hug it again. */
@@ -491,12 +496,65 @@ static void apply_reflection_extent(const DockItem *item,
 }
 
 /**
+ * refresh_item_centres:
+ * Rebuilds the cache of item centres along the dock's main axis.
+ *
+ * One walk of the row (a transform query per item) instead of one per pointer
+ * frame: the fisheye needs to know where each item *is*, and that only changes
+ * when something resizes the row -- an icon size, the item list, a mode change,
+ * or the magnification itself stepping to a new size.
+ */
+static void refresh_item_centres(LambdockState *state) {
+  if (!state)
+    return;
+
+  if (!state->item_centres)
+    state->item_centres = g_array_new(FALSE, FALSE, sizeof(gint));
+  g_array_set_size(state->item_centres, 0);
+
+  gboolean horizontal = state->orientation == GTK_ORIENTATION_HORIZONTAL;
+
+  /* The row is the reference, not the window: it is the frame the items live in,
+   * and measuring against it is a shorter walk than measuring against the
+   * surface. The pointer arrives in window coordinates, so the row's own origin
+   * is what has to be subtracted from it. */
+  GtkWidget *reference = state->box ? state->box : state->window;
+
+  state->box_origin_px = 0.0;
+  if (state->window && reference && reference != state->window) {
+    graphene_rect_t origin;
+    if (gtk_widget_compute_bounds(reference, state->window, &origin))
+      state->box_origin_px =
+          horizontal ? origin.origin.x : origin.origin.y;
+  }
+
+  for (GList *node = state->dock_items; node != NULL; node = node->next) {
+    DockItem *item = node->data;
+    gint centre = 0;
+
+    graphene_rect_t bounds;
+    if (item && item->button && reference &&
+        gtk_widget_compute_bounds(item->button, reference, &bounds)) {
+      centre = (gint)lround(horizontal
+                                ? bounds.origin.x + bounds.size.width / 2.0
+                                : bounds.origin.y + bounds.size.height / 2.0);
+    }
+
+    g_array_append_val(state->item_centres, centre);
+  }
+
+  state->centres_dirty = FALSE;
+  lambdock_stats_bump(LAMBDOCK_STAT_GEOMETRY_REFRESHES);
+}
+
+/**
  * apply_fisheye_to_item:
  * Sizes one dock item for the pointer position described by @data.
  */
 static void apply_fisheye_to_item(DockItem *item, gpointer data) {
-  const FisheyeFrame *frame = (const FisheyeFrame *)data;
+  FisheyeFrame *frame = (FisheyeFrame *)data;
   const LambdockState *state = frame->state;
+  gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
 
   /* Guard: the button has to be a GtkButton, and the item has to allow hover
    * magnification (separators and meters do not). */
@@ -507,14 +565,11 @@ static void apply_fisheye_to_item(DockItem *item, gpointer data) {
   if (!zoom)
     return;
 
-  graphene_rect_t bounds;
-  if (!gtk_widget_compute_bounds(item->button, state->window, &bounds))
+  if (!frame->centres || frame->index >= frame->centres->len)
     return;
 
-  gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
-  double center = horizontal
-                      ? bounds.origin.x + bounds.size.width / 2.0
-                      : bounds.origin.y + bounds.size.height / 2.0;
+  double center =
+      (double)g_array_index(frame->centres, gint, frame->index);
 
   double scale =
       lambdock_fisheye_scale(frame->pointer_axis - center, frame->radius_px,
@@ -529,6 +584,8 @@ static void apply_fisheye_to_item(DockItem *item, gpointer data) {
                       : target_px;
 
   if (lambdock_icon_zoom_target_size(zoom) != layout_px) {
+    lambdock_stats_bump(LAMBDOCK_STAT_LAYOUT_STEPS);
+
     /* Expand along the dock axis; preserve the base size across it. */
     if (horizontal)
       gtk_widget_set_size_request(item->button, layout_px, frame->base_size_px);
@@ -539,6 +596,10 @@ static void apply_fisheye_to_item(DockItem *item, gpointer data) {
      * dock axis but keeps the band thickness, so the row of icons does not
      * shift while hovering. */
     apply_reflection_extent(item, state, layout_px, frame->base_size_px);
+
+    /* The row just changed size: the cached centres are stale for the next
+     * frame. */
+    frame->geometry_changed = TRUE;
   }
 
   /* The layout steps in whole pixels, the icon does not: the zoom paints the
@@ -547,37 +608,83 @@ static void apply_fisheye_to_item(DockItem *item, gpointer data) {
   lambdock_icon_zoom_set_scale(zoom, scale);
 }
 
+/** Visitor wrapper: hands each item its index in the geometry cache. */
+static void apply_fisheye_to_item_at(DockItem *item, gpointer data) {
+  FisheyeFrame *frame = (FisheyeFrame *)data;
+
+  apply_fisheye_to_item(item, frame);
+  frame->index++;
+}
+
 /**
- * update_dock_items_fisheye:
- * Computes fisheye magnification for dock icons based on current cursor
- * coordinates relative to dock item centers.
+ * dock_apply_hover_at:
+ * Applies the fish-eye for a pointer at (@x, @y) in window coordinates.
+ *
+ * This is the whole hover path: a pointer frame costs one cached geometry lookup
+ * and some arithmetic per item, plus (only when an item's layout step actually
+ * changed) one size request. Everything else -- the magnification itself -- is
+ * painted through a transform, so the row does not relayout to look magnified.
+ *
+ * Hover magnification only applies to a settled, visible dock: while it slides
+ * (or is hidden) the widget bounds below are stale and the pointer position is
+ * not the user's.
  */
-static void update_dock_items_fisheye(LambdockState *state, double x,
-                                      double y) {
-  /* Hover magnification only applies to a settled, visible dock: while it
-   * slides (or is hidden) the widget bounds below are stale and the pointer
-   * position is not the user's. */
+void dock_apply_hover_at(LambdockState *state, double x, double y) {
   if (!state || !state->dock_items || !state->hover_animate ||
       !lambdock_animations_enabled(state) || state->is_hidden ||
       state->tick_cb_id != 0 || state->current_margin != 0)
     return;
 
+  lambdock_stats_bump(LAMBDOCK_STAT_HOVER_FRAMES);
+
   gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
+  double axis = horizontal ? x : y;
+
+  /* A trackpad reports sub-pixel movement continuously, and half a pixel changes
+   * nothing anyone can see: the icons would be repainted at the same layout step
+   * and a magnification nobody can perceive. The frame is dropped before it
+   * touches a widget. */
+  if (state->hover_axis_valid &&
+      fabs(axis - state->applied_hover_axis) < FISHEYE_POINTER_STEP_PX) {
+    lambdock_stats_bump(LAMBDOCK_STAT_HOVER_SKIPS);
+    return;
+  }
+
+  state->hover_axis_valid = TRUE;
+  state->applied_hover_axis = axis;
+
+  if (state->centres_dirty || !state->item_centres)
+    refresh_item_centres(state);
 
   FisheyeFrame frame = {
       .state = state,
-      .pointer_axis = horizontal ? x : y,
+      /* The centres are relative to the row, the pointer to the window. */
+      .pointer_axis = axis - state->box_origin_px,
       .base_size_px = dock_icon_size(state),
       .radius_px = FISHEYE_RADIUS_PX,
       .max_scale = FISHEYE_MAX_SCALE,
+      .centres = state->item_centres,
+      .index = 0,
   };
 
-  for_each_dock_item(state->dock_items, apply_fisheye_to_item, &frame);
+  for_each_dock_item(state->dock_items, apply_fisheye_to_item_at, &frame);
+
+  if (frame.geometry_changed)
+    state->centres_dirty = TRUE;
 
   /* The capsule grows under the pointer, so the clickable region has to follow
    * it; the tick that sizes the surface is the same one that cuts it out. */
   state->fisheye_active = TRUE;
   dock_schedule_input_region(state);
+}
+
+/**
+ * update_dock_items_fisheye:
+ * The dock's own entry point for a pointer position (see dock_apply_hover_at).
+ */
+static void update_dock_items_fisheye(LambdockState *state, double x,
+                                      double y) {
+  dock_apply_hover_at(state, x, y);
 }
 
 /* =========================================================================
@@ -1456,6 +1563,19 @@ static gboolean dock_apply_input_region(LambdockState *state) {
       gdk_surface_get_height(surface) <= 1)
     return FALSE;
 
+  /* Sample the surface size where the layout is known to have landed: a change
+   * is a buffer re-allocation and a compositor reconfigure, so it is worth
+   * counting (and asserting) rather than eyeballing. */
+  int surface_width = gdk_surface_get_width(surface);
+  int surface_height = gdk_surface_get_height(surface);
+  if (state->last_surface_width != surface_width ||
+      state->last_surface_height != surface_height) {
+    if (state->last_surface_width != 0)
+      lambdock_stats_bump(LAMBDOCK_STAT_SURFACE_RESIZES);
+    state->last_surface_width = surface_width;
+    state->last_surface_height = surface_height;
+  }
+
   /* A tucked-away dock is a strip at the screen edge, and that strip is the
    * surface's *headroom* -- the part the dock-shaped region below cuts away. It
    * has to stay clickable, or the pointer could never bring the dock back (a
@@ -1577,6 +1697,10 @@ void update_dock_dimensions(LambdockState *state) {
    * current icon size and shelf parameters. */
   apply_shelf_layout(state);
   dock_dims_mirror_shelf_alignment(state);
+
+  /* Icon size, spacing, padding, mode and shelf all move the items: the hover
+   * path's cached geometry is stale. */
+  state->centres_dirty = TRUE;
 
   /* The surface may be bigger than the dock now: keep the input region on the
    * dock itself. */
@@ -1861,6 +1985,7 @@ void destroy_dock_instance(LambdockState *state) {
   destroy_window(state);
 
   g_clear_object(&state->size_group);
+  g_clear_pointer(&state->item_centres, g_array_unref);
   destroy_monitor(state);
 
   g_clear_pointer(&state->config_path, g_free);

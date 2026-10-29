@@ -53,6 +53,10 @@
 /* Layout granularity of the magnified sizes, in px. The icon itself is painted
  * through a continuous transform, so this only decides how often the row has to
  * be re-measured while the pointer moves. */
+/* Movement below this many pixels along the dock cannot change the painted
+ * magnification, so the hover frame is skipped entirely. */
+#define FISHEYE_POINTER_STEP_PX 0.5
+
 #define FISHEYE_LAYOUT_STEP_PX 2
 
 /* --- Glass shelf / reflection parameters (see LambdockShelfParams) --- */
@@ -334,6 +338,25 @@ struct LambdockState {
    * magnified width in. */
   gboolean fisheye_active;
   int hover_headroom_px; /* Room reserved around the row for the spread. */
+
+  /* Item geometry cache for the hover path: the centre of each item along the
+   * dock's main axis, in window coordinates. Rebuilt only when the row's layout
+   * changed, so a pointer frame costs arithmetic instead of a transform walk per
+   * item. */
+  GArray *item_centres;
+  gboolean centres_dirty;
+
+  /* The pointer position the fish-eye was last applied to, and whether there is
+   * one: a frame that moves the pointer less than the fish-eye's own resolution
+   * changes nothing and is dropped before any widget is touched. */
+  double applied_hover_axis;
+  gboolean hover_axis_valid;
+  double box_origin_px; /* the row's origin along the main axis, in the window */
+
+  /* Last surface size the input-region sampling saw, so a resize can be counted
+   * (and so the region path can tell "not laid out yet" from "laid out"). */
+  int last_surface_width;
+  int last_surface_height;
 
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;

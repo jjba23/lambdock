@@ -119,6 +119,23 @@ void on_about_action(GSimpleAction *action, GVariant *parameter,
 void update_dock_dimensions(LambdockState *state);
 
 /**
+ * dock_apply_hover_at:
+ * @state: the dock.
+ * @x: pointer x, in the dock window's coordinates.
+ * @y: pointer y, in the dock window's coordinates.
+ *
+ * Applies the fish-eye magnification for that pointer position: a cached
+ * geometry lookup and some arithmetic per item, plus one size request per item
+ * whose layout step actually changed. Nothing else is resized, and the
+ * magnification itself is painted.
+ *
+ * Public so the per-frame budget can be asserted in a test: the interesting
+ * properties (the surface keeps its size, the row relayouts at most once per
+ * frame, the geometry cache is reused) are measurements.
+ */
+void dock_apply_hover_at(LambdockState *state, double x, double y);
+
+/**
  * dock_apply_motion_preference:
  * @state: Pointer to the dock state.
  *

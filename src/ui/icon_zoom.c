@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "icon_zoom.h"
+#include "../core/render_stats.h"
 
 #include <math.h>
 

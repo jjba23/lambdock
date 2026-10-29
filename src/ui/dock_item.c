@@ -1159,8 +1159,11 @@ static DockItem *dock_item_mount(DockItem *item) {
     gtk_box_append(GTK_BOX(state->box), child);
   }
 
-  if (state)
+  if (state) {
     state->dock_items = g_list_append(state->dock_items, item);
+    /* A new item moves every centre after it. */
+    state->centres_dirty = TRUE;
+  }
 
   dock_item_attach_data(item);
   dock_item_update_accessible(item);
@@ -1486,6 +1489,10 @@ static void free_item_strings(DockItem *item) {
 void free_dock_item(DockItem *item) {
   if (!item)
     return;
+
+  /* The row is about to lose an item: every centre after it moves. */
+  if (item->state)
+    item->state->centres_dirty = TRUE;
 
   free_item_timers(item);
 
@@ -1894,8 +1901,11 @@ DockItem *create_separator_dock_item(LambdockState *state,
     GtkWidget *child = item->container ? item->container : item->cell;
     gtk_box_append(GTK_BOX(state->box), child);
   }
-  if (state)
+  if (state) {
     state->dock_items = g_list_append(state->dock_items, item);
+    /* A new item moves every centre after it. */
+    state->centres_dirty = TRUE;
+  }
 
   dock_item_attach_data(item);
 

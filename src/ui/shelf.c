@@ -4,6 +4,7 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "shelf.h"
+#include "../core/render_stats.h"
 #include "icon_zoom.h"
 #include "../logger.h"
 #include "dock_item.h"
@@ -353,6 +354,8 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
                                          GtkSnapshot *snapshot) {
   LambdockReflection *self = LAMBDOCK_REFLECTION(widget);
 
+  lambdock_stats_bump(LAMBDOCK_STAT_REFLECTION_PAINTS);
+
   reflection_sync_paintable(self);
 
   double w = (double)gtk_widget_get_width(widget);
@@ -418,8 +421,7 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
      * *before* the mirror transform, so it is expressed in the widget's own
      * coordinates. */
     double axis_len = vertical_band ? h : w;
-    int bands = (int)round(axis_len);
-    bands = CLAMP(bands, 6, SHELF_REFLECTION_BANDS);
+    int bands = lambdock_reflection_band_count(axis_len);
     double band_len = axis_len / (double)bands;
 
     for (int i = 0; i < bands; i++) {
@@ -440,6 +442,7 @@ static void lambdock_reflection_snapshot(GtkWidget *widget,
       gtk_snapshot_save(snapshot);
       gtk_snapshot_transform(snapshot, mirror);
       gdk_paintable_snapshot(self->paintable, snapshot, sw, sh);
+      lambdock_stats_bump(LAMBDOCK_STAT_REFLECTION_DRAWS);
       gtk_snapshot_restore(snapshot);
       gtk_snapshot_pop(snapshot); /* opacity */
       gtk_snapshot_pop(snapshot); /* clip */
@@ -914,6 +917,15 @@ static GdkPaintable *reflection_artwork_for(GtkWidget *source) {
   }
 
   return NULL;
+}
+
+int lambdock_reflection_band_count(double axis_len) {
+  if (!(axis_len > 0.0))
+    return SHELF_REFLECTION_BANDS;
+
+  int bands = (int)round(axis_len);
+
+  return CLAMP(bands, 6, SHELF_REFLECTION_BANDS);
 }
 
 GtkWidget *shelf_reflection_new(GtkWidget *source) {

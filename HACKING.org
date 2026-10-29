@@ -1439,6 +1439,65 @@ is behind it); the frosted glass is drawn with gradients instead.
 The dock animates whenever the pointer moves, so these rules exist to keep
 per-frame work proportional to *visible* items and nothing else.
 
+** Measure it: /perf/ tests and the render counters
+="src/core/render_stats.c"= keeps a handful of integer counters (hover frames,
+frames dropped before touching a widget, item layout steps, geometry-cache
+rebuilds, icon/reflection paints, surface resizes). They cost an increment and
+they turn the interesting questions into numbers: "did hovering relayout the row?"
+is answered by =layout_steps=, "did the surface keep its size?" by
+=surface_resizes=.
+
+=tests/test_render_budget.c= drives the real hover path against a hand-allocated
+row (no window, so no compositor is involved) and asserts the budget. Current
+numbers on a row of eight items, 40 frames sweeping the pointer across it:
+
+| Counter                | Measured | Why it is the budget                                  |
+|------------------------+----------+-------------------------------------------------------|
+| =hover_frames=          |       40 | every frame ran                                       |
+| =layout_steps=          |       91 | of 320 possible (frames × items): the 2 px stepper    |
+| =geometry_refreshes=    |       31 | fewer than frames: the cache survives between steps   |
+| =surface_resizes=       |        0 | a resize is a buffer re-allocation + recompositing    |
+
+and 20 sub-pixel jitter frames (a trackpad) cost =0= layout steps and =0=
+geometry rebuilds: =FISHEYE_POINTER_STEP_PX= drops them before they touch a
+widget. A reflection repaint costs one clipped draw per fade band, and
+=lambdock_reflection_band_count()= is pure and tested: 14 draws at the 14 px band
+the macOS Mavericks shelf uses, 16 in the worst case.
+
+** The widget tree, and why it is shaped like this
+#+begin_example
+window (layer surface: anchored to the dock's edge, sized by the overlay)
+└── overlay              cross-size request = magnification headroom
+    ├── shelf frame      the theme's capsule, projected (tilt/flare) if asked
+    │   └── capsule      CSS background; size-grouped with the row's width
+    └── scroller         the row's viewport (only scrolls along the dock axis)
+        └── row box      one container per item, spacing between them
+            └── item container: [button → cell → icon/label] + [reflection]
+#+end_example
+
+Two decisions follow from the metrics:
+
+- The *cell* inside each item's button is what carries the icon-sized size
+  request, not the button: the theme's padding then sits outside the sum, so an
+  icon, a label and a gauge are exactly as tall as each other.
+- Every item owns a *reflection slot* even when it has nothing to mirror. The
+  band the slot reserves is part of the cell's height; dropping it leaves gauges
+  and separators a band lower than the icons on a shelf theme.
+
+** Lifecycle: three clocks, and they never overlap
+1. *Layout* changes only when something real changes -- icon size, spacing,
+   padding, the item list, the mode, the shelf. =update_dock_dimensions()= is the
+   single place that re-requests geometry, and it is called from a reload, not
+   from a frame. It also invalidates the hover geometry cache
+   (=state->centres_dirty=) and queues one input-region update.
+2. *Animation* (the fish-eye) runs on one-shot frame ticks: a motion event
+   records the pointer and arms one tick, the tick applies the newest position
+   once, and nothing is left running. Its layout part is stepped to 2 px; its
+   paint part is a transform, so magnification is continuous.
+3. *Data* (clocks, gauges, trash counts) runs on per-item timeouts that skip
+   their work while the dock is off screen, and are caught up in one pass when it
+   reappears.
+
 ** One layout pass per frame, not per event
 Motion events only record a position and arm one one-shot frame-clock tick
 (=on_motion_notify= → =gtk_widget_add_tick_callback=, =dock_window.c=). The row is
