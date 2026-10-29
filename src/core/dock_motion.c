@@ -60,6 +60,11 @@ gboolean lambdock_settling(gboolean sliding, gint64 settled_at_us,
   return (now_us - settled_at_us) < (gint64)settle_ms * 1000;
 }
 
+gboolean lambdock_dock_needs_full_input(gboolean is_hidden,
+                                        int current_margin) {
+  return is_hidden || current_margin != 0;
+}
+
 double lambdock_fisheye_scale(double distance_px, double radius_px,
                               double max_scale) {
   if (radius_px <= 0.0)

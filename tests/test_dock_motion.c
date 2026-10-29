@@ -232,6 +232,20 @@ static void test_size_step_halves_layout_passes(void) {
   g_assert_cmpint(changed_scale, ==, (int)(radius / 2) + 1);
 }
 
+static void test_needs_full_input(void) {
+  /* Parked off screen: the only part of the surface on screen is the trigger
+   * strip, which lives in the headroom a dock-shaped input region cuts away. It
+   * has to take input, or auto-hide could never be triggered again. */
+  g_assert_true(lambdock_dock_needs_full_input(TRUE, 0));
+  g_assert_true(lambdock_dock_needs_full_input(TRUE, -120));
+
+  /* Sliding: same reasoning, and the strip moves every frame. */
+  g_assert_true(lambdock_dock_needs_full_input(FALSE, -60));
+
+  /* Fully out and at rest: the dock itself is all the surface that matters. */
+  g_assert_false(lambdock_dock_needs_full_input(FALSE, 0));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -240,6 +254,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dock_motion/slide_position", test_slide_position);
   g_test_add_func("/core/dock_motion/hide_margin", test_hide_margin);
   g_test_add_func("/core/dock_motion/settling", test_settling);
+  g_test_add_func("/core/dock_motion/needs_full_input",
+                  test_needs_full_input);
   g_test_add_func("/core/dock_motion/fisheye_scale", test_fisheye_scale);
   g_test_add_func("/core/dock_motion/scaled_size", test_scaled_size);
   g_test_add_func("/core/dock_motion/points_differ", test_points_differ);

@@ -96,6 +96,20 @@ gboolean lambdock_settling(gboolean sliding, gint64 settled_at_us,
  * Returns: a cosine bell falling from @max_scale at the centre to 1.0 -- a
  * resting icon -- at @radius_px.
  */
+/**
+ * lambdock_dock_needs_full_input:
+ * @is_hidden: TRUE while the dock is parked off screen.
+ * @current_margin: the dock's current slide offset in pixels (0 = fully out).
+ *
+ * Returns: TRUE when the whole surface has to take input.
+ *
+ * A tucked-away dock (or one mid-slide) is only on screen as the trigger strip at
+ * the screen edge, and that strip is the surface's *headroom* -- the part the
+ * dock-shaped input region otherwise cuts away. Cutting it there would leave the
+ * pointer nothing to enter, and auto-hide could never bring the dock back.
+ */
+gboolean lambdock_dock_needs_full_input(gboolean is_hidden, int current_margin);
+
 double lambdock_fisheye_scale(double distance_px, double radius_px,
                               double max_scale);
 

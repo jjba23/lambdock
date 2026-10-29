@@ -234,6 +234,12 @@ static DockSurfacePolicy dock_surface_policy_for(const LambdockState *state) {
 
 /* gtk_layer_set_margin() only means something on a layer-shell surface: the
  * preferences window and the test fixtures build ordinary windows. */
+/* Declared here because the hover path, the input-region tick and the geometry
+ * update call each other without being next to one another in this file. */
+static void dock_schedule_input_region(LambdockState *state);
+static int dock_content_main_px(const LambdockState *state, gboolean horizontal);
+static void dock_reserve_hover_room(LambdockState *state);
+
 static void set_window_margin(LambdockState *state, int margin) {
   if (!state || !state->window || !GTK_IS_WINDOW(state->window))
     return;
@@ -260,6 +266,10 @@ static void snap_margin_to(LambdockState *state, int margin) {
   state->margin_anim_end_us = g_get_monotonic_time();
 
   set_window_margin(state, margin);
+
+  /* Hidden and shown want different input regions: the whole surface while the
+   * dock is a strip, the dock itself once it is out. */
+  dock_schedule_input_region(state);
 }
 
 /** Drops a queued fisheye frame, so a stale position cannot be applied. */
@@ -280,12 +290,6 @@ static void stop_pointer_tick(LambdockState *state) {
  * casting dock-item callbacks to it gives up the type checking that keeps these
  * visitors honest. The loop is four lines; the signature is worth it.
  */
-/* Declared here because the hover path, the input-region tick and the geometry
- * update call each other without being next to one another in this file. */
-static void dock_schedule_input_region(LambdockState *state);
-static int dock_content_main_px(const LambdockState *state, gboolean horizontal);
-static void dock_reserve_hover_room(LambdockState *state);
-
 static void for_each_dock_item(GList *items, DockItemVisitor visit,
                                gpointer data) {
   for (GList *node = items; node != NULL; node = node->next) {
@@ -1401,6 +1405,47 @@ static void dock_dims_mirror_shelf_alignment(const LambdockState *state) {
  * Called from a one-shot frame callback, because a size request only turns into
  * an allocation on the next frame: the bounds read before that are stale.
  */
+/** TRUE when @rect is the one the surface's input region already has. */
+static gboolean input_region_is_current(const LambdockState *state,
+                                        gboolean whole,
+                                        const cairo_rectangle_int_t *rect) {
+  if (!state->input_region_set || state->input_region_whole != whole)
+    return FALSE;
+
+  if (whole)
+    return TRUE;
+
+  return state->input_region_x == rect->x &&
+         state->input_region_y == rect->y &&
+         state->input_region_width == rect->width &&
+         state->input_region_height == rect->height;
+}
+
+/** Applies a region (NULL for the whole surface) unless it is already current. */
+static void apply_input_region(LambdockState *state, GdkSurface *surface,
+                               gboolean whole,
+                               const cairo_rectangle_int_t *rect) {
+  if (input_region_is_current(state, whole, rect))
+    return;
+
+  if (whole) {
+    gdk_surface_set_input_region(surface, NULL);
+  } else {
+    cairo_region_t *region = cairo_region_create_rectangle(rect);
+    gdk_surface_set_input_region(surface, region);
+    cairo_region_destroy(region);
+  }
+
+  state->input_region_set = TRUE;
+  state->input_region_whole = whole;
+  if (!whole) {
+    state->input_region_x = rect->x;
+    state->input_region_y = rect->y;
+    state->input_region_width = rect->width;
+    state->input_region_height = rect->height;
+  }
+}
+
 static gboolean dock_apply_input_region(LambdockState *state) {
   if (!state || !state->window || !state->bg_shelf)
     return FALSE;
@@ -1410,6 +1455,18 @@ static gboolean dock_apply_input_region(LambdockState *state) {
   if (!surface || gdk_surface_get_width(surface) <= 1 ||
       gdk_surface_get_height(surface) <= 1)
     return FALSE;
+
+  /* A tucked-away dock is a strip at the screen edge, and that strip is the
+   * surface's *headroom* -- the part the dock-shaped region below cuts away. It
+   * has to stay clickable, or the pointer could never bring the dock back (a
+   * slide moves the window every frame, so this is also the state to be in for
+   * the whole animation). While the dock is away the whole surface is the strip,
+   * so the whole surface keeps its input. */
+  if (lambdock_dock_needs_full_input(state->is_hidden,
+                                     state->current_margin)) {
+    apply_input_region(state, surface, TRUE, NULL);
+    return TRUE;
+  }
 
   /* The dock is the slab plus the row of icons that overhangs it, so the region
    * has to be the union of the two: the slab alone would leave the icons -- the
@@ -1433,9 +1490,7 @@ static gboolean dock_apply_input_region(LambdockState *state) {
       .height = (int)ceil(bounds.size.height) + 2,
   };
 
-  cairo_region_t *region = cairo_region_create_rectangle(&rect);
-  gdk_surface_set_input_region(surface, region);
-  cairo_region_destroy(region);
+  apply_input_region(state, surface, FALSE, &rect);
 
   return TRUE;
 }

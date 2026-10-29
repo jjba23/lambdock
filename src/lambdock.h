@@ -319,6 +319,15 @@ struct LambdockState {
    * many frames it has tried while the window was still unlaid-out. */
   guint input_region_tick_id;
   int input_region_attempts;
+  /* What the surface's input region currently is, so it is only touched when it
+   * really changes (a slide moves the window every frame, and a hover resizes
+   * the dock: neither should re-set the region needlessly). */
+  gboolean input_region_set;
+  gboolean input_region_whole;
+  int input_region_x;
+  int input_region_y;
+  int input_region_width;
+  int input_region_height;
 
   /* TRUE while the fish-eye has the row spread out. The dock's surface is sized
    * for the spread once, at rest; measuring it mid-animation would bake the
