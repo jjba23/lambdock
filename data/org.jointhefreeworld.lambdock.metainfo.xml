@@ -77,6 +77,11 @@
   </screenshots>
 
   <releases>
+    <release version="0.19.3" date="2026-10-29">
+      <description>
+        <p>Packaging fix: the render-budget test skips itself when there is no display server instead of aborting inside gtk_init, so a sandboxed package build's check phase passes. Nothing changed in the dock itself.</p>
+      </description>
+    </release>
     <release version="0.19.2" date="2026-10-29">
       <description>
         <p>Auto-hide works again: while the dock is tucked away or sliding, the whole surface takes input, because the only part of it on screen is the trigger strip -- which the dock-shaped input region had cut away. Once the dock is out, the region is the slab plus the icons again, and it is only re-set when it changes.</p>

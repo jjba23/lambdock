@@ -15,6 +15,18 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.3 (2026-10-29)
+- Packaging fix: the render-budget test now reports Meson's "skipped" status when
+  there is no display server instead of aborting inside =gtk_init()=. It builds
+  real dock items, and those resolve their icons through the display's icon
+  theme, so a package build in a sandbox (no Wayland socket) had no row to
+  measure -- and the check phase failed the build, not the dock. Nothing changed
+  in the dock itself.
+
+---------
+
+*[Released]*
+
 ** v0.19.2 (2026-10-29)
 - Auto-hide works again. v0.19.1 cut the surface's input region down to the dock
   to stop the room it reserves from eating clicks -- but a tucked-away dock is
