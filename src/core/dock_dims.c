@@ -19,10 +19,31 @@ static int max_content_dim(int monitor_dim, int margin) {
   return dim < LAMBDOCK_MIN_CONTENT_PX ? LAMBDOCK_MIN_CONTENT_PX : dim;
 }
 
+/**
+ * hover_headroom_px:
+ * How much room, per side, the row can grow into while the fish-eye magnifies it.
+ *
+ * The fish-eye grows every icon within FISHEYE_RADIUS_PX of the pointer by up to
+ * FISHEYE_MAX_SCALE, and no more than (2 * radius / icon + 1) icons fit in that
+ * reach, so the row can never get wider than this. Reserving it once is what
+ * keeps the surface from being resized on every pointer frame -- a resize per
+ * frame is what made the dock flicker and tear at its edges while hovering.
+ */
+static int hover_headroom_px(int icon, gboolean hover_magnify) {
+  if (!hover_magnify)
+    return 0;
+
+  double reach = 2.0 * FISHEYE_RADIUS_PX / (double)icon + 1.0;
+  double growth = (FISHEYE_MAX_SCALE - 1.0) * (double)icon * reach;
+
+  /* Half of the total growth per side: the row stays centred as it spreads. */
+  return (int)ceil(growth / 2.0);
+}
+
 LambdockDockDims lambdock_dock_dims_compute(int icon_size, int capsule_padding,
                                             LambdockShelfGeometry shelf,
-                                            int monitor_width,
-                                            int monitor_height) {
+                                            int monitor_width, int monitor_height,
+                                            gboolean hover_magnify) {
   int icon = icon_size > 0 ? icon_size : DEFAULT_ICON_SIZE;
 
   int width =
@@ -37,6 +58,7 @@ LambdockDockDims lambdock_dock_dims_compute(int icon_size, int capsule_padding,
       .overlay_cross_px = (int)(icon * CROSS_DIM_SCALE_FACTOR) +
                           CROSS_DIM_PADDING_PX + shelf.outer_px +
                           shelf.overhang_px,
+      .hover_headroom_px = hover_headroom_px(icon, hover_magnify),
       .max_main_h_px = max_content_dim(width, LAMBDOCK_MONITOR_EDGE_MARGIN_PX),
       .max_main_v_px = max_content_dim(height, LAMBDOCK_MONITOR_EDGE_MARGIN_PX),
       .padding_px = capsule_padding >= 0 ? capsule_padding

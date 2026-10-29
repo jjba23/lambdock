@@ -1453,6 +1453,23 @@ re-measures during a hover sweep -- =test_dock_motion.c= measures it: 23 distinc
 sizes without quantising, 12 with, while the painted scale still changes at every
 sampled position. The resting size is never rounded.
 
+** The surface keeps its size while hovering
+Growing the icons grows the row, and growing a widget grows its window: on
+Wayland that is a buffer re-allocation and a compositor reconfigure, and doing it
+on every pointer frame is what made the dock flicker and tear along its edges.
+So the room the row can spread into is reserved *once*, before any magnification
+starts: =dock_reserve_hover_room()= asks the pure dims for
+=dims.hover_headroom_px= (how much the fish-eye can grow within its influence
+radius) and sizes the overlay to the row at rest plus twice that. Hovering then
+never changes the window's size; the request is re-measured when the pointer
+enters and after it leaves, never mid-spread (=state->fisheye_active=).
+
+That leaves a transparent band around the dock, which must not eat clicks: the
+surface's input region is cut down to the capsule plus the row
+(=dock_apply_input_region()=, from a one-shot frame callback, because a size
+request only becomes an allocation on the next frame). It also removes the dead
+zone the dock always had above its capsule.
+
 ** Idle costs nothing
 - No tick callback survives a settled animation: both are one-shot and removed on
   completion or on teardown.

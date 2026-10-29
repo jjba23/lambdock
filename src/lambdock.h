@@ -315,6 +315,17 @@ struct LambdockState {
    * a pointer that never moved, not the user leaving. */
   gboolean pointer_moved_since_enter;
 
+  /* One-shot frame callback that recomputes the surface's input region, and how
+   * many frames it has tried while the window was still unlaid-out. */
+  guint input_region_tick_id;
+  int input_region_attempts;
+
+  /* TRUE while the fish-eye has the row spread out. The dock's surface is sized
+   * for the spread once, at rest; measuring it mid-animation would bake the
+   * magnified width in. */
+  gboolean fisheye_active;
+  int hover_headroom_px; /* Room reserved around the row for the spread. */
+
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;
   GList *window_trackers;

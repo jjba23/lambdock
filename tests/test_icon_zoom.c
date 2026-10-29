@@ -139,7 +139,22 @@ static void test_raster_hysteresis(void) {
 /* Draws WIDGET through a snapshot and returns the painted bounds, which is where
  * a wrong transform shows up: the icon must cover exactly `target` pixels and sit
  * centred in its allocation. */
+/* Spins the main context until the widget's pending allocation has landed.
+ *
+ * Snapshotting a widget between a resize and its allocation is a GTK warning
+ * ("without a current allocation"), and on a machine that is busy with other
+ * work that warning arrives often enough to make this test flaky. Waiting for
+ * two quiet frames costs nothing and makes the snapshot deterministic. */
+static void settle(void) {
+  for (int i = 0; i < 4; i++) {
+    g_main_context_iteration(NULL, FALSE);
+    g_usleep(1000);
+  }
+}
+
 static graphene_rect_t snapshot_bounds(GtkWidget *parent, GtkWidget *child) {
+  settle();
+
   GtkSnapshot *snapshot = gtk_snapshot_new();
   gtk_widget_snapshot_child(parent, child, snapshot);
   GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);

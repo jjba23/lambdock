@@ -280,6 +280,12 @@ static void stop_pointer_tick(LambdockState *state) {
  * casting dock-item callbacks to it gives up the type checking that keeps these
  * visitors honest. The loop is four lines; the signature is worth it.
  */
+/* Declared here because the hover path, the input-region tick and the geometry
+ * update call each other without being next to one another in this file. */
+static void dock_schedule_input_region(LambdockState *state);
+static int dock_content_main_px(const LambdockState *state, gboolean horizontal);
+static void dock_reserve_hover_room(LambdockState *state);
+
 static void for_each_dock_item(GList *items, DockItemVisitor visit,
                                gpointer data) {
   for (GList *node = items; node != NULL; node = node->next) {
@@ -353,8 +359,12 @@ static void reset_dock_items_scale(LambdockState *state) {
   for_each_dock_item(state->dock_items, reset_item_scale, state);
 
   /* The row is back at rest, so the next frame has to apply the pointer again
-   * even if it has not moved. */
+   * even if it has not moved, and the surface's room can be re-measured. */
   state->pointer_applied = FALSE;
+  state->fisheye_active = FALSE;
+
+  /* The row is back at rest: let the surface hug it again. */
+  dock_reserve_hover_room(state);
 }
 
 /* =========================================================================
@@ -559,6 +569,11 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
   };
 
   for_each_dock_item(state->dock_items, apply_fisheye_to_item, &frame);
+
+  /* The capsule grows under the pointer, so the clickable region has to follow
+   * it; the tick that sizes the surface is the same one that cuts it out. */
+  state->fisheye_active = TRUE;
+  dock_schedule_input_region(state);
 }
 
 /* =========================================================================
@@ -682,6 +697,10 @@ static void on_motion_enter(GtkEventControllerMotion *controller, double x,
   LambdockState *state = (LambdockState *)user_data;
   state->pointer_moved_since_enter = FALSE;
   state->pointer_applied = FALSE;
+
+  /* Make room for the spread before it starts: sizing the surface now, with the
+   * row still at rest, is what keeps the hover itself free of resizes. */
+  dock_reserve_hover_room(state);
   reveal_dock(state);
 }
 
@@ -1032,6 +1051,12 @@ void refresh_dock_mode(LambdockState *state) {
   update_dock_dimensions(state);
 }
 
+/** Applies the input region whenever the dock window (re)appears. */
+static void on_window_map(GtkWidget *widget, gpointer user_data) {
+  (void)widget;
+  dock_schedule_input_region((LambdockState *)user_data);
+}
+
 /**
  * setup_dock_motion_controller:
  * Attaches GtkEventControllerMotion to monitor cursor entry, leave, and motion.
@@ -1044,6 +1069,11 @@ void setup_dock_motion_controller(LambdockState *state) {
   g_signal_connect(motion, "motion", G_CALLBACK(on_motion_notify), state);
 
   gtk_widget_add_controller(state->window, motion);
+
+  /* The surface is bigger than the dock, so its clickable area has to be cut
+   * down to the dock every time the window appears. */
+  g_signal_connect(state->window, "map", G_CALLBACK(on_window_map), state);
+  dock_schedule_input_region(state);
 }
 
 /**
@@ -1217,8 +1247,67 @@ static void dock_dims_apply_box_margins(const LambdockState *state,
   }
 }
 
+/** The row's natural size along the dock's main axis, right now. */
+static int dock_content_main_px(const LambdockState *state,
+                                gboolean horizontal) {
+  if (!state || !state->scrolled_window)
+    return 0;
+
+  int natural = 0;
+  gtk_widget_measure(
+      state->scrolled_window,
+      horizontal ? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL, -1,
+      NULL, &natural, NULL, NULL);
+
+  return natural;
+}
+
+/**
+ * dock_reserve_hover_room:
+ * Reserves the room the row spreads into while the pointer runs over the dock.
+ *
+ * Only the size requests change here, and only along the main axis: everything
+ * else about the dock is left alone, so this is cheap enough to call on every
+ * hover (and it is called at rest, never mid-spread).
+ *
+ * Reserving the room *once*, before the icons start to grow, is what lets a
+ * hover run without ever changing the surface's size. A layer surface that is
+ * resized on every pointer frame makes the compositor reconfigure and
+ * re-allocate its buffer per frame, which is exactly the flicker and the torn
+ * pixels along the dock's edges this is here to prevent. The transparent room is
+ * cut out of the input region (see dock_apply_input_region), so it never
+ * swallows a click meant for the windows underneath.
+ */
+static void dock_reserve_hover_room(LambdockState *state) {
+  if (!state || !state->overlay)
+    return;
+
+  gboolean horizontal = state->orientation == GTK_ORIENTATION_HORIZONTAL;
+
+  /* Only at rest: measuring while the row is spread would bake the magnified
+   * width in. */
+  int headroom = (state->hover_animate && !state->taskbar &&
+                  !state->fisheye_active)
+                     ? state->hover_headroom_px
+                     : 0;
+  int main_px = headroom > 0
+                    ? dock_content_main_px(state, horizontal) + 2 * headroom
+                    : -1;
+
+  int width = -1;
+  int height = -1;
+  gtk_widget_get_size_request(state->overlay, &width, &height);
+
+  if (horizontal)
+    gtk_widget_set_size_request(state->overlay, main_px, height);
+  else
+    gtk_widget_set_size_request(state->overlay, width, main_px);
+
+  dock_schedule_input_region(state);
+}
+
 /** Cross-axis size requests for the overlay and the capsule. */
-static void dock_dims_apply_size_requests(const LambdockState *state,
+static void dock_dims_apply_size_requests(LambdockState *state,
                                           const LambdockDockDims *dims,
                                           gboolean horizontal) {
   if (horizontal) {
@@ -1299,6 +1388,109 @@ static void dock_dims_mirror_shelf_alignment(const LambdockState *state) {
 }
 
 /**
+ * dock_apply_input_region:
+ * Cuts the dock surface's input region down to the dock itself.
+ *
+ * The surface is deliberately bigger than the capsule: it carries the room the
+ * icons magnify into, and the room the row spreads into while the pointer runs
+ * over it (see dock_dims_apply_size_requests). None of that is part of the dock,
+ * so a click there has to reach whatever is underneath instead of being eaten by
+ * an invisible layer surface. Without this the dock would quietly swallow clicks
+ * in a band around itself.
+ *
+ * Called from a one-shot frame callback, because a size request only turns into
+ * an allocation on the next frame: the bounds read before that are stale.
+ */
+static gboolean dock_apply_input_region(LambdockState *state) {
+  if (!state || !state->window || !state->bg_shelf)
+    return FALSE;
+
+  GtkNative *native = gtk_widget_get_native(state->window);
+  GdkSurface *surface = native ? gtk_native_get_surface(native) : NULL;
+  if (!surface || gdk_surface_get_width(surface) <= 1 ||
+      gdk_surface_get_height(surface) <= 1)
+    return FALSE;
+
+  /* The dock is the slab plus the row of icons that overhangs it, so the region
+   * has to be the union of the two: the slab alone would leave the icons -- the
+   * part people actually click -- outside the clickable area. */
+  graphene_rect_t bounds;
+  if (!gtk_widget_compute_bounds(state->bg_shelf, state->window, &bounds) ||
+      bounds.size.width < 1.0f || bounds.size.height < 1.0f)
+    return FALSE;
+
+  graphene_rect_t row;
+  if (state->scrolled_window &&
+      gtk_widget_compute_bounds(state->scrolled_window, state->window, &row) &&
+      row.size.width >= 1.0f && row.size.height >= 1.0f)
+    graphene_rect_union(&bounds, &row, &bounds);
+
+  /* One pixel of slack on each side keeps the rounded edge clickable. */
+  cairo_rectangle_int_t rect = {
+      .x = (int)floor(bounds.origin.x) - 1,
+      .y = (int)floor(bounds.origin.y) - 1,
+      .width = (int)ceil(bounds.size.width) + 2,
+      .height = (int)ceil(bounds.size.height) + 2,
+  };
+
+  cairo_region_t *region = cairo_region_create_rectangle(&rect);
+  gdk_surface_set_input_region(surface, region);
+  cairo_region_destroy(region);
+
+  return TRUE;
+}
+
+/**
+ * on_input_region_tick:
+ * Frame callback that applies the input region once the window is really laid
+ * out, retrying while it is not.
+ *
+ * The first frames of a window have a 1x1 surface and no bounds to speak of, and
+ * an input region computed then would be a handful of pixels somewhere: it would
+ * make the dock ignore input entirely. So the tick keeps running until it has a
+ * real answer, and gives up after a second or so rather than spinning forever on
+ * a dock that never maps.
+ */
+static gboolean on_input_region_tick(GtkWidget *widget, GdkFrameClock *clock,
+                                     gpointer user_data) {
+  (void)widget;
+  (void)clock;
+
+  LambdockState *state = (LambdockState *)user_data;
+  if (!state)
+    return G_SOURCE_REMOVE;
+
+  if (dock_apply_input_region(state)) {
+    state->input_region_tick_id = 0;
+    state->input_region_attempts = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  if (++state->input_region_attempts > 120) {
+    state->input_region_tick_id = 0;
+    state->input_region_attempts = 0;
+    return G_SOURCE_REMOVE;
+  }
+
+  return G_SOURCE_CONTINUE;
+}
+
+/**
+ * dock_schedule_input_region:
+ * Asks for the input region to be recomputed after the next frame.
+ *
+ * Cheap to call repeatedly: only one update is ever queued, so a pointer that
+ * moves every frame adds no more than one region computation per frame.
+ */
+static void dock_schedule_input_region(LambdockState *state) {
+  if (!state || !state->window || state->input_region_tick_id != 0)
+    return;
+
+  state->input_region_tick_id = gtk_widget_add_tick_callback(
+      state->window, on_input_region_tick, state, NULL);
+}
+
+/**
  * update_dock_dimensions:
  * Recalculates and updates size requests for overlay surface and background
  * capsule based on the active icon size, orientation, and screen edge.
@@ -1312,14 +1504,17 @@ void update_dock_dimensions(LambdockState *state) {
       lambdock_shelf_geometry_for(state, state->icon_size);
   LambdockDockDims dims =
       lambdock_dock_dims_compute(state->icon_size, state->capsule_padding,
-                                 shelf, monitor.width, monitor.height);
+                                 shelf, monitor.width, monitor.height,
+                                 state->hover_animate);
 
   gboolean horizontal = (state->orientation == GTK_ORIENTATION_HORIZONTAL);
 
   dock_dims_apply_size_group(state);
   dock_dims_apply_scroll_policy(state, &dims);
   dock_dims_apply_box_margins(state, &dims, horizontal);
+  state->hover_headroom_px = dims.hover_headroom_px;
   dock_dims_apply_size_requests(state, &dims, horizontal);
+  dock_reserve_hover_room(state);
   dock_dims_apply_scroll_alignment(state, horizontal);
   dock_dims_apply_capsule_alignment(state, horizontal);
 
@@ -1327,6 +1522,10 @@ void update_dock_dimensions(LambdockState *state) {
    * current icon size and shelf parameters. */
   apply_shelf_layout(state);
   dock_dims_mirror_shelf_alignment(state);
+
+  /* The surface may be bigger than the dock now: keep the input region on the
+   * dock itself. */
+  dock_schedule_input_region(state);
 }
 
 /* =========================================================================

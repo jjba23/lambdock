@@ -38,6 +38,9 @@
  * @capsule_cross_px: cross-axis thickness of the capsule.
  * @overlay_cross_px: cross-axis size requested for the overlay (fisheye
  *     headroom plus the glass and any icon overhang).
+ * @hover_headroom_px: main-axis room, per side, that the row can grow into while
+ *     the fish-eye magnifies it. Reserved once, so hovering never resizes the
+ *     surface.
  * @max_main_h_px: maximum content width.
  * @max_main_v_px: maximum content height.
  * @padding_px: main-axis padding between the capsule's ends and the icons.
@@ -50,6 +53,7 @@ typedef struct LambdockDockDims {
   int icon_size;
   int capsule_cross_px;
   int overlay_cross_px;
+  int hover_headroom_px;
   int max_main_h_px;
   int max_main_v_px;
   int padding_px;
@@ -63,12 +67,14 @@ typedef struct LambdockDockDims {
  * @shelf: derived shelf geometry for this dock.
  * @monitor_width: monitor width in pixels (<= 0 means the fallback size).
  * @monitor_height: monitor height in pixels (<= 0 means the fallback size).
+ * @hover_magnify: TRUE when the fish-eye magnifies the icons under the pointer,
+ *     which is what decides whether the dock reserves room to spread into.
  *
  * Returns: the dimensions for this dock. Pure: same inputs, same output.
  */
 LambdockDockDims lambdock_dock_dims_compute(int icon_size, int capsule_padding,
                                             LambdockShelfGeometry shelf,
-                                            int monitor_width,
-                                            int monitor_height);
+                                            int monitor_width, int monitor_height,
+                                            gboolean hover_magnify);
 
 #endif // LAMBDOCK_CORE_DOCK_DIMS_H
