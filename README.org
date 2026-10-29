@@ -40,6 +40,81 @@ a rebuild without ever restarting the process or dropping a frame.
 
 ------------------
 
+* Features
+:PROPERTIES:
+:CUSTOM_ID: features
+:END:
+
+- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge
+  anchoring, cubic-eased slide animations, and compositor integration.
+- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~, the Wayland
+  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
+  to display active app indicators, window titles, and popover
+  HUDs for focusing or closing instances; see
+  [[#toplevel-tracking][Wayland toplevel tracking]].
+- *Multi-Monitor Flexibility*: Span docks across all connected screens
+  (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~);
+  see [[#configuration-options][the options reference]].
+- *Smooth Auto-Hide*: Keeps the dock out of your way with a two-pixel reveal
+  strip and fluid, frame-clock-driven sliding animations.
+- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for
+  declarative dock setups, custom app launchers, separators, and options.
+  Multiple config files and multiple docks are supported.
+- *Smart and Safe Hot-Reloading*: Automatic file watcher
+  ([[https://docs.gtk.org/glib/][GLib]] ~GFileMonitor~, with a 150 ms debounce) and
+  REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS
+  without blocking the UI thread.
+- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a
+  [[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]]
+  (=/tmp/lambdock-repl.sock=) via Emacs/Geiser, ~socat~, or ~ncat~; see
+  [[#repl][the REPL section]].
+- *Theme Engine*: Extensible with CSS, and ships with thirteen built-in themes,
+  while supporting user extensions and overrides via
+  =~/.config/lambdock/styles.css=; see [[#styling-and-theming][Styling & theming]].
+- *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme
+  icons, absolute paths, system pixmaps, and symbolic variants.
+- *Async Command Launching*: Spawns binaries, scripts, and
+  [[https://flatpak.org/][Flatpaks]] asynchronously using GLib process spawning
+  without freezing the UI.
+- *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent
+  background utilities or specific application IDs from creating unwanted
+  launchers.
+- *Reproducible Builds*: Fully hermetic development environment and builds
+  powered by GNU Guile, Meson, and GNU Guix.
+- *Native fluid fish-eye* magnification effect on hover (a la macOS), enabled by
+  default and switchable per item or globally if you want less animation.
+- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar
+  exceeds available display dimensions.
+- *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
+  Scheme thunks you can replace with your own pollers. The meters are drawn as
+  icon-sized gauges that fill up and change colour, not as text; see
+  [[#dynamic-widgets][Dynamic widgets]].
+- *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
+  as an icon grid or a list; see [[#stacks][Stacks]].
+- *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
+  parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
+- *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
+  an item count, opening it with a click and emptying it from its menu, and taking
+  files dropped on it. It reads and writes the freedesktop.org trash layout, not
+  one desktop's private store, so it works the same on GNOME, KDE, Xfce, Cinnamon
+  and MATE; see [[#trash][The trash]].
+- *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
+  to remove it, drop a ~.desktop~ file to add an application or a folder to add a
+  stack -- and the layout survives restarts; see
+  [[#drag-and-drop][Rearranging the dock]].
+- *Keyboard and screen reader friendly* ♿: the whole dock, its menus, stacks and
+  the launchpad can be driven from the keyboard (arrows, Home/End, Menu,
+  Ctrl+Arrow to rearrange), every icon announces its name and state, focus rings
+  are visible, and reduced motion is honoured -- both from the dock's own setting
+  and from the desktop's accessibility preferences; see
+  [[#accessibility][Keyboard and accessibility]].
+- *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
+  as a floating capsule or a full-width taskbar with window titles.
+- *Free software*: MIT licensed, documentation included.  Yours to run, read,
+  fork and extend.
+
+------------------
+
 * What lambdock is
 :PROPERTIES:
 :CUSTOM_ID: what-lambdock-is
@@ -61,44 +136,6 @@ Shell compliant compositor, ~lambdock~ brings clean application launching,
 dynamic Wayland foreign-toplevel window tracking, and smooth cubic-eased
 auto-hiding directly to your setup.
 
-
-** See it in action
-:PROPERTIES:
-:CUSTOM_ID: see-it-in-action
-:END:
-
-[[file:resources/img/lambdock-demo.gif]]
-
-=tools/record-demo/= records that showcase in a nested niri session -- the dock
-itself, driven by a virtual pointer and the socket REPL -- and encodes it as a
-GIF: the file above is its output, so what you see is what the current tree
-does.
-
-#+begin_src sh
-./tools/record-demo/record-demo.sh
-# output: tools/record-demo/out/lambdock-demo.gif
-#+end_src
-
-Recording and encoding are separate programs, so the look of the thing can be
-iterated without touching the compositor:
-
-#+begin_src sh
-./tools/record-demo/encode-demo.sh --raw raw.mkv --events events.tsv --out demo.gif
-#+end_src
-
-The storyboard runs twelve scenes: a title card, auto-hide at the screen edge,
-fish-eye magnification, launching with running indicators, the window popover,
-the dock's own menu and the Preferences window, a folder stack opened as a grid,
-the launchpad filtered from the REPL, a live Guile REPL session (icon size, then
-eleven built-in themes), the Windows XP taskbar mode, and a
-closing card.  Each scene is checked frame by frame against its caption before a
-recording is published.  See [[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites
-and options.
-
-Four stills from the same recording, for a closer look:
-
-| [[file:resources/img/screens/stacks.png]]      | [[file:resources/img/screens/launchpad.png]] |
-| [[file:resources/img/screens/preferences.png]] | [[file:resources/img/screens/taskbar.png]]   |
 
 ** Who it is for
 :PROPERTIES:
@@ -266,80 +303,31 @@ tangible reality.
 
 ------------------
 
-* Features
+** Demo recording
 :PROPERTIES:
-:CUSTOM_ID: features
+:CUSTOM_ID: demo-recording
 :END:
 
-- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge
-  anchoring, cubic-eased slide animations, and compositor integration.
-- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~, the Wayland
-  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
-  to display active app indicators, window titles, and popover
-  HUDs for focusing or closing instances; see
-  [[#toplevel-tracking][Wayland toplevel tracking]].
-- *Multi-Monitor Flexibility*: Span docks across all connected screens
-  (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~);
-  see [[#configuration-options][the options reference]].
-- *Smooth Auto-Hide*: Keeps the dock out of your way with a two-pixel reveal
-  strip and fluid, frame-clock-driven sliding animations.
-- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for
-  declarative dock setups, custom app launchers, separators, and options.
-  Multiple config files and multiple docks are supported.
-- *Smart and Safe Hot-Reloading*: Automatic file watcher
-  ([[https://docs.gtk.org/glib/][GLib]] ~GFileMonitor~, with a 150 ms debounce) and
-  REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS
-  without blocking the UI thread.
-- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a
-  [[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]]
-  (=/tmp/lambdock-repl.sock=) via Emacs/Geiser, ~socat~, or ~ncat~; see
-  [[#repl][the REPL section]].
-- *Theme Engine*: Extensible with CSS, and ships with thirteen built-in themes,
-  while supporting user extensions and overrides via
-  =~/.config/lambdock/styles.css=; see [[#styling-and-theming][Styling & theming]].
-- *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme
-  icons, absolute paths, system pixmaps, and symbolic variants.
-- *Async Command Launching*: Spawns binaries, scripts, and
-  [[https://flatpak.org/][Flatpaks]] asynchronously using GLib process spawning
-  without freezing the UI.
-- *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent
-  background utilities or specific application IDs from creating unwanted
-  launchers.
-- *Reproducible Builds*: Fully hermetic development environment and builds
-  powered by GNU Guile, Meson, and GNU Guix.
-- *Native fluid fish-eye* magnification effect on hover (a la macOS), enabled by
-  default and switchable per item or globally if you want less animation.
-- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar
-  exceeds available display dimensions.
-- *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
-  Scheme thunks you can replace with your own pollers. The meters are drawn as
-  icon-sized gauges that fill up and change colour, not as text; see
-  [[#dynamic-widgets][Dynamic widgets]].
-- *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
-  as an icon grid or a list; see [[#stacks][Stacks]].
-- *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
-  parsed from the XDG desktop entries; see [[#launchpad][The launchpad]].
-- *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
-  an item count, opening it with a click and emptying it from its menu, and taking
-  files dropped on it. It reads and writes the freedesktop.org trash layout, not
-  one desktop's private store, so it works the same on GNOME, KDE, Xfce, Cinnamon
-  and MATE; see [[#trash][The trash]].
-- *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
-  to remove it, drop a ~.desktop~ file to add an application or a folder to add a
-  stack -- and the layout survives restarts; see
-  [[#drag-and-drop][Rearranging the dock]].
-- *Keyboard and screen reader friendly* ♿: the whole dock, its menus, stacks and
-  the launchpad can be driven from the keyboard (arrows, Home/End, Menu,
-  Ctrl+Arrow to rearrange), every icon announces its name and state, focus rings
-  are visible, and reduced motion is honoured -- both from the dock's own setting
-  and from the desktop's accessibility preferences; see
-  [[#accessibility][Keyboard and accessibility]].
-- *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
-  as a floating capsule or a full-width taskbar with window titles.
-- *Free software*: MIT licensed, documentation included.  Yours to run, read,
-  fork and extend.
+Recording and encoding are separate programs, so the look of the thing can be
+iterated without touching the compositor:
 
-------------------
+#+begin_src sh
+./tools/record-demo/encode-demo.sh --raw raw.mkv --events events.tsv --out demo.gif
+#+end_src
+
+The storyboard runs twelve scenes: a title card, auto-hide at the screen edge,
+fish-eye magnification, launching with running indicators, the window popover,
+the dock's own menu and the Preferences window, a folder stack opened as a grid,
+the launchpad filtered from the REPL, a live Guile REPL session (icon size, then
+eleven built-in themes), the Windows XP taskbar mode, and a
+closing card.  Each scene is checked frame by frame against its caption before a
+recording is published.  See [[file:tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites
+and options.
+
+Four stills from the same recording, for a closer look:
+
+| [[file:resources/img/screens/stacks.png]]      | [[file:resources/img/screens/launchpad.png]] |
+| [[file:resources/img/screens/preferences.png]] | [[file:resources/img/screens/taskbar.png]]   |
 
 * Using the dock
 :PROPERTIES:
