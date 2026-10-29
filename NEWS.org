@@ -15,6 +15,28 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.1 (2026-10-29)
+- Hovering the dock no longer resizes it, which is what made it flicker and
+  tear along its edges. The fish-eye grows the icons, and growing widgets inside
+  a window makes GTK resize the window: on Wayland that is a buffer
+  re-allocation and a compositor reconfigure on *every* pointer frame. The room
+  the row can spread into is now reserved once, before the pointer starts
+  magnifying, so the surface keeps its size for the whole hover; a dock that was
+  sweeping the pointer across a long row was reconfiguring its surface dozens of
+  times a second, and now it does it once when the pointer arrives.
+- The room the dock reserves -- including the headroom above the capsule that was
+  always there -- is no longer part of what it listens to. The surface's input
+  region is cut down to the capsule plus the row of icons (the bounds are recomputed
+  when the dock is mapped, when its geometry changes, and while it magnifies), so
+  the invisible band around the dock cannot swallow a click meant for the window
+  underneath. Before this, the transparent area above the dock was a dead zone.
+- The icon-zoom test no longer snapshots a widget between a resize and its
+  allocation, which is a GTK warning and a flaky test on a loaded machine.
+
+---------
+
+*[Released]*
+
 ** v0.19.0 (2026-10-29)
 - The clock item is an analogue face instead of a time string. It is drawn from
   geometry -- no artwork at any size -- as a squircle body with a brushed bezel,
