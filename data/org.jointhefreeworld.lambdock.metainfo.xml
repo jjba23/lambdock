@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.18.2" date="2026-10-29">
+      <description>
+        <p>Dynamic items line up with the icons beside them. A gauge, a separator and the clock used to measure shorter than an icon and hang at the bottom of the row; on a shelf theme the gauges also sat a whole reflection band lower, because a meter dropped the reflection slot that reserves that band. Every item now carries one icon-sized cell, keeps its reflection slot whether or not it has artwork to mirror, and a separator fills its cell.</p>
+        <p>The showcase recording and its stills are re-recorded with the fix.</p>
+      </description>
+    </release>
     <release version="0.18.1" date="2026-10-29">
       <description>
         <p>The showcase recording now shows the two macOS Mavericks materials the way their stylesheet intends: the polished platinum slab with the icons mirrored onto the glass in front of them, which needs the dock's shelf geometry as well as the theme. The montage gives each of them a longer beat, and the REPL helper it teaches applies the theme and the geometry in one expression.</p>

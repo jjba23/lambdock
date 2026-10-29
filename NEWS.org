@@ -15,6 +15,29 @@ Nothing yet.
 
 *[Released]*
 
+** v0.18.2 (2026-10-29)
+- Dynamic items line up with the icons next to them. Three things were off, and
+  all three came from sizing the wrong widget:
+  - A gauge, a separator and the clock were shorter than an icon, and the row
+    anchors items to the dock edge, so they hung lower than the icons they sit
+    between. The icon-sized cell -- not the button -- now carries the cross
+    size, and every item's content sits in one, so the theme's button padding
+    is outside the sum instead of missing from it.
+  - On a shelf theme (the two macOS Mavericks materials) the gauges sat a whole
+    reflection band lower than the icons: a meter dropped its reflection widget
+    when it was built, and that widget is what reserves the band at the bottom
+    of each item. Every item now gets a reflection slot, empty when it has
+    nothing to mirror, and a gauge clears the artwork but keeps the slot.
+  - The separator lost its height when it moved into a cell (a =GtkSeparator=
+    is one pixel by default); it fills its cell now, so it spans the icons'
+    height and is centred on them.
+- The showcase recording and its stills are re-recorded with the fix, so the
+  Mavericks shelf frames show the gauges level with the icons.
+
+---------
+
+*[Released]*
+
 ** v0.18.1 (2026-10-29)
 - The two macOS Mavericks materials are in the showcase, and shown as the shelf
   they are written for.  =macos-mavericks.css= and =macos-mavericks-dark.css=
