@@ -53,6 +53,21 @@ double lambdock_ease_out_cubic(double t);
 int lambdock_slide_position(int from_px, int to_px, double progress);
 
 /**
+ * AUTOHIDE_TRIGGER_STRIP_PX:
+ * How much of a tucked-away dock stays on screen, in pixels: the strip the
+ * pointer has to reach to bring the dock back.
+ *
+ * Two pixels is less than one pixel at 2x scale and under two at the 1.2x the
+ * dock usually runs at, so a pointer that stops a hair short of the screen edge
+ * gets nothing at all -- which reads as a dock that simply never comes back.
+ * Four is still under half a text line, so it costs almost nothing in clicks an
+ * application would otherwise have received, and it is all of the surface that
+ * is visible while the dock is away (the strip is the top of the shelf's
+ * magnification headroom, so it shows nothing).
+ */
+#define AUTOHIDE_TRIGGER_STRIP_PX 4
+
+/**
  * lambdock_hide_margin:
  * @measured_main_px: the surface size measured along the dock's main axis.
  * @cross_axis_px: the cross-axis size the dock asks for.

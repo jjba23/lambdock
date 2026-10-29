@@ -91,6 +91,40 @@ typedef void (*DockItemVisitor)(DockItem *item, gpointer data);
 #define AUTO_HIDE_SETTLE_MS 300
 
 /* =========================================================================
+ * DIAGNOSTICS
+ * =========================================================================
+ * Auto-hide is a state machine driven by events we do not get to see: pointer
+ * crossings on the user's compositor, the surface position the compositor
+ * chose, and the input region it was given. "It hides but it does not reveal"
+ * is then a report about a sequence, not about a value, and the sequence is not
+ * reproducible anywhere but on that machine.
+ *
+ * With LAMBDOCK_DEBUG=1 every decision that sequence turns on is printed once,
+ * on the transition it happens at -- so the log reads as the dock's own account
+ * of why it stayed hidden. It is off by default and costs one getenv() per
+ * process, so it can stay.
+ */
+static gboolean dock_trace_enabled(void) {
+  static int enabled = -1;
+
+  if (enabled < 0)
+    enabled = (g_getenv("LAMBDOCK_DEBUG") != NULL) ? 1 : 0;
+
+  return enabled == 1;
+}
+
+#define DOCK_TRACE(fmt, ...)                                                   \
+  do {                                                                         \
+    if (dock_trace_enabled()) {                                                \
+      LOG_C_DEBUG("auto-hide", "t=%" G_GINT64_FORMAT " " fmt,                  \
+                  g_get_monotonic_time() / 1000, ##__VA_ARGS__);               \
+      /* Redirected stdout is block buffered, and a trace that arrives after   \
+       * the fact is useless for correlating with what the user did. */        \
+      fflush(stdout);                                                          \
+    }                                                                          \
+  } while (0)
+
+/* =========================================================================
  * PURE HELPERS
  * =========================================================================
  * No widget is mutated below this line until the next section: everything here
@@ -409,6 +443,11 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
     set_window_margin(state, state->current_margin);
     state->tick_cb_id = 0;
     state->margin_anim_end_us = g_get_monotonic_time();
+    DOCK_TRACE("slide done at margin %d", state->current_margin);
+
+    /* The dock has arrived, so the input region it needs may have changed:
+     * out in the open it is the dock, mid-slide it was the whole surface. */
+    dock_schedule_input_region(state);
     return G_SOURCE_REMOVE;
   }
 
@@ -426,8 +465,16 @@ static gboolean animate_margin_cb(GtkWidget *widget, GdkFrameClock *frame_clock,
  * Initiates or updates a margin transition animation toward a target value.
  */
 static void start_margin_animation(LambdockState *state, int target_margin) {
-  /* Nothing to do if the dock is already where it is wanted. */
-  if (state->current_margin == target_margin)
+  /* Nothing to do if the dock is already where it is wanted -- and not on its
+   * way somewhere else. `current_margin` is where the dock *is*, which is not
+   * the same as where it is going: a hide that has been requested but has not
+   * had its first frame yet still reads as margin 0 with a target below it, and
+   * so does a hide that has only just started sliding. Returning early then
+   * threw away the reveal that asked for this -- the dock went on sliding away
+   * believing it was visible, and could not be brought back while the pointer
+   * stayed on the strip. */
+  if (state->current_margin == target_margin &&
+      (state->tick_cb_id == 0 || state->target_margin == target_margin))
     return;
 
   /* Reduced motion: the dock still has to get out of the way (or come back),
@@ -442,6 +489,12 @@ static void start_margin_animation(LambdockState *state, int target_margin) {
   state->target_margin = target_margin;
   state->anim_start_time = 0; /* reset the timer anchor */
   state->margin_anim_end_us = 0;
+
+  /* A slide is about to move the dock somewhere the surface's input region was
+   * not shaped for, and whether the whole surface has to take input depends on
+   * the margin: ask for the region again on the frame the slide starts, not
+   * only on the frames something else happens to reapply it. */
+  dock_schedule_input_region(state);
 
   if (state->tick_cb_id == 0) {
     state->tick_cb_id = gtk_widget_add_tick_callback(
@@ -691,11 +744,6 @@ static void update_dock_items_fisheye(LambdockState *state, double x,
  * AUTO-HIDE & REVEAL
  * ========================================================================= */
 
-/* How long after a slide settles a pointer crossing is still treated as an echo
- * of the slide itself. The crossings that make the dock bounce arrive within a
- * frame or two of the animation stopping. */
-#define AUTO_HIDE_SETTLE_MS 300
-
 /* Adapter: GLib timeouts hand the state back as a plain pointer. */
 static gboolean on_hide_timeout(gpointer user_data) {
   LambdockState *state = (LambdockState *)user_data;
@@ -743,12 +791,16 @@ void reveal_dock(LambdockState *state) {
   cancel_hide_timer(state);
 
   if (state->is_hidden || state->target_margin != 0) {
+    DOCK_TRACE("reveal: hidden %d, margin %d -> 0", state->is_hidden,
+               state->current_margin);
     start_margin_animation(state, 0);
     state->is_hidden = FALSE;
 
     /* The pollers stood still while the dock was away; make every clock, gauge
      * and trash count current before the first frame is drawn. */
     dock_items_refresh_polls(state);
+  } else {
+    DOCK_TRACE("reveal: already out (margin %d)", state->current_margin);
   }
 }
 
@@ -779,10 +831,16 @@ void hide_dock(LambdockState *state) {
   if (state->hover_animate)
     reset_dock_items_scale(state);
 
-  int hidden_margin =
-      lambdock_hide_margin(dock_measured_main_axis_px(state),
-                           dock_cross_axis_dim(state), CROSS_DIM_TOLERANCE_PX,
-                           AUTOHIDE_TRIGGER_STRIP_PX);
+  int measured_px = dock_measured_main_axis_px(state);
+  int cross_px = dock_cross_axis_dim(state);
+  int hidden_margin = lambdock_hide_margin(measured_px, cross_px,
+                                           CROSS_DIM_TOLERANCE_PX,
+                                           AUTOHIDE_TRIGGER_STRIP_PX);
+
+  DOCK_TRACE("hide: window %dx%d (cross axis %d) -> margin %d, strip %d px",
+             gtk_widget_get_width(state->window),
+             gtk_widget_get_height(state->window), cross_px, hidden_margin,
+             AUTOHIDE_TRIGGER_STRIP_PX);
 
   if (!state->is_hidden || state->target_margin != hidden_margin) {
     start_margin_animation(state, hidden_margin);
@@ -802,11 +860,11 @@ void hide_dock(LambdockState *state) {
 static void on_motion_enter(GtkEventControllerMotion *controller, double x,
                             double y, gpointer user_data) {
   (void)controller;
-  (void)x;
-  (void)y;
 
   LambdockState *state = (LambdockState *)user_data;
-  state->pointer_moved_since_enter = FALSE;
+  DOCK_TRACE("enter at %.1f,%.1f (hidden %d, margin %d)", x, y,
+             state->is_hidden, state->current_margin);
+
   state->pointer_applied = FALSE;
 
   /* Make room for the spread before it starts: sizing the surface now, with the
@@ -869,16 +927,27 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
   if (!state)
     return;
 
-  /* Not every leave means the pointer went anywhere. The dock slides under a
-   * pointer that is not moving -- the window moves, the pointer does not -- and
-   * compositors report crossings that follow from that, which is what used to
-   * bounce the dock at its screen edge: a leave hides it, the revealing strip
-   * comes back under the pointer, an enter reveals it, and round it goes. So a
-   * leave only counts when the dock is sitting still *and* the pointer has
-   * actually moved since it arrived; a pointer that has not moved cannot have
-   * left. */
-  if (dock_is_settling(state) || !state->pointer_moved_since_enter)
+  /* Not every leave means the pointer went anywhere. The dock slides out from
+   * under a pointer that is not moving -- the window moves, the pointer does
+   * not -- and compositors report a crossing that follows from that, which is
+   * what used to bounce the dock at its screen edge: a leave hides it, the
+   * revealing strip comes back under the pointer, an enter reveals it, and
+   * round it goes. Those echoes all arrive while the dock is moving, or within
+   * a frame or two of it stopping, so the settle window is what tells them
+   * apart.
+   *
+   * It used to also require that the pointer had moved since it entered, on the
+   * reasoning that a pointer that has not moved cannot have left. It can: a
+   * pointer that touches the edge to reveal the dock and then moves away has
+   * been still for the whole reveal, and its leave was thrown away with it, so
+   * the dock stayed out until the pointer came back and did the whole thing
+   * again -- auto-hide that quietly stops hiding. */
+  if (dock_is_settling(state)) {
+    DOCK_TRACE("leave ignored: the dock is sliding, or just stopped");
     return;
+  }
+
+  DOCK_TRACE("leave: hiding in %d ms", AUTOHIDE_LEAVE_DELAY_MS);
 
   stop_pointer_tick(state);
   state->pointer_applied = FALSE;
@@ -893,21 +962,35 @@ static void on_motion_leave(GtkEventControllerMotion *controller,
 /**
  * on_motion_notify:
  * Records where the pointer is; the frame clock does the magnifying.
+ *
+ * It is also the dock's *reveal* trigger, which is the one thing about it that
+ * is not obvious. A pointer only has to cross into the dock once to be inside
+ * it, and a hidden dock is on screen only as the trigger strip: a pointer that
+ * rests on the strip while the surface slides away underneath it never leaves
+ * -- the compositor keeps sending it motion, not a crossing -- so it can never
+ * cross back in. Waiting for an enter therefore stranded the dock off screen
+ * for exactly as long as the pointer stayed at the screen edge, which is where
+ * a pointer that just used the dock tends to be. Motion inside the surface
+ * while the dock is away means the same thing an enter would: the pointer is
+ * on the strip, and the dock belongs on screen.
  */
 static void on_motion_notify(GtkEventControllerMotion *controller, double x,
                              double y, gpointer user_data) {
   (void)controller;
   LambdockState *state = (LambdockState *)user_data;
 
-  if (!state || !state->hover_animate || state->is_hidden ||
-      state->tick_cb_id != 0 || state->current_margin != 0)
+  if (!state)
     return;
 
-  /* A motion only counts as the pointer moving when the dock itself is still:
-   * while it slides, the window moves under the pointer and the positions that
-   * come back are its own movement. */
-  if (!dock_is_settling(state))
-    state->pointer_moved_since_enter = TRUE;
+  if (state->is_hidden) {
+    DOCK_TRACE("motion at %.0f,%.0f on the strip: revealing", x, y);
+    reveal_dock(state);
+    return;
+  }
+
+  if (!state->hover_animate || state->tick_cb_id != 0 ||
+      state->current_margin != 0)
+    return;
 
   state->pointer_x = x;
   state->pointer_y = y;
@@ -1537,10 +1620,18 @@ static void apply_input_region(LambdockState *state, GdkSurface *surface,
 
   if (whole) {
     gdk_surface_set_input_region(surface, NULL);
+    DOCK_TRACE("input region: whole surface (%dx%d), margin %d, hidden %d",
+               gdk_surface_get_width(surface), gdk_surface_get_height(surface),
+               state->current_margin, state->is_hidden);
   } else {
     cairo_region_t *region = cairo_region_create_rectangle(rect);
     gdk_surface_set_input_region(surface, region);
     cairo_region_destroy(region);
+    DOCK_TRACE("input region: dock only rect %d,%d %dx%d (surface %dx%d, "
+               "margin %d)",
+               rect->x, rect->y, rect->width, rect->height,
+               gdk_surface_get_width(surface), gdk_surface_get_height(surface),
+               state->current_margin);
   }
 
   state->input_region_set = TRUE;
@@ -1551,6 +1642,14 @@ static void apply_input_region(LambdockState *state, GdkSurface *surface,
     state->input_region_width = rect->width;
     state->input_region_height = rect->height;
   }
+
+  /* Surface state in Wayland is double buffered: a new input region only
+   * reaches the compositor with the surface's next commit. A dock that has
+   * finished sliding, though, is drawing nothing -- so the region that would
+   * let the pointer touch the strip can sit in the queue indefinitely, and the
+   * strip stays dead exactly when it is the only part of the dock on screen.
+   * Asking for one frame is what commits it. */
+  gtk_widget_queue_draw(state->window);
 }
 
 static gboolean dock_apply_input_region(LambdockState *state) {

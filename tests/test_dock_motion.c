@@ -87,6 +87,26 @@ static void test_hide_margin(void) {
   g_assert_cmpint(lambdock_hide_margin(-5, 800, 20, 2), ==, -798);
 }
 
+/* The strip is the *whole* of a tucked-away dock: it is the only thing the
+ * pointer can reach, so the margin has to leave exactly that many pixels on
+ * screen. Anything less and the dock cannot be brought back by a pointer at
+ * all -- which is not a slow reveal, it is a dock that has gone for good. */
+static void test_hide_margin_leaves_the_configured_strip(void) {
+  const int surface_px[] = {44, 72, 148, 220};
+
+  for (guint i = 0; i < G_N_ELEMENTS(surface_px); i++) {
+    int margin = lambdock_hide_margin(surface_px[i], surface_px[i], 20,
+                                      AUTOHIDE_TRIGGER_STRIP_PX);
+
+    g_assert_cmpint(surface_px[i] + margin, ==, AUTOHIDE_TRIGGER_STRIP_PX);
+  }
+
+  /* ...and the strip has to be hittable: a couple of pixels at a fractional
+   * scale is a target a pointer can sit next to forever without ever landing
+   * on, and the user reads that as "it never comes back". */
+  g_assert_cmpint(AUTOHIDE_TRIGGER_STRIP_PX, >=, 4);
+}
+
 /* ============================================================================
  * SETTLING WINDOW
  * ============================================================================ */
@@ -253,6 +273,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/dock_motion/ease_out_cubic", test_ease_out_cubic);
   g_test_add_func("/core/dock_motion/slide_position", test_slide_position);
   g_test_add_func("/core/dock_motion/hide_margin", test_hide_margin);
+  g_test_add_func("/core/dock_motion/hide_margin_leaves_the_configured_strip",
+                  test_hide_margin_leaves_the_configured_strip);
   g_test_add_func("/core/dock_motion/settling", test_settling);
   g_test_add_func("/core/dock_motion/needs_full_input",
                   test_needs_full_input);

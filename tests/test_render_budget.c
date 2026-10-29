@@ -196,6 +196,89 @@ static void test_subpixel_jitter_is_dropped(void) {
 }
 
 /* ============================================================================
+ * THE HOVER PATH: A SWEEP HAS TO BE MONOTONE
+ * ============================================================================ */
+
+/* An icon's magnification is a function of where the pointer is, and the pointer
+ * only moves one way during a sweep -- so an icon near the start of the sweep
+ * may only grow as the pointer comes towards it and shrink once the pointer has
+ * passed. If it grows, shrinks and grows again the row is chasing its own tail:
+ * the sizes come from item positions that the sizes themselves moved, which
+ * with a real pointer reads as a dock that wobbles under it.
+ *
+ * Each frame is one call into the same path the frame clock uses, so this
+ * measures the response and not an approximation of it.
+ */
+static void test_hover_sweep_is_monotone_per_item(void) {
+  GtkSettings *settings = gtk_settings_get_default();
+  gboolean previous = TRUE;
+  if (settings) {
+    g_object_get(settings, "gtk-enable-animations", &previous, NULL);
+    g_object_set(settings, "gtk-enable-animations", TRUE, NULL);
+  }
+
+  LambdockState state;
+  GtkWidget *box = build_row(&state, 1400, 120);
+  settle(4);
+
+  const int frames = 60;
+  int width = gtk_widget_get_width(box);
+  GArray *sizes[ITEMS];
+  for (int i = 0; i < ITEMS; i++)
+    sizes[i] = g_array_new(FALSE, FALSE, sizeof(int));
+
+  for (int f = 0; f < frames; f++) {
+    double x = (double)width * (double)f / (double)(frames - 1);
+    dock_apply_hover_at(&state, x, gtk_widget_get_height(box) / 2.0);
+    settle(1);
+
+    GList *node = state.dock_items;
+    for (int i = 0; i < ITEMS && node; i++, node = node->next) {
+      DockItem *item = node->data;
+      int req = -1;
+      gtk_widget_get_size_request(item->button, &req, NULL);
+      g_array_append_val(sizes[i], req);
+    }
+  }
+
+  /* A unimodal sequence has at most one change of direction. Reading the sizes
+   * as the y of a curve, count sign changes between consecutive steps, ignoring
+   * repeats and steps smaller than the layout granularity (which are not
+   * painted differently anyway). */
+  int worst_changes = 0;
+  for (int i = 0; i < ITEMS; i++) {
+    int changes = 0;
+    int last_dir = 0;
+    for (guint k = 1; k < sizes[i]->len; k++) {
+      int a = g_array_index(sizes[i], int, k - 1);
+      int b = g_array_index(sizes[i], int, k);
+      if (abs(b - a) < FISHEYE_LAYOUT_STEP_PX)
+        continue;
+      int dir = (b > a) ? 1 : -1;
+      if (last_dir != 0 && dir != last_dir)
+        changes++;
+      last_dir = dir;
+    }
+    if (changes > worst_changes)
+      worst_changes = changes;
+    g_test_message("item %d sizes: %d..%d, direction changes: %d", i,
+                   g_array_index(sizes[i], int, 0),
+                   g_array_index(sizes[i], int, sizes[i]->len - 1), changes);
+  }
+
+  for (int i = 0; i < ITEMS; i++)
+    g_array_free(sizes[i], TRUE);
+  clear_favorite_dock_items(&state);
+  g_object_unref(box);
+  if (settings)
+    g_object_set(settings, "gtk-enable-animations", previous, NULL);
+
+  /* One reversal is the magnification passing over the icon. More than that is
+   * the row oscillating. */
+  g_assert_cmpint(worst_changes, <=, 1);
+}
+
+/* ============================================================================
  * THE PAINT PATH
  * ============================================================================ */
 
@@ -237,6 +320,8 @@ int main(int argc, char *argv[]) {
                   test_hover_keeps_the_surface_and_reuses_geometry);
   g_test_add_func("/perf/hover/skips_hidden", test_hover_is_skipped_while_hidden);
   g_test_add_func("/perf/hover/subpixel_jitter", test_subpixel_jitter_is_dropped);
+  g_test_add_func("/perf/hover/sweep_is_monotone",
+                  test_hover_sweep_is_monotone_per_item);
   g_test_add_func("/perf/paint/reflection_budget",
                   test_reflection_draw_budget);
 

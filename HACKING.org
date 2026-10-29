@@ -1529,6 +1529,47 @@ surface's input region is cut down to the capsule plus the row
 request only becomes an allocation on the next frame). It also removes the dead
 zone the dock always had above its capsule.
 
+** Auto-hide is a state machine driven by events you cannot see
+Tucking the dock away moves the surface off screen with a layer-shell margin, and
+what is left on screen is a strip four pixels tall, at the top of the shelf's
+magnification headroom (=AUTOHIDE_TRIGGER_STRIP_PX=): it shows nothing, and it is
+the only thing the pointer can reach. Three things about that are easy to get
+wrong, and all three were:
+
+1. *The input region has to be committed.* While the dock is away the whole
+   surface takes input (=lambdock_dock_needs_full_input()=), because the strip is
+   the part a dock-shaped region cuts away. But =wl_surface.set_input_region= is
+   double-buffered: it takes effect with the surface's next commit, and a dock
+   that has finished sliding draws nothing and commits nothing. The compositor
+   then keeps the old, dock-shaped region -- which, intersected with the four
+   pixels still on screen, is empty. =apply_input_region()= therefore queues one
+   draw after setting the region. Without it the strip is dead, and it works
+   intermittently, whenever something else happens to produce a frame.
+2. *A pointer that never moved still has to be able to reveal.* A pointer resting
+   on the strip while the surface slides away underneath it never leaves the
+   surface, so the compositor sends it motion, never a crossing. Waiting for an
+   enter (or a leave) strands the dock off screen for as long as the pointer stays
+   at the screen edge. Motion inside the surface while the dock is away means the
+   same thing an enter does (=on_motion_notify()=).
+3. *A reveal can arrive in the same frame as the hide it cancels.* The hide is
+   requested, `current_margin` is still 0 because no frame has run, and a reveal
+   asking for margin 0 therefore looks like "already there"
+   (=start_margin_animation()=). Dropping it let the hide finish: the dock parked
+   off screen with =is_hidden= FALSE, and nothing would bring it back while the
+   pointer stayed on the strip. A slide in flight toward a different target is
+   turned around, not ignored.
+
+A leave, on the other hand, is only ignored while the dock is moving -- or has
+just stopped (=dock_is_settling()=). Those are the crossings that follow from the
+window moving under a stationary pointer, which is what used to bounce the dock at
+the screen edge; a leave after that is the user leaving, and hides the dock.
+
+All of it is traced with =LAMBDOCK_DEBUG=1=: crossings with their window
+coordinates, the hide margin that was computed, the input region that was
+applied, and every slide, each with a millisecond timestamp on the same clock as
+=/proc/uptime=. The failures happen on somebody else's compositor with the user's
+own hand, so the log is the only way to see the sequence.
+
 ** Idle costs nothing
 - No tick callback survives a settled animation: both are one-shot and removed on
   completion or on teardown.

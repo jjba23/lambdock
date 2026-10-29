@@ -434,6 +434,79 @@ static void test_reveal_dock_cancels_timer(void) {
   g_assert_false(state.is_hidden);
 }
 
+/* A tick callback only has to exist: the animation it belongs to never runs in
+ * a test, and the point is the state the reveal leaves behind. */
+static gboolean dummy_tick_cb(GtkWidget *widget, GdkFrameClock *clock,
+                              gpointer data) {
+  (void)widget;
+  (void)clock;
+  (void)data;
+  return G_SOURCE_REMOVE;
+}
+
+/* A reveal can arrive while a hide is already on its way: the dock starts
+ * sliding away and the pointer lands on the trigger strip, or the window
+ * tracker asks to hide while the pointer is right at the edge.
+ *
+ * The reveal used to be dropped in that case. The dock was still at margin 0 --
+ * the hide had been *requested* but had not had a frame yet -- so "already
+ * where it is wanted" looked true, the reveal returned without doing anything,
+ * and the hide went on. The dock then sat off screen believing it was visible,
+ * and could not be brought back by a pointer that stayed on the strip: the state
+ * said it was already out, so nothing revealed it, and the only thing that
+ * would have (a crossing) needs the pointer to leave and come back. That is a
+ * dock that hides but does not reveal. */
+static void test_reveal_turns_a_pending_hide_around(void) {
+  GtkWidget *window = gtk_window_new();
+
+  LambdockState state = {0};
+  state.window = window;
+  state.is_hidden = TRUE;
+  state.current_margin = 0;   /* the hide is requested, not ticked yet */
+  state.target_margin = -144; /* ... and it is heading off screen */
+  state.tick_cb_id =
+      gtk_widget_add_tick_callback(window, dummy_tick_cb, NULL, NULL);
+
+  reveal_dock(&state);
+
+  g_assert_false(state.is_hidden);
+  g_assert_cmpint(state.current_margin, ==, 0);
+  /* The target is what the dock is *going* to be: leaving it below zero would
+   * mean the reveal asked for nothing and the slide away continues. */
+  g_assert_cmpint(state.target_margin, ==, 0);
+
+  if (state.tick_cb_id != 0)
+    gtk_widget_remove_tick_callback(window, state.tick_cb_id);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+/* The mirror image: a hide that is already sliding has to be turned around by a
+ * reveal too, and has to slide back from where the dock actually is rather than
+ * jumping. */
+static void test_reveal_mid_slide_starts_from_where_the_dock_is(void) {
+  GtkWidget *window = gtk_window_new();
+
+  LambdockState state = {0};
+  state.window = window;
+  state.is_hidden = TRUE;
+  state.current_margin = -96;
+  state.target_margin = -144;
+  state.tick_cb_id =
+      gtk_widget_add_tick_callback(window, dummy_tick_cb, NULL, NULL);
+
+  reveal_dock(&state);
+
+  g_assert_false(state.is_hidden);
+  g_assert_cmpint(state.target_margin, ==, 0);
+  /* The slide back starts from where the dock is, not from 0: anything else
+   * snaps the dock into place before it moves. */
+  g_assert_cmpint(state.current_margin, ==, -96);
+
+  if (state.tick_cb_id != 0)
+    gtk_widget_remove_tick_callback(window, state.tick_cb_id);
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 /* ============================================================================
  * AUTO-HIDE: CROSSINGS THAT ARE ECHOES OF THE DOCK ITSELF
  * ============================================================================ */
@@ -533,6 +606,10 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/dock_window/hide_guards", test_hide_dock_guards);
   g_test_add_func("/ui/dock_window/reveal_cancels_timer",
                   test_reveal_dock_cancels_timer);
+  g_test_add_func("/ui/dock_window/reveal_turns_a_pending_hide_around",
+                  test_reveal_turns_a_pending_hide_around);
+  g_test_add_func("/ui/dock_window/reveal_mid_slide",
+                  test_reveal_mid_slide_starts_from_where_the_dock_is);
   g_test_add_func("/ui/dock_window/dock_is_settling", test_dock_is_settling);
   g_test_add_func("/ui/dock_window/destroy_reentrancy",
                   test_destroy_dock_instance_reentrancy);

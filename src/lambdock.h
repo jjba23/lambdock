@@ -84,8 +84,8 @@
 #define SHELF_DEFAULT_REFLECTION_BLUR 0.05
 #define SHELF_DEFAULT_FLARE_PX 0
 
-/* Auto-hide & Timer Constants */
-#define AUTOHIDE_TRIGGER_STRIP_PX 2
+/* Auto-hide & Timer Constants. The trigger strip itself lives in dock_motion.h,
+ * with the arithmetic that leaves it on screen. */
 #define AUTOHIDE_INITIAL_DELAY_MS 1000
 #define AUTOHIDE_LEAVE_DELAY_MS 600
 #define AUTOHIDE_POPOVER_DELAY_MS 400
@@ -313,11 +313,6 @@ struct LambdockState {
   double applied_pointer_x;
   double applied_pointer_y;
   gboolean pointer_applied;
-
-  /* Auto-hide: whether the pointer has moved since it last entered the dock. A
-   * leave that arrives without any movement is an echo of the dock sliding under
-   * a pointer that never moved, not the user leaving. */
-  gboolean pointer_moved_since_enter;
 
   /* One-shot frame callback that recomputes the surface's input region, and how
    * many frames it has tried while the window was still unlaid-out. */
