@@ -11,6 +11,16 @@
 #include <libguile.h>
 #include <math.h>
 
+/* =========================================================================
+ * THE CENTRAL HEADER
+ * =========================================================================
+ * The shared vocabulary: LambdockState, DockItem, AppWindow, shelf parameters
+ * and every layout constant and default.
+ *
+ * Types only -- no behaviour lives here. Each module publishes its own header
+ * for that, so including this file never drags in a module you did not ask for.
+ */
+
 /**
  * ANIMATION_DURATION_US:
  * Duration of dock slide animations in microseconds (250,000 us = 250 ms = 0.25

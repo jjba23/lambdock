@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * CONTEXT MENUS
+ * =========================================================================
+ * Build the right-click and multi-window popovers, and own their keyboard,
+ * focus and close behaviour.
+ *
+ * Owns no item state: it reads the item it is given and calls back into
+ * dock_item.h / app_actions.h for the effects.
+ */
+
 /**
  * populate_popover_menu:
  * @item: Target DockItem containing popover context.

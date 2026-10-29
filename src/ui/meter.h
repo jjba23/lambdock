@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * THE METER
+ * =========================================================================
+ * The circular gauge for meter items: a ring, a value arc and the reading in
+ * the middle, with colour thresholds.
+ *
+ * Drawing only. The number comes from a Scheme poller and arrives through
+ * dock_item_enable_meter()/the poll callback.
+ */
+
 /**
  * LambdockMeter:
  * A circular gauge that fits in one dock icon slot.

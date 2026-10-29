@@ -21,6 +21,7 @@ that will bite you. Read it once end to end, then keep it open as a reference.
 #+end_quote
 
 - 📖 *Read the user-facing side:* [[file:README.org][README.org]] -- what the dock does and how it is configured
+- 🗺 *Get the shape in one screen:* [[#map-at-a-glance][The map at a glance]] -- layers, dependency rules, the tables
 - 📰 *Read what changed:* [[file:NEWS.org][NEWS.org]]
 - 💾 *Read the source:* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 🐛 *Report a bug:* [[https://github.com/jjba23/lambdock/issues][the issue tracker]]
@@ -131,6 +132,110 @@ See [[#extending-lambdock][Extending lambdock]] for the step-by-step versions.
 
 ------------------
 
+* The map at a glance
+:PROPERTIES:
+:CUSTOM_ID: map-at-a-glance
+:END:
+
+/the shape of the tree in one screen. Per-file responsibilities are in
+[[#module-reference-c][Module reference (C)]], the decisions each module makes are
+in the sections after [[#introduction-and-mental-model][Introduction & mental model]]./
+
+#+begin_src mermaid
+flowchart TB
+  cfg[("settings*.scm")] --> bridge[guile_bridge]
+  comp[("compositor")] --> tracker[toplevel_tracker]
+  tracker --> registry[dock_registry]
+  bridge --> main[main]
+  registry --> main
+  main --> prefs[ui/preferences]
+  main --> window[dock_window]
+  window --> item[ui/dock_item]
+  item --> panels["ui/ panels<br/>stack · popover_menu<br/>trash · launchpad"]
+  window --> glass["ui/ glass<br/>shelf · shelf_follow · icon_zoom"]
+  panels --> core[["core/ decisions<br/>config_values · dock_dims · dock_motion<br/>item_text · tracker_rules"]]
+  item --> core
+  window --> core
+  prefs --> core
+#+end_src
+
+** The four layers
+
+| Layer                   | Lives in                                  | Answers                                                  |
+|-------------------------+-------------------------------------------+----------------------------------------------------------|
+| 1 · decisions           | =src/core/=                                | "given these values, what should happen?"                |
+| 2 · process & platform  | =src/*.c=                                  | "who owns the docks, the proxies, the Scheme runtime?"   |
+| 3 · one dock            | =dock_window.c=, =ui/dock_item.c=          | "how does one dock look, slide, and track windows?"      |
+| 4 · panels & widgets    | =src/ui/*.c=                               | "how is one feature drawn and driven?"                   |
+
+Layer 1 is the interesting one: it is where a change is cheap, because everything
+there is a function of plain values. Layers 3 and 4 are where a change is
+expensive, because the state they move is widgets.
+
+** Dependency rules
+:PROPERTIES:
+:CUSTOM_ID: dependency-rules
+:END:
+
+- *=ui/= may include =core/=, never the reverse.* There is one known leak:
+  =core/dock_dims.h= includes =ui/shelf.h= (for =LambdockShelfGeometry=), and
+  =core/config_values.h= includes =lambdock.h= (for =LambdockShelfParams=).
+  =core/dock_motion.c=, =core/item_text.c= and =core/tracker_rules.c= are
+  genuinely GTK-free and their test binaries link nothing but GLib;
+  =config_values= and =dock_dims= are pure in content but typed against the
+  central header, so their tests link GTK. Moving the shelf/dock value structs
+  into =core/= would close the loop.
+- *Only three files touch Guile's C API:* =guile_bridge.c= (all config reads),
+  =ui/dock_item.c= (calling a stored poll procedure) and =main.c= (starting the
+  REPL). Anything else that needs Scheme asks the bridge.
+- *Everything is on the GTK main thread, except the REPL*, which hops over with
+  ~g_idle_add~. There are no locks anywhere and adding one is a sign the design
+  went wrong.
+- *Widgets are borrowed, state is owned.* A ~GtkWidget*~ field in ~LambdockState~
+  or ~DockItem~ is a borrowed pointer that GTK destroys; lists of items, window
+  trackers, CSS providers and strings are owned and freed by the module that
+  created them. See [[#lifecycles][Lifecycles]].
+
+** Inside a file, top to bottom
+:PROPERTIES:
+:CUSTOM_ID: inside-a-file
+:END:
+
+Files are ordered the same way, so a reader always knows where to look:
+
+1. *types* — value structs that describe /what to do/, no widgets touched
+2. *pure helpers* — decisions from values alone, no side effects
+3. *side-effecting helpers* — one concern each (mutate one widget, one dock)
+4. *callbacks* — thin adapters: read inputs, call the helpers above
+5. *public API / ~main~*
+
+=dock_window.c=, =toplevel_tracker.c=, =ui/launchpad.c= and =ui/preferences.c=
+all follow it and say so in their header comment; when a file needs a sixth
+section, it is usually two modules. Functions stay under ~40~ lines: the largest
+one left (=load_custom_css= in =ui/theme_engine.c=) is the next thing to split.
+
+** The tables (one row or visitor per case)
+:PROPERTIES:
+:CUSTOM_ID: the-tables
+:END:
+
+Repeated cases are data, not switches. If you add a case, add a row:
+
+| Table                                | File                | One row is...                            |
+|--------------------------------------+---------------------+------------------------------------------|
+| =ITEM_KIND_OPS=                      | =ui/dock_item.c=    | one kind of dock item (app, stack, …)     |
+| =DOCK_ITEM_BUILDERS=                 | =guile_bridge.c=    | one Scheme item type                     |
+| =STACK_VIEW_OPS=                     | =ui/stack.c=        | one stack view (grid / list)              |
+| =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
+| =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.c= | one "do this to every dock" action        |
+
+The last one is how a compositor event reaches every dock: the tracker defines one
+visitor per event and hands it to ~dock_registry_foreach~, which walks a snapshot.
+Never hand-roll the snapshot loop -- that is how five copies of it accumulated once
+already.
+
+------------------
+
 * Introduction & mental model
 :PROPERTIES:
 :CUSTOM_ID: introduction-and-mental-model
@@ -180,29 +285,40 @@ the parts a person changing the code needs.
 
 #+begin_example
 lambdock/
-├── src/                     # The C core
-│   ├── main.c               # Entry point, Guile boot, dock reconciliation, hotplug
-│   ├── dock_window.c        # LambdockState lifecycle, animation, auto-hide, layer shell, teardown
-│   ├── dock_registry.c      # The only owner of the active-dock list (snapshot iteration)
-│   ├── app_window.c         # AppWindow ownership: new/set-title/matches/free
-│   ├── guile_bridge.c       # C→Scheme readers: config getters + table-driven item builders
-│   ├── toplevel_tracker.c   # Raw Wayland zwlr_foreign_toplevel manager + handle listeners
-│   ├── lambdock.h           # THE central header: LambdockState, DockItem, AppWindow, constants
-│   ├── dock_window.h        # Public window API
-│   ├── guile_bridge.h       # Public bridge API
-│   ├── toplevel_tracker.h   # Public tracker API
-│   ├── dock_registry.h      # Public registry API
-│   ├── logger.h             # LOG_C_* colored logging macros
-│   ├── core/                # Pure, widget-free, interpreter-free logic (unit tested)
+├── src/                       # The C side, in four layers (see The map at a glance)
+│   ├── main.c                 # Boot, Guile boot, monitor hotplug, dock reconciliation
+│   ├── dock_window.c          # LambdockState lifecycle: layer shell, animation, auto-hide, teardown
+│   ├── dock_registry.c        # The only owner of the active-dock list (snapshot + typed foreach)
+│   ├── app_window.c           # AppWindow ownership: new/set-title/matches/free
+│   ├── guile_bridge.c         # C→Scheme readers: config getters + table-driven item builders
+│   ├── toplevel_tracker.c     # Wayland manager/handle listeners; owns the proxies; one visitor per event
+│   ├── accessibility.c        # Reduce-motion setting + accessible label text
+│   ├── lambdock.h             # THE central header: LambdockState, DockItem, AppWindow, constants
+│   ├── dock_window.h          # Public window API (plus guile_bridge.h, toplevel_tracker.h, ...)
+│   ├── logger.h               # LOG_C_* colored logging macros
+│   ├── core/                  # Layer 1: decisions from values, no widgets
 │   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
-│   │   └── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
-│   └── ui/
-│       ├── dock_item.c/.h    # Item widgets, window association, free/clear, reload
-│       ├── shelf.c/.h        # Glass shelf: 3D frame projection + icon reflections
-│       ├── popover_menu.c/.h # Right-click/multi-window popover builder
-│       ├── trash.c/.h        # Freedesktop.org trash: roots, count, empty, open
-│       ├── theme_engine.c/.h # GResource CSS loading + per-instance selector scoping
-│       └── icon_resolver.c/.h# 6-stage icon fallback pipeline + icon theme setup
+│   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
+│   │   ├── dock_motion.c/.h   # Easing + slide/fisheye arithmetic, GTK-free
+│   │   ├── item_text.c/.h     # All item wording: labels, tooltips, gauges, plurals, GTK-free
+│   │   └── tracker_rules.c/.h # Window-tracking decisions, GTK-free
+│   └── ui/                    # Layers 3-4: one dock's widgets and its panels
+│       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
+│       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
+│       ├── shelf_follow.c/.h  # Separators following the shelf's projection
+│       ├── icon_zoom.c/.h     # Fisheye magnification by transform, not re-raster
+│       ├── meter.c/.h         # Circular gauge widget for meter items
+│       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
+│       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
+│       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
+│       ├── trash.c/.h         # Freedesktop.org trash: roots, count, empty, open
+│       ├── preferences.c/.h   # Settings window + per-dock window registry
+│       ├── theme_engine.c/.h  # GResource CSS loading + per-instance selector scoping
+│       ├── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
+│       ├── desktop_entry.c/.h # .desktop parsing + app-id alias cache
+│       ├── app_actions.c/.h   # Launch/close/MPRIS actions behind the popover
+│       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
+│       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
 │   ├── core.scm             # Public API surface: init-dock!, load-dock-config!, start-repl!
 │   ├── items.scm            # <dock-item> record, constructors, dynamic pollers
@@ -324,19 +440,24 @@ meson test -C build scheme_unit_tests
 ./tests/run_scheme_tests.sh
 #+end_src
 
-C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~:
+C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~. The pure ones
+link nothing but GLib (plus libm), which is the point: they prove a module needs no
+display to be tested.
 
-- =test_dock_item= -- item lifecycle, window tracking, alignment, exec matching
-- =test_guile_bridge= -- every C↔Scheme config getter, exclusions, populate
-- =test_dock_window= -- monitor validation, dimension maths, auto-hide, teardown
-- =test_popover_menu= -- menu layouts for every window-count branch
-- =test_theme_engine= -- CSS selector scoping + provider lifecycle
-- =test_icon_resolver= -- resource/file/theme icon resolution
-- =test_shelf= -- shelf parameters, activation, reflection geometry, frame
-  delegation and item container ordering
-- =test_trash= -- home/volume trash roots, counting, emptying (read-only
-  directories, orphans), GIO trashing of dropped files and folders (name
-  collisions included) and the item's full/empty states
+- *Pure, no GTK by design* -- =test_dock_motion= (easing/geometry),
+  =test_item_text= (all wording and plurals), =test_tracker_rules= (window-tracking
+  decisions), =test_dock_registry= (the dock list, snapshot and ~foreach~).
+- *Pure logic, GTK-linked* -- =test_config_values= (clamps, name→enum rules),
+  =test_dock_dims= (capsule/overlay/margin arithmetic); their headers pull in
+  =lambdock.h= for the shelf structs, so the binaries link GTK.
+- *One module, no dock* -- =test_icon_resolver=, =test_icon_zoom=,
+  =test_theme_engine=, =test_shelf=, =test_meter=, =test_desktop_entry=,
+  =test_app_actions=, =test_trash=, =test_accessibility=.
+- *Full application context* -- =test_dock_item= (item lifecycle, window tracking,
+  alignment, exec matching), =test_guile_bridge= (every C↔Scheme getter,
+  exclusions, populate), =test_dock_window= (monitor validation, dimension maths,
+  auto-hide, teardown), =test_popover_menu= (menu layouts per window count),
+  =test_stack=, =test_launchpad=, =test_preferences=, =test_dock_dnd=.
 
 The Scheme suite (~tests/scheme/lambdock_tests.scm=, run by
 [[file:tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]) loads the real
@@ -360,8 +481,7 @@ Four caveats, in the order they bit us:
   ([[https://docs.gtk.org/gtk4/func.init_check.html][GTK docs]]) and return 77
   ("skipped") when it fails, but GTK emits its warnings -- no session bus, no
   icon theme -- *before* that check, and [[https://docs.gtk.org/glib/testing.html][g_test]]
-  makes GLib warnings fatal. In a headless shell six of the seven C tests
-  therefore abort with ~SIGTRAP~ instead of skipping. Hence ~xvfb-run~.
+  makes GLib warnings fatal. In a headless shell the C tests therefore abort with ~SIGTRAP~ instead of skipping. Hence ~xvfb-run~.
 - *Accessibility needs a backend.* The accessible-name assertions read labels
   back through ~gtk_test_accessible_check_property()~, which aborts with
   ~gtk_at_context_get_accessible_property: assertion 'GTK_IS_AT_CONTEXT (self)'
@@ -864,25 +984,41 @@ pointer dies:
 :CUSTOM_ID: module-reference-c
 :END:
 
-| File                  | Responsibility                                                                 |
-|-----------------------+--------------------------------------------------------------------------------+
-| =main.c=              | Boot, file/monitor watching, dock reconciliation, dock construction steps        |
-| =dock_window.c=       | LambdockState lifecycle, layer shell, margin animation, auto-hide, about dialog  |
-| =dock_registry.c=     | The active-dock list: add/remove/contains/count, snapshot + ~foreach~ iteration  |
-| =app_window.c=        | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |
-| =core/config_values.c= | Pure clamps and name→value rules (icon size, spacing, shelf params, edges)      |
-| =core/dock_dims.c=    | Pure ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values    |
-| =guile_bridge.c=      | All C→Scheme config reads, table-driven item builders, exclusion checks          |
-| =toplevel_tracker.c=  | Raw Wayland registry/manager/handle listeners, per-window title/app_id/closed    |
-| =ui/dock_item.c=      | Item widgets, window association, free paths, reload of a dock                  |
-| =ui/shelf.c=          | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections  |
-| =ui/popover_menu.c=   | Dynamic popover building, focus/close/launch/close-all callbacks                |
-| =ui/launchpad.c=      | The one launchpad: model, tile+copy menu builders, grid fill and key movement   |
-| =ui/preferences.c=    | Settings window: a declarative row table, debounced apply, window registry       |
-| =ui/trash.c=          | Freedesktop.org trash: roots, count, empty, open, taking dropped files          |
-| =ui/theme_engine.c=   | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
-| =ui/icon_resolver.c=  | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
-| =logger.h=            | ~LOG_C_DEBUG/INFO/WARN/ERROR~ macros                                              |
+| Layer | File                   | Responsibility                                                                 |
+|-------+------------------------+--------------------------------------------------------------------------------+
+| 1     | =core/config_values.c= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf params, edges) |
+| 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
+| 1     | =core/dock_motion.c=   | Easing and slide/fisheye arithmetic -- GTK-free, GLib only                       |
+| 1     | =core/item_text.c=     | All item wording: labels, tooltips, gauges, plurals -- GTK-free                  |
+| 1     | =core/tracker_rules.c= | Window-tracking decisions: own app id, stale item, hide/reveal -- GTK-free       |
+| 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
+| 2     | =guile_bridge.c=       | The only Scheme config reader; table-driven item builders; exclusion checks      |
+| 2     | =toplevel_tracker.c=   | Wayland manager/handle listeners; owns the proxies; one visitor per event        |
+| 2     | =dock_registry.c=      | The only owner of the active-dock list; snapshot + typed ~foreach~               |
+| 2     | =app_window.c=         | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |
+| 2     | =accessibility.c=      | Reduce-motion preference, GTK animation setting, accessible label text           |
+| 2     | =lambdock.h=           | THE central header: ~LambdockState~, ~DockItem~, ~AppWindow~, constants          |
+| 2     | =logger.h=             | ~LOG_C_DEBUG/INFO/WARN/ERROR~ colored logging macros                              |
+| 3     | =dock_window.c=        | ~LambdockState~ lifecycle, layer shell, margin animation, auto-hide, teardown    |
+| 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
+| 4     | =ui/shelf.c=           | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections   |
+| 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
+| 4     | =ui/icon_zoom.c=       | Fisheye magnification by transform, not re-raster (GtkWidget subclass)           |
+| 4     | =ui/meter.c=           | Circular gauge for meter items (GtkWidget subclass, snapshot drawing)            |
+| 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
+| 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
+| 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
+| 4     | =ui/trash.c=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files           |
+| 4     | =ui/preferences.c=     | Settings window: a declarative row table, debounced apply, window registry       |
+| 4     | =ui/theme_engine.c=    | GResource theme load, ~scope_css_selectors~, user ~styles.css~ override          |
+| 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
+| 4     | =ui/desktop_entry.c=   | =.desktop= parsing, exec field codes, app-id alias cache                          |
+| 4     | =ui/app_actions.c=     | App actions: launch commands, MPRIS/D-Bus calls, command building                |
+| 4     | =ui/dock_dnd.c=        | Drag and drop: reorder, add favourites, drop onto stack/trash                    |
+| 4     | =ui/widget_utils.c=    | CSS-class toggles for state-driven styling (the "is it a taskbar" decisions)      |
+
+The layer numbers match [[#map-at-a-glance][The map at a glance]], which explains what each layer
+may depend on.
 
 The six stages of ~create_image_for_icon~, in order, are: an embedded
 [[https://docs.gtk.org/gio/struct.Resource.html][GResource]] path, an absolute
@@ -900,8 +1036,8 @@ other side in [[file:README.org::#finding-icon-names][README: Finding icon names
 :CUSTOM_ID: code-conventions
 :END:
 
-The C side is deliberately boring about state.  Four rules cover most of it, and
-the places that already follow them are where a new feature should land.
+The C side is deliberately boring about state.  A handful of rules cover most of
+it, and the places that already follow them are where a new feature should land.
 
 ** Pure logic goes in =src/core/=
 If a decision can be made from numbers and strings alone -- how thick the capsule
@@ -914,14 +1050,28 @@ widgets.
 
 ** One owner per piece of mutable state
 - The set of docks lives in =dock_registry.c=; nothing else keeps that list, and
-  callers iterate a snapshot, so destroying a dock inside the loop cannot corrupt
-  the iteration.
+  callers either iterate a snapshot or, preferably, hand a =DockVisitor= to
+  ~dock_registry_foreach()~ -- destroying a dock inside the loop cannot corrupt
+  the iteration either way.
+- The foreign-toplevel tracker owns every Wayland proxy in one
+  =ToplevelTracker= (=g_tracker= in =toplevel_tracker.c=). Docks hold *borrowed*
+  handles in =state->window_trackers=, which is why ~free_window_tracker()~ is a
+  documented no-op: the tracker frees the proxy when the window closes or the
+  manager goes away.
 - The launchpad is one model value (=LambdockLaunchpad= in =ui/launchpad.c=)
   rather than ten file statics, and the functions that act on it take it as a
   parameter; only its public entry points reach for the instance.
 - ~AppWindow~ lists are freed through =app_window.c=, which is NULL-safe.
 - Timer ids are cleared with ~g_clear_handle_id()~, or reset by the callback that
   consumed them, so teardown never removes a dead (possibly recycled) source.
+
+** Decisions are extracted even when the caller is a protocol listener
+The tracker's listeners are three lines each: cast the event data, call the pure
+rule in =core/tracker_rules.c= (=lambdock_tracker_should_hide()=,
+~..._item_should_be_dropped()~, ~..._ignores_app_id()~), then call one helper or
+one visitor. "Should this dock hide?" is a function of three booleans, so it is
+tested by =tests/test_tracker_rules.c= without a compositor. When a condition in a
+callback needs more than one clause, it belongs in =core/= with a name.
 
 ** A kind is a table row, not a switch
 - A dock item kind is one row of =ITEM_KIND_OPS= in =ui/dock_item.c=: key name,
@@ -942,6 +1092,30 @@ is /read the settings → build the widgets → populate the items → build the
 install the input → present/, and each of those is a function.
 =sync_docks_with_disk()= is /select the docks → destroy them → reconcile each
 settings file/.
+
+** Known rough edges (the honest TODO)
+:PROPERTIES:
+:CUSTOM_ID: rough-edges
+:END:
+
+Not violations of the rules above, just the places where the tree has not been
+taken all the way yet. Listed biggest win first; none of them is a bug.
+
+| Where                                   | What is rough                                                        | First move                                                        |
+|-----------------------------------------+----------------------------------------------------------------------+-------------------------------------------------------------------|
+| =ui/theme_engine.c= ~load_custom_css~   | 147 lines: chooses the theme, swaps the window class, then tears down and reloads four providers | return a ~ThemeRequest~ value from a pure helper, then one applier |
+| =ui/meter.c= ~..._snapshot~             | 122 lines of geometry interleaved with ~gtk_snapshot_*~ calls         | extract ~MeterGeometry~ + a pure compute, as =core/dock_motion.c= |
+| =core/dock_dims.h=, =core/config_values.h= | include =lambdock.h= / =ui/shelf.h=, so layer 1 is pure in content but not in headers | move the shelf/dock value structs into =core/=                    |
+| =ui/shelf_follow.c= ~set_css_class~     | private copy of ~lambdock_set_css_class()~                            | delete it, include =widget_utils.h=                               |
+| =ui/desktop_entry.c= cache              | three file statics for a process-wide cache                           | one named ~DesktopEntryCache~ value, as =dock_registry.c= does     |
+| =main.c=, =ui/preferences.c=            | hand-rolled snapshot loops, two loose timer ids                       | ~dock_registry_foreach()~ + one timers struct                     |
+| =ui/dock_item.c=                        | 1980 lines / 83 functions: items, window tracking and pollers at once | split window tracking into =ui/dock_item_windows.c=               |
+| =ui/dock_item.c= pollers                | call ~scm_*~ directly, so Guile's API leaks past the bridge           | one bridge function that calls a stored poll procedure            |
+| =ui/icon_resolver.c= ~setup_icon_theme~ | 89 lines assembling search paths                                      | build the path list purely, then apply it                         |
+
+Deprecated GTK3 patterns are *not* on this list: there are none left
+(~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and
+~gtk_widget_destroy~ all return nothing when grepped in =src/=).
 
 ------------------
 

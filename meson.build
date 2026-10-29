@@ -242,6 +242,7 @@ sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/tracker_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
@@ -296,6 +297,7 @@ full_app_sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/tracker_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
@@ -365,6 +367,13 @@ unit_tests = [
   {
     'id': 'dock_registry',
     'extra_sources': ['src/dock_registry.c'],
+  },
+  {
+    # Deliberately no GTK and no Wayland here: the tracker's decisions are
+    # booleans in, booleans out, and linking only this file proves it.
+    'id': 'tracker_rules',
+    'extra_sources': ['src/core/tracker_rules.c'],
+    'deps': [dependency('glib-2.0')],
   },
   {
     'id': 'dock_dims',

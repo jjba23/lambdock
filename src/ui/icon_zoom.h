@@ -8,6 +8,15 @@
 
 #include <gtk/gtk.h>
 
+/* =========================================================================
+ * FISHEYE WIDGET
+ * =========================================================================
+ * A GtkWidget that magnifies its child by painting a transform, so hovering
+ * never re-rasters the artwork at every intermediate size.
+ *
+ * Holds no dock state: the base size and maximum scale arrive at construction.
+ */
+
 /**
  * LambdockIconZoom:
  * A dock icon that can be drawn larger without being rasterised again.

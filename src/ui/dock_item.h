@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * THE DOCK ICON
+ * =========================================================================
+ * Build one item per kind, mount it in the dock box, attach and detach the
+ * windows it tracks, and free it.
+ *
+ * Kind-specific behaviour is a row of the ITEM_KIND_OPS table in the .c file,
+ * not a switch here: adding a kind never edits this header.
+ */
+
 /**
  * apply_dock_item_alignment:
  * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,

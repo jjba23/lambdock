@@ -5,59 +5,64 @@
 
 #include "dock_registry.h"
 
-/* The one and only owner of the active-dock list. Nothing outside this
- * translation unit may keep a pointer to it, which is what makes "who can
- * change the set of docks?" answerable. */
-static GList *g_registered_docks = NULL;
+/* The registry's whole state. There is exactly one instance because "the set of
+ * live docks" is process-wide, but naming it keeps the owner explicit: this
+ * translation unit, and nothing else, can change the set of docks. */
+typedef struct {
+  GList *docks; /* LambdockState*, in registration order; not owned */
+} DockRegistry;
+
+/* Nothing outside this file may keep a pointer to the list, which is what makes
+ * "who can change the set of docks?" answerable. */
+static DockRegistry g_registry;
 
 void dock_registry_add(LambdockState *state) {
   if (!state || dock_registry_contains(state))
     return;
 
-  g_registered_docks = g_list_append(g_registered_docks, state);
+  g_registry.docks = g_list_append(g_registry.docks, state);
 }
 
 void dock_registry_remove(LambdockState *state) {
   if (!state)
     return;
 
-  g_registered_docks = g_list_remove(g_registered_docks, state);
+  g_registry.docks = g_list_remove(g_registry.docks, state);
 }
 
 gboolean dock_registry_contains(const LambdockState *state) {
   if (!state)
     return FALSE;
 
-  return g_list_find(g_registered_docks, (gpointer)state) != NULL;
+  return g_list_find(g_registry.docks, (gpointer)state) != NULL;
 }
 
-guint dock_registry_count(void) {
-  return g_list_length(g_registered_docks);
-}
+guint dock_registry_count(void) { return g_list_length(g_registry.docks); }
 
-gboolean dock_registry_is_empty(void) { return g_registered_docks == NULL; }
+gboolean dock_registry_is_empty(void) { return g_registry.docks == NULL; }
 
 GPtrArray *dock_registry_snapshot(void) {
-  GPtrArray *states = g_ptr_array_new();
+  GPtrArray *states = g_ptr_array_sized_new(dock_registry_count());
 
-  for (GList *l = g_registered_docks; l != NULL; l = l->next)
-    g_ptr_array_add(states, l->data);
+  for (GList *node = g_registry.docks; node != NULL; node = node->next)
+    g_ptr_array_add(states, node->data);
 
   return states;
 }
 
-void dock_registry_foreach(void (*visit)(LambdockState *state, gpointer data),
-                           gpointer user_data) {
+void dock_registry_foreach(DockVisitor visit, gpointer user_data) {
   if (!visit)
     return;
 
-  GPtrArray *states = dock_registry_snapshot();
+  /* Walked by hand rather than with g_ptr_array_foreach(): the GLib callback
+   * type is `void (*)(gpointer, gpointer)`, and hiding the cast would defeat
+   * the point of DockVisitor making the element type explicit. */
+  g_autoptr(GPtrArray) states = dock_registry_snapshot();
   for (guint i = 0; i < states->len; i++)
-    visit((LambdockState *)g_ptr_array_index(states, i), user_data);
-  g_ptr_array_unref(states);
+    visit(g_ptr_array_index(states, i), user_data);
 }
 
 void dock_registry_clear(void) {
-  g_list_free(g_registered_docks);
-  g_registered_docks = NULL;
+  g_list_free(g_registry.docks);
+  g_registry.docks = NULL;
 }

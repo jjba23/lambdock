@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * CSS CLASS HELPERS
+ * =========================================================================
+ * Say 'this dock is a taskbar' once: add or remove one class, or a whole set of
+ * mutually exclusive ones, from a boolean.
+ *
+ * For state-driven styling only -- a widget that is always a tile can just call
+ * gtk_widget_add_css_class() at construction.
+ */
+
 /**
  * lambdock_set_css_class:
  * @widget: (nullable): the widget to tag; NULL is ignored.

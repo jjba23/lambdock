@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * THE SETTINGS WINDOW
+ * =========================================================================
+ * A declarative table of settings rows mapped onto Scheme setters, with
+ * debounced apply, plus a registry of open windows keyed by settings path.
+ *
+ * The row tables are the source of truth: a new option is a row, not a new
+ * callback.
+ */
+
 /**
  * lambdock_preferences_show:
  * @config_path: Settings file of the dock to edit (NULL or "" for the default).

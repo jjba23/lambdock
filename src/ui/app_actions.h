@@ -8,6 +8,14 @@
 
 #include <glib.h>
 
+/* =========================================================================
+ * APPLICATION ACTIONS
+ * =========================================================================
+ * What a right-click can do to an application: launch a new instance, close its
+ * windows, and build the command lines those actions run (MPRIS playback
+ * control included).
+ */
+
 /**
  * LambdockAppKind:
  * @LAMBDOCK_APP_KIND_NONE: an application with no kind-specific menu entries.

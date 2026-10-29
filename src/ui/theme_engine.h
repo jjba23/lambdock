@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * THEMES AND CSS
+ * =========================================================================
+ * Load the built-in theme from GResource, scope its selectors to one dock's CSS
+ * class, and layer the user's styles.css over it.
+ *
+ * Owns the providers it creates; the dock state keeps the pointers so it can
+ * swap them on reload.
+ */
+
 /**
  * load_custom_css:
  * @state: Pointer to global LambdockState context.

@@ -8,6 +8,17 @@
 
 #include "lambdock.h"
 
+/* =========================================================================
+ * ACCESSIBILITY POLICY
+ * =========================================================================
+ * Whether motion is allowed at all -- the system animation setting and the
+ * user's reduce-motion option -- plus the label and description text screen
+ * readers announce.
+ *
+ * Owns no widgets: every function takes the state or the widget it needs and
+ * returns a value (TRUE/FALSE, or text the caller frees).
+ */
+
 /**
  * lambdock_system_animations_enabled:
  *

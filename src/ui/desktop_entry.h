@@ -8,6 +8,16 @@
 
 #include <glib.h>
 
+/* =========================================================================
+ * XDG DESKTOP ENTRIES
+ * =========================================================================
+ * Parse .desktop files, index them under every name a window might report, and
+ * answer name/icon/exec lookups.
+ *
+ * Owns a process-wide cache: callers must invalidate it when desktop files
+ * change rather than holding onto returned pointers across a rescan.
+ */
+
 /** Milliseconds a built cache is trusted before it is rebuilt on demand. */
 #define DESKTOP_CACHE_TTL_MS 60000
 

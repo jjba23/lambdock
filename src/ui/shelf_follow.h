@@ -8,6 +8,15 @@
 
 #include <gtk/gtk.h>
 
+/* =========================================================================
+ * SHELF-FOLLOWING WIDGET
+ * =========================================================================
+ * A GtkWidget that re-projects itself so it appears to stand on the glass
+ * shelf, used by separators.
+ *
+ * Reads the shelf geometry; it never owns or mutates the shelf itself.
+ */
+
 /**
  * LambdockShelfFollow:
  * A widget that lies on the glass shelf instead of in front of it.

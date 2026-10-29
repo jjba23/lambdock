@@ -8,6 +8,19 @@
 
 #include "lambdock.h"
 
+/* =========================================================================
+ * THE GUILE BRIDGE
+ * =========================================================================
+ * The only place C reads the Scheme configuration. Every get_*_config_for() is
+ * one settings path in, one plain value out; the item builders turn <dock-item>
+ * records into rows of DOCK_ITEM_BUILDERS rather than into switches.
+ *
+ * Contract: the public surface is plain C -- no SCM in any signature here.
+ * Texts are copied out with g_strdup() and owned by the caller (g_free); the
+ * defaults live in the .c file next to the getter they belong to, so C works
+ * with no Scheme at all (tests, a settings file that failed to load).
+ */
+
 /**
  * setup_guile_load_path:
  *

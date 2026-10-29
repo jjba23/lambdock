@@ -8,6 +8,14 @@
 
 #include <gtk/gtk.h>
 
+/* =========================================================================
+ * ICON LOOKUP
+ * =========================================================================
+ * The fallback pipeline: GResource path, absolute path, icon theme, XDG
+ * pixmaps, a -symbolic variant, then the generic icon. Also sets up the icon
+ * theme.
+ */
+
 /**
  * setup_icon_theme:
  *

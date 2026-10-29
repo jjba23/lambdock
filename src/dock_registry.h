@@ -24,7 +24,23 @@
  * of borrowed pointers) instead, so destroying a dock inside the loop cannot
  * corrupt the iteration. The registry itself is not thread safe: like the rest
  * of the GTK code it is only touched from the main thread.
+ *
+ * Prefer dock_registry_foreach() for "do this to every dock": it is the same
+ * snapshot walk, without the ownership question. Reach for
+ * dock_registry_snapshot() only when you need the array itself (order, length,
+ * or several passes), and hold it in a `g_autoptr(GPtrArray)`.
  */
+
+/**
+ * DockVisitor:
+ * @state: one registered dock; borrowed, never NULL.
+ * @user_data: the pointer passed to dock_registry_foreach().
+ *
+ * The shape every "for each dock" callback has. Naming it lets the compiler
+ * check that a visitor only receives a LambdockState, instead of GLib's
+ * untyped `GFunc`.
+ */
+typedef void (*DockVisitor)(LambdockState *state, gpointer user_data);
 
 /**
  * dock_registry_add:
@@ -57,23 +73,25 @@ gboolean dock_registry_is_empty(void);
  * dock_registry_snapshot:
  * Returns: (transfer container) (element-type LambdockState*): a new array of
  * borrowed states, in registration order. The caller owns the array (unref it
- * with g_ptr_array_unref()) but not the states: a state that is destroyed while
- * the caller walks the snapshot is its own responsibility, exactly as with any
- * other borrowed pointer. Iterating a snapshot is nevertheless safe against the
- * registry changing underneath the loop.
+ * with g_ptr_array_unref(), or hold it in a `g_autoptr(GPtrArray)`) but not the
+ * states: a state that is destroyed while the caller walks the snapshot is its
+ * own responsibility, exactly as with any other borrowed pointer. Iterating a
+ * snapshot is nevertheless safe against the registry changing underneath the
+ * loop.
  */
 GPtrArray *dock_registry_snapshot(void);
 
 /**
  * dock_registry_foreach:
- * @visit: called once per registered dock, in registration order.
+ * @visit: (not nullable): called once per registered dock, in registration
+ * order. A NULL @visit is a no-op.
  * @user_data: passed through to @visit.
  *
  * Walks a snapshot, so @visit may register or remove docks (including its own
- * @state) without disturbing the walk.
+ * @state) without disturbing the walk. This is the combinator the event
+ * broadcasts are built from: one visitor per event, no loop boilerplate.
  */
-void dock_registry_foreach(void (*visit)(LambdockState *state, gpointer data),
-                           gpointer user_data);
+void dock_registry_foreach(DockVisitor visit, gpointer user_data);
 
 /**
  * dock_registry_clear:

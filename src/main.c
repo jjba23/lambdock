@@ -808,7 +808,13 @@ static void dock_present(LambdockState *state) {
 
   gtk_window_present(GTK_WINDOW(state->window));
 
-  init_toplevel_tracker(state);
+  /* Window tracking is a bonus, not a requirement: report why it is unavailable
+   * and carry on with the pinned items. */
+  g_autoptr(GError) tracker_error = NULL;
+  if (!init_toplevel_tracker(&tracker_error))
+    LOG_C_WARN("Tracker", "window tracking unavailable: %s",
+               tracker_error->message);
+
   sync_window_trackers(state);
 
   if (state->auto_hide && state->show_when_clear &&

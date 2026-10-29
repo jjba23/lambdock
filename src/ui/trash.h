@@ -9,6 +9,16 @@
 #include <gio/gio.h>
 #include <glib.h>
 
+/* =========================================================================
+ * FREEDESKTOP TRASH
+ * =========================================================================
+ * Find the trash roots, count what is in them, empty them, open them, and move
+ * dropped paths into them.
+ *
+ * The only module in the tree allowed to touch the filesystem for trash
+ * purposes; the dock just asks it questions.
+ */
+
 /* How often a trash dock item re-counts the trash, in milliseconds. Deleting a
  * file from a file manager has to show up on the dock without the user doing
  * anything, but there is no notification every trash implementation emits. */

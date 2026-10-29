@@ -8,6 +8,17 @@
 
 #include "lambdock.h"
 
+/* =========================================================================
+ * ONE DOCK'S WINDOW
+ * =========================================================================
+ * The surface and the motion: layer-shell setup, the slide and auto-hide
+ * animations, the fisheye frame, the CSS mode classes and the teardown that
+ * takes it all down again.
+ *
+ * Owns the LambdockState lifecycle (build -> present -> destroy). The widgets
+ * it creates are handed back to the state as borrowed pointers.
+ */
+
 /**
  * setup_layer_shell_window:
  * @state: Pointer to global application state structure.

@@ -9,6 +9,16 @@
 #include "../lambdock.h"
 #include "desktop_entry.h"
 
+/* =========================================================================
+ * THE LAUNCHPAD
+ * =========================================================================
+ * The full-screen application grid: its model, search, tiles, copy menu and key
+ * movement.
+ *
+ * There is one launchpad (there is one screen), so the entry points reach the
+ * single instance; everything else takes the model as a parameter.
+ */
+
 /* Icon size of a launchpad tile, in pixels. */
 #define LAUNCHPAD_ICON_SIZE 64
 #define LAUNCHPAD_ICON_SIZE_MIN 32

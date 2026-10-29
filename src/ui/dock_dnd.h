@@ -8,6 +8,16 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * DRAG AND DROP
+ * =========================================================================
+ * Reorder items within the row, add a dropped path as a favourite, and hand
+ * drops to stack and trash items.
+ *
+ * Owns the drag payload format (DOCK_DND_ITEM_PREFIX); the drop targets
+ * themselves belong to the item modules.
+ */
+
 /**
  * dock_dnd_setup:
  * @state: Dock state.

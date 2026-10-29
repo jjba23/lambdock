@@ -8,6 +8,15 @@
 
 #include "../lambdock.h"
 
+/* =========================================================================
+ * FOLDER STACKS
+ * =========================================================================
+ * List a folder, render it as a grid or a list, and open its entries.
+ *
+ * View behaviour is a row of STACK_VIEW_OPS in the .c file, which is also where
+ * the settings symbol mapping lives.
+ */
+
 /* A stack never renders more than this many entries: a folder with 10k files
  * must not turn a popover into a memory and layout disaster. */
 #define STACK_MAX_ENTRIES 300

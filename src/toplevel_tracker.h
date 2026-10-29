@@ -8,14 +8,33 @@
 
 #include "dock_window.h"
 
+/* =========================================================================
+ * WINDOW TRACKING
+ * =========================================================================
+ * Binds the wlr-foreign-toplevel manager and broadcasts each window event to
+ * every registered dock.
+ *
+ * Owns every Wayland proxy it creates; docks hold borrowed handles. It makes no
+ * decisions: those are in core/tracker_rules.h, and the dock-side effect of an
+ * event is in ui/dock_item.h.
+ */
+
 /**
  * init_toplevel_tracker:
- * @state: Pointer to LambdockState context.
+ * @error: (nullable): return location for a GError.
  *
- * Connects to low-level Wayland display server registry and binds listeners to
- * track open application window instances dynamically.
+ * Connects to the low-level Wayland display registry and binds the listeners
+ * that track open application windows. Call it once, before
+ * sync_window_trackers(); calling it again is a no-op rather than a second
+ * registry listener.
+ *
+ * Window tracking is optional: a dock that cannot track windows still shows its
+ * pinned items, so a FALSE return is a reason to log, not to abort startup.
+ *
+ * Returns: TRUE when the tracker is listening (or already was), FALSE with
+ * @error set when the display cannot provide a Wayland registry.
  */
-void init_toplevel_tracker(LambdockState *state);
+gboolean init_toplevel_tracker(GError **error);
 
 /**
  * activate_toplevel_window:

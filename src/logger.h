@@ -8,6 +8,16 @@
 
 #include <glib.h>
 
+/* =========================================================================
+ * LOGGING MACROS
+ * =========================================================================
+ * LOG_C_DEBUG/INFO/WARN/ERROR(subsystem, fmt, ...): colourised diagnostics on
+ * stdout (or g_warning/g_critical for the two loud ones).
+ *
+ * Diagnostics only: nothing here is translated, and nothing here is control
+ * flow.
+ */
+
 // ANSI Color definitions
 #define LOG_CLR_RESET "\x1b[0m"
 #define LOG_CLR_DIM "\x1b[2m"
