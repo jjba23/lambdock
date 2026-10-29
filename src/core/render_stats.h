@@ -40,6 +40,13 @@ typedef enum {
   /* Times the dock's surface changed size (each one is a buffer re-allocation
    * and a compositor reconfigure). */
   LAMBDOCK_STAT_SURFACE_RESIZES,
+  /* Times the surface's input region was actually changed: each one is a
+   * wl_region created, a request sent and a commit. */
+  LAMBDOCK_STAT_INPUT_REGION_SETS,
+  /* Microseconds spent inside the dock's own hover path, so the part of a
+   * frame that is ours can be told apart from the part GTK spends laying the
+   * row out and painting it. */
+  LAMBDOCK_STAT_HOVER_US,
   LAMBDOCK_STAT_COUNT
 } LambdockStat;
 

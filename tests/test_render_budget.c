@@ -100,6 +100,19 @@ static void test_hover_keeps_the_surface_and_reuses_geometry(void) {
   g_autofree char *numbers = lambdock_stats_describe();
   g_test_message("hover sweep over %d items: %s", ITEMS, numbers);
 
+  guint64 frames_measured = lambdock_stats_get(LAMBDOCK_STAT_HOVER_FRAMES);
+  guint64 ours_us = lambdock_stats_get(LAMBDOCK_STAT_HOVER_US);
+  g_test_message("our own work per hover frame: %.1f us (%.0f%% of a 16.7 ms "
+                 "frame)",
+                 (double)ours_us / (double)MAX(frames_measured, 1),
+                 100.0 * (double)ours_us / (double)MAX(frames_measured, 1) /
+                     16666.0);
+
+  /* The dock's own arithmetic has to be a rounding error next to the frame it
+   * happens in: the row's layout and repaint are GTK's, and if our share is
+   * small then that -- not this -- is where the time goes. */
+  g_assert_cmpuint(ours_us / MAX(frames_measured, 1), <, 2000);
+
   /* Something did happen: the icons were magnified. */
   g_assert_cmpuint(lambdock_stats_get(LAMBDOCK_STAT_HOVER_FRAMES), ==, frames);
   g_assert_cmpuint(lambdock_stats_get(LAMBDOCK_STAT_LAYOUT_STEPS), >, 0);

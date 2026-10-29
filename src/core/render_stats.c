@@ -21,6 +21,8 @@ static const char *const stat_names[LAMBDOCK_STAT_COUNT] = {
     [LAMBDOCK_STAT_REFLECTION_PAINTS] = "reflection_paints",
     [LAMBDOCK_STAT_REFLECTION_DRAWS] = "reflection_draws",
     [LAMBDOCK_STAT_SURFACE_RESIZES] = "surface_resizes",
+    [LAMBDOCK_STAT_INPUT_REGION_SETS] = "input_region_sets",
+    [LAMBDOCK_STAT_HOVER_US] = "hover_us",
 };
 
 void lambdock_stats_reset(void) {

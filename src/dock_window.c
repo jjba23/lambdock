@@ -706,6 +706,11 @@ void dock_apply_hover_at(LambdockState *state, double x, double y) {
   state->hover_axis_valid = TRUE;
   state->applied_hover_axis = axis;
 
+  /* What one hover frame costs *us*, as opposed to what GTK spends laying the
+   * row out and painting it afterwards: the two are worth telling apart before
+   * optimising either. */
+  gint64 started_us = g_get_monotonic_time();
+
   if (state->centres_dirty || !state->item_centres)
     refresh_item_centres(state);
 
@@ -729,6 +734,9 @@ void dock_apply_hover_at(LambdockState *state, double x, double y) {
    * it; the tick that sizes the surface is the same one that cuts it out. */
   state->fisheye_active = TRUE;
   dock_schedule_input_region(state);
+
+  lambdock_stats_add(LAMBDOCK_STAT_HOVER_US,
+                     (guint64)(g_get_monotonic_time() - started_us));
 }
 
 /**
@@ -1643,12 +1651,18 @@ static void apply_input_region(LambdockState *state, GdkSurface *surface,
     state->input_region_height = rect->height;
   }
 
+  /* One wl_region, one request, one commit: worth counting, because it happens
+   * on the hover path and a region that changes every frame is churn. */
+  lambdock_stats_bump(LAMBDOCK_STAT_INPUT_REGION_SETS);
+
   /* Surface state in Wayland is double buffered: a new input region only
    * reaches the compositor with the surface's next commit. A dock that has
    * finished sliding, though, is drawing nothing -- so the region that would
    * let the pointer touch the strip can sit in the queue indefinitely, and the
    * strip stays dead exactly when it is the only part of the dock on screen.
-   * Asking for one frame is what commits it. */
+   * Asking for a frame is what commits it; GTK has no partial invalidation, but
+   * it does coalesce the request into the frame it is already drawing, so this
+   * costs nothing during a hover, which is the only time it repeats. */
   gtk_widget_queue_draw(state->window);
 }
 

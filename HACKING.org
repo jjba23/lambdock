@@ -1464,6 +1464,42 @@ widget. A reflection repaint costs one clipped draw per fade band, and
 =lambdock_reflection_band_count()= is pure and tested: 14 draws at the 14 px band
 the macOS Mavericks shelf uses, 16 in the worst case.
 
+** Where the time actually goes, and where it does not
+The counters say *what* happens per frame; the interesting question after that is
+how much of a frame is ours at all. =hover_us= accumulates the microseconds spent
+inside =dock_apply_hover_at()= -- the cached geometry lookup, the bell curve per
+item, the size requests -- and the budget test prints it as a per-frame figure
+and asserts it stays a rounding error:
+
+| Measurement (row of 8 items, 40-frame sweep)      | Value                |
+|---------------------------------------------------+----------------------|
+| the dock's own work per hover frame                | ~30 us (0.2 % of 16.7 ms) |
+| whole-process CPU while idle, dock visible         | 0 jiffies in 10 s    |
+| whole-process CPU while hidden                     | 0 jiffies in 6 s     |
+| whole-process CPU during a 4 s hover over 27 items | ~7 % of one core     |
+
+So the magnification's arithmetic is not what costs anything: the remaining 7 %
+is GTK measuring, allocating and painting the row, which is what magnifying a row
+of icons *is*. Adopting a coarser =FISHEYE_LAYOUT_STEP_PX= would trade that for
+visible pops in the mirrors, and it is the one lever left -- so it has not been
+pulled. What matters for a dock on a battery is the first two rows, and both are
+zero because every tick callback is one-shot and every poll timer stops while the
+dock is off screen.
+
+Two more things the audit measured on a running session (niri, 1880x1253 at 1.2x,
+27 items), because they are invisible until they are wrong:
+
+- *Nothing is clipped at the ends of the row.* Sweeping the pointer onto the
+  first and last item keeps the applied input region at least 25 px inside the
+  surface on both sides (=rect 29,73 1640x76= in a 1698 px surface), and the row's
+  neighbours keep their bottom edge (=y 146=) while the item under the pointer
+  grows: the row does not jump vertically, it only widens.
+- *The edge does not bounce.* Twelve crossings in and out of the dock in two
+  seconds produce twelve leave/enter pairs, twelve hidden timers and zero hides --
+  a real leave afterwards still hides it exactly once -- and twelve jitters along
+  the trigger strip produce exactly one reveal. That is the settle window doing
+  its job, measured rather than hoped for.
+
 ** The widget tree, and why it is shaped like this
 #+begin_example
 window (layer surface: anchored to the dock's edge, sized by the overlay)
