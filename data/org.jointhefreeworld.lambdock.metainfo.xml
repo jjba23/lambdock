@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.19.5" date="2026-10-29">
+      <description>
+        <p>Measured where a hover frame's time goes: the dock's own magnification arithmetic costs about 30 microseconds per frame (0.2% of a frame), while the process reads zero CPU when idle or hidden and about 7% of one core during an active hover sweep -- so the remaining cost is GTK laying the row out and painting it, which is what magnification is.</p>
+        <p>Edge behaviour audited with a real pointer: nothing is clipped at the ends of the row, the row widens without jumping vertically, and the screen edge does not bounce (12 rapid crossings in and out of the dock give zero hides; 12 jitters along the reveal strip give exactly one reveal).</p>
+      </description>
+    </release>
     <release version="0.19.4" date="2026-10-29">
       <description>
         <p>Auto-hide reveals again. The input region that makes the trigger strip reachable was set but never committed -- Wayland surface state is double buffered and a dock that has finished sliding draws nothing -- so the compositor kept the dock-shaped region and the strip stayed dead. It now asks for the frame that commits it.</p>

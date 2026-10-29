@@ -15,6 +15,33 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.5 (2026-10-29)
+- *Measured, not guessed: the dock's share of a hover frame.* A new =hover_us=
+  counter accumulates the time spent in the dock's own hover path, and the budget
+  test prints it per frame. On a row of eight items one hover frame costs about
+  30 us of the dock's work -- 0.2 % of a 16.7 ms frame -- and on a running
+  27-item dock the whole process reads 0 jiffies in ten seconds while idle and 0
+  while hidden, and about 7 % of one core during a four-second hover sweep. The
+  magnification's arithmetic is therefore not what costs anything; the rest is GTK
+  measuring, allocating and painting the row, which is what magnifying a row of
+  icons is, and the one lever left (a coarser =FISHEYE_LAYOUT_STEP_PX=) would buy
+  it back with visible pops in the mirrors. The test now asserts the per-frame
+  ceiling so a regression shows up as a number.
+- *Edge behaviour audited with a pointer, not by eye.* Nothing is clipped at the
+  ends of the row (the applied input region stays at least 25 px inside the
+  surface on both sides), the row widens without jumping vertically (neighbours
+  keep their bottom edge while the item under the pointer grows), and the screen
+  edge does not bounce: twelve crossings in and out of the dock in two seconds
+  give twelve leave/enter pairs and zero hides, a real leave still hides it
+  exactly once, and twelve jitters along the trigger strip give exactly one
+  reveal.
+- Input-region applications are now counted too: one every two or three hover
+  frames, not one per frame.
+
+---------
+
+*[Released]*
+
 ** v0.19.4 (2026-10-29)
 - *Auto-hide: the dock comes back.* A tucked-away dock is on screen only as the
   trigger strip, and that strip is only reachable because the whole surface is
