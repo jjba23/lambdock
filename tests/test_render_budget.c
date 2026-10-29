@@ -223,7 +223,15 @@ static void test_reflection_draw_budget(void) {
 
 int main(int argc, char *argv[]) {
   g_test_init(&argc, &argv, NULL);
-  gtk_init();
+
+  /* The counters are plain integers, but the row is built from real dock items,
+   * and those resolve icons through the display's icon theme: without a display
+   * there is no row to measure. Report the Meson "skipped" status, which is what
+   * a package build in a sandbox (no Wayland socket) relies on. */
+  if (!gtk_init_check()) {
+    g_print("Skipping render budget tests: No display server available\n");
+    return 77;
+  }
 
   g_test_add_func("/perf/hover/keeps_surface_and_caches_geometry",
                   test_hover_keeps_the_surface_and_reuses_geometry);
