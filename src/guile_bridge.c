@@ -406,6 +406,7 @@ typedef struct {
   SCM path;
   SCM view;
   SCM meter;
+  SCM clock;
   SCM unit;
   SCM max;
 } DockItemAccessors;
@@ -474,6 +475,12 @@ static void build_dynamic_item(const DockItemBuildContext *context) {
     dock_item_enable_meter(dynamic, unit, max_value);
     g_free(unit);
   }
+
+  /* Clock items draw an analogue face: the poll function still formats the
+   * reading the tooltip and the screen reader use, the hands follow the system
+   * clock. */
+  if (dynamic && scm_is_true(scm_call_1(acc->clock, context->item)))
+    dock_item_enable_clock(dynamic);
 
   LOG_C_INFO("GuileBridge",
              "Created dynamic item: %s (%s, poll interval: %u ms)",
@@ -573,6 +580,7 @@ static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
   accessors->path = scm_c_public_ref("lambdock core", "dock-item-path");
   accessors->view = scm_c_public_ref("lambdock core", "dock-item-view-mode");
   accessors->meter = scm_c_public_ref("lambdock core", "dock-item-meter?");
+  accessors->clock = scm_c_public_ref("lambdock core", "dock-item-clock?");
   accessors->unit = scm_c_public_ref("lambdock core", "dock-item-unit");
   accessors->max = scm_c_public_ref("lambdock core", "dock-item-max");
 
@@ -584,8 +592,8 @@ static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
   const SCM *procedures[] = {
       &accessors->name,      &accessors->icon,     &accessors->exec,
       &accessors->poll,      &accessors->hover_animate, &accessors->path,
-      &accessors->view,      &accessors->meter,    &accessors->unit,
-      &accessors->max,       &accessors->poll_interval,
+      &accessors->view,      &accessors->meter,    &accessors->clock,
+      &accessors->unit,      &accessors->max,      &accessors->poll_interval,
   };
 
   for (gsize i = 0; i < G_N_ELEMENTS(procedures); i++) {

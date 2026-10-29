@@ -57,6 +57,16 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
 void dock_item_enable_meter(DockItem *item, const char *unit, double max_value);
 
 /**
+ * dock_item_enable_clock:
+ * @item: A dynamic dock item.
+ *
+ * Replaces the item's icon+text with an analogue clock face. The item's poll
+ * function is still called: its string becomes the face's tooltip and accessible
+ * name, while the hands are set from the system clock on every poll.
+ */
+void dock_item_enable_clock(DockItem *item);
+
+/**
  * free_dock_item:
  * Unparents widgets, cleans child window trackers, cancels timers,
  * unprotects Scheme procedure objects, and deallocates DockItem memory.

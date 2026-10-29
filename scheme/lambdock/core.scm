@@ -28,6 +28,7 @@
                dock-item-path
                dock-item-view-mode
                dock-item-meter?
+               dock-item-clock?
                dock-item-unit
                dock-item-max
                dock-item-key

@@ -179,6 +179,7 @@ typedef struct AppWindow {
  * @stack_view: Stack view mode name ("grid" or "list").
  * @dragging: TRUE while the user drags this item (guards the drop handlers).
  * @meter: Circular gauge drawn instead of text for meter dynamic items.
+ * @clock: Analogue face drawn instead of text for clock dynamic items.
  * @meter_unit: Suffix of the gauge's reading ("%" or "°C").
  * @meter_max: Value that fills the gauge (0..100 readings use 100).
  * @icon_image: The item's icon widget, kept so an item whose icon changes with
@@ -211,6 +212,7 @@ typedef struct DockItem {
   char *stack_view; /* "grid" / "list" */
   gboolean dragging;
   GtkWidget *meter;     /* Gauge shown for meter dynamic items */
+  GtkWidget *clock;     /* Analogue face shown for clock dynamic items */
   char *meter_unit;     /* Reading suffix: "%" or "°C" */
   double meter_max;     /* Reading that fills the gauge */
   char *desktop_id;     /* Desktop entry this item resolves to (canonical id) */

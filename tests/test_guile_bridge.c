@@ -7,6 +7,7 @@
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
 #include "../src/ui/launchpad.h"
+#include "../src/ui/clock.h"
 #include "../src/ui/meter.h"
 #include <glib.h>
 #include <gtk/gtk.h>
@@ -35,7 +36,8 @@ static const char *FAKE_MODULES =
     "            dock-item-poll-fn dock-item-poll-interval\n"
     "            dock-item-hover-animate?\n"
     "            dock-item-path dock-item-view-mode\n"
-    "            dock-item-meter? dock-item-unit dock-item-max\n"
+    "            dock-item-meter? dock-item-clock? dock-item-unit\n"
+    "            dock-item-max\n"
     "            dock-layout-add! dock-layout-remove!\n"
     "            dock-layout-set-order! dock-layout-set-view!\n"
     "            get-layout-calls clear-layout-calls!\n"
@@ -88,6 +90,9 @@ static const char *FAKE_MODULES =
     "                #f 0 #t \"\" 'grid)\n"
     "        (vector 'dynamic \"Gauge\" \"\" \"gauge\"\n"
     "                (lambda () 42) 111 #f \"\" 'grid #t \"%\" 100)\n"
+    "        (vector 'dynamic \"Clock\" \"\" \"clock\"\n"
+    "                (lambda () \"Thu Oct 29 13:07\") 111 #f \"\" 'grid #f #f\n"
+    "                \"\" 100 #t)\n"
     "        (vector 'separator \"\" \"\" \"\" #f 0 #f)\n"
     "        (vector 'trash \"Trash\" \"user-trash\" \"\" #f 0 #t)))\n"
     "(define (dock-item-type v) (vector-ref v 0))\n"
@@ -106,6 +111,8 @@ static const char *FAKE_MODULES =
     "  (if (> (vector-length v) 10) (vector-ref v 10) \"\"))\n"
     "(define (dock-item-max v)\n"
     "  (if (> (vector-length v) 11) (vector-ref v 11) 100))\n"
+    "(define (dock-item-clock? v)\n"
+    "  (if (> (vector-length v) 12) (vector-ref v 12) #f))\n"
     "(define %layout-calls '())\n"
     "(define (dock-layout-add! path kind name icon arg view)\n"
     "  (set! %layout-calls\n"
@@ -276,8 +283,8 @@ static void test_populate_dock_items(void) {
   populate_dock_items_for(&state);
 
   /* The excluded "bad-app" launcher is skipped; app + dynamic + stack +
-   * launchpad + meter + separator + trash remain, in order. */
-  g_assert_cmpint(g_list_length(state.dock_items), ==, 7);
+   * launchpad + meter + clock + separator + trash remain, in order. */
+  g_assert_cmpint(g_list_length(state.dock_items), ==, 8);
 
   DockItem *app = (DockItem *)g_list_nth_data(state.dock_items, 0);
   g_assert_nonnull(app);
@@ -349,7 +356,33 @@ static void test_populate_dock_items(void) {
     g_assert_cmpint(height, ==, state.icon_size);
   }
 
-  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 5);
+  /* A clock dynamic item is an analogue face: the text form goes, the hands come
+   * from the system clock, and the item's poller keeps naming the reading for the
+   * tooltip and the screen reader. */
+  DockItem *clock = (DockItem *)g_list_nth_data(state.dock_items, 5);
+  g_assert_nonnull(clock);
+  g_assert_cmpstr(clock->name, ==, "Clock");
+  g_assert_nonnull(clock->clock);
+  g_assert_true(lambdock_clock_is_clock(clock->clock));
+  g_assert_null(clock->meter);
+  g_assert_null(clock->label);
+  g_assert_nonnull(clock->reflection);
+  g_assert_false(gtk_widget_get_visible(clock->reflection));
+  g_assert_true(gtk_widget_has_css_class(clock->button, "dynamic-clock"));
+  {
+    const char *tooltip = gtk_widget_get_tooltip_text(clock->button);
+    g_assert_nonnull(tooltip);
+    g_assert_true(strstr(tooltip, "Thu Oct 29 13:07") != NULL);
+  }
+  /* The hands are already set: the face is painted on creation, not one poll
+   * timer later. */
+  {
+    int seconds = lambdock_clock_get_time(clock->clock);
+    g_assert_cmpint(seconds, >=, 0);
+    g_assert_cmpint(seconds, <, 86400);
+  }
+
+  DockItem *sep = (DockItem *)g_list_nth_data(state.dock_items, 6);
   g_assert_nonnull(sep);
   g_assert_true(GTK_IS_SEPARATOR(sep->button));
   g_assert_true(sep->is_favorite);
@@ -366,7 +399,7 @@ static void test_populate_dock_items(void) {
     g_assert_cmpint(height, ==, state.icon_size);
   }
 
-  DockItem *trash = (DockItem *)g_list_nth_data(state.dock_items, 6);
+  DockItem *trash = (DockItem *)g_list_nth_data(state.dock_items, 7);
   g_assert_nonnull(trash);
   g_assert_cmpint(trash->kind, ==, LAMBDOCK_ITEM_TRASH);
   g_assert_cmpstr(trash->name, ==, "Trash");

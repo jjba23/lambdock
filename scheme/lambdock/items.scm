@@ -20,6 +20,7 @@
                         dock-item-path
                         dock-item-view-mode
                         dock-item-meter?
+                        dock-item-clock?
                         dock-item-unit
                         dock-item-max
                         dock-item-key
@@ -61,6 +62,10 @@
 ;; `meter?`, `unit` and `max` describe dynamic items that are drawn as a gauge
 ;; instead of as text: the poll function then returns a *number*, the gauge fills
 ;; up to `max` and the reading is shown with `unit` appended ("%" or "°C").
+;;
+;; `clock?` marks the item that is drawn as an analogue clock face. Its poll
+;; function still runs -- the string it returns is the face's tooltip and the text
+;; a screen reader announces -- while the hands follow the system clock.
 (define-record-type <dock-item>
   (make-dock-item type
                   name
@@ -72,6 +77,7 @@
                   path
                   view-mode
                   meter?
+                  clock?
                   unit
                   max)
   dock-item?
@@ -85,6 +91,7 @@
   (path %dock-item-path)
   (view-mode %dock-item-view-mode)
   (meter? %dock-item-meter?)
+  (clock? %dock-item-clock?)
   (unit %dock-item-unit)
   (max %dock-item-max))
 
@@ -119,6 +126,9 @@
 (define (dock-item-meter? item)
   (%dock-item-meter? item))
 
+(define (dock-item-clock? item)
+  (%dock-item-clock? item))
+
 (define (dock-item-unit item)
   (%dock-item-unit item))
 
@@ -146,6 +156,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   ""
                   'grid
                   #f
+                  #f
                   ""
                   100))
 
@@ -160,6 +171,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   #f
                   ""
                   'grid
+                  #f
                   #f
                   ""
                   100))
@@ -176,6 +188,7 @@ computes, so both halves of the dock agree on the identity of an item."
                        (poll-interval 2000)
                        (hover-animate? #t)
                        (meter? #f)
+                       (clock? #f)
                        (unit "")
                        (max 100))
   (make-dock-item 'dynamic
@@ -188,6 +201,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   ""
                   'grid
                   meter?
+                  clock?
                   unit
                   max))
 
@@ -211,6 +225,7 @@ computes, so both halves of the dock agree on the identity of an item."
                       view-mode
                       'grid)
                   #f
+                  #f
                   ""
                   100))
 
@@ -227,6 +242,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   hover-animate?
                   ""
                   'grid
+                  #f
                   #f
                   ""
                   100))
@@ -247,6 +263,7 @@ computes, so both halves of the dock agree on the identity of an item."
                   hover-animate?
                   ""
                   'grid
+                  #f
                   #f
                   ""
                   100))
@@ -320,12 +337,18 @@ and then red as memory runs out. `#:meter? #f' gives the old text item."
             (localtime (current-time))))
 
 (define* (clock-item #:key (hover-animate? #f))
+  "The clock: an analogue face the dock points at the system time once a second.
+
+The poll function is still what names the reading -- its string is the face's
+tooltip and what a screen reader announces -- while the hands themselves are set
+from the system clock."
   (dynamic-item #:name "Clock"
                 #:icon #f
                 #:exec "gnome-calendar"
                 #:poll-fn get-clock-text
                 #:poll-interval 1000
-                #:hover-animate? hover-animate?))
+                #:hover-animate? hover-animate?
+                #:clock? #t))
 
 ;; CPU sampling state. Poll functions run on the GTK main thread, so they must
 ;; never block. An earlier implementation slept 100ms inside this procedure to

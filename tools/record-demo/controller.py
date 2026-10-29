@@ -47,17 +47,19 @@ REF_H = 752
 
 # Dock item centres, in the coordinates above.  Measured from the reference
 # recording with tools/record-demo/measure_dock.py; the settings file this
-# recorder generates is what fixes them.
-ITEM_ALACRITTY = 251
-ITEM_CHROME = 315
-ITEM_NAUTILUS = 379
-ITEM_CALCULATOR = 443
-ITEM_SEPARATOR = 490
-ITEM_EMACS = 535
-ITEM_STACK = 600
-ITEM_SEPARATOR_2 = 650
-ITEM_RAM = 702
-ITEM_CPU = 762
+# recorder generates is what fixes them.  Re-measured for the analogue clock:
+# the clock item used to be a time string, and a face is a cell narrower, which
+# moves every item before it (the dock is centred).
+ITEM_ALACRITTY = 278
+ITEM_CHROME = 343
+ITEM_NAUTILUS = 407
+ITEM_CALCULATOR = 470
+ITEM_SEPARATOR = 517
+ITEM_EMACS = 564
+ITEM_STACK = 628
+ITEM_SEPARATOR_2 = 674
+ITEM_RAM = 720
+ITEM_CPU = 785
 DOCK_ROW = 708
 
 # Popover rows hang above the dock at fixed offsets from the bottom, so the

@@ -20,6 +20,7 @@
 #include "icon_resolver.h" // Helper to load application icons from the system theme
 #include "icon_zoom.h"     // Fisheye magnification by transform, not re-raster
 #include "launchpad.h"     // Full screen application grid
+#include "clock.h"         // Analogue faces for clock dynamic items
 #include "meter.h"         // Circular gauges for meter dynamic items
 #include "popover_menu.h" // Custom right-click and multi-window popover menus
 #include "stack.h"         // Folder stacks (Downloads-style dock icons)
@@ -852,6 +853,19 @@ static void apply_text_reading(DockItem *item, SCM value) {
   free(text); /* scm_to_utf8_string() allocates with malloc */
 }
 
+/** Points the item's clock face at the current local time. */
+static void apply_clock_time(DockItem *item) {
+  GDateTime *now = g_date_time_new_now_local();
+  if (!now)
+    return;
+
+  int seconds = g_date_time_get_hour(now) * 3600 +
+                g_date_time_get_minute(now) * 60 + g_date_time_get_second(now);
+  g_date_time_unref(now);
+
+  lambdock_clock_set_time(item->clock, seconds);
+}
+
 /** Polls the item once and applies whatever the poller returned. */
 static void refresh_dynamic_item(DockItem *item) {
   /* An item whose Scheme side gave it no procedure has nothing to poll. Calling
@@ -861,6 +875,11 @@ static void refresh_dynamic_item(DockItem *item) {
     return;
 
   SCM value = poll_dynamic_value(item);
+
+  /* A clock's hands come from the system clock, not from the Scheme value: the
+   * poller only formats the reading the tooltip and the screen reader announce. */
+  if (item->clock)
+    apply_clock_time(item);
 
   if (!apply_meter_reading(item, value))
     apply_text_reading(item, value);
@@ -1279,6 +1298,36 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
 }
 
 /**
+ * replace_dynamic_content:
+ * Replaces a dynamic item's text form (its icon and label) with one widget that
+ * carries the reading itself: a gauge, a clock face.
+ *
+ * The label goes with it -- it would otherwise keep a stale reading next to the
+ * widget -- and the reflection slot stays, cleared of artwork: the band that slot
+ * reserves is what holds the row at one height.
+ *
+ * Returns: TRUE when the content was replaced.
+ */
+static gboolean replace_dynamic_content(DockItem *item, GtkWidget *widget) {
+  if (!item || !item->button || !widget)
+    return FALSE;
+
+  GtkWidget *content = gtk_button_get_child(GTK_BUTTON(item->button));
+  if (!content || !GTK_IS_BOX(content))
+    return FALSE;
+
+  item->label = NULL;
+  GtkWidget *child;
+  while ((child = gtk_widget_get_first_child(content)) != NULL)
+    gtk_box_remove(GTK_BOX(content), child);
+
+  shelf_reflection_clear_source(item->reflection);
+  gtk_box_append(GTK_BOX(content), widget);
+
+  return TRUE;
+}
+
+/**
  * dock_item_enable_meter:
  * Turns a dynamic item into a gauge: one widget that is both the "icon" and the
  * reading, instead of an icon next to a changing string.
@@ -1292,26 +1341,14 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
   if (!item || !item->button)
     return;
 
-  GtkWidget *content = gtk_button_get_child(GTK_BUTTON(item->button));
-  if (!content || !GTK_IS_BOX(content))
-    return;
-
-  /* Drop the text form: the label would otherwise keep a stale reading next to
-   * the gauge (and pointer to a widget that is about to be destroyed). */
-  item->label = NULL;
-  GtkWidget *child;
-  while ((child = gtk_widget_get_first_child(content)) != NULL)
-    gtk_box_remove(GTK_BOX(content), child);
-
-  /* The gauge mirrors nothing, but it keeps its reflection slot: the band the
-   * slot reserves is what holds the row at one height, and an empty slot draws
-   * nothing. Removing it dropped the gauges a band below the icons on a shelf
-   * theme. */
-  shelf_reflection_clear_source(item->reflection);
-
   GtkWidget *meter = lambdock_meter_new();
   lambdock_meter_set_icon_size(meter, dock_item_icon_size(item->state));
-  gtk_box_append(GTK_BOX(content), meter);
+
+  if (!replace_dynamic_content(item, meter)) {
+    g_object_ref_sink(meter);
+    g_object_unref(meter);
+    return;
+  }
 
   item->meter = meter;
   g_free(item->meter_unit);
@@ -1323,6 +1360,38 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
   /* Paint the first reading now instead of after the first interval. This is the
    * explicit read, not the timer callback, so it is not skipped when the dock is
    * still unmapped (startup, tests). */
+  refresh_dynamic_item(item);
+}
+
+/**
+ * dock_item_enable_clock:
+ * Turns a dynamic item into an analogue clock face.
+ *
+ * The text form goes the same way as a meter's: a face in an icon slot reads as
+ * part of the row, where a string of digits pushed everything after it out of
+ * line. The item keeps its Scheme poller -- its reading is the face's tooltip and
+ * accessible name ("Thu Oct 29 13:07") -- and the hands are set from the system
+ * clock on every poll.
+ */
+void dock_item_enable_clock(DockItem *item) {
+  if (!item || !item->button || item->clock)
+    return;
+
+  GtkWidget *clock = lambdock_clock_new();
+  lambdock_clock_set_icon_size(clock, dock_item_icon_size(item->state));
+
+  if (!replace_dynamic_content(item, clock)) {
+    g_object_ref_sink(clock);
+    g_object_unref(clock);
+    return;
+  }
+
+  item->clock = clock;
+  gtk_widget_add_css_class(item->button, "dynamic-clock");
+
+  /* Point the hands now instead of after the first interval, so a dock that is
+   * unmapped at startup (tests, or a dock on another workspace) still shows the
+   * right time when it appears. */
   refresh_dynamic_item(item);
 }
 

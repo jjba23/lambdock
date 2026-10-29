@@ -9,7 +9,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '0.18.2',
+  version: '0.19.0',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -260,6 +260,8 @@ sources = files(
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/meter.c',
+  'src/ui/clock.c',
+  'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
@@ -316,6 +318,8 @@ full_app_sources = files(
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/meter.c',
+  'src/ui/clock.c',
+  'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
@@ -416,6 +420,13 @@ unit_tests = [
   {
     'id': 'dock_dnd',
     'extra_sources': full_test_sources,
+  },
+  {
+    # Clock face geometry: hand positions and the squircle, as arithmetic. No
+    # GTK here either -- the widget only paints what this returns.
+    'id': 'clock_face',
+    'extra_sources': ['src/core/clock_face.c'],
+    'deps': [dependency('glib-2.0'), libm_dep],
   },
   {
     'id': 'meter',

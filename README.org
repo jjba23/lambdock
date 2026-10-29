@@ -87,8 +87,8 @@ a rebuild without ever restarting the process or dropping a frame.
   exceeds available display dimensions.
 - *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
   Scheme thunks you can replace with your own pollers. The meters are drawn as
-  icon-sized gauges that fill up and change colour, not as text; see
-  [[#dynamic-widgets][Dynamic widgets]].
+  icon-sized gauges that fill up and change colour, and the clock as an analogue
+  face -- not as text; see [[#dynamic-widgets][Dynamic widgets]].
 - *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
   as an icon grid or a list; see [[#stacks][Stacks]].
 - *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
@@ -1185,19 +1185,24 @@ presets.
 :CUSTOM_ID: dynamic-widgets
 :END:
 
-Dynamic items poll a Scheme thunk on the GTK main thread. They come in two
+Dynamic items poll a Scheme thunk on the GTK main thread. They come in three
 shapes, and the built-in presets pick the interesting one for you:
 
-- *text items* print the string the thunk returns (the clock, the battery);
+- *text items* print the string the thunk returns (the battery);
 - *gauges* draw the number the thunk returns as a ring that fills up inside the
   icon slot -- the CPU, RAM and temperature presets -- with the colour going
   green → amber → red as the value climbs, and the reading written in the middle
   ("42%", "54°C"). At a glance across the room a ring size is far easier to read
-  than a string, and the dock stays a row of icons instead of a row of text.
+  than a string, and the dock stays a row of icons instead of a row of text;
+- *the clock* draws an analogue face: a squircle body with a brushed bezel, a
+  paper dial, tick marks and three hands, all drawn from geometry so it stays
+  crisp at any ~dock-icon-size~. The hands follow the system clock and are set on
+  every poll, while the string the thunk returns stays the item's tooltip and the
+  text a screen reader announces.
 
 | Preset             | Polls                                    | Default interval | Shape    |
 |--------------------+------------------------------------------+------------------+----------|
-| ~'clock~           | ~get-clock-text~ (day, date, time)       | 1 s              | text     |
+| ~'clock~           | ~get-clock-text~ (day, date, time)       | 1 s              | face     |
 | ~'ram~             | ~get-used-ram-value~ (from /proc)        | 2 s              | gauge    |
 | ~'cpu~             | ~get-cpu-value~ (delta between polls)    | 2 s              | gauge    |
 | ~'cpu-temp~        | ~get-cpu-temp-value~ (thermal zone)      | 3 s              | gauge    |
