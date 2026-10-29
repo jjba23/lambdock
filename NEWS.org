@@ -15,6 +15,53 @@ Nothing yet.
 
 *[Released]*
 
+** v0.19.4 (2026-10-29)
+- *Auto-hide: the dock comes back.* A tucked-away dock is on screen only as the
+  trigger strip, and that strip is only reachable because the whole surface is
+  given back its input region while the dock is away. That region was being set
+  but never *committed*: Wayland surface state is double buffered, and a dock
+  that has finished sliding draws nothing, so the new region sat in the queue
+  while the compositor kept the old, dock-shaped one. Intersected with the four
+  pixels that are still on screen, that is nothing at all -- the strip was dead.
+  It worked intermittently, whenever something else happened to draw a frame, or
+  whenever the slide committed one after the region was set. One
+  =gtk_widget_queue_draw()= after applying the region is the fix, and three
+  hide/reveal cycles in a row now behave identically.
+- *Auto-hide: a pointer that never moved still has to be able to reveal.* A
+  pointer that rests on the strip while the surface slides away under it never
+  crosses back into the dock: the compositor keeps sending it motion, not a
+  crossing. Waiting for an enter stranded the dock off screen for as long as the
+  pointer stayed at the screen edge -- which is where a pointer that just used
+  the dock tends to be. Motion inside the surface while the dock is away now
+  means the same thing an enter does.
+- *Auto-hide: a reveal can no longer lose a race with the hide it is
+  cancelling.* A reveal that arrives while a hide has been requested but has not
+  had its first frame yet used to be dropped ("already at margin 0"), and the
+  hide went on: the dock ended up off screen while believing it was visible,
+  where nothing could bring it back. A slide in flight toward a different target
+  is now turned around instead of ignored.
+- *Auto-hide: a leave only counts as an echo while the dock is actually
+  moving.* It also used to require that the pointer had moved since it entered,
+  which threw away genuine leaves -- touch the edge to reveal the dock, then move
+  away without moving *over* it, and the dock stayed out. The settle window
+  alone is what tells an echo apart, and it is what is used now.
+- *Auto-hide: the trigger strip is 4 px instead of 2.* Two pixels is one pixel
+  at 2x scale and less at the dock's usual 1.2x, and a pointer that stops a hair
+  short gets nothing. It is the top of the shelf's magnification headroom, so it
+  still shows nothing, and half a text line is all it costs.
+- =LAMBDOCK_DEBUG=1= now traces the whole auto-hide sequence -- crossings, the
+  hide margin that was computed, the input region that was applied, and every
+  slide -- with timestamps. The interesting failures happen on somebody else's
+  compositor, and "it hides but does not reveal" is a report about a sequence,
+  not about a value.
+- The dock's row is measured to magnify *monotonically* now: a straight sweep of
+  the pointer over the row may grow an icon and shrink it, and not oscillate,
+  which is the difference between magnification and a wobble (new /perf/ test).
+
+---------
+
+*[Released]*
+
 ** v0.19.3 (2026-10-29)
 - Packaging fix: the render-budget test now reports Meson's "skipped" status when
   there is no display server instead of aborting inside =gtk_init()=. It builds

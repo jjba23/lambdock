@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.19.4" date="2026-10-29">
+      <description>
+        <p>Auto-hide reveals again. The input region that makes the trigger strip reachable was set but never committed -- Wayland surface state is double buffered and a dock that has finished sliding draws nothing -- so the compositor kept the dock-shaped region and the strip stayed dead. It now asks for the frame that commits it.</p>
+        <p>A pointer that rests on the strip while the dock slides away under it never crosses back into it, so motion on the strip now reveals the dock, not only a crossing. A reveal that arrives while a hide is starting is turned around instead of dropped, and a leave is only ignored while the dock is actually moving. The strip itself is 4 px instead of 2, and LAMBDOCK_DEBUG=1 traces the whole sequence with timestamps.</p>
+      </description>
+    </release>
     <release version="0.19.3" date="2026-10-29">
       <description>
         <p>Packaging fix: the render-budget test skips itself when there is no display server instead of aborting inside gtk_init, so a sandboxed package build's check phase passes. Nothing changed in the dock itself.</p>
