@@ -15,6 +15,109 @@ Nothing yet.
 
 *[Released]*
 
+** v0.20.0 (2026-10-31)
+- *The launchpad lost its title, and its close button can move.* The overlay no
+  longer writes "Applications" across the top: the grid of everything installed
+  is the screen, and the search field says what it searches, so the header is now
+  one close button. That button sits on the *left* by default -- where a
+  window's own controls are -- and a new setting, ~dock-launchpad-close-side~
+  (~'left~ or ~'right~), moves it to the other end. It is in the launchpad
+  options table, in the options reference, in the Preferences window and in
+  ~(configure-dock! #:launchpad-close-side 'right)~, and the layout is
+  re-applied on every show, so the window does not have to be recreated to move
+  it.
+- *Add a widget to the dock from the Preferences window.* A new *Dock items*
+  card offers one row: pick Trash, Clock, RAM usage, CPU usage, CPU temperature
+  or Battery, press *Add*, and the item appears on the dock. It is stored as a
+  ~"preset"~ entry in the dock's layout override -- the same file drag and drop
+  writes -- so it survives a restart, can be dragged along the dock, and a
+  right-click removes it like any other item; adding the same widget twice keeps
+  one of it. The Scheme side picked this up as a general mechanism: a layout
+  descriptor of kind ~"preset"~ replays ~(preset-launcher 'NAME)~, and its key is
+  the key of the item it builds, which is what makes reordering and removal work
+  unchanged. The trash can also joined the preset zoo, so ~'trash~ can be used
+  like ~'ram~ or ~'clock~ in a settings file.
+- *Every theme, state by state.* A theme can style more than the capsule: the
+  hover and pressed states, the running indicator (~running-app~), the *focused*
+  window (~window-focused~), the minimized dimming (~window-minimized~) and the
+  running window's title (~window-title-label~). That set was audited across all
+  nineteen themes and filled in where it was missing: Windows 10 now draws the
+  long accent underline for the focused window and Windows 11 the wide pill (both
+  had a single running indicator before), and the nine themes that never coloured
+  the window-title label now do -- which is what made titles invisible on the
+  light slabs. Two fidelity fixes came out of the same pass: the light macOS
+  docks (Tiger, Snow Leopard, Mavericks) get a **dark** running dot and dark
+  labels, because a white glow vanishes into pale glass, while their dark
+  siblings, Big Sur, Ventura and Tahoe keep the white one; and the dot the glass
+  shelf paints itself (C side) now sits on a soft shadow, so the white bead also
+  reads on the platinum and Aqua slabs without changing how it looks on dark
+  glass. The five stock themes (vanilla, vanilla-light, solarized-light, nature,
+  unity) widen and brighten their glow pill for the focused window, so every look
+  says which app you are in.
+- *Scoping no longer loses a selector.* =theme_scope_css_selectors()= walks CSS
+  line by line, and a selector list written across two lines
+  (=button.window-focused,= / =:hover {=) had its first selector passed through
+  *unscoped* -- so it applied to every dock and to the rest of the application.
+  That is how one theme's indicator ended up painted under another theme's icons,
+  and it was latent in =shelf.css= and =windows-xp.css= before this release. The
+  scoper now accumulates the selector text until the block opens, and three unit
+  tests cover multi-line lists (including one that starts with =window=).
+- *A look carries the manners, not just the numbers.* The recipes now set
+  ~hover-animate?~ too: the OS X docks magnify the icons under the pointer and
+  every look descended from them turns the fisheye on, while the five Windows
+  taskbars and the plain taskbar lay it off, because no Windows taskbar ever
+  magnified anything. ~(apply-look! 'windows-11)~ therefore turns the fisheye off
+  and ~(apply-look! 'osx-tahoe)~ turns it back on.
+- *Looks: a whole dock in one line.* A theme gives the dock its material, but a
+  dock is also a set of numbers -- icon size, spacing, end padding, dock or
+  taskbar, and the eight glass-shelf parameters. Those numbers belong together,
+  and they now do: =scheme/lambdock/looks.scm= ships twenty complete recipes,
+  one per shipped theme, from Tiger's flat Aqua strip and Snow Leopard's 3D
+  shelf to Mavericks (light and dark), Tahoe's Liquid Glass and the five Windows
+  taskbars (XP, Vista, 7, 10, 11). A settings file says
+  ~(define dock-look 'osx-mavericks-dark)~ and gets the dock of that desktop;
+  anything it defines itself still wins over the
+  recipe, and so do the choices made in the Preferences window. Short names and
+  theme names are aliases (~'mavericks~, ~'tahoe-dark~, ~'xp~, ~'aero~,
+  ~'seven~, ~'taskbar~), an unknown name is a warning instead of a broken
+  config, and ~(apply-look! 'osx-snow-leopard)~ applies one to the running dock.
+  Every
+  recipe writes *all* of its numbers, including the ones that happen to be the
+  defaults, so cycling through the looks never inherits a geometry from the look
+  before it. Each recipe is unit tested for completeness and range, and so is the
+  loader's "the file wins over the recipe" order.
+- *Five Windows themes, one consistent family.* Windows Vista (~'windows-vista~,
+  Aero glass: a near-black bar that is almost transparent at the top under one
+  very bright specular line, glass task buttons that stay invisible until hover
+  or a running window, and a lit -- rather than depressed -- focused tile) and
+  Windows 7 (~'windows-7~, the Aero superbar: taller, bluer, darker, a thinner
+  specular line, and buttons with square shoulders and rounded feet) join XP, 10
+  and 11 in the bundle, the Preferences dropdown and the look recipes. The five
+  Windows looks now share everything that can be shared -- all ~'taskbar~, all
+  32px icons, all flat (no shelf geometry) -- and differ only where the era did:
+  window titles are on for XP and Vista and off for 7, 10 and 11, and the gaps
+  run from XP's edge-to-edge Luna buttons (~0~ spacing, ~4~ of end padding) to
+  Windows 11's airy rounded tile (~8~, ~12~). A test asserts the whole family
+  stays that way.
+- *Three more themes, and a shelf for the two that missed it.* macOS Tiger
+  (~'macos-tiger~) is the dock before the 3D shelf: a flat, pale Aqua strip the
+  icons sit *inside*, with a bright bevel along the icons' edge and a cool grey
+  lip on the screen side. macOS Tahoe (~'macos-tahoe~, ~'macos-tahoe-dark~) is
+  the 26 *Liquid Glass* pill -- rounder and thinner than Ventura, one bright rim,
+  no mirrors. Snow Leopard's themes (~'snow-leopard~, ~'snow-leopard-dark~) can
+  now wear the 3D shelf properly: they carry the slab material the generic
+  =shelf.css= used to impose on them, in pale glass and in smoked glass. All
+  three new themes are in the Preferences dropdown, in the GResource bundle and
+  documented with their numbers.
+- *The README documents the recipes.* A new [[#looks][Looks]] section tabulates
+  every recipe (theme, icons, spacing, end padding, overhang, front glass,
+  keystone and mirror band) and explains what those numbers buy, with the
+  measurements the OS X ones came from.
+
+---------
+
+*[Released]*
+
 ** v0.19.5 (2026-10-29)
 - *Measured, not guessed: the dock's share of a hover frame.* A new =hover_us=
   counter accumulates the time spent in the dock's own hover path, and the budget

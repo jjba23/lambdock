@@ -77,6 +77,14 @@
   </screenshots>
 
   <releases>
+    <release version="0.20.0" date="2026-10-31">
+      <description>
+        <p>Two theme families, and whole-dock recipes. macOS Tiger (the flat Aqua strip the icons sit inside) and macOS Tahoe (the 26 Liquid Glass pill, light and dark) join the built-in themes, Snow Leopard's dock now carries its own 3D shelf material, and Windows Vista (Aero Glass) and Windows 7 (the Aero superbar) complete the Windows family, which is now consistent: all five are taskbars, all draw 32px icons, and they differ only where their era did.</p>
+        <p>Twenty look recipes set a whole dock in one line -- "(define dock-look 'osx-mavericks-dark)" brings the theme, the icon size and spacing, the end padding, the dock/taskbar mode, the window titles and every glass-shelf number, plus the fisheye, because the OS X docks magnify and no Windows taskbar did. Anything you define yourself still wins, and "(apply-look! 'osx-tahoe)" restyles a running dock. Every recipe is unit tested for completeness.</p>
+        <p>Polish across all nineteen themes: the focused window now has its own indicator everywhere (the long Windows underline, the wide Windows 11 pill, a brighter glow on the stock themes), every theme colours its window titles, the light macOS docks get dark labels and dark running dots so nothing vanishes into pale glass, and theme scoping no longer loses a selector written across two lines -- which is what used to let one theme's indicator paint under another's icons.</p>
+        <p>The launchpad loses its "Applications" title -- the grid of what is installed is the screen -- and its close button sits on the left by default, with a new dock-launchpad-close-side setting (and Preferences row) to move it to the right. The Preferences window gains a "Dock items" card that appends a trash can, a clock, or a RAM, CPU, temperature or battery meter to the dock, stored with the drag-and-drop layout so it survives a restart.</p>
+      </description>
+    </release>
     <release version="0.19.5" date="2026-10-29">
       <description>
         <p>Measured where a hover frame's time goes: the dock's own magnification arithmetic costs about 30 microseconds per frame (0.2% of a frame), while the process reads zero CPU when idle or hidden and about 7% of one core during an active hover sweep -- so the remaining cost is GTK laying the row out and painting it, which is what magnification is.</p>
