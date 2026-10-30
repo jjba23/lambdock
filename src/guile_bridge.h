@@ -227,6 +227,71 @@ void set_dock_setting_double(const char *key, const char *config_path,
 void set_dock_setting_symbol(const char *key, const char *config_path,
                              const char *value);
 
+/* =========================================================================
+ * ITEM POLLERS (the Scheme side of a dynamic item)
+ * =========================================================================
+ * A dynamic item's reading comes from a Scheme procedure. The item stores it as
+ * an opaque handle and asks this bridge what it says, so no SCM value and no
+ * scm_* call lives outside this module. The handle must be installed with
+ * lambdock_poll_fn_protect() (which keeps the procedure alive across GC) and
+ * released with lambdock_poll_fn_release() when the item goes away.
+ */
+
+/**
+ * LambdockReading:
+ * @kind: what the poller returned this time.
+ * @number: the value when @kind is LAMBDOCK_READING_NUMBER.
+ * @text: (nullable): owned text when @kind is LAMBDOCK_READING_TEXT.
+ *
+ * One poll's answer, as plain C.
+ */
+typedef enum {
+  LAMBDOCK_READING_NONE = 0,
+  LAMBDOCK_READING_NUMBER,
+  LAMBDOCK_READING_TEXT,
+} LambdockReadingKind;
+
+typedef struct {
+  LambdockReadingKind kind;
+  double number;
+  char *text;
+} LambdockReading;
+
+/**
+ * lambdock_poll_fn_protect:
+ * @procedure: the Scheme procedure the loader produced, as the bridge sees it.
+ *
+ * Returns: (nullable): a handle to keep, or NULL when @procedure is not a
+ * procedure. A handle is protected from the GC until it is released.
+ */
+void *lambdock_poll_fn_protect(void *procedure);
+
+/**
+ * lambdock_poll_fn_is_callable:
+ * Returns: TRUE when @handle still names a callable procedure.
+ */
+gboolean lambdock_poll_fn_is_callable(void *poll_fn);
+
+/**
+ * lambdock_poll_fn_call:
+ * @poll_fn: a handle from lambdock_poll_fn_protect().
+ * @out: (out): the reading.
+ *
+ * Calls the procedure once, turning a Scheme error into LAMBDOCK_READING_NONE
+ * (a missing reading, not a dead daemon).
+ *
+ * Returns: TRUE when @out holds a reading; the caller owns @out->text.
+ */
+gboolean lambdock_poll_fn_call(void *poll_fn, LambdockReading *out);
+
+/**
+ * lambdock_poll_fn_release:
+ * @poll_fn: (nullable): a handle from lambdock_poll_fn_protect().
+ *
+ * Drops the GC protection. Safe on NULL.
+ */
+void lambdock_poll_fn_release(void *poll_fn);
+
 /**
  * reset_dock_preferences:
  * Forgets every GUI override of @config_path. The caller is responsible for

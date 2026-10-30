@@ -46,14 +46,48 @@ G_DEFINE_FINAL_TYPE(LambdockMeter, lambdock_meter, GTK_TYPE_WIDGET)
  * ============================================================================
  */
 
-/* Tone for a fraction: green while there is room, amber when it gets tight, red
- * when it is nearly full. */
-static GdkRGBA tone_for_fraction(double fraction) {
+GdkRGBA lambdock_meter_tone_for_fraction(double fraction) {
+  /* NaN compares false against everything, so it lands on red: a reading the
+   * dock cannot understand should not look comfortable. */
   if (fraction < 0.60)
     return (GdkRGBA){0.22f, 0.76f, 0.36f, 1.0f};
   if (fraction < 0.85)
     return (GdkRGBA){0.97f, 0.68f, 0.20f, 1.0f};
   return (GdkRGBA){0.90f, 0.26f, 0.26f, 1.0f};
+}
+
+LambdockMeterGeometry lambdock_meter_geometry_compute(int width, int height) {
+  LambdockMeterGeometry geometry = {0};
+
+  if (width <= 0 || height <= 0)
+    return geometry;
+
+  double size = MIN(width, height);
+
+  geometry.tile_radius = (float)(size * 0.22);
+  geometry.center_x = (float)(width / 2.0);
+  geometry.center_y = (float)(height / 2.0);
+
+  /* The gauge wears a tile of its own: a bare ring would be drawn half over the
+   * glass and half over whatever is behind the dock (a dock whose icons overhang
+   * its slab puts the icon row above the glass centre), and a reading that
+   * changes colour has to stay legible on both. */
+  double padding = size * 0.04;
+  geometry.tile = GRAPHENE_RECT_INIT(
+      (float)padding, (float)padding, (float)(size - 2 * padding),
+      (float)(size - 2 * padding));
+
+  /* Thick enough to read at a glance, thin enough to leave room for the number
+   * in the middle. */
+  geometry.line_width = (float)MAX(2.0, size * 0.10);
+  geometry.radius =
+      (float)((size - geometry.line_width) / 2.0 - size * 0.16);
+
+  /* The reading has to fit inside the ring: the snapshot function starts at a
+   * comfortable size and shrinks until it fits into this box. */
+  geometry.text_box = (float)(size * 0.66);
+
+  return geometry;
 }
 
 /* Builds an arc from the top of the circle, clockwise, covering @fraction of a
@@ -117,25 +151,16 @@ static void lambdock_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
 
   int width = gtk_widget_get_width(widget);
   int height = gtk_widget_get_height(widget);
+  LambdockMeterGeometry geometry =
+      lambdock_meter_geometry_compute(width, height);
   if (width <= 0 || height <= 0)
     return;
 
   double size = MIN(width, height);
-  double center_x = width / 2.0;
-  double center_y = height / 2.0;
 
-  /* The gauge wears a tile of its own. A bare ring would be drawn half over the
-   * glass and half over whatever is behind the dock -- a dock whose icons
-   * overhang its slab, as the OS X one does, puts the icon row above the glass
-   * centre -- and a reading that changes colour has to stay legible on both. A
-   * dark rounded tile, like a tiny app icon, solves that and keeps the dock a row
-   * of icons. */
-  double padding = size * 0.04;
-  graphene_rect_t tile = GRAPHENE_RECT_INIT(
-      (float)padding, (float)padding, (float)(size - 2 * padding),
-      (float)(size - 2 * padding));
   GskRoundedRect tile_outline;
-  gsk_rounded_rect_init_from_rect(&tile_outline, &tile, (float)(size * 0.22));
+  gsk_rounded_rect_init_from_rect(&tile_outline, &geometry.tile,
+                                  geometry.tile_radius);
 
   gtk_snapshot_push_rounded_clip(snapshot, &tile_outline);
   {
@@ -143,10 +168,13 @@ static void lambdock_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
         {0.0f, {0.24f, 0.26f, 0.31f, 0.94f}},
         {1.0f, {0.10f, 0.11f, 0.14f, 0.96f}},
     };
-    graphene_point_t start = GRAPHENE_POINT_INIT(tile.origin.x, tile.origin.y);
-    graphene_point_t end = GRAPHENE_POINT_INIT(
-        tile.origin.x + tile.size.width, tile.origin.y + tile.size.height);
-    gtk_snapshot_append_linear_gradient(snapshot, &tile, &start, &end, stops, 2);
+    graphene_point_t start =
+        GRAPHENE_POINT_INIT(geometry.tile.origin.x, geometry.tile.origin.y);
+    graphene_point_t end =
+        GRAPHENE_POINT_INIT(geometry.tile.origin.x + geometry.tile.size.width,
+                            geometry.tile.origin.y + geometry.tile.size.height);
+    gtk_snapshot_append_linear_gradient(snapshot, &geometry.tile, &start, &end,
+                                        stops, 2);
   }
   gtk_snapshot_pop(snapshot);
 
@@ -157,30 +185,26 @@ static void lambdock_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
     gtk_snapshot_append_border(snapshot, &tile_outline, widths, edges);
   }
 
-  /* The ring is thick enough to read at a glance, thin enough to leave room for
-   * the number in the middle. */
-  double line_width = MAX(2.0, size * 0.10);
-  double radius = (size - line_width) / 2.0 - size * 0.16;
-
   /* The tile is dark, so the track and the reading are drawn in light ink,
    * whatever theme the dock wears. */
   GdkRGBA foreground = {0.93f, 0.95f, 0.98f, 1.0f};
 
-  GskStroke *stroke = gsk_stroke_new((float)line_width);
+  GskStroke *stroke = gsk_stroke_new(geometry.line_width);
   gsk_stroke_set_line_cap(stroke, GSK_LINE_CAP_ROUND);
   gsk_stroke_set_line_join(stroke, GSK_LINE_JOIN_ROUND);
 
   /* The empty track first, so the filled arc sits on top of it. */
-  GskPath *track = ring_path(center_x, center_y, radius);
+  GskPath *track =
+      ring_path(geometry.center_x, geometry.center_y, geometry.radius);
   GdkRGBA track_color = foreground;
   track_color.alpha = 0.18f;
   gtk_snapshot_append_stroke(snapshot, track, stroke, &track_color);
   gsk_path_unref(track);
 
   if (self->fraction > 0.0) {
-    GskPath *arc =
-        arc_path(center_x, center_y, radius, CLAMP(self->fraction, 0.0, 1.0));
-    GdkRGBA tone = tone_for_fraction(self->fraction);
+    GskPath *arc = arc_path(geometry.center_x, geometry.center_y,
+                            geometry.radius, CLAMP(self->fraction, 0.0, 1.0));
+    GdkRGBA tone = lambdock_meter_tone_for_fraction(self->fraction);
     gtk_snapshot_append_stroke(snapshot, arc, stroke, &tone);
     gsk_path_unref(arc);
   }
@@ -193,7 +217,7 @@ static void lambdock_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   /* The reading has to fit inside the ring, whatever it says ("42%", "54°C"):
    * start at a comfortable size and shrink until it does. Two or three passes
    * are enough; a floor keeps it from vanishing on tiny icons. */
-  double available = size * 0.66;
+  double available = geometry.text_box;
   int font_size = (int)(size * 0.40);
 
   PangoLayout *layout = gtk_widget_create_pango_layout(widget, self->text);
@@ -224,9 +248,9 @@ static void lambdock_meter_snapshot(GtkWidget *widget, GtkSnapshot *snapshot) {
   if (attributes)
     pango_attr_list_unref(attributes);
 
-  graphene_point_t origin =
-      GRAPHENE_POINT_INIT((float)(center_x - text_width / 2.0),
-                          (float)(center_y - text_height / 2.0));
+  graphene_point_t origin = GRAPHENE_POINT_INIT(
+      (float)(geometry.center_x - text_width / 2.0),
+      (float)(geometry.center_y - text_height / 2.0));
   gtk_snapshot_save(snapshot);
   gtk_snapshot_translate(snapshot, &origin);
   gtk_snapshot_append_layout(snapshot, layout, &foreground);

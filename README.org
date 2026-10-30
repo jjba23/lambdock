@@ -374,12 +374,26 @@ has more than one, ~lambdock~ opens a floating GTK popover built from what the
 compositor told it:
 
 - a *header* with the application's name, then a separator;
-- *one row per open window*, with the window title as a button (ellipsized at 30
-  characters) to focus that instance, and a close button next to it;
+- *one row per open window*, with a dot marking the window that holds the focus,
+  the window title as a button (ellipsized at 30 characters) to focus that
+  instance, and a close button next to it.  A window the compositor reported as
+  minimized is dimmed, and the close button stays quiet until the row is under
+  the pointer or the keyboard is on it, so a list of titles does not look like a
+  list of crosses;
 - *New Instance*, to start another instance of the application, when the item has
   an exec command;
 - *Close All Windows*, shown only when more than one window is open;
 - *Launch Application*, when an app is in the dock but nothing is running yet.
+
+Every entry carries a symbolic icon -- a window for a new instance, an eye with
+a slash for a private window, a play triangle or a skip arrow for the playback
+controls, a bin for a removal -- so a menu of five kinds of entry can be
+scanned.  The icon-only buttons are named after what they act on, so a screen
+reader says "Close window, editor — main.c" rather than just "button".  The menu
+is a keyboard object in its own right: it opens with the
+focus on its first row, *Up*/*Down* walk the rows, *Home*/*End* jump to the ends,
+and *Escape* closes it.  Right-clicking the dock icon and clicking its menu are
+the same menu.
 
 The protocol behind that list is described in
 [[#toplevel-tracking][Wayland Toplevel Tracking & Popovers]].
@@ -467,14 +481,34 @@ contents instead of a generic type icon.  Thumbnails are decoded in the
 background, one at a time, so opening a folder of large photos does not stall
 the dock; closing the popover stops the remaining work.
 
-The header carries the folder name, how many items are inside and a button to
-open the folder in your file manager.  Clicking any entry opens it and dismisses
-the popover, so the file manager or application is not left underneath the
-panel.  Right-clicking the stack switches the view mode (the choice is remembered
-per stack) or opens the folder.  Changing it from a config file is the same
-thing: ~(stack-item #:view-mode 'list ...)~.
+*** The panel is a small file browser
 
-Empty folders are not an error: the popover says "This folder is empty".
+The header carries where you are, how much is there, and three controls:
+
+- *Back* (only while you are inside a subfolder): walks up one folder *inside the
+  panel*;
+- the *view toggle*: flips between the grid and the list, and remembers the
+  choice for that stack (the same setting as ~(stack-item #:view-mode ...)~);
+- *Open folder*: hands the folder you are looking at to your file manager.
+
+The title is a breadcrumb -- "Downloads", then "Downloads / Shots / 2024" -- and
+the count turns into "300+ items" plus a line saying that only the first entries
+are shown when a folder is bigger than the panel is willing to list.
+
+*Clicking a folder walks into it; clicking a file opens it and dismisses the
+panel.*  It used to be that every entry went to the desktop, which made the
+panel a printout of one folder rather than a way to look around: the file
+manager is now one button away, and browsing does not leave it open underneath.
+
+Empty folders are not an error: the panel says "This folder is empty".
+
+Right-clicking the stack on the dock still switches the view mode or opens the
+folder, for when the panel is not open.
+
+The keyboard works without the mouse: *Down* from the searchless panel lands on
+the first entry, the arrows move by tile (a whole row at a time in the grid
+view), *Home*/*End* jump to the ends, *Enter* opens, and *Escape* closes the
+panel (the back button is one *Tab* away from the entries).
 
 ** The launchpad 🚀
 :PROPERTIES:

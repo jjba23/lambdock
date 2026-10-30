@@ -8,7 +8,8 @@
 
 #include <gtk/gtk.h>
 #include <gtk4-layer-shell.h>
-#include <libguile.h>
+
+#include "core/shelf_params.h"
 #include <math.h>
 
 /* =========================================================================
@@ -59,30 +60,14 @@
 
 #define FISHEYE_LAYOUT_STEP_PX 2
 
-/* --- Glass shelf / reflection parameters (see LambdockShelfParams) --- */
+/* --- Glass shelf / reflection parameters --- */
+/* The values live in core/shelf_params.h, which the pure core headers can
+ * include without dragging the whole application in. */
 /* Number of alpha-faded bands used to draw the reflection falloff. Each band is
  * a clipped copy of the same icon, drawn inside one blur node; 16 steps keep the
  * ramp smooth (the blur softens the steps anyway) while costing a fraction of
  * the draws that 40 did on every repaint of the row. */
 #define SHELF_REFLECTION_BANDS 16
-/* Hard limits used to keep user supplied parameters sane. */
-#define SHELF_TILT_MAX_DEG 45.0
-#define SHELF_PERSPECTIVE_MIN 50.0
-#define SHELF_PERSPECTIVE_MAX 5000.0
-#define SHELF_EXTRA_MAX_PX 200
-#define SHELF_REFLECTION_RATIO_MAX 2.0
-#define SHELF_REFLECTION_BLUR_MAX 0.25
-/* How far the keystone (flare) may lean the dock's silhouette, per side. */
-#define SHELF_FLARE_MAX_PX 80
-/* Built-in defaults: the classic flat capsule. */
-#define SHELF_DEFAULT_TILT 0.0
-#define SHELF_DEFAULT_PERSPECTIVE 400.0
-#define SHELF_DEFAULT_MARGIN_PX CAPSULE_PADDING_PX
-#define SHELF_DEFAULT_FRONT_PX 0
-#define SHELF_DEFAULT_REFLECTION 0.0
-#define SHELF_DEFAULT_REFLECTION_INTENSITY 0.55
-#define SHELF_DEFAULT_REFLECTION_BLUR 0.05
-#define SHELF_DEFAULT_FLARE_PX 0
 
 /* Auto-hide & Timer Constants. The trigger strip itself lives in dock_motion.h,
  * with the arithmetic that leaves it on screen. */
@@ -96,6 +81,7 @@
 #define POPOVER_VBOX_MARGIN 8
 #define POPOVER_ROW_SPACING 6
 #define POPOVER_TITLE_MAX_CHARS 30
+#define POPOVER_MENU_ICON_SIZE 16
 
 /* Max characters shown for a running-window title label on taskbar buttons */
 #define WINDOW_TITLE_MAX_CHARS 28
@@ -174,7 +160,9 @@ typedef struct AppWindow {
  * @windows: Pointer to GLib Doubly Linked List (GList*) storing active
  * AppWindow structs.
  * @state: Reference pointer back to the main LambdockState structure.
- * @poll_fn: Guile procedure called periodically to fetch updated item text.
+ * @poll_fn: Opaque handle to the Guile procedure that fetches the item's
+ * reading. Owned by the bridge (see guile_bridge.h) so that no SCM value lives
+ * outside it.
  * @poll_timer_id: GLib timeout source ID managing polling intervals.
  * @label: GtkLabel rendering text output for dynamic items.
  * @hover_animate: TRUE if hover fisheye magnification applies to this item.
@@ -206,7 +194,7 @@ typedef struct DockItem {
   GtkWidget *popover;
   GList *windows;
   LambdockState *state;
-  SCM poll_fn;
+  void *poll_fn; /* Opaque Guile handle; only the bridge dereferences it. */
   guint poll_timer_id;
   GtkWidget *label;
   gboolean window_title_label; /* TRUE when label shows a window title */
@@ -226,37 +214,6 @@ typedef struct DockItem {
   gboolean trash_full;   /* TRUE while the trash has anything in it */
 } DockItem;
 
-/**
- * LambdockShelfParams:
- * Geometry of the dock's glass shelf.
- *
- * There are no dock modes: the dock always runs the same widgets and these
- * numbers describe its shape. The defaults reproduce the classic flat capsule.
- *
- * @tilt_deg: Shelf tilt away from the viewer, in degrees (0 = flat).
- * @perspective: Projection distance in pixels (smaller = stronger 3D).
- * @margin_px: Glass on the inner side of the icons (away from the screen edge).
- * Negative values let the icons overhang the shelf, like the OS X 3D dock.
- * @front_px: Glass on the outer side of the icons (the front face). The
- * reflection band lives here when it is taller than this.
- * @reflection_ratio: Reflection band height / icon size (0 = no reflections).
- * @reflection_intensity: Alpha of the reflection where it touches the icon.
- * @reflection_blur_ratio: Gaussian blur radius / icon size.
- * @flare_px: How much wider the dock is at the screen edge than at the inner
- * edge, in pixels per side. 0 keeps the slab rectangular; a positive value
- * gives it the OS X dock's keystone silhouette (wider where it meets the
- * screen), which is what makes the Mavericks slab look like a 3D shelf.
- */
-typedef struct LambdockShelfParams {
-  double tilt_deg;
-  double perspective;
-  int margin_px;
-  int front_px;
-  double reflection_ratio;
-  double reflection_intensity;
-  double reflection_blur_ratio;
-  int flare_px;
-} LambdockShelfParams;
 
 /**
  * LambdockState:

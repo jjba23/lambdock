@@ -3,7 +3,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-#include "guile_bridge.h" // Header file defining function declarations and LambdockState
+#include "guile_bridge.h"
+
+#include <libguile.h> // Header file defining function declarations and LambdockState
 #include "core/config_values.h" // Pure, unit-tested range/name rules
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
 #include "ui/dock_item.h" // Functions to create visual dock items and separators
@@ -476,7 +478,7 @@ static void build_dynamic_item(const DockItemBuildContext *context) {
   }
 
   DockItem *dynamic = create_dynamic_dock_item(context->state, name, icon, exec,
-                                               poll_fn, interval_ms,
+                                               (void *)poll_fn, interval_ms,
                                                context->hover_animate);
 
   /* Meter items draw a gauge instead of text: the poll function returns a
@@ -763,6 +765,86 @@ void dock_layout_set_view(const char *config_path, const char *key,
 
   scm_call_3(fn, scm_from_utf8_string(config_path),
              scm_from_utf8_string(key), view_symbol);
+}
+
+/* =================================================================================
+ * ITEM POLLERS
+ * =================================================================================
+ * The one place a dynamic item's Scheme procedure is kept and called. Moving
+ * this here is what keeps scm_* out of dock_item.c: the item stores an opaque
+ * handle, and what comes back is a LambdockReading.
+ * =================================================================================
+ */
+
+/* Adapter: Guile's catch helper takes the procedure as a void*, not an SCM. */
+static SCM call_poll_proc(void *data) {
+  SCM fn = (SCM)data;
+  return scm_call_0(fn);
+}
+
+/* Adapter: an error inside a poller is a missing reading, not a dead daemon. */
+static SCM handle_poll_error(void *data, SCM key, SCM args) {
+  (void)data;
+  (void)key;
+  (void)args;
+  return SCM_BOOL_F;
+}
+
+void *lambdock_poll_fn_protect(void *procedure) {
+  /* NULL is the dock's own "no poller" handle, not a Scheme value: handing it
+   * to scm_* would be a NULL dereference (SCM's false is a tagged pointer, not
+   * NULL). */
+  if (procedure == NULL)
+    return NULL;
+
+  SCM fn = (SCM)procedure;
+
+  if (!scm_is_true(fn) || !scm_is_true(scm_procedure_p(fn)))
+    return NULL;
+
+  scm_gc_protect_object(fn);
+  return procedure;
+}
+
+gboolean lambdock_poll_fn_is_callable(void *poll_fn) {
+  SCM fn = (SCM)poll_fn;
+
+  return poll_fn != NULL && scm_is_true(fn) &&
+         scm_is_true(scm_procedure_p(fn));
+}
+
+gboolean lambdock_poll_fn_call(void *poll_fn, LambdockReading *out) {
+  if (!out)
+    return FALSE;
+
+  *out = (LambdockReading){LAMBDOCK_READING_NONE, 0.0, NULL};
+
+  if (!lambdock_poll_fn_is_callable(poll_fn))
+    return FALSE;
+
+  SCM value = scm_internal_catch(SCM_BOOL_T, call_poll_proc, poll_fn,
+                                 handle_poll_error, NULL);
+
+  if (scm_is_number(value)) {
+    out->kind = LAMBDOCK_READING_NUMBER;
+    out->number = scm_to_double(value);
+    return TRUE;
+  }
+
+  if (scm_is_string(value)) {
+    out->kind = LAMBDOCK_READING_TEXT;
+    out->text = scm_to_utf8_string(value); /* malloc'd, freed with free() */
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+void lambdock_poll_fn_release(void *poll_fn) {
+  SCM fn = (SCM)poll_fn;
+
+  if (lambdock_poll_fn_is_callable(poll_fn))
+    scm_gc_unprotect_object(fn);
 }
 
 /* =================================================================================

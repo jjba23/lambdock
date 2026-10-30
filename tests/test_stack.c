@@ -531,6 +531,310 @@ static void test_view_keyboard(void) {
   remove_mixed_entries(dir);
 }
 
+/* ============================================================================
+ * BROWSING: PATHS, BREADCRUMBS AND TRUNCATION
+ * ============================================================================
+ */
+
+static void test_child_and_parent_path(void) {
+  char *child = lambdock_stack_child_path("/home/me/Downloads", "Shots");
+  g_assert_cmpstr(child, ==, "/home/me/Downloads/Shots");
+  g_free(child);
+
+  g_assert_null(lambdock_stack_child_path(NULL, "x"));
+  g_assert_null(lambdock_stack_child_path("/tmp", NULL));
+  g_assert_null(lambdock_stack_child_path("", "x"));
+
+  /* Inside the stack the panel walks up; at the stack's own folder there is
+   * nowhere to go, and a path that is not inside it is not walked out of. */
+  char *parent =
+      lambdock_stack_parent_path("/home/me/Downloads/Shots/2024",
+                                 "/home/me/Downloads");
+  g_assert_cmpstr(parent, ==, "/home/me/Downloads/Shots");
+  g_free(parent);
+
+  parent = lambdock_stack_parent_path("/home/me/Downloads/Shots",
+                                      "/home/me/Downloads");
+  g_assert_cmpstr(parent, ==, "/home/me/Downloads");
+  g_free(parent);
+
+  g_assert_null(lambdock_stack_parent_path("/home/me/Downloads",
+                                           "/home/me/Downloads"));
+  g_assert_null(lambdock_stack_parent_path("/etc", "/home/me/Downloads"));
+  g_assert_null(lambdock_stack_parent_path(NULL, "/home/me/Downloads"));
+  g_assert_null(lambdock_stack_parent_path("/home/me/Downloads", NULL));
+
+  /* Trailing slashes are the same place, not a different one. */
+  parent = lambdock_stack_parent_path("/home/me/Downloads/Shots/",
+                                      "/home/me/Downloads/");
+  g_assert_cmpstr(parent, ==, "/home/me/Downloads");
+  g_free(parent);
+}
+
+static void test_breadcrumb(void) {
+  char *crumb =
+      lambdock_stack_breadcrumb("/home/me/Downloads", "/home/me/Downloads",
+                                "Downloads");
+  g_assert_cmpstr(crumb, ==, "Downloads");
+  g_free(crumb);
+
+  crumb = lambdock_stack_breadcrumb("/home/me/Downloads/Shots/2024",
+                                    "/home/me/Downloads", "Downloads");
+  g_assert_cmpstr(crumb, ==, "Downloads / Shots / 2024");
+  g_free(crumb);
+
+  /* Without a label the root is named after its folder. */
+  crumb = lambdock_stack_breadcrumb("/home/me/Downloads/Shots",
+                                    "/home/me/Downloads", NULL);
+  g_assert_cmpstr(crumb, ==, "Downloads / Shots");
+  g_free(crumb);
+
+  /* A path outside the stack (or no stack at all) still gets a title. */
+  crumb = lambdock_stack_breadcrumb("/etc", "/home/me/Downloads", "Downloads");
+  g_assert_cmpstr(crumb, ==, "Downloads");
+  g_free(crumb);
+
+  crumb = lambdock_stack_breadcrumb(NULL, NULL, NULL);
+  g_assert_cmpstr(crumb, ==, "Stack");
+  g_free(crumb);
+}
+
+static void test_list_directory_truncated(void) {
+  char *dir = g_dir_make_tmp("lambdock-stack-trunc-XXXXXX", NULL);
+  g_assert_nonnull(dir);
+
+  for (int i = 0; i < 5; i++) {
+    char *name = g_strdup_printf("%s/file-%d.txt", dir, i);
+    g_assert_true(g_file_set_contents(name, "x", -1, NULL));
+    g_free(name);
+  }
+  /* Hidden files do not count towards the cap, exactly as they do not show. */
+  char *hidden = g_build_filename(dir, ".hidden", NULL);
+  g_assert_true(g_file_set_contents(hidden, "x", -1, NULL));
+  g_free(hidden);
+
+  gboolean truncated = FALSE;
+  GPtrArray *all =
+      lambdock_stack_list_directory_limited(dir, 10, &truncated);
+  g_assert_cmpuint(all->len, ==, 5);
+  g_assert_false(truncated);
+  lambdock_stack_entries_free(all);
+
+  truncated = FALSE;
+  GPtrArray *limited =
+      lambdock_stack_list_directory_limited(dir, 3, &truncated);
+  g_assert_cmpuint(limited->len, ==, 3);
+  g_assert_true(truncated);
+  lambdock_stack_entries_free(limited);
+
+  /* Exactly at the cap is not truncated. */
+  truncated = TRUE;
+  GPtrArray *exact =
+      lambdock_stack_list_directory_limited(dir, 5, &truncated);
+  g_assert_cmpuint(exact->len, ==, 5);
+  g_assert_false(truncated);
+  lambdock_stack_entries_free(exact);
+
+  /* 0 means the built-in cap; the answer is reported all the same. */
+  truncated = TRUE;
+  GPtrArray *fallback =
+      lambdock_stack_list_directory_limited(dir, 0, &truncated);
+  g_assert_cmpuint(fallback->len, ==, 5);
+  g_assert_false(truncated);
+  lambdock_stack_entries_free(fallback);
+
+  GDir *d = g_dir_open(dir, 0, NULL);
+  const char *name;
+  while ((name = g_dir_read_name(d)) != NULL) {
+    char *child = g_build_filename(dir, name, NULL);
+    g_unlink(child);
+    g_free(child);
+  }
+  g_dir_close(d);
+  g_rmdir(dir);
+  g_free(dir);
+}
+
+/* ============================================================================
+ * THE PANEL
+ * ============================================================================
+ */
+
+static DockItem *panel_item(const char *path, const char *view) {
+  DockItem *item = g_new0(DockItem, 1);
+  item->kind = LAMBDOCK_ITEM_STACK;
+  item->name = g_strdup("Downloads");
+  item->stack_path = g_strdup(path);
+  item->stack_view = g_strdup(view ? view : "grid");
+  return item;
+}
+
+static void free_panel_item(DockItem *item) {
+  g_free(item->name);
+  g_free(item->stack_path);
+  g_free(item->stack_view);
+  g_free(item);
+}
+
+/** The widget of the panel whose class is CLASS, or NULL. */
+static GtkWidget *panel_find_class(GtkWidget *panel, const char *klass) {
+  if (gtk_widget_has_css_class(panel, klass))
+    return panel;
+
+  for (GtkWidget *child = gtk_widget_get_first_child(panel); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    GtkWidget *found = panel_find_class(child, klass);
+    if (found)
+      return found;
+  }
+
+  return NULL;
+}
+
+static gboolean panel_has_label(GtkWidget *panel, const char *text) {
+  if (GTK_IS_LABEL(panel) &&
+      g_strcmp0(gtk_label_get_text(GTK_LABEL(panel)), text) == 0)
+    return TRUE;
+
+  for (GtkWidget *child = gtk_widget_get_first_child(panel); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (panel_has_label(child, text))
+      return TRUE;
+  }
+
+  return false;
+}
+
+static void test_panel_header_and_navigation(void) {
+  char *root = g_dir_make_tmp("lambdock-stack-panel-XXXXXX", NULL);
+  g_assert_nonnull(root);
+
+  char *sub = g_build_filename(root, "Shots", NULL);
+  g_assert_cmpint(g_mkdir(sub, 0755), ==, 0);
+  char *inner = g_build_filename(sub, "2024", NULL);
+  g_assert_cmpint(g_mkdir(inner, 0755), ==, 0);
+
+  DockItem *item = panel_item(root, "grid");
+
+  /* At the stack's own folder: the breadcrumb is its label, there is no back
+   * button, and the list/grid toggle offers the other view. */
+  GtkWidget *panel = lambdock_stack_panel_new(item, root);
+  g_assert_nonnull(panel);
+  g_assert_true(gtk_widget_has_css_class(panel, "stack-popover"));
+  g_assert_true(panel_has_label(panel, "Downloads"));
+  g_assert_nonnull(panel_find_class(panel, "stack-count"));
+  g_assert_null(panel_find_class(panel, "stack-back"));
+
+  GtkWidget *toggle = panel_find_class(panel, "stack-view-toggle");
+  g_assert_nonnull(toggle);
+  GtkWidget *toggle_icon = gtk_button_get_child(GTK_BUTTON(toggle));
+  g_assert_true(GTK_IS_IMAGE(toggle_icon));
+  g_assert_cmpstr(gtk_image_get_icon_name(GTK_IMAGE(toggle_icon)), ==,
+                  "view-list-symbolic");
+  g_assert_nonnull(panel_find_class(panel, "stack-open"));
+
+  g_object_ref_sink(panel);
+  g_object_unref(panel);
+
+  /* Inside a folder: a breadcrumb, a back button, and the toggle now offers the
+   * grid (the item is on the list view). */
+  g_free(item->stack_view);
+  item->stack_view = g_strdup("list");
+
+  panel = lambdock_stack_panel_new(item, inner);
+  g_assert_true(panel_has_label(panel, "Downloads / Shots / 2024"));
+  g_assert_nonnull(panel_find_class(panel, "stack-back"));
+
+  toggle = panel_find_class(panel, "stack-view-toggle");
+  toggle_icon = gtk_button_get_child(GTK_BUTTON(toggle));
+  g_assert_cmpstr(gtk_image_get_icon_name(GTK_IMAGE(toggle_icon)), ==,
+                  "view-grid-symbolic");
+
+  /* The panel lists the contents of the folder it was given: 2024 is empty, so
+   * it says so instead of showing a stale list. */
+  g_assert_true(panel_has_label(panel, "This folder is empty"));
+
+  g_object_ref_sink(panel);
+  g_object_unref(panel);
+
+  /* One level up, that folder is an entry again. */
+  panel = lambdock_stack_panel_new(item, sub);
+  g_assert_true(panel_has_label(panel, "Downloads / Shots"));
+  g_assert_true(panel_has_label(panel, "2024"));
+
+  g_object_ref_sink(panel);
+  g_object_unref(panel);
+
+  free_panel_item(item);
+  g_free(inner);
+  g_free(sub);
+  g_rmdir(g_build_filename(root, "Shots", "2024", NULL));
+  g_rmdir(g_build_filename(root, "Shots", NULL));
+  g_rmdir(root);
+  g_free(root);
+}
+
+/* Clicking a folder inside the panel walks into it instead of handing it to the
+ * file manager, and clicking the back button walks out again. */
+static void test_panel_walks_into_folders(void) {
+  char *root = g_dir_make_tmp("lambdock-stack-walk-XXXXXX", NULL);
+  g_assert_nonnull(root);
+  char *sub = g_build_filename(root, "Shots", NULL);
+  g_assert_cmpint(g_mkdir(sub, 0755), ==, 0);
+
+  GtkWidget *window = gtk_window_new();
+  GtkWidget *anchor = gtk_button_new_with_label("anchor");
+  gtk_window_set_child(GTK_WINDOW(window), anchor);
+
+  DockItem *item = panel_item(root, "grid");
+  item->popover = gtk_popover_new();
+  GtkWidget *popover = g_object_ref_sink(item->popover);
+  gtk_widget_set_parent(item->popover, anchor);
+
+  GtkWidget *panel = lambdock_stack_panel_new(item, root);
+  gtk_popover_set_child(GTK_POPOVER(item->popover), panel);
+  g_object_set_data_full(G_OBJECT(item->popover), "lambdock-stack-path",
+                         g_strdup(root), g_free);
+
+  /* The folder entry: clicking it rebuilds the panel one level down. */
+  GtkWidget *folder_button = NULL;
+  GtkWidget *view = g_object_get_data(G_OBJECT(panel), "lambdock-stack-view");
+  g_assert_nonnull(view);
+  GtkWidget *flow = scrolled_content(view);
+  g_assert_true(GTK_IS_FLOW_BOX(flow));
+  GtkFlowBoxChild *first =
+      gtk_flow_box_get_child_at_index(GTK_FLOW_BOX(flow), 0);
+  g_assert_nonnull(first);
+  folder_button = gtk_flow_box_child_get_child(first);
+  g_assert_nonnull(folder_button);
+
+  g_signal_emit_by_name(folder_button, "clicked");
+
+  GtkWidget *rebuilt = gtk_popover_get_child(GTK_POPOVER(item->popover));
+  g_assert_nonnull(rebuilt);
+  g_assert_true(panel_has_label(rebuilt, "Downloads / Shots"));
+  g_assert_nonnull(panel_find_class(rebuilt, "stack-back"));
+
+  /* ...and the back button returns to the stack's own folder. */
+  GtkWidget *back = panel_find_class(rebuilt, "stack-back");
+  g_signal_emit_by_name(back, "clicked");
+
+  GtkWidget *back_at_root = gtk_popover_get_child(GTK_POPOVER(item->popover));
+  g_assert_nonnull(back_at_root);
+  g_assert_true(panel_has_label(back_at_root, "Downloads"));
+  g_assert_null(panel_find_class(back_at_root, "stack-back"));
+
+  gtk_widget_unparent(item->popover);
+  g_object_unref(popover); /* the test's own ref: frees the popover */
+  free_panel_item(item);
+  gtk_window_destroy(GTK_WINDOW(window));
+
+  g_rmdir(sub);
+  g_rmdir(root);
+  g_free(sub);
+  g_free(root);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -548,6 +852,15 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/stack/thumbnail_for_path", test_thumbnail_for_path);
   g_test_add_func("/ui/stack/view_accessibility", test_view_accessibility);
   g_test_add_func("/ui/stack/view_keyboard", test_view_keyboard);
+  g_test_add_func("/ui/stack/child_and_parent_path",
+                  test_child_and_parent_path);
+  g_test_add_func("/ui/stack/breadcrumb", test_breadcrumb);
+  g_test_add_func("/ui/stack/list_directory_truncated",
+                  test_list_directory_truncated);
+  g_test_add_func("/ui/stack/panel_header",
+                  test_panel_header_and_navigation);
+  g_test_add_func("/ui/stack/panel_walks_into_folders",
+                  test_panel_walks_into_folders);
 
   return g_test_run();
 }

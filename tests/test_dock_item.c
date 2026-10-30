@@ -28,7 +28,7 @@ static DockItem *make_plain_item(LambdockState *state, const char *app_id,
   item->icon = g_strdup(app_id);
   item->button = gtk_button_new();
   item->popover = gtk_popover_new();
-  item->poll_fn = SCM_BOOL_F; /* free_dock_item expects a valid SCM here */
+  item->poll_fn = NULL; /* free_dock_item expects a valid handle (or NULL) */
   state->dock_items = g_list_append(state->dock_items, item);
   return item;
 }
@@ -174,7 +174,7 @@ static void test_dock_item_window_tracking(void) {
   item->state = &state;
   item->button = gtk_button_new();
   item->app_id = g_strdup("unique-app-id");
-  item->poll_fn = SCM_BOOL_F;
+  item->poll_fn = NULL;
 
   g_assert_false(gtk_widget_has_css_class(item->button, "running-app"));
 
@@ -521,7 +521,7 @@ static void test_create_dock_item(void) {
   g_assert_cmpstr(item->app_id, ==, "org.gnome.Terminal");
   g_assert_true(item->is_favorite);
   g_assert_true(item->hover_animate);
-  g_assert_true(item->poll_fn == SCM_BOOL_F);
+  g_assert_null(item->poll_fn);
   g_assert_cmpint(item->poll_timer_id, ==, 0);
   g_assert_null(item->windows);
 
@@ -628,7 +628,7 @@ static void test_create_dynamic_dock_item_no_poller(void) {
   state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
 
   DockItem *item = create_dynamic_dock_item(&state, "Clock", "appointment-new",
-                                            "gnome-calendar", SCM_BOOL_F, 1000,
+                                            "gnome-calendar", NULL, 1000,
                                             FALSE);
   g_assert_nonnull(item);
   g_assert_cmpstr(item->name, ==, "Clock");
@@ -637,7 +637,7 @@ static void test_create_dynamic_dock_item_no_poller(void) {
   g_assert_false(item->hover_animate);
 
   /* Without a valid poll procedure no timer is registered. */
-  g_assert_true(item->poll_fn == SCM_BOOL_F);
+  g_assert_null(item->poll_fn);
   g_assert_cmpint(item->poll_timer_id, ==, 0);
 
   g_assert_nonnull(item->label);
@@ -684,7 +684,7 @@ static void check_popover_slot_release(guint active_popovers,
   DockItem *item = g_new0(DockItem, 1);
   item->state = &state;
   item->app_id = g_strdup("app");
-  item->poll_fn = SCM_BOOL_F;
+  item->poll_fn = NULL;
   item->button = gtk_button_new();
   item->popover = stub;
   gtk_widget_set_parent(stub, item->button);

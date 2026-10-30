@@ -28,6 +28,26 @@
 void populate_popover_menu(DockItem *item);
 
 /**
+ * lambdock_popover_menu_keys:
+ * @popover: A popover whose child is an item menu.
+ *
+ * Makes Up/Down walk the menu's rows and Home/End jump to the ends. Safe to call
+ * more than once, and inert on a popover that is showing something else (a
+ * stack panel reuses the same popover and handles its own arrow keys).
+ */
+void lambdock_popover_menu_keys(GtkWidget *popover);
+
+/**
+ * lambdock_popover_menu_focus_first:
+ * @popover: A popover whose child is an item menu.
+ *
+ * Puts the keyboard focus on the menu's first row, so the arrow keys work from
+ * the moment it opens instead of only after a Tab. Call it after showing the
+ * popover; it does nothing when the child is not a menu.
+ */
+void lambdock_popover_menu_focus_first(GtkWidget *popover);
+
+/**
  * lambdock_popover_close_on_escape:
  * @popover: A GtkPopover owned by a dock item.
  *

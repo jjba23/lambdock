@@ -34,6 +34,51 @@
  */
 
 /**
+ * LambdockMeterGeometry:
+ * @tile: the rounded tile behind the ring, in widget coordinates.
+ * @tile_radius: corner radius of that tile.
+ * @center_x: ring centre, x.
+ * @center_y: ring centre, y.
+ * @radius: radius of the ring's centre line.
+ * @line_width: stroke width of the ring and of the value arc.
+ * @text_box: square available for the reading in the middle.
+ *
+ * Where every part of a gauge goes, as a value: the snapshot function below
+ * only draws what this describes.
+ */
+typedef struct LambdockMeterGeometry {
+  graphene_rect_t tile;
+  float tile_radius;
+  float center_x;
+  float center_y;
+  float radius;
+  float line_width;
+  float text_box;
+} LambdockMeterGeometry;
+
+/**
+ * lambdock_meter_geometry_compute:
+ * @width: allocated width of the widget.
+ * @height: allocated height of the widget.
+ *
+ * Returns: the geometry for a gauge in a @width x @height box. Pure: the same
+ * box always produces the same proportions, which is what lets the gauge be
+ * checked without painting anything. A box with no area yields a zero geometry.
+ */
+LambdockMeterGeometry lambdock_meter_geometry_compute(int width, int height);
+
+/**
+ * lambdock_meter_tone_for_fraction:
+ * @fraction: how full the ring is (clamped into 0..1 internally).
+ *
+ * The colour of the value arc: green while there is room, amber when it gets
+ * tight, red when it is nearly full.
+ *
+ * Returns: the arc's colour.
+ */
+GdkRGBA lambdock_meter_tone_for_fraction(double fraction);
+
+/**
  * lambdock_meter_new:
  * Creates an empty meter (0%, no text).
  *

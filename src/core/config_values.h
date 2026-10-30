@@ -6,7 +6,10 @@
 #ifndef LAMBDOCK_CORE_CONFIG_VALUES_H
 #define LAMBDOCK_CORE_CONFIG_VALUES_H
 
-#include "../lambdock.h"
+#include "shelf_params.h"
+
+#include <glib.h>
+#include <gtk4-layer-shell.h>
 
 /*
  * =========================================================================

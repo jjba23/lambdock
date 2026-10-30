@@ -1056,18 +1056,19 @@ GtkWidget *lambdock_preferences_content_for(const char *config_path) {
  * DOCK RELOAD (the only thing "Reset" shares with the controls)
  * ========================================================================= */
 
+static void reload_if_bound_visitor(LambdockState *state, gpointer user_data) {
+  const char *wanted = user_data;
+
+  if (g_strcmp0(config_path_or_default(state->config_path), wanted) == 0)
+    reload_dock_instance(state);
+}
+
 /** Reloads every dock bound to @config_path, "" being the default dock. */
 static void reload_docks_for(const char *config_path) {
-  const char *wanted = config_path_or_default(config_path);
-  GPtrArray *docks = dock_registry_snapshot();
-
-  for (guint i = 0; i < docks->len; i++) {
-    LambdockState *state = g_ptr_array_index(docks, i);
-    if (g_strcmp0(config_path_or_default(state->config_path), wanted) == 0)
-      reload_dock_instance(state);
-  }
-
-  g_ptr_array_unref(docks);
+  /* dock_registry_foreach walks a snapshot, so a reload that tears a dock down
+   * cannot pull the ground out from under the walk. */
+  dock_registry_foreach(reload_if_bound_visitor,
+                        (gpointer)config_path_or_default(config_path));
 }
 
 /* =========================================================================

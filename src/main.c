@@ -8,6 +8,8 @@
 #include "dock_registry.h"
 #include "guile_bridge.h"
 #include "lambdock.h"
+
+#include <libguile.h>
 #include "logger.h"
 #include "toplevel_tracker.h"
 #include "ui/shelf.h"
@@ -28,11 +30,18 @@
  */
 
 /**
- * g_reload_timer_id:
- * GLib event source ID for debouncing file modification events.
- * 0 means no reload is currently scheduled.
+ * MainTimers:
+ * @config_reload: source id debouncing settings-file changes, 0 when nothing is
+ *   scheduled.
+ *
+ * The process-wide timers live in one value, so their ownership and their
+ * teardown are one thing to look at.
  */
-static guint g_reload_timer_id = 0;
+typedef struct {
+  guint config_reload;
+} MainTimers;
+
+static MainTimers g_timers;
 
 /**
  * unregister_dock_state:
@@ -459,11 +468,13 @@ static void sync_docks_with_disk(GtkApplication *app) {
  * Re-applies active in-memory Guile state to GTK widgets without re-reading
  * disk files.
  */
+static void redraw_visitor(LambdockState *state, gpointer user_data) {
+  (void)user_data;
+  reload_dock_instance(state);
+}
+
 static void redraw_active_docks(void) {
-  GPtrArray *docks = dock_registry_snapshot();
-  for (guint i = 0; i < docks->len; i++)
-    reload_dock_instance(g_ptr_array_index(docks, i));
-  g_ptr_array_unref(docks);
+  dock_registry_foreach(redraw_visitor, NULL);
 }
 
 static gboolean on_manual_reload_idle(gpointer user_data) {
@@ -565,7 +576,7 @@ static gboolean on_config_reload_timeout(gpointer user_data) {
 
   /* The source is gone once we return; forget the id so the next file event
    * cannot remove an unrelated (recycled) source. */
-  g_reload_timer_id = 0;
+  g_timers.config_reload = 0;
   sync_docks_with_disk(app);
   return G_SOURCE_REMOVE;
 }
@@ -584,9 +595,9 @@ static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
   (void)event_type;
 
   /* Debounce: restart the countdown on every event. */
-  g_clear_handle_id(&g_reload_timer_id, g_source_remove);
-  g_reload_timer_id = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
-                                    on_config_reload_timeout, user_data);
+  g_clear_handle_id(&g_timers.config_reload, g_source_remove);
+  g_timers.config_reload = g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS,
+                                         on_config_reload_timeout, user_data);
 }
 
 /**
@@ -922,16 +933,18 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
  * while the dock is running; every dock re-reads it so the next slide or hover
  * is immediate instead of animated.
  */
+static void apply_motion_visitor(LambdockState *state, gpointer user_data) {
+  (void)user_data;
+  dock_apply_motion_preference(state);
+}
+
 static void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
                                      gpointer user_data) {
   (void)settings;
   (void)pspec;
   (void)user_data;
 
-  GPtrArray *docks = dock_registry_snapshot();
-  for (guint i = 0; i < docks->len; i++)
-    dock_apply_motion_preference(g_ptr_array_index(docks, i));
-  g_ptr_array_unref(docks);
+  dock_registry_foreach(apply_motion_visitor, NULL);
 }
 
 /**

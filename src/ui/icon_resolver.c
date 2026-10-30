@@ -182,6 +182,45 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
  * ensures a valid GTK icon theme name is configured (falling back to
  * GSettings/dconf only if necessary).
  */
+char **lambdock_icon_search_paths_build(const char *const *system_data_dirs,
+                                        const char *home) {
+  GPtrArray *paths = g_ptr_array_new_with_free_func(g_free);
+
+  /* Order matters: the first directory an icon is found in wins, and a user's
+   * own icons should shadow the system's, so they come last. */
+  for (int i = 0; system_data_dirs && system_data_dirs[i] != NULL; i++) {
+    char *icons_dir = g_build_filename(system_data_dirs[i], "icons", NULL);
+    if (g_file_test(icons_dir, G_FILE_TEST_IS_DIR))
+      g_ptr_array_add(paths, icons_dir);
+    else
+      g_free(icons_dir);
+  }
+
+  if (home && *home != '\0') {
+    char *user_icons = g_build_filename(home, ".local", "share", "icons", NULL);
+    if (g_file_test(user_icons, G_FILE_TEST_IS_DIR))
+      g_ptr_array_add(paths, user_icons);
+    else
+      g_free(user_icons);
+
+    char *legacy_icons = g_build_filename(home, ".icons", NULL);
+    if (g_file_test(legacy_icons, G_FILE_TEST_IS_DIR))
+      g_ptr_array_add(paths, legacy_icons);
+    else
+      g_free(legacy_icons);
+  }
+
+  /* NULL-terminated, the way GtkIconTheme's API wants a list. */
+  g_ptr_array_add(paths, NULL);
+
+  return (char **)g_ptr_array_free(paths, FALSE);
+}
+
+char **lambdock_icon_search_paths_new(void) {
+  return lambdock_icon_search_paths_build(g_get_system_data_dirs(),
+                                          g_get_home_dir());
+}
+
 void setup_icon_theme(void) {
   GdkDisplay *display = gdk_display_get_default();
   if (!display) {
@@ -193,50 +232,11 @@ void setup_icon_theme(void) {
   LOG_C_INFO("UI", "Initializing Icon Theme system for display context %p...",
              (void *)display);
 
-  // --------------------------------------------------------------------------
-  // Step 1: Add System-wide Icon Search Paths (`/usr/share/icons`, etc.)
-  // --------------------------------------------------------------------------
-  const char *const *sys_dirs = g_get_system_data_dirs();
-  for (int i = 0; sys_dirs[i] != NULL; i++) {
-    char *icons_dir = g_build_filename(sys_dirs[i], "icons", NULL);
-
-    if (g_file_test(icons_dir, G_FILE_TEST_IS_DIR)) {
-      LOG_C_DEBUG("UI", "Adding system icon search path: %s", icons_dir);
-      gtk_icon_theme_add_search_path(icon_theme, icons_dir);
-    } else {
-      LOG_C_DEBUG("UI", "System icon search path does not exist (skipping): %s",
-                  icons_dir);
-    }
-    g_free(icons_dir);
-  }
-
-  // --------------------------------------------------------------------------
-  // Step 2: Add User-Specific Local Icon Search Paths (`~/.local/share/icons` &
-  // `~/.icons`)
-  // --------------------------------------------------------------------------
-  const char *home = g_get_home_dir();
-  if (home) {
-    // 1. Check $HOME/.local/share/icons
-    char *user_icons = g_build_filename(home, ".local", "share", "icons", NULL);
-    if (g_file_test(user_icons, G_FILE_TEST_IS_DIR)) {
-      LOG_C_DEBUG("UI", "Adding user XDG icon search path: %s", user_icons);
-      gtk_icon_theme_add_search_path(icon_theme, user_icons);
-    } else {
-      LOG_C_DEBUG("UI", "User XDG icon directory not found: %s", user_icons);
-    }
-    g_free(user_icons);
-
-    // 2. Check legacy $HOME/.icons
-    char *legacy_icons = g_build_filename(home, ".icons", NULL);
-    if (g_file_test(legacy_icons, G_FILE_TEST_IS_DIR)) {
-      LOG_C_DEBUG("UI", "Adding legacy user icon search path (~/.icons): %s",
-                  legacy_icons);
-      gtk_icon_theme_add_search_path(icon_theme, legacy_icons);
-    } else {
-      LOG_C_DEBUG("UI", "Legacy user icon directory (~/.icons) not found: %s",
-                  legacy_icons);
-    }
-    g_free(legacy_icons);
+  /* Step 1 and 2: the search paths, built as a value and then applied. */
+  g_auto(GStrv) paths = lambdock_icon_search_paths_new();
+  for (int i = 0; paths[i] != NULL; i++) {
+    LOG_C_DEBUG("UI", "Adding icon search path: %s", paths[i]);
+    gtk_icon_theme_add_search_path(icon_theme, paths[i]);
   }
 
   // --------------------------------------------------------------------------

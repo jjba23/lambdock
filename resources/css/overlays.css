@@ -228,6 +228,187 @@ popover.launchpad-copy-menu > contents {
 }
 
 /* -------------------------------------------------------------------------
+ * CONTEXT MENUS: THE WINDOW HUD AND THE RIGHT-CLICK MENU
+ * -------------------------------------------------------------------------
+ * A menu row is an icon and a label. The *material* of the popover (its
+ * background, its text colour, the padding of a row) belongs to the theme --
+ * every theme styles `popover > contents' and `popover button.flat' -- so
+ * everything here is expressed relative to `currentColor' and says only what a
+ * theme cannot know: which row is the window you are looking at, which one is
+ * minimized, and that the close button is a quiet affordance rather than a row
+ * of red crosses.
+ *
+ * The `window box.popover-menu' prefix is deliberate: it out-specifies the
+ * themes' `popover button.flat' rules (GTK CSS has no `!important'), so a row
+ * keeps its own shape whatever material the dock wears. It anchors on the menu's
+ * own container rather than on the popover element, so the same rules apply
+ * wherever the menu is built.
+ * ------------------------------------------------------------------------- */
+
+window box.popover-menu button.menu-row {
+  padding: 5px 8px;
+  border-radius: 6px;
+  min-height: 20px;
+}
+
+window box.popover-menu button.menu-row .menu-icon {
+  opacity: 0.85;
+}
+
+window box.popover-menu button.menu-row:hover .menu-icon {
+  opacity: 1;
+}
+
+window box.popover-menu button.menu-row .menu-label {
+  font-size: 0.95em;
+}
+
+/* The grid/list switch reads as one small control with a check on the active
+ * side, not as two lines of text. */
+window box.popover-menu button.view-mode {
+  min-width: 84px;
+}
+
+window box.popover-menu button.view-mode.active .menu-label {
+  font-weight: 700;
+}
+
+/* The dot marks the window that holds the focus; it is always in the layout so
+ * the titles line up, and only the current row shows it. */
+window box.popover-menu box.window-row {
+  border-radius: 6px;
+  padding: 1px 0;
+}
+
+window box.popover-menu box.window-row .window-current-marker {
+  opacity: 0;
+}
+
+window box.popover-menu box.window-row.current .window-current-marker {
+  opacity: 0.85;
+}
+
+window box.popover-menu box.window-row.current .window-title label {
+  font-weight: 600;
+}
+
+window box.popover-menu box.window-row.minimized .window-title {
+  opacity: 0.6;
+}
+
+/* The close button stays out of the way until the row is under the pointer (or
+ * the keyboard is on it): a list of window titles should not look like a list
+ * of things to close. */
+window box.popover-menu box.window-row .window-close {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border-radius: 4px;
+  opacity: 0.35;
+}
+
+window box.popover-menu box.window-row:hover .window-close,
+window box.popover-menu box.window-row .window-close:focus-visible {
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------------------
+ * STACKS: THE FOLDER PANEL
+ * -------------------------------------------------------------------------
+ * The panel is a small file browser: a header with the breadcrumb, the count and
+ * its three buttons, then a grid of cards or a list of rows, then a note when the
+ * folder holds more entries than the panel lists.
+ * ------------------------------------------------------------------------- */
+
+window box.stack-popover box.stack-header {
+  padding: 0 2px 2px;
+}
+
+window box.stack-popover box.stack-header .stack-title {
+  font-weight: 700;
+}
+
+window box.stack-popover label.stack-count {
+  font-size: 0.9em;
+  opacity: 0.75;
+}
+
+window box.stack-popover box.stack-header-button {
+  min-width: 26px;
+  min-height: 26px;
+  padding: 0;
+  border-radius: 6px;
+}
+
+window box.stack-popover box.stack-header-button:hover {
+  background-color: alpha(currentColor, 0.12);
+}
+
+window box.stack-popover box.stack-header-button:active {
+  background-color: alpha(currentColor, 0.20);
+}
+
+window box.stack-popover label.stack-note {
+  font-size: 0.88em;
+  opacity: 0.7;
+  padding-top: 2px;
+}
+
+/* Scrolling: leave the scrollbar its own room, and keep the cards off it. */
+window box.stack-popover .stack-scroll {
+  padding-right: 2px;
+}
+
+/* A grid cell is a card: a hover surface, a rounded preview, and a name that
+ * keeps its contrast on every material. */
+window box.stack-popover button.stack-entry {
+  padding: 10px 8px;
+  border-radius: 12px;
+  min-width: 100px;
+}
+
+window box.stack-popover button.stack-entry:hover {
+  background-color: alpha(currentColor, 0.10);
+}
+
+window box.stack-popover button.stack-entry:active {
+  background-color: alpha(currentColor, 0.18);
+}
+
+window box.stack-popover button.stack-entry image {
+  border-radius: 6px;
+}
+
+window box.stack-popover button.stack-entry label {
+  font-size: 0.92em;
+  opacity: 0.92;
+}
+
+/* A list row: a hover surface and a hairline, the way a file manager draws it. */
+window box.stack-popover button.stack-row {
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+window box.stack-popover button.stack-row:hover {
+  background-color: alpha(currentColor, 0.10);
+}
+
+window box.stack-popover button.stack-row:active {
+  background-color: alpha(currentColor, 0.18);
+}
+
+window box.stack-popover box.stack-list button.stack-row {
+  border-bottom: 1px solid alpha(currentColor, 0.08);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+window box.stack-popover box.stack-list button.stack-row:last-child {
+  border-bottom: none;
+}
+
+/* -------------------------------------------------------------------------
  * KEYBOARD FOCUS
  * -------------------------------------------------------------------------
  * Dock icons, launchpad tiles and stack entries are flat buttons, and most
@@ -242,6 +423,17 @@ button.launchpad-close:focus-visible,
 button.copy-row:focus-visible,
 button.stack-entry:focus-visible,
 button.stack-row:focus-visible {
+  box-shadow: inset 0 0 0 2px alpha(currentColor, 0.9);
+}
+
+/* Inside a popover the themes set `box-shadow: none' on every flat button, so
+ * the ring above would be invisible there without the extra weight. */
+window popover button.menu-row:focus-visible,
+window popover button.window-close:focus-visible,
+window popover button.window-title:focus-visible,
+window popover button.stack-header-button:focus-visible,
+window box.stack-popover button.stack-entry:focus-visible,
+window box.stack-popover button.stack-row:focus-visible {
   box-shadow: inset 0 0 0 2px alpha(currentColor, 0.9);
 }
 

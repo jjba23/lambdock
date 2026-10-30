@@ -121,6 +121,7 @@ If you read nothing else, read this.
 | Add a widget (CPU, clock, ...)             | =scheme/lambdock/items.scm=                                    |
 | Change how an item is drawn                | =src/ui/dock_item.c=                                           |
 | Change the window popover                  | =src/ui/popover_menu.c=                                        |
+| Change the stack panel (browsing, header)  | =src/ui/stack.c=                                               |
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
 | Change CSS scoping or theming              | =src/ui/theme_engine.c=                                        |
@@ -311,6 +312,7 @@ lambdock/
 │       ├── shelf_follow.c/.h  # Separators following the shelf's projection
 │       ├── icon_zoom.c/.h     # Fisheye magnification by transform, not re-raster
 │       ├── meter.c/.h         # Circular gauge widget for meter items
+│       ├── dock_item_windows.c/.h # An item's windows: tracking, styling, lookup
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
 │       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
@@ -886,7 +888,11 @@ flowchart TD
 - ~sync_window_trackers(state)~ replays all known toplevels into a dock's items;
   it is called when a dock is created and after every reload.
 - Popovers (=popover_menu.c=) render the per-item window list, with "focus",
-  "close", "new instance", and "close all".
+  "close", "new instance", and "close all". Every row carries a symbolic icon,
+  the window holding the focus is marked and minimized windows are dimmed, and
+  =lambdock_popover_menu_keys()= gives the menu Up/Down/Home/End while the same
+  controller stays inert on a stack panel (it checks for the =popover-menu=
+  class), which handles its own arrows in =stack.c=.
 
 The protocol itself is
 [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][zwlr_foreign_toplevel_management_unstable_v1]]
@@ -1206,6 +1212,10 @@ callback needs more than one clause, it belongs in =core/= with a name.
   CSS class, click behaviour, accessibility text.  Adding a kind means adding a
   row and, if it needs one, a small builder.
 - A Scheme item type is one row of =DOCK_ITEM_BUILDERS= in =guile_bridge.c=.
+- The stack panel walks folders with three pure helpers -- =lambdock_stack_child_path=,
+  =lambdock_stack_parent_path= and =lambdock_stack_breadcrumb= -- so the browsing
+  rules are unit tested without a display; =lambdock_stack_panel_new()= builds
+  the panel for any folder, and the popover only remembers *where* it is.
 - A stack view is one row of =STACK_VIEW_OPS= in =ui/stack.c= (settings symbol +
   builder), which is also where the symbol mapping lives.
 
@@ -1226,23 +1236,26 @@ settings file/.
 :CUSTOM_ID: rough-edges
 :END:
 
-Not violations of the rules above, just the places where the tree has not been
-taken all the way yet. Listed biggest win first; none of them is a bug.
+The list that used to live here is empty. Every row was taken off in v0.21.0,
+and this is what each one became -- kept because the *shape* of the fix is the
+point, not the row:
 
-| Where                                   | What is rough                                                        | First move                                                        |
-|-----------------------------------------+----------------------------------------------------------------------+-------------------------------------------------------------------|
-| =ui/meter.c= ~..._snapshot~             | 122 lines of geometry interleaved with ~gtk_snapshot_*~ calls         | extract ~MeterGeometry~ + a pure compute, as =core/dock_motion.c= |
-| =core/dock_dims.h=, =core/config_values.h= | include =lambdock.h= / =ui/shelf.h=, so layer 1 is pure in content but not in headers | move the shelf/dock value structs into =core/=                    |
-| =ui/desktop_entry.c= cache              | three file statics for a process-wide cache                           | one named ~DesktopEntryCache~ value, as =dock_registry.c= does     |
-| =main.c=, =ui/preferences.c=            | hand-rolled snapshot loops, two loose timer ids                       | ~dock_registry_foreach()~ + one timers struct                     |
-| =ui/dock_item.c=                        | 1980 lines / 83 functions: items, window tracking and pollers at once | split window tracking into =ui/dock_item_windows.c=               |
-| =ui/dock_item.c= pollers                | call ~scm_*~ directly, so Guile's API leaks past the bridge           | one bridge function that calls a stored poll procedure            |
-| =ui/icon_resolver.c= ~setup_icon_theme~ | 89 lines assembling search paths                                      | build the path list purely, then apply it                         |
+| Was rough                                                        | Now |
+|------------------------------------------------------------------+-----|
+| =ui/meter.c= mixed 122 lines of geometry with ~gtk_snapshot_*~ calls | ~LambdockMeterGeometry~ + ~lambdock_meter_geometry_compute()~ and ~lambdock_meter_tone_for_fraction()~ are pure and unit tested; the snapshot function only draws what they describe |
+| =core/dock_dims.h= and =core/config_values.h= included =lambdock.h= / =ui/shelf.h= | the shelf *values* live in =core/shelf_params.h=; the two core headers include glib and gtk4-layer-shell and nothing else, and =lambdock.h= no longer includes =libguile.h= |
+| =ui/desktop_entry.c= had three loose cache statics | one ~DesktopEntryCache~ value with one owner and one lifetime |
+| =main.c= and =ui/preferences.c= hand-rolled registry snapshot loops | ~dock_registry_foreach()~ visitors; the process-wide reload timer lives in a ~MainTimers~ value |
+| =ui/dock_item.c= (2247 lines) did items, window tracking and pollers | window tracking moved to =ui/dock_item_windows.c= (~330 lines, 18 functions), and pollers go through =guile_bridge.c= (~lambdock_poll_fn_*~) so no =scm_*~ call lives outside the bridge |
+| =ui/icon_resolver.c= assembled its search paths inline | ~lambdock_icon_search_paths_build()~ takes the directories as inputs and is tested; ~setup_icon_theme()~ applies the list |
 
-Done and off the list, for reference: ~load_custom_css~ (now a pure
-~LambdockThemeRequest~ plus four single-concern appliers), and the private
-~set_css_class~ in =ui/shelf_follow.c= (now ~lambdock_set_css_class()~).
+What is left, in the same spirit (none of it is a bug):
 
+| Where                        | What is rough                                                       | First move                                                       |
+|------------------------------+---------------------------------------------------------------------+------------------------------------------------------------------|
+| =ui/dock_item.c= (~1900 lines) | still the biggest file: it builds, mounts, styles and frees an item | split the per-kind constructors (=create_*_dock_item=) from the mounting helpers |
+| =ui/preferences.c= (~1300 lines) | a data-driven form, its builders and its window in one file      | move the row builders next to the tables they serve               |
+| =main.c=                     | startup, disk sync, overlay CSS and the Scheme primitives together   | the REPL primitives want their own =repl.c=                       |
 
 Deprecated GTK3 patterns are *not* on this list: there are none left
 (~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and

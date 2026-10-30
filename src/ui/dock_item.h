@@ -7,6 +7,7 @@
 #define DOCK_ITEM_H
 
 #include "../lambdock.h"
+#include "dock_item_windows.h"
 
 /* =========================================================================
  * THE DOCK ICON
@@ -38,10 +39,13 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 /**
  * create_dynamic_dock_item:
  * Constructs a dynamic polling DockItem with text label and interval timer.
+ *
+ * @poll_fn is the bridge's opaque handle for the Scheme procedure that produces
+ * the reading (NULL for an item that never polls).
  */
 DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
                                    const char *icon, const char *exec,
-                                   SCM poll_fn, guint interval_ms,
+                                   void *poll_fn, guint interval_ms,
                                    gboolean hover_animate);
 
 /**
@@ -81,38 +85,6 @@ void free_dock_item(DockItem *item);
 void clear_favorite_dock_items(LambdockState *state);
 
 /**
- * clear_tracked_windows:
- * Drops all tracked AppWindows/handles and removes non-favorite (window-tracked)
- * items. Used when the Wayland foreign-toplevel manager is withdrawn.
- */
-void clear_tracked_windows(LambdockState *state);
-
-/**
- * dock_item_add_window / dock_item_remove_window:
- * Manages active Wayland window handle attachments on a DockItem.
- */
-AppWindow *dock_item_add_window(DockItem *item,
-                                struct zwlr_foreign_toplevel_handle_v1 *handle);
-void dock_item_remove_window(DockItem *item,
-                             struct zwlr_foreign_toplevel_handle_v1 *handle);
-
-/**
- * dock_item_has_window:
- * @item: (nullable): the item to ask.
- * @handle: (nullable): a Wayland toplevel handle captured earlier.
- *
- * Returns: TRUE when @item still tracks @handle.
- *
- * The tracker owns and frees the proxies, so a handle stored elsewhere -- a
- * popover row's action data, built when the menu opened -- can be freed while
- * that menu is still on screen. Callers that act on a captured handle must ask
- * this first, or they would call a Wayland request on a destroyed proxy.
- */
-gboolean dock_item_has_window(
-    const DockItem *item,
-    const struct zwlr_foreign_toplevel_handle_v1 *handle);
-
-/**
  * dock_items_refresh_polls:
  * @state: (nullable): the dock whose polling items should be updated now.
  *
@@ -122,29 +94,6 @@ gboolean dock_item_has_window(
  * the dock hid.
  */
 void dock_items_refresh_polls(LambdockState *state);
-
-/**
- * update_dock_item_status:
- * Toggles 'running-app' CSS styling depending on active window counts.
- */
-void update_dock_item_status(DockItem *item);
-
-/**
- * dock_item_refresh_window_state:
- * @item: (nullable): the item whose windows' state changed.
- *
- * Re-applies the styling that depends on what the compositor reports for the
- * item's windows -- currently the `window-minimized` class that dims the icon of
- * an app whose windows are all minimized. Cheap by design: two CSS-class toggles
- * and one scan of a short list, so it can run on every state event.
- */
-void dock_item_refresh_window_state(DockItem *item);
-
-/**
- * find_dock_item_by_app_id:
- * Searches active DockItem structs matching app_id, exec, or icon name.
- */
-DockItem *find_dock_item_by_app_id(LambdockState *state, const char *app_id);
 
 /**
  * create_separator_dock_item:

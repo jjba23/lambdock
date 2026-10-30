@@ -6,8 +6,9 @@
 #ifndef LAMBDOCK_CORE_DOCK_DIMS_H
 #define LAMBDOCK_CORE_DOCK_DIMS_H
 
-#include "../lambdock.h"
-#include "../ui/shelf.h"
+#include "shelf_params.h"
+
+#include <glib.h>
 
 /*
  * =========================================================================

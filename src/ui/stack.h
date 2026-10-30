@@ -59,6 +59,58 @@ typedef struct LambdockStackEntry {
 GPtrArray *lambdock_stack_list_directory(const char *path);
 
 /**
+ * lambdock_stack_list_directory_limited:
+ * @path: Directory to list ("~" is expanded).
+ * @limit: Maximum number of entries to return.
+ * @truncated: (out) (optional): set to TRUE when @path holds more entries than
+ *   @limit, so the panel can say so instead of quietly hiding the rest.
+ *
+ * The same listing as lambdock_stack_list_directory(), with the cap and the
+ * "there is more" answer made explicit.
+ *
+ * Returns: (transfer full): GPtrArray of LambdockStackEntry*.
+ */
+GPtrArray *lambdock_stack_list_directory_limited(const char *path, guint limit,
+                                                 gboolean *truncated);
+
+/**
+ * lambdock_stack_child_path:
+ * @dir: (nullable): the folder being shown.
+ * @name: (nullable): a child's name.
+ *
+ * Returns: (transfer full) (nullable): the path of @name inside @dir, or NULL
+ * when either is empty.
+ */
+char *lambdock_stack_child_path(const char *dir, const char *name);
+
+/**
+ * lambdock_stack_parent_path:
+ * @path: (nullable): the folder being shown.
+ * @root: (nullable): the stack's own folder, which is the ceiling.
+ *
+ * The folder one level above @path, or NULL when @path is already @root (or
+ * above it), which is what the panel's back button is shown from. Trailing
+ * slashes are ignored, so "/a/b/" and "/a/b" are the same place.
+ *
+ * Returns: (transfer full) (nullable): the parent folder, or NULL.
+ */
+char *lambdock_stack_parent_path(const char *path, const char *root);
+
+/**
+ * lambdock_stack_breadcrumb:
+ * @path: (nullable): the folder being shown.
+ * @root: (nullable): the stack's own folder.
+ * @root_label: (nullable): what to call @root; defaults to its base name.
+ *
+ * The title of the panel: "Downloads" at the root, "Downloads / Shots / 2024"
+ * after walking into two folders.
+ *
+ * Returns: (transfer full): the breadcrumb, never NULL.
+ */
+char *lambdock_stack_breadcrumb(const char *path, const char *root,
+                                const char *root_label);
+
+/**
  * lambdock_stack_thumbnail_for_path:
  * @path: A local file path.
  * @size: Target width/height of the square thumbnail, in pixels.
@@ -104,6 +156,20 @@ const char *lambdock_stack_view_to_string(LambdockStackView view);
  */
 GtkWidget *lambdock_stack_view_new(GPtrArray *entries, LambdockStackView view,
                                    int icon_size);
+
+/**
+ * lambdock_stack_panel_new:
+ * @item: A stack dock item.
+ * @path: (nullable): the folder to show; the stack's own folder when NULL.
+ *
+ * Builds the stack panel: the header (back, breadcrumb, count, view toggle, open
+ * folder), the grid or list of @path's entries, and the note that says when a
+ * folder holds more than STACK_MAX_ENTRIES. Clicking a folder walks into it
+ * inside the panel; the file manager stays one header button away.
+ *
+ * Returns: (transfer none) (nullable): the panel widget, or NULL for a NULL item.
+ */
+GtkWidget *lambdock_stack_panel_new(DockItem *item, const char *path);
 
 /**
  * lambdock_stack_show:

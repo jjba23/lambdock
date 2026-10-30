@@ -562,7 +562,7 @@ static void test_destroy_dock_instance_cleans_up(void) {
 
   DockItem *item = g_new0(DockItem, 1);
   item->state = state;
-  item->poll_fn = SCM_BOOL_F;
+  item->poll_fn = NULL;
   item->button = gtk_button_new();
   state->dock_items = g_list_append(state->dock_items, item);
 

@@ -484,6 +484,58 @@ static void test_layout_bridge(void) {
   g_assert_true(scheme_true("(null? (get-layout-calls))"));
 }
 
+/* The poller contract: the dock stores an opaque handle, and the bridge turns
+ * one call into a plain reading. A Scheme error is a missing reading, not a
+ * crash; NULL is "no poller" and never reaches scm_*. */
+static void test_poll_fn_bridge(void) {
+  LambdockReading reading = {0};
+
+  /* NULL is the dock's own "no poller" handle. */
+  g_assert_null(lambdock_poll_fn_protect(NULL));
+  g_assert_false(lambdock_poll_fn_is_callable(NULL));
+  g_assert_false(lambdock_poll_fn_call(NULL, &reading));
+  g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_NONE);
+  lambdock_poll_fn_release(NULL); /* must not crash or unprotect anything */
+
+  /* A number, a string, and an error. */
+  SCM number_fn = scm_c_eval_string("(lambda () 42.5)");
+  void *number = lambdock_poll_fn_protect((void *)number_fn);
+  g_assert_nonnull(number);
+  g_assert_true(lambdock_poll_fn_is_callable(number));
+
+  g_assert_true(lambdock_poll_fn_call(number, &reading));
+  g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_NUMBER);
+  g_assert_cmpfloat_with_epsilon(reading.number, 42.5, 1e-9);
+  g_assert_null(reading.text);
+
+  SCM text_fn = scm_c_eval_string("(lambda () \"CPU 42%\")");
+  void *text = lambdock_poll_fn_protect((void *)text_fn);
+  g_assert_true(lambdock_poll_fn_call(text, &reading));
+  g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_TEXT);
+  g_assert_cmpstr(reading.text, ==, "CPU 42%");
+  g_free(reading.text);
+
+  SCM error_fn = scm_c_eval_string("(lambda () (error \"boom\"))");
+  void *broken = lambdock_poll_fn_protect((void *)error_fn);
+  g_assert_nonnull(broken);
+  g_assert_false(lambdock_poll_fn_call(broken, &reading));
+  g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_NONE);
+  g_assert_null(reading.text);
+
+  /* A value that is not a procedure is not a poller. */
+  SCM not_fn = scm_c_eval_string("'not-a-procedure");
+  g_assert_null(lambdock_poll_fn_protect((void *)not_fn));
+  g_assert_false(lambdock_poll_fn_is_callable((void *)not_fn));
+
+  lambdock_poll_fn_release(number);
+  lambdock_poll_fn_release(text);
+  lambdock_poll_fn_release(broken);
+
+  /* Released handles are forgotten: the bridge no longer calls them. */
+  g_assert_false(lambdock_poll_fn_call(broken, &reading));
+  g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_NONE);
+}
+
 static void inner_test_guile_bridge(void *data, int argc, char **argv) {
   (void)data;
 
@@ -498,6 +550,7 @@ static void inner_test_guile_bridge(void *data, int argc, char **argv) {
   test_is_app_excluded();
   test_reload_and_load_config();
   test_layout_bridge();
+  test_poll_fn_bridge();
 
   if (gtk_init_check()) {
     test_populate_dock_items();

@@ -4,6 +4,9 @@
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 #include "dock_dims.h"
+#include "../lambdock.h"
+
+#include <math.h>
 
 /* A monitor size of zero (headless run, monitor just unplugged) would produce a
  * negative content area, so it falls back to a sane screen instead. */

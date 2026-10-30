@@ -6,6 +6,7 @@
 /* Unit tests for the pure dock-dimension arithmetic: no widgets, no display. */
 
 #include "../src/core/dock_dims.h"
+#include "../src/lambdock.h"
 
 #include <glib.h>
 #include <math.h>

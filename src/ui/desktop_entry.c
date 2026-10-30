@@ -483,14 +483,21 @@ void lambdock_desktop_entries_free(GPtrArray *entries) {
  * hash probe instead of a heuristic.
  */
 
-static GPtrArray *cache_entries = NULL;
-static GHashTable *cache_index = NULL;
-static gint64 cache_built_at = 0;
+/* The cache is one value, not three loose file statics: everything that reads
+ * or replaces it goes through this struct, so it has a single owner, a single
+ * lifetime, and a single place to look when "the entries are stale" comes up. */
+typedef struct {
+  GPtrArray *entries; /* owned; LambdockDesktopEntry*, never NULL once built */
+  GHashTable *index;  /* owned; normalized alias -> entry (borrowed) */
+  gint64 built_at;    /* monotonic time of the build, 0 when never built */
+} DesktopEntryCache;
+
+static DesktopEntryCache g_desktop_cache;
 
 static void cache_clear(void) {
-  g_clear_pointer(&cache_entries, g_ptr_array_unref);
-  g_clear_pointer(&cache_index, g_hash_table_unref);
-  cache_built_at = 0;
+  g_clear_pointer(&g_desktop_cache.entries, g_ptr_array_unref);
+  g_clear_pointer(&g_desktop_cache.index, g_hash_table_unref);
+  g_desktop_cache.built_at = 0;
 }
 
 void lambdock_desktop_cache_invalidate(void) { cache_clear(); }
@@ -576,40 +583,43 @@ static void cache_index_entry(GHashTable *index, LambdockDesktopEntry *entry) {
 static void cache_build(void) {
   cache_clear();
 
-  cache_entries = lambdock_desktop_entries_scan();
-  cache_index = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+  g_desktop_cache.entries = lambdock_desktop_entries_scan();
+  g_desktop_cache.index =
+      g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 
-  for (guint i = 0; i < cache_entries->len; i++) {
-    LambdockDesktopEntry *entry = g_ptr_array_index(cache_entries, i);
+  for (guint i = 0; i < g_desktop_cache.entries->len; i++) {
+    LambdockDesktopEntry *entry = g_ptr_array_index(g_desktop_cache.entries, i);
 
-    cache_index_entry(cache_index, entry);
+    cache_index_entry(g_desktop_cache.index, entry);
 
     /* The copies the grid does not list are indexed too, so a window of the
      * copy that lost still resolves to the application and its icon. The one on
      * the grid goes first, and the index keeps the first entry of a key. */
     for (guint a = 0; entry->alternates && a < entry->alternates->len; a++)
-      cache_index_entry(cache_index, g_ptr_array_index(entry->alternates, a));
+      cache_index_entry(g_desktop_cache.index,
+                        g_ptr_array_index(entry->alternates, a));
   }
 
-  cache_built_at = g_get_monotonic_time();
+  g_desktop_cache.built_at = g_get_monotonic_time();
   LOG_C_INFO("UI", "Desktop entry cache built: %u applications, %u keys",
-             cache_entries->len, g_hash_table_size(cache_index));
+             g_desktop_cache.entries->len,
+             g_hash_table_size(g_desktop_cache.index));
 }
 
 static void cache_ensure(void) {
-  if (!cache_entries || !cache_index) {
+  if (!g_desktop_cache.entries || !g_desktop_cache.index) {
     cache_build();
     return;
   }
 
-  gint64 age_ms = (g_get_monotonic_time() - cache_built_at) / 1000;
+  gint64 age_ms = (g_get_monotonic_time() - g_desktop_cache.built_at) / 1000;
   if (age_ms > DESKTOP_CACHE_TTL_MS)
     cache_build();
 }
 
 GPtrArray *lambdock_desktop_entries_cached(void) {
   cache_ensure();
-  return cache_entries;
+  return g_desktop_cache.entries;
 }
 
 const LambdockDesktopEntry *lambdock_desktop_entry_lookup(const char *app_id) {
@@ -624,7 +634,8 @@ const LambdockDesktopEntry *lambdock_desktop_entry_lookup(const char *app_id) {
     return NULL;
   }
 
-  const LambdockDesktopEntry *entry = g_hash_table_lookup(cache_index, key);
+  const LambdockDesktopEntry *entry =
+      g_hash_table_lookup(g_desktop_cache.index, key);
   if (entry) {
     g_free(key);
     return entry;
@@ -637,7 +648,7 @@ const LambdockDesktopEntry *lambdock_desktop_entry_lookup(const char *app_id) {
   g_free(tail);
 
   if (tail_key && g_strcmp0(tail_key, key) != 0)
-    entry = g_hash_table_lookup(cache_index, tail_key);
+    entry = g_hash_table_lookup(g_desktop_cache.index, tail_key);
 
   g_free(tail_key);
   g_free(key);

@@ -6,6 +6,7 @@
 #ifndef SHELF_H
 #define SHELF_H
 
+#include "../core/shelf_params.h"
 #include "../lambdock.h"
 
 /*
@@ -31,21 +32,10 @@
  * and the reflections stay hidden.
  */
 
-/**
- * lambdock_shelf_geometry:
- * Derived shelf geometry for a state and icon size.
- *
- * @band_px: Height of the reflection band (0 when reflections are off).
- * @outer_px: Glass on the outer (screen edge) side of the icons.
- * @capsule_px: Capsule thickness across the dock.
- * @overhang_px: How far the icons stick out on the inner side (>= 0).
- */
-typedef struct LambdockShelfGeometry {
-  int band_px;
-  int outer_px;
-  int capsule_px;
-  int overhang_px;
-} LambdockShelfGeometry;
+/* The geometry value (`LambdockShelfGeometry`) and the parameters
+ * (`LambdockShelfParams`) live in core/shelf_params.h, so the pure core headers
+ * can name them without including a widget header. */
+
 
 /**
  * lambdock_shelf_geometry:
