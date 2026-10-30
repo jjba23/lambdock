@@ -65,7 +65,7 @@ button.flat:active {
   font-weight: 500;
 }
 
-/* Running indicator: a short flat accent bar under the icon */
+/* Running indicator: a short flat accent bar under the icon. */
 button.running-app {
   background-image: linear-gradient(
     to right,
@@ -79,6 +79,17 @@ button.running-app {
 
 button.running-app:hover {
   background-size: 22px 3px;
+}
+
+/* The focused window's bar is the long one, as on the real taskbar, and it
+ * keeps its length while hovered (the `:hover' arm has the higher specificity,
+ * so hovering a focused icon cannot shorten it back). */
+button.window-focused {
+  background-size: 26px 3px;
+}
+
+button.window-focused:hover {
+  background-size: 26px 3px;
 }
 
 /* -------------------------------------------------------------------------

@@ -194,6 +194,7 @@ settings file, can have GUI edits for the session but nowhere to keep them."
     (dock-launchpad-icon-size . set-dock-launchpad-icon-size!)
     (dock-launchpad-columns . set-dock-launchpad-columns!)
     (dock-launchpad-blur? . set-dock-launchpad-blur!)
+    (dock-launchpad-close-side . set-dock-launchpad-close-side!)
     (dock-reduce-motion? . set-dock-reduce-motion!)))
 
 (define (set-dock-preference! key value config-path)

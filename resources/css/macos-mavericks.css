@@ -179,17 +179,27 @@ button.flat:hover .dynamic-item-label {
   color: #10141a;
 }
 
+/* Running-window titles, in taskbar mode: dark on the platinum slab. */
+.window-title-label {
+  color: #232830;
+  font-weight: 600;
+  font-size: 12px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR
  * -------------------------------------------------------------------------
- * With reflections on, the reflection widget draws the white glow dot on the
- * slab itself; this dot is for the flat variant. */
+ * With reflections on, the reflection widget draws the dot on the slab itself;
+ * this dot is for the flat variant. The 10.9 slab is light, so the dot is dark
+ * -- a white glow would vanish into the platinum -- which is what a running app
+ * looked like on the real light dock. */
 
 button.running-app {
   background-image: radial-gradient(
     circle at center,
-    rgba(255, 255, 255, 0.95) 0%,
-    rgba(198, 220, 246, 0.70) 45%,
+    rgba(44, 52, 66, 0.92) 0%,
+    rgba(52, 62, 78, 0.70) 45%,
     transparent 82%
   );
   background-size: 20px 7px;
@@ -200,8 +210,8 @@ button.running-app {
 button.running-app:hover {
   background-image: radial-gradient(
     circle at center,
-    rgba(255, 255, 255, 1.00) 0%,
-    rgba(214, 232, 252, 0.85) 50%,
+    rgba(28, 34, 46, 1.00) 0%,
+    rgba(40, 50, 66, 0.85) 50%,
     transparent 86%
   );
   background-size: 26px 9px;

@@ -128,6 +128,18 @@ typedef struct {
   PrefReadChoice read;
 } PrefChoiceSpec;
 
+/* An action row is a dropdown (what to act on) and a button (do it). It edits
+ * no setting: it runs a command, which is what "add a widget to the dock"
+ * is. The dropdown still carries a PrefControl, so it is keyed like every other
+ * control and the row can read the selected symbol the same way. */
+typedef struct {
+  const char *key;
+  const char *title;
+  const char *subtitle;
+  const char *button_label; /* untranslated */
+  const PrefChoice *choices;
+} PrefActionSpec;
+
 /* One card of the form: its heading, its explanation and its rows. */
 typedef struct {
   const char *title;
@@ -138,6 +150,8 @@ typedef struct {
   guint n_scales;
   const PrefChoiceSpec *choices;
   guint n_choices;
+  const PrefActionSpec *actions;
+  guint n_actions;
 } PrefSection;
 
 /* What a preferences window knows about itself. */
@@ -219,11 +233,16 @@ static const PrefChoice k_theme_choices[] = {
     {"Solarized Light", "solarized-light"},
     {"Nature", "nature"},
     {"Unity", "unity"},
+    {"macOS Tiger", "macos-tiger"},
     {"macOS Big Sur", "macos-big-sur"},
     {"macOS Ventura", "macos-ventura"},
+    {"macOS Tahoe", "macos-tahoe"},
+    {"macOS Tahoe Dark", "macos-tahoe-dark"},
     {"macOS Mavericks", "macos-mavericks"},
     {"macOS Mavericks Dark", "macos-mavericks-dark"},
     {"Windows XP", "windows-xp"},
+    {"Windows Vista", "windows-vista"},
+    {"Windows 7", "windows-7"},
     {"Windows 10", "windows-10"},
     {"Windows 11", "windows-11"},
     {"None", "none"},
@@ -241,6 +260,24 @@ static const PrefChoice k_position_choices[] = {
 static const PrefChoice k_mode_choices[] = {
     {"Dock", "dock"},
     {"Taskbar", "taskbar"},
+    {NULL, NULL},
+};
+
+static const PrefChoice k_launchpad_close_side_choices[] = {
+    {"Left", "left"},
+    {"Right", "right"},
+    {NULL, NULL},
+};
+
+/* What the "Add an item" row can put on the dock: the ready-made widgets of
+ * (lambdock presets), by preset name. */
+static const PrefChoice k_add_item_choices[] = {
+    {"Trash", "trash"},
+    {"Clock", "clock"},
+    {"RAM usage", "ram"},
+    {"CPU usage", "cpu"},
+    {"CPU temperature", "cpu-temp"},
+    {"Battery", "battery"},
     {NULL, NULL},
 };
 
@@ -289,6 +326,10 @@ static guint read_position_choice(const char *config_path) {
 
 static guint read_mode_choice(const char *config_path) {
   return get_taskbar_config_for(config_path) ? 1 : 0;
+}
+
+static guint read_launchpad_close_side_choice(const char *config_path) {
+  return get_launchpad_close_on_right_config_for(config_path) ? 1 : 0;
 }
 
 static guint read_theme_choice(const char *config_path) {
@@ -402,32 +443,53 @@ static const PrefScaleSpec k_shelf_scales[] = {
 #define PREF_SWITCHES(rows) rows, G_N_ELEMENTS(rows)
 #define PREF_SCALES(rows) rows, G_N_ELEMENTS(rows)
 #define PREF_CHOICES(rows) rows, G_N_ELEMENTS(rows)
+#define PREF_ACTIONS(rows) rows, G_N_ELEMENTS(rows)
 #define PREF_NO_SWITCHES NULL, 0
 #define PREF_NO_SCALES NULL, 0
 #define PREF_NO_CHOICES NULL, 0
+#define PREF_NO_ACTIONS NULL, 0
+
+static const PrefActionSpec k_dock_item_actions[] = {
+    {"dock-add-item", N_("Add an item"),
+     N_("Puts a trash can, a clock or a live meter on the dock. The item is "
+        "appended and remembered, like the ones you drag in; right-click it in "
+        "the dock to remove it again."),
+     N_("Add"), k_add_item_choices},
+};
+
+static const PrefChoiceSpec k_launchpad_choices[] = {
+    {"dock-launchpad-close-side", N_("Close button"),
+     N_("The end of the launchpad's header the close button sits on."),
+     k_launchpad_close_side_choices, read_launchpad_close_side_choice},
+};
 
 static const PrefSection k_sections[] = {
     {N_("Behaviour"),
      N_("How the dock responds to windows, the pointer and the session."),
      PREF_SWITCHES(k_behaviour_switches), PREF_NO_SCALES,
-     PREF_CHOICES(k_behaviour_choices)},
+     PREF_CHOICES(k_behaviour_choices), PREF_NO_ACTIONS},
+    {N_("Dock items"),
+     N_("Put a widget on this dock. Nothing is installed or uninstalled: the "
+        "item is added to the dock and remembered with its layout."),
+     PREF_NO_SWITCHES, PREF_NO_SCALES, PREF_NO_CHOICES,
+     PREF_ACTIONS(k_dock_item_actions)},
     {N_("Accessibility"),
      N_("Motion comfort. The desktop's own accessibility settings are honoured "
         "too."),
      PREF_SWITCHES(k_accessibility_switches), PREF_NO_SCALES,
-     PREF_NO_CHOICES},
+     PREF_NO_CHOICES, PREF_NO_ACTIONS},
     {N_("Layout & material"),
      N_("Size, spacing, screen edge and the material the dock is dressed in."),
      PREF_NO_SWITCHES, PREF_SCALES(k_material_scales),
-     PREF_CHOICES(k_material_choices)},
+     PREF_CHOICES(k_material_choices), PREF_NO_ACTIONS},
     {N_("Launchpad"),
      N_("How the full screen application grid looks when this dock opens it."),
      PREF_SWITCHES(k_launchpad_switches), PREF_SCALES(k_launchpad_scales),
-     PREF_NO_CHOICES},
+     PREF_CHOICES(k_launchpad_choices), PREF_NO_ACTIONS},
     {N_("Glass shelf"),
      N_("The 3D slab, its overhang and the reflections on it."),
      PREF_NO_SWITCHES,
-     PREF_SCALES(k_shelf_scales), PREF_NO_CHOICES},
+     PREF_SCALES(k_shelf_scales), PREF_NO_CHOICES, PREF_NO_ACTIONS},
 };
 
 /* =========================================================================
@@ -783,8 +845,7 @@ static void append_scale_row(GtkBox *box, const char *config_path,
 }
 
 static void append_choice_row(GtkBox *box, const char *config_path,
-                              const PrefChoiceSpec *spec) {
-  const char *title = gettext(spec->title);
+                              const PrefChoiceSpec *spec) {  const char *title = gettext(spec->title);
   const char *subtitle = gettext(spec->subtitle);
 
   guint count = choices_count(spec->choices);
@@ -813,6 +874,142 @@ static void append_choice_row(GtkBox *box, const char *config_path,
 }
 
 /* =========================================================================
+ * ACTION ROWS (a dropdown plus a button)
+ * =========================================================================
+ * Some rows do something instead of storing a value. The dock's own widgets
+ * are one: the item is appended to the dock's layout override (the same file
+ * drag and drop writes), which is what makes it survive a restart without
+ * touching the settings file.
+ */
+
+/* Defined next to the "Reset" button, which is the other thing that needs it. */
+static void reload_docks_for(const char *config_path);
+
+typedef struct {
+  char *config_path;   /* owned, "" for the default dock */
+  GtkWidget *dropdown; /* borrowed: the row's choice, still owned by the row */
+} PrefActionContext;
+
+static void pref_action_context_free(PrefActionContext *context) {
+  if (!context)
+    return;
+
+  g_free(context->config_path);
+  g_free(context);
+}
+
+/* The destroy notify a GClosure wants: data first, closure second. */
+static void pref_action_context_destroy(gpointer data, GClosure *closure) {
+  (void)closure;
+  pref_action_context_free((PrefActionContext *)data);
+}
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC(PrefActionContext, pref_action_context_free)
+
+/** The label of the selected row of a dropdown, for messages. */
+static char *dropdown_selected_label(GtkWidget *dropdown) {
+  GObject *item =
+      G_OBJECT(gtk_drop_down_get_selected_item(GTK_DROP_DOWN(dropdown)));
+
+  if (item && GTK_IS_STRING_OBJECT(item))
+    return g_strdup(gtk_string_object_get_string(GTK_STRING_OBJECT(item)));
+
+  return NULL;
+}
+
+/** Runs the row's command for the symbol currently selected in its dropdown. */
+static void run_action_row(GtkWidget *dropdown, const char *config_path,
+                           GtkWidget *announce_on) {
+  PrefControl *control = pref_control_of(dropdown);
+  if (!control)
+    return;
+
+  guint selected = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
+  const char *preset = pref_control_selected_symbol(control, selected);
+  if (!preset)
+    return;
+
+  /* "" is the default dock: the bridge resolves it to the default settings
+   * file's layout, the same file a path-ed dock would write. */
+  dock_layout_add_preset_item(config_path, preset);
+  reload_docks_for(config_path);
+
+  const char *target =
+      *config_path_or_default(config_path) ? config_path : "default";
+  g_autofree char *label = dropdown_selected_label(dropdown);
+  LOG_C_INFO("UI", "Added dock item '%s' (%s) to [%s]",
+             label ? label : preset, preset, target);
+
+  /* A screen reader has no way of knowing the dock behind the window changed,
+   * so say it out loud where the button is. */
+  if (announce_on) {
+    g_autofree char *message =
+        g_strdup_printf(_("%s added to the dock"), label ? label : preset);
+    lambdock_accessible_announce(announce_on, message, FALSE);
+  }
+}
+
+/* Adapter: the row's button. */
+static void on_action_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+
+  const PrefActionContext *context = user_data;
+  if (!context)
+    return;
+
+  run_action_row(context->dropdown, context->config_path, GTK_WIDGET(button));
+}
+
+static void append_action_row(GtkBox *box, const char *config_path,
+                              const PrefActionSpec *spec) {
+  const char *title = gettext(spec->title);
+  const char *subtitle = gettext(spec->subtitle);
+  const char *button_label = gettext(spec->button_label);
+
+  guint count = choices_count(spec->choices);
+  g_autofree char **labels = choice_labels_new(spec->choices);
+
+  GtkStringList *list = gtk_string_list_new((const char *const *)labels);
+  GtkWidget *dropdown = gtk_drop_down_new(G_LIST_MODEL(list), NULL);
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(dropdown), 0);
+  lambdock_accessible_update(dropdown, title, subtitle);
+
+  /* The dropdown is a control like any other (it is keyed by the row's option
+   * name), so the selected symbol is read through the same helper. It never
+   * writes a setting, so its kind is only there to carry the symbols. */
+  g_autoptr(PrefControl) state =
+      pref_control_new(config_path, spec->key, PREF_KIND_SYMBOL);
+  state->symbols = g_new0(char *, count + 1);
+  for (guint i = 0; i < count; i++)
+    state->symbols[i] = g_strdup(spec->choices[i].symbol);
+  pref_control_attach(dropdown, g_steal_pointer(&state));
+
+  GtkWidget *button = gtk_button_new_with_label(button_label);
+  gtk_widget_set_valign(button, GTK_ALIGN_CENTER);
+  lambdock_accessible_update(button, button_label, subtitle);
+
+  /* The same keyed contract every control in this form has: "dock-add-item" is
+   * the choice, so its button is that name plus "-button". */
+  g_autofree char *button_key = g_strdup_printf("%s-button", spec->key);
+  g_object_set_data_full(G_OBJECT(button), PREF_KEY_DATA, g_strdup(button_key),
+                         g_free);
+
+  g_autoptr(PrefActionContext) context = g_new0(PrefActionContext, 1);
+  context->config_path = g_strdup(config_path_or_default(config_path));
+  context->dropdown = dropdown;
+  g_signal_connect_data(button, "clicked", G_CALLBACK(on_action_clicked),
+                        g_steal_pointer(&context),
+                        pref_action_context_destroy, 0);
+
+  GtkWidget *control = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 10);
+  gtk_widget_set_valign(control, GTK_ALIGN_CENTER);
+  gtk_box_append(GTK_BOX(control), dropdown);
+  gtk_box_append(GTK_BOX(control), button);
+
+  gtk_box_append(box, make_row(title, subtitle, control));
+}
+
+/* =========================================================================
  * CONTENT
  * ========================================================================= */
 
@@ -829,6 +1026,9 @@ static void append_section(GtkBox *box, PrefSection section,
 
   for (guint i = 0; i < section.n_choices; i++)
     append_choice_row(GTK_BOX(card), config_path, &section.choices[i]);
+
+  for (guint i = 0; i < section.n_actions; i++)
+    append_action_row(GTK_BOX(card), config_path, &section.actions[i]);
 
   gtk_box_append(box, card);
 }
@@ -856,13 +1056,14 @@ GtkWidget *lambdock_preferences_content_for(const char *config_path) {
  * DOCK RELOAD (the only thing "Reset" shares with the controls)
  * ========================================================================= */
 
-/** Reloads every dock that is bound to @config_path. */
+/** Reloads every dock bound to @config_path, "" being the default dock. */
 static void reload_docks_for(const char *config_path) {
+  const char *wanted = config_path_or_default(config_path);
   GPtrArray *docks = dock_registry_snapshot();
 
   for (guint i = 0; i < docks->len; i++) {
     LambdockState *state = g_ptr_array_index(docks, i);
-    if (state->config_path && g_strcmp0(state->config_path, config_path) == 0)
+    if (g_strcmp0(config_path_or_default(state->config_path), wanted) == 0)
       reload_dock_instance(state);
   }
 

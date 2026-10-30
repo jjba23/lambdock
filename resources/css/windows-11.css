@@ -82,12 +82,12 @@ button.flat:active {
   font-weight: 500;
 }
 
-/* Windows 11 running indicator: a small rounded accent pill */
+/* Windows 11 running indicator: a small rounded accent pill. */
 button.running-app {
   background-image: radial-gradient(
-    circle at center,
+    ellipse at center,
     #6cb6ff 0%,
-    #4aa3ff 60%,
+    #4aa3ff 55%,
     transparent 78%
   );
   background-size: 14px 4px;
@@ -97,6 +97,18 @@ button.running-app {
 
 button.running-app:hover {
   background-size: 20px 4px;
+}
+
+/* The focused window's pill is the wide one, and it stays wide while hovered --
+ * the real taskbar widens the pill under the window you are in, and hovering it
+ * does not shrink it again. `:hover' needs the higher-specificity arm, or
+ * `button.running-app:hover' would win. */
+button.window-focused {
+  background-size: 22px 4px;
+}
+
+button.window-focused:hover {
+  background-size: 22px 4px;
 }
 
 /* -------------------------------------------------------------------------

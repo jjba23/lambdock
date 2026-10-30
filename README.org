@@ -68,9 +68,10 @@ a rebuild without ever restarting the process or dropping a frame.
   [[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]]
   (=/tmp/lambdock-repl.sock=) via Emacs/Geiser, ~socat~, or ~ncat~; see
   [[#repl][the REPL section]].
-- *Theme Engine*: Extensible with CSS, and ships with thirteen built-in themes,
+- *Theme Engine*: Extensible with CSS, and ships with nineteen built-in themes,
   while supporting user extensions and overrides via
-  =~/.config/lambdock/styles.css=; see [[#styling-and-theming][Styling & theming]].
+  =~/.config/lambdock/styles.css=; see [[#styling-and-theming][Styling & theming]]
+  and the one-line [[#looks][looks]].
 - *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme
   icons, absolute paths, system pixmaps, and symbolic variants.
 - *Async Command Launching*: Spawns binaries, scripts, and
@@ -108,8 +109,11 @@ a rebuild without ever restarting the process or dropping a frame.
   are visible, and reduced motion is honoured -- both from the dock's own setting
   and from the desktop's accessibility preferences; see
   [[#accessibility][Keyboard and accessibility]].
-- *Twelve Themes, Two Layout Modes*: from Snow Leopard glass to Windows XP Luna,
-  as a floating capsule or a full-width taskbar with window titles.
+- *Nineteen Themes, Two Layout Modes*: from Tiger's Aqua glass and Snow
+  Leopard's 3D shelf through Mavericks and Tahoe to the five Windows taskbars
+  (XP, Vista, 7, 10, 11), as a
+  floating capsule or a full-width taskbar with window titles -- and a
+  [[#looks][look]] per theme that sets the whole thing in one line.
 - *Free software*: MIT licensed, documentation included.  Yours to run, read,
   fork and extend.
 
@@ -149,7 +153,7 @@ auto-hiding directly to your setup.
     well-chosen tools -- and want a dock that does not drag an
   [[https://en.wikipedia.org/wiki/X_Window_System][X11]] toolkit, a configuration
   daemon, or a [[https://www.gnome.org/][GNOME]] session along with it.
-- *Ricers and theme collectors*, who will want the thirteen built-in themes, the
+- *Ricers and theme collectors*, who will want the nineteen built-in themes, the
   CSS override hook, and the ability to restyle anything on the fly.
 - *Lisp people*, who would rather write eleven lines of Scheme than file a
   feature request, and who expect a REPL inside the program they are running.
@@ -488,11 +492,15 @@ One item puts every installed application one click (and half a keystroke) away:
 
 Clicking it covers the screen with a layer-shell overlay: a search field, and
 below it every application found in the XDG application directories, sorted by
-name and shown as icon tiles.  The search field has the keyboard the moment the
-launchpad opens, so you can just start typing.  Type to filter (the name and the
-command line are both searched), press *Enter* on a result... nothing else: click
-a tile to launch it, press *Escape*, click the *X* in the top right corner or
-click the backdrop to go back to whatever you were doing.
+name and shown as icon tiles.  There is no title: the grid of everything
+installed is the screen, and the search field says what it searches.  What the
+header carries is one close button, and it sits on the *left* by default, where a
+window's own controls are (a setting moves it to the right for people who prefer
+that).  The search field has the keyboard the moment the launchpad opens, so you
+can just start typing.  Type to filter (the name and the command line are both
+searched), press *Enter* on a result... nothing else: click a tile to launch it,
+press *Escape*, click the close button or click the backdrop to go back to
+whatever you were doing.
 
 Its appearance follows the settings of the dock that opened it:
 
@@ -501,11 +509,13 @@ Its appearance follows the settings of the dock that opened it:
 | ~dock-launchpad-icon-size~   | ~80~    | Pixel size of an application icon in the grid (32 … 160). |
 | ~dock-launchpad-columns~     | ~0~     | Tiles per row. 0 fits as many as the screen allows; 3 … 14 is an upper bound (the grid still shrinks to fit). |
 | ~dock-launchpad-blur?~       | ~#f~    | Frosted, translucent background instead of the near-opaque one. |
+| ~dock-launchpad-close-side~  | ~'left~ | Which end of the header the close button sits on: ~'left~ or ~'right~. |
 
 #+begin_src scheme
 (define dock-launchpad-icon-size 80)
 (define dock-launchpad-columns 6)
 (define dock-launchpad-blur? #t)
+(define dock-launchpad-close-side 'right)   ; default is 'left
 #+end_src
 
 A real blur of what is *behind* the launchpad is the compositor's job, and
@@ -625,11 +635,15 @@ There are also two menu items for the impatient: right-click any item and pick
 
 Where do the changes go?  Your settings file stays the source of truth, so
 drag-and-drop writes a small override file next to the dock's state instead of
-rewriting (or fighting with) a configuration that other tools may generate:
+rewriting (or fighting with) a configuration that other tools may generate. The
+Preferences window's *Add an item* row (see
+[[#preferences-window][the preferences window]]) appends its widgets to the same
+file:
 
 #+begin_src scheme
 ;; ~/.local/state/lambdock/layout-settings.scm  (or $XDG_STATE_HOME/lambdock/)
-;; Written automatically by drag and drop in the dock.
+;; Written automatically by drag and drop in the dock, and by the
+;; Preferences window's "Add an item" row.
 ;; Delete this file to go back to the items in your settings file.
 ((order "app:Firefox" "app:Terminal" "stack:Downloads")
  (removed "app:Files")
@@ -759,6 +773,12 @@ and three live widgets.  Leave it running, edit =~/.config/lambdock/settings.scm
 in your editor, and save: the dock rebuilds itself where it stands.  Swap
 ~'vanilla~ for ~'snow-leopard~ or ~'windows-xp~ and save again to see the theme
 change.
+
+For a whole desktop in one line, replace those sizes and numbers with a
+[[#looks][look]]: ~(define dock-look 'osx-mavericks)~ brings the theme, the icon
+size, the spacing and the glass-shelf geometry together, and
+~(define dock-look 'osx-tiger)~, ~'osx-tahoe-dark~ or ~'windows-xp~ are one word
+away.
 
 To get a dock on every monitor, set ~(define dock-monitor 'all)~.  To turn the
 dock into a full-width taskbar with window titles, set
@@ -1009,7 +1029,8 @@ upgrading to newer ~lambdock~ versions. You can do this with
 - *Sensible Defaults:* Every option comes pre-configured -- you only need to
   override and export the settings you wish to customize.
 - *Presets* that can help you reduce boilerplate, see
-  [[file:scheme/lambdock/presets.scm]]
+  [[file:scheme/lambdock/presets.scm]] (launchers) and
+  [[file:scheme/lambdock/looks.scm]] (whole-dock look recipes, see [[#looks][Looks]]).
 
 ** A settings file, top to bottom
 :PROPERTIES:
@@ -1032,10 +1053,17 @@ upgrading to newer ~lambdock~ versions. You can do this with
 ;; Themes:
 ;; 'vanilla | 'vanilla-light | 'snow-leopard | 'snow-leopard-dark
 ;; | 'solarized-light | 'nature | 'unity
-;; | 'macos-big-sur | 'macos-ventura | 'macos-mavericks
-;; | 'windows-xp | 'windows-10 | 'windows-11
+;; | 'macos-tiger | 'macos-big-sur | 'macos-ventura | 'macos-tahoe
+;; | 'macos-tahoe-dark | 'macos-mavericks | 'macos-mavericks-dark
+;; | 'windows-xp | 'windows-vista | 'windows-7 | 'windows-10 | 'windows-11
 ;; | 'none
 (define dock-theme 'vanilla)
+
+;; Or ask for a whole look: a theme plus the icon size, spacing, end padding,
+;; mode and every shelf number in one line ('osx-tiger, 'osx-snow-leopard,
+;; 'osx-mavericks-dark, 'osx-tahoe, 'windows-vista, ...). Anything you define
+;; yourself still wins over the recipe. See the "Looks" section.
+;; (define dock-look 'osx-mavericks)
 
 ;; 'all         -> Render dock on every connected monitor
 ;; "DP-1"        -> Target specific monitor output connector
@@ -1107,6 +1135,7 @@ nothing at all.
 | ~dock-capsule-padding~        | ~12~                         | Room between the capsule's ends and the icons, in px (0 … 96). The theme's own button padding adds to it. |
 | ~dock-items~                  | ~'()~                        | The item list -- launchers, separators and dynamic widgets, in order.          |
 | ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
+| ~dock-look~                   | unset                        | Whole-dock recipe: theme, sizes, spacing, mode and shelf geometry in one name (see [[#looks][Looks]]). Anything you define wins over it. |
 | ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
 | ~dock-mode~                   | ~'dock~                      | ~'dock~ (floating capsule) or ~'taskbar~ (full-width bar).                      |
 | ~dock-shelf-tilt~             | ~0~                          | Tilt of the shelf plane in degrees. 0 keeps the classic flat capsule.           |
@@ -1120,6 +1149,7 @@ nothing at all.
 | ~dock-launchpad-icon-size~    | ~80~                         | Icon pixel size inside the launchpad grid (32 … 160).                          |
 | ~dock-launchpad-columns~      | ~0~                          | Launchpad tiles per row; 0 fits the screen, 3 … 14 is an upper bound.          |
 | ~dock-launchpad-blur?~        | ~#f~                         | Frosted, translucent launchpad backdrop (see [[#launchpad][The launchpad]]).                  |
+| ~dock-launchpad-close-side~   | ~'left~                      | Launchpad close button: ~'left~ or ~'right~ end of its header.                  |
 | ~dock-reduce-motion?~         | ~#f~                         | Turn off the slide and fish-eye animations (see [[#accessibility][accessibility]]).             |
 | ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
 | ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
@@ -1156,6 +1186,7 @@ your file and what you can call yourself from the REPL:
  #:launchpad-icon-size 64
  #:launchpad-columns 0
  #:launchpad-blur? #f
+ #:launchpad-close-side 'left
  ;; Accessibility
  #:reduce-motion? #f)
 #+end_src
@@ -1292,7 +1323,7 @@ through ~flatpak run ...~.
   ~btop~, ~onepassword~, ~thunderbird~, ~bitwarden~
 - *Media & messaging*: ~spotify~, ~zapzap~, ~discord~, ~slack~, ~telegram~,
   ~gimp~, ~inkscape~, ~obs~, ~vlc~, ~steam~, ~blender~
-- *Widgets*: ~ram~, ~cpu~, ~cpu-temp~, ~battery~, ~clock~
+- *Widgets*: ~ram~, ~cpu~, ~cpu-temp~, ~battery~, ~clock~, ~trash~
 
 Anything missing is still one ~app-item~ away -- or one more entry in
 [[file:scheme/lambdock/presets.scm][presets.scm]], if you feel like giving it
@@ -1440,11 +1471,22 @@ file groups them:
 
 - *Behaviour*: auto-hide, show when no windows, hover magnification, window
   tracking, window titles, and dock vs taskbar mode.
+- *Dock items*: *Add an item* -- a trash can, a clock, or a RAM, CPU, CPU
+  temperature or battery meter -- appended to the dock in one click.
 - *Accessibility*: reduce motion (see [[#accessibility][Keyboard and accessibility]]).
 - *Layout & material*: icon size, item spacing, capsule padding, screen edge and
   theme.
+- *Launchpad*: tile icon size, columns, frosted background, and which end of the
+  launchpad's header the close button sits on (see [[#launchpad][The launchpad]]).
 - *Glass shelf*: icon overhang, front glass, reflection height/intensity/blur,
   keystone flare, tilt and perspective.
+
+*Add an item* is worth a note: it appends one of the dock's ready-made widgets to
+the *running* dock and remembers it in the dock's layout override -- the same
+file drag and drop writes -- so it survives a restart without touching
+~settings.scm~.  It is a move, not a mode: the item is a normal dock item from
+then on, so it can be dragged along the dock, and a right-click gives *Remove
+from Dock*.  Adding the same widget twice keeps one of it.
 
 Every control applies immediately through the same ~set-dock-*!~ setters the
 [[#repl][REPL]] uses, so the dock redraws as you drag a slider (the apply is
@@ -1488,6 +1530,12 @@ of them is a CSS file you are free to read, copy and argue with.
   glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots,
   and vertical lift displacement.
 
+- *macOS Tiger (Aqua)* 🍎 (~'macos-tiger~): the dock before the 3D shelf -- a
+  flat, pale Aqua strip the icons sit *inside*, with a bright bevel along the
+  icons' edge and a cool grey lip on the screen side. No mirrors: they arrived
+  with Leopard. Pair it with ~dock-shelf-margin 14~ and ~dock-shelf-front 6~
+  (or just say ~'osx-tiger~, see [[#looks][Looks]]).
+
 - *Solarized Light* ☀️ (~'solarized-light~): Timeless palette, easy on the eyes,
   ivory, roasted, off-white goodness.
 
@@ -1501,6 +1549,10 @@ of them is a CSS file you are free to read, copy and argue with.
   capsule with a white running dot, echoing macOS 11.
 - *macOS Ventura / Sonoma* 🍎 (~'macos-ventura~): darker, denser frosted capsule
   with a stronger shadow and a small dock dot, echoing macOS 13/14.
+- *macOS Tahoe* 🍎 (~'macos-tahoe~, ~'macos-tahoe-dark~): the macOS 26 *Liquid
+  Glass* pill -- the roundest corners of any macOS dock, a much thinner wash of
+  glass, one bright specular rim and no icon mirrors at all. The light theme
+  reads dark text and a dark running dot; the dark one is the same pane smoked.
 - *macOS Mavericks* 🍎 (~'macos-mavericks~): the last of the 3D OS X docks -- the
   platinum slab, with a bright specular line along the screen edge and a
   translucent body that thins out towards the icons. Pair it with a negative
@@ -1515,11 +1567,262 @@ of them is a CSS file you are free to read, copy and argue with.
   a running app that is not focused keeps a raised button, and a fully minimized
   one dims its icon.
 
+- *Windows Vista (Aero Glass)* 🪟 (~'windows-vista~): the glass bar -- almost
+  transparent at the top with one very bright specular line, near-black at the
+  bottom -- and glass task buttons that stay invisible until they mean something.
+  Hovering raises a pale blue tile and the focused window's tile is the lit one
+  (Aero brightens rather than depresses). Menus are pale translucent glass.
+
+- *Windows 7 (Aero Superbar)* 🪟 (~'windows-7~): Vista's glass one generation
+  later and cooler -- a taller, bluer, darker bar with a thinner specular line,
+  and buttons with square shoulders and rounded feet, which is the one shape that
+  tells the superbar apart from Vista's. Labels are off, as Windows 7 has them.
 - *Windows 10* 🪟 (~'windows-10~): flat, near-black rectangular taskbar with a
   thin blue accent underline on running apps.
 - *Windows 11* 🪟 (~'windows-11~): translucent, subtly-rounded dark surface with
   a small accent pill running indicator.
 - *None* (~'none~): no styling applied, using default GTK appearance.
+
+*** The states every theme styles
+There are more states on a dock icon than "idle", and every theme here answers
+all of them, so a dock behaves the same whichever material it wears:
+
+| State | Class | What the themes draw |
+|-------+-------+----------------------|
+| pinned, not running | ~flat~ | the icon, no chrome |
+| pointer over it | ~:hover~ | a highlight tile (glass, brushed, or a flat wash, per theme) |
+| pressed | ~:active~ | a stronger tile, or a pressed one |
+| running | ~running-app~ | a dot or pill under the icon; on the Windows taskbars, a raised (XP) or glass (Vista/7/10/11) button |
+| the focused window | ~window-focused~ | the lit/long version of the indicator: Aero lights the focused tile, Windows 10 and 11 draw the long underline or pill, and the stock themes widen and brighten their glow pill |
+| every window minimized | ~window-minimized~ | the icon dims (one rule in =overlays.css=, shared by all themes) |
+| running window titles | ~window-title-label~ | the title next to the icon, in a colour that holds contrast on that theme's material |
+
+Two details are worth calling out because they are fidelity, not taste:
+
+- *The indicator is dark on light slabs and light on dark ones.* Tiger, Snow
+  Leopard and Mavericks are pale glass, so their running dot is a dark bead (a
+  white glow vanishes into the platinum); their dark siblings, Big Sur, Ventura
+  and Tahoe keep the white dot. The dot the glass shelf draws itself (C side,
+  =src/ui/shelf.c=) is white like the real one, but it is painted over a soft
+  shadow so it also survives on the pale slabs.
+- *Labels follow the slab, not the theme's family.* Snow Leopard and Mavericks
+  are light docks with dark window titles and dark meter text -- the colours the
+  labels had on the real light dock -- while their dark variants are light.
+
+** Looks: whole-dock recipes 🍱
+:PROPERTIES:
+:CUSTOM_ID: looks
+:END:
+
+A theme is the *material* of the dock: its colours, gradients, borders and
+corner radii. A *look* is the whole dock. It sets, in one name:
+
+- the *material*: the theme;
+- the *size*: icon size, the gap between items, the end padding;
+- the *shape*: dock or taskbar, and all eight numbers of the glass shelf;
+- the *manners*: whether running apps show their window titles, and whether the
+  icons magnify under the pointer (the OS X docks do, and no Windows taskbar ever
+  did).
+
+~lambdock~ ships one look per theme, and a single line asks for one:
+
+#+begin_src scheme
+(define dock-look 'osx-mavericks-dark)
+#+end_src
+
+That is the same dock as writing the numbers out by hand, which is what the
+recipe contains:
+
+#+begin_src scheme
+(define dock-theme 'macos-mavericks-dark)
+(define dock-icon-size 48)
+(define dock-item-spacing 4)
+(define dock-capsule-padding 8)
+(define dock-mode 'dock)
+(define dock-shelf-margin -18)         ; icons overhang the slab by 18px
+(define dock-shelf-front 24)           ; one icon of glass in front of them
+(define dock-shelf-flare 24)           ; keystone: wider at the screen edge
+(define dock-reflection 0.30)          ; mirror band, 0.30 of an icon
+(define dock-reflection-intensity 0.70)
+(define dock-reflection-blur 0.03)
+#+end_src
+
+Use one form or the other: the recipe is a *fallback*, not an override. Anything
+you define next to it wins, so this is Tahoe with bigger icons,
+
+#+begin_src scheme
+(define dock-look 'osx-tahoe)
+(define dock-icon-size 64)
+#+end_src
+
+and the Preferences window still has the last word, because its overrides are
+layered on top of both (see [[#preferences-window][the preferences window]]). A look
+never touches your items, position, monitor or auto-hide settings; it only
+restyles the dock. An unknown name is logged as a warning and ignored, so a typo
+cannot leave you with a dock that will not start.
+
+*** The macOS looks, with their numbers
+
+| Look                        | Theme                 | Icons | Spacing | End pad | margin | front | flare | reflection / intensity / blur |
+|-----------------------------+-----------------------+-------+---------+---------+--------+-------+-------+-------------------------------|
+| ~osx-tiger~                 | ~macos-tiger~         | ~48~  | ~6~     | ~10~    | ~14~   | ~6~   | ~0~   | off                           |
+| ~osx-snow-leopard~          | ~snow-leopard~        | ~48~  | ~8~     | ~10~    | ~-20~  | ~28~  | ~26~  | ~0.42 / 0.65 / 0.06~          |
+| ~osx-snow-leopard-dark~     | ~snow-leopard-dark~   | ~48~  | ~8~     | ~10~    | ~-20~  | ~28~  | ~26~  | ~0.42 / 0.65 / 0.06~          |
+| ~osx-mavericks~             | ~macos-mavericks~     | ~48~  | ~4~     | ~8~     | ~-18~  | ~24~  | ~24~  | ~0.30 / 0.70 / 0.03~          |
+| ~osx-mavericks-dark~        | ~macos-mavericks-dark~| ~48~  | ~4~     | ~8~     | ~-18~  | ~24~  | ~24~  | ~0.30 / 0.70 / 0.03~          |
+| ~osx-big-sur~               | ~macos-big-sur~       | ~48~  | ~6~     | ~0~     | ~24~   | ~0~   | ~0~   | off                           |
+| ~osx-ventura~               | ~macos-ventura~       | ~48~  | ~4~     | ~0~     | ~24~   | ~0~   | ~0~   | off                           |
+| ~osx-tahoe~                 | ~macos-tahoe~         | ~52~  | ~8~     | ~16~    | ~24~   | ~0~   | ~0~   | off                           |
+| ~osx-tahoe-dark~            | ~macos-tahoe-dark~    | ~52~  | ~8~     | ~16~    | ~24~   | ~0~   | ~0~   | off                           |
+
+*End pad* is ~dock-capsule-padding~, the setting; the inset you actually see is
+that plus whatever the theme paints at the ends of its capsule. In shelf mode
+(Tiger, Snow Leopard, Mavericks) the theme's own padding is zeroed, so the setting
+is the whole inset -- 8 to 10px, ~0.2 icon, which is what those docks keep. Big
+Sur and Ventura are flat looks, and their themes already carry 12px and 14px of
+their own end padding, so their recipes leave the setting at ~0~ and the visible
+inset is exactly the theme's ~0.25 icon. Tahoe's theme has no padding of its own,
+so its recipe carries the whole 16px (~0.3 icon).
+
+What those numbers buy, in the order the dock was built:
+
+- *Tiger (10.4)* is a flat strip, not a shelf: 14px of glass above the icons and
+  a 6px lip below them make a 68px strip, about 1.4 icons tall -- which is what
+  the real 10.4 dock measured. Nothing overhangs, nothing is mirrored.
+- *Snow Leopard (10.6)* is the 3D shelf at its most dramatic: the icons hang 20px
+  over the top of the slab, the slab is 28px thick in front of them (a 56px
+  capsule), the mirrors fill 0.42 of an icon (20px at 48px icons, softened by a
+  6 % blur) and the silhouette flares 26px per side towards the screen.
+- *Mavericks (10.9)* is the same idea, tamed: 18px of overhang, a 24px front face
+  (a 54px capsule, one icon of slab), a shorter 0.30-icon mirror band and a
+  sharper 3 % blur. It was measured off a screenshot of the real dock and scaled
+  from its 49px icons to 48px.
+- *Big Sur, Ventura and Tahoe* have no shelf at all, because those docks have no
+  mirrors: the default 24px of inner glass keeps the capsule flat and the theme's
+  own material does the rest. Tahoe's icons and gaps are the largest of the three
+  (52px icons, 8px of setting spacing on top of the theme's padding, 16px of end
+  padding), which is what makes the Liquid Glass pill read as roomy rather than
+  crowded.
+
+*** The stock and taskbar looks
+
+| Look             | Theme           | Icons | Spacing | End pad | Mode      | Window titles |
+|------------------+-----------------+-------+---------+---------+-----------+---------------|
+| ~vanilla~        | ~vanilla~       | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~vanilla-light~  | ~vanilla-light~ | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~solarized-light~| ~solarized-light~| ~48~ | ~4~     | ~12~    | ~'dock~   | off           |
+| ~nature~         | ~nature~        | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~unity~          | ~unity~         | ~48~  | ~6~     | ~10~    | ~'dock~   | off           |
+| ~windows-xp~     | ~windows-xp~    | ~32~  | ~0~     | ~4~     | ~'taskbar~| *on*          |
+| ~windows-vista~  | ~windows-vista~ | ~32~  | ~4~     | ~6~     | ~'taskbar~| *on*          |
+| ~windows-7~      | ~windows-7~     | ~32~  | ~6~     | ~8~     | ~'taskbar~| off           |
+| ~windows-10~     | ~windows-10~    | ~32~  | ~4~     | ~8~     | ~'taskbar~| off           |
+| ~windows-11~     | ~windows-11~    | ~32~  | ~8~     | ~12~    | ~'taskbar~| off           |
+| ~plain-taskbar~  | ~vanilla-light~ | ~28~  | ~8~     | ~12~    | ~'taskbar~| off           |
+
+The stock looks are the default capsule with the theme's material, so most of
+them only move the rhythm: the OS X reference of ~4px~ of setting spacing (which
+lands at the 14-16px gap the real dock keeps at 48px icons, once the theme's own
+button padding is added) and 12px of end padding. ~unity~ opens the gaps a
+little, and ~plain-taskbar~ is a bar with no costume at all, for people who want
+a taskbar and nothing else. The five stock themes also paint 12px of their own
+padding at each end, so ~12~ here is a 24px inset in total -- roomier than the
+number reads, and deliberate: those capsules are lambdock's own design.
+
+*** The Windows looks are one family
+
+The five Windows recipes share everything that *can* be shared, so they behave
+identically where it matters and differ only where the era did:
+
+- every one is a ~'taskbar~ -- a full-width bar, not a floating capsule;
+- every one draws 32px icons and leaves the shelf at its flat defaults
+  (24px of inner glass, no overhang, no front face, no keystone, no mirrors),
+  because a Windows taskbar is a bar and not a shelf;
+- window titles follow what that Windows actually showed: *on* for XP and Vista
+  (whose task buttons carried labels), *off* for 7, 10 and 11 (7 made
+  "always combine, hide labels" the default, and nothing since has shown them);
+- none of them magnifies: the fisheye under the pointer is an OS X mannerism, so
+  all five recipes turn ~dock-hover-animate?~ off (and every macOS and stock look
+  turns it back on);
+- the gaps follow the chrome. Luna's task buttons touch, so ~windows-xp~ keeps
+  ~0~ of setting spacing; Aero's glass tiles keep a few pixels, so Vista takes
+  ~4~; the taller superbar takes ~6~; Windows 10 goes back to a compact ~4~; and
+  Windows 11, with its rounded tile and room around it, takes the most at ~8~.
+  The end padding runs the same way, from XP's tight ~4~ (Quick Launch hard
+  against the Start button) to Windows 11's ~12~.
+
+So a Windows dock is one line, and the line says which era:
+
+#+begin_src scheme
+(define dock-look 'windows-xp)      ; or 'windows-vista, 'windows-7,
+                                    ;    'windows-10, 'windows-11
+#+end_src
+
+The short names work too: ~'xp~ and ~'luna~, ~'vista~ and ~'aero~, ~'seven~ and
+~'win7~, ~'win10~, ~'win11~. The theme's own 6-10px of end padding adds to the
+*End pad* column above, so the first icon sits 10px from the bar's edge in XP and
+22px in Windows 11, which is where the Start button and the centred group left it.
+
+One number a Windows look cannot pin down exactly is the *thickness* of the bar:
+it is ~icon-size + dock-shelf-margin~ -- the flat capsule's 24px of inner glass --
+so a 32px look is 56px tall, where the real bars were 30-40px. Set
+~(define dock-icon-size 16)~ next to the look for XP's own proportion (a 40px bar
+of 16px icons, like a taskbar at 96 dpi); leave it at 32 for a modern, readable
+bar. That is exactly the kind of thing the recipe is a *fallback* for.
+
+*** Aliases
+
+The short names work, and so do the theme names, so writing the theme you
+already know gets you the dock it was designed for: ~mavericks~ and
+~macos-mavericks~ both mean ~osx-mavericks~, ~snow-leopard-dark~ means
+~osx-snow-leopard-dark~, ~tahoe-dark~ and ~macos-tahoe-dark~ mean
+~osx-tahoe-dark~; on the Windows side ~luna~, ~xp~ and ~win-xp~ mean
+~windows-xp~, ~aero~, ~vista~ and ~win-vista~ mean ~windows-vista~, ~seven~,
+~win7~ and ~win-7~ mean ~windows-7~, ~win10~ means ~windows-10~ and ~win11~
+means ~windows-11~; and ~taskbar~ means ~plain-taskbar~.
+~(map car look-aliases)~ prints the whole list from the REPL.
+
+*** Looking at the recipes from the REPL
+
+The recipes are plain data, so they can be inspected and applied live. With the
+REPL enabled (see [[#repl][the REPL]]):
+
+#+begin_example
+scheme@(guile-user)> (map car dock-looks)
+$1 = (vanilla vanilla-light solarized-light nature unity plain-taskbar
+      osx-tiger osx-snow-leopard osx-snow-leopard-dark osx-mavericks
+      osx-mavericks-dark osx-big-sur osx-ventura osx-tahoe osx-tahoe-dark
+      windows-xp windows-vista windows-7 windows-10 windows-11)
+scheme@(guile-user)> (look-settings 'osx-tiger)
+$2 = ((theme . macos-tiger) (icon-size . 48) (item-spacing . 6) ...)
+scheme@(guile-user)> (look-setting 'osx-mavericks 'shelf-margin)
+$3 = -18
+scheme@(guile-user)> (apply-look! 'osx-snow-leopard)      ; every dock
+$4 = #t
+scheme@(guile-user)> (apply-look! 'osx-tahoe-dark "/home/me/.config/lambdock/settings.scm")
+$5 = #t
+#+end_example
+
+~apply-look!~ writes the whole recipe into the running dock -- theme, geometry
+and all -- and redraws it once, so cycling through the looks takes one call each
+and never inherits a number from the look before it. It does not rewrite
+=settings.scm=: once you like a look, put ~(define dock-look 'name)~ in the file
+to keep it.
+
+| Procedure                                | What it does                                                       |
+|------------------------------------------+--------------------------------------------------------------------|
+| ~(look-settings 'NAME)~                  | The recipe as an alist (also ~preset-look~)                        |
+| ~(look-setting 'NAME 'KEY)~              | One value, with or without the ~dock-~ prefix                      |
+| ~(look-name 'NAME)~                      | The canonical name after aliases, or ~#f~                          |
+| ~(look? 'NAME)~                          | Whether the name resolves                                          |
+| ~(apply-look! 'NAME [PATH])~             | Apply it to every dock, or to the one at ~PATH~                    |
+| ~dock-looks~, ~look-aliases~             | The whole table, and the alias list                                |
+
+The same recipes are what the numbers in [[#shelf][The glass shelf]] are made of:
+the shelf section shows each knob on its own, and this section packages the ones
+that belong together. To write your own look, copy one and change the numbers --
+or set them one by one from the REPL with the setters (see
+[[#shelf][Changing the look live]]).
 
 ** Overriding a theme with your own CSS
 :PROPERTIES:
@@ -1693,7 +1996,9 @@ Three consequences worth remembering:
 
 *** Recipes
 Every recipe below is a complete, copy-pasteable settings fragment: add the lines
-to your =settings.scm= and the dock redraws itself.
+to your =settings.scm= and the dock redraws itself. (The ones that describe a
+whole desktop are also packaged as [[#looks][looks]], with the icon size, spacing
+and padding that go with them.)
 
 **** 1. The classic flat dock (the default)
 Write nothing. That is ~tilt 0~, ~margin 24~, no front face, no reflections.
@@ -1857,8 +2162,9 @@ screen edge) and ~front~ always the *outer* one.
 Two things to keep in mind:
 
 - ~dock-reflection~ is also what enables the whole reflection machinery: the
-  contact shadow under the icons, the mirror, and the white running-app dot on the
-  glass. At ~0~ the dock uses the theme's own running indicator instead.
+  contact shadow under the icons, the mirror, and the running-app dot on the
+  glass (white, over a soft shadow so it also reads on the pale platinum and
+  Aqua shelves). At ~0~ the dock uses the theme's own running indicator instead.
 - The mirror follows the fisheye magnification sideways, but the band stays the
   same thickness, so hovering one icon never pushes the row up and down.
 
@@ -1925,6 +2231,9 @@ corners) is CSS, and it is theme-agnostic:
 | =resources/css/shelf.css= | the generic light frosted slab, loaded for *any* theme while the shelf is active |
 | =resources/css/macos-mavericks.css= | the platinum slab: a white wash that is densest at the screen edge (~0.74 alpha), thins towards the icons (~0.38), with a 3px grey lip and a bright specular line along that edge |
 | =resources/css/macos-mavericks-dark.css= | the same slab in smoked graphite, same structure and geometry |
+| =resources/css/snow-leopard.css=, =snow-leopard-dark.css= | the cold, pale glass of the 10.6 shelf, and its smoked-glass sibling, with the specular line on the outer edge |
+| =resources/css/macos-tiger.css= | the flat Aqua strip: a pale wash with a blue cast, a bright bevel along the icons' edge and a cool grey lip on the screen side (no mirrors) |
+| =resources/css/macos-tahoe.css=, =macos-tahoe-dark.css= | Liquid Glass: a thin, very round pane with one bright rim, dark text and a dark dot in the light theme, white in the dark one |
 | =~/.config/lambdock/styles.css= | your overrides, loaded last at user priority |
 
 Classes you can hook into:
@@ -2070,6 +2379,7 @@ Once connected, you can evaluate Scheme expressions against the running
 scheme@(guile-user)> (use-modules (lambdock core))
 scheme@(guile-user)> (get-dock-theme) ;; -> 'vanilla
 scheme@(guile-user)> (set-dock-theme! 'nature)
+scheme@(guile-user)> (apply-look! 'osx-mavericks) ;; theme + size + shelf, one call
 scheme@(guile-user)> (reload-dock!)
 #+end_example
 
@@ -2526,6 +2836,7 @@ APIs; [[#glossary][the glossary]] says what each one is.
 | Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                |
 | Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
 | Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
+| Whole-Dock Looks (one-line recipes)| ✅ 20 recipes (~dock-look~)        | ⚠️ Fixed themes    | ❌                 | ⚠️ Hand-written config| ❌ (SIP)          |
 
 ------------------
 
@@ -2778,7 +3089,10 @@ The branch is ~trunk~.  Small, focused commits are the easiest to review.
 - New user-visible strings should be wrapped in ~(G_ "...")~ in C so they can be
   translated, and the ~.po~ files refreshed with ~maak i18n-update~.
 - New themes are a CSS file in ~resources/css~ plus a build define; new presets
-  are an entry in [[file:scheme/lambdock/presets.scm][presets.scm]].
+  are an entry in [[file:scheme/lambdock/presets.scm][presets.scm]], and a new
+  whole-dock recipe is an entry in
+  [[file:scheme/lambdock/looks.scm][looks.scm]] (the scheme tests check that it
+  is complete and in range).
 - Documentation counts as code here: if this README, [[file:HACKING.org][HACKING.org]] or
   [[file:NEWS.org][NEWS.org]] no longer matches what the program does, that is a
   bug worth a patch.

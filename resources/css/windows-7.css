@@ -1,0 +1,220 @@
+/* lambdock -- hyper-hackable desktop dock for Wayland
+ *
+ * SPDX-License-Identifier: MIT
+ * Copyright © Josep Bigorra <jjbigorra@gmail.com>
+ */
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - WINDOWS 7 (AERO / SUPERBAR) STYLE
+ * =========================================================================
+ *
+ * Vista's glass, one generation later and a shade cooler:
+ *
+ *  - The superbar is a taller, darker, bluer pane of glass than Vista's: the
+ *    bright specular line at the top is thinner (1px, 0.30 alpha instead of
+ *    0.55), the body carries a faint blue cast, and the bar sits flat on the
+ *    screen with no outer shadow.
+ *  - Superbar buttons have square shoulders and rounded feet -- the tile is
+ *    clipped at the top by the edge of the bar, so only its bottom corners
+ *    curve. That shape is the one detail that tells Windows 7 apart from Vista,
+ *    and it is `border-radius: 0 0 3px 3px` here.
+ *  - Windows 7 hides its labels by default ("Always combine, hide labels"), so
+ *    the Windows 7 look leaves `dock-show-window-titles?` off, where Vista turns
+ *    it on.
+ *  - A running app sits on a faint glass tile; hovering fills it with white;
+ *    the focused window's tile is the blue-lit one, with a soft outer glow that
+ *    Aero draws around the active button.
+ *
+ * Motion: gradients cannot be animated by GTK's CSS, so hover/press feedback is
+ * carried by border-colour and box-shadow over 120ms, and nothing shifts.
+ * ========================================================================= */
+
+window {
+  background-color: transparent;
+}
+
+/* -------------------------------------------------------------------------
+ * THE BAR
+ * ------------------------------------------------------------------------- */
+
+.lambdock-window {
+  border-radius: 0;
+  padding: 2px 6px;
+  margin: 0;
+
+  background-image: linear-gradient(
+    180deg,
+    rgba(78, 86, 100, 0.55) 0px,
+    rgba(48, 54, 66, 0.86) 1px,
+    rgba(30, 34, 42, 0.90) 45%,
+    rgba(16, 18, 23, 0.93) 84%,
+    rgba(7, 8, 11, 0.95) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.30);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.80);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.08);
+}
+
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+  padding: 2px 6px;
+}
+
+/* -------------------------------------------------------------------------
+ * ITEMS
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background-color: transparent;
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 0 0 3px 3px;
+  box-shadow: none;
+  padding: 2px 5px;
+  margin: 0px 1px;
+  color: #ffffff;
+
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
+}
+
+button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.16) 0%,
+    rgba(255, 255, 255, 0.07) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.30);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.30);
+}
+
+button.flat:active {
+  background-image: linear-gradient(
+    180deg,
+    rgba(190, 215, 245, 0.30) 0%,
+    rgba(120, 160, 210, 0.20) 100%
+  );
+  border-color: rgba(180, 210, 245, 0.45);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* The running-but-unfocused app: a faint glass tile. */
+button.running-app {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.11) 0%,
+    rgba(255, 255, 255, 0.04) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+button.running-app:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.20) 0%,
+    rgba(255, 255, 255, 0.09) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+/* The focused window: the blue-lit tile, with Aero's glow around it. */
+button.window-focused,
+button.window-focused:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(152, 194, 242, 0.36) 0%,
+    rgba(74, 122, 184, 0.32) 100%
+  );
+  border-color: rgba(188, 218, 250, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.40),
+    inset 0 -1px 2px rgba(12, 32, 60, 0.35),
+    0 0 7px rgba(120, 180, 255, 0.30);
+}
+
+/* -------------------------------------------------------------------------
+ * TEXT - Segoe UI 9pt, i.e. 12px
+ * ------------------------------------------------------------------------- */
+
+.dynamic-item-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.50);
+}
+
+.window-title-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.50);
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 4px 5px;
+  min-width: 1px;
+  background-color: rgba(0, 0, 0, 0.60);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.10);
+}
+
+/* -------------------------------------------------------------------------
+ * POPOVERS - Aero menu glass: whiter than Vista's, thinner edge
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(250, 251, 253, 0.97);
+  color: #101010;
+  border-radius: 3px;
+  border: 1px solid rgba(130, 148, 174, 0.55);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  padding: 3px;
+}
+
+label.title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #24384f;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  background-image: none;
+  background-color: transparent;
+  color: #101010;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  box-shadow: none;
+  padding: 5px 10px;
+  margin: 1px 0;
+  transition: none;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(228, 241, 255, 0.98) 0%,
+    rgba(200, 223, 249, 0.98) 100%
+  );
+  border-color: rgba(146, 182, 226, 0.75);
+  color: #0d1c2c;
+}
+
+window.about-dialog {
+  background-image: linear-gradient(
+    180deg,
+    rgba(252, 253, 254, 0.99) 0%,
+    rgba(240, 242, 245, 0.99) 100%
+  );
+  color: #101010;
+}

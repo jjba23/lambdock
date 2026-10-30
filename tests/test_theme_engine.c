@@ -147,6 +147,47 @@ static void test_scope_multiple_selectors(void) {
   g_free(out);
 }
 
+/* A selector list may span several lines. Every selector in it still has to be
+ * scoped: an unscoped rule applies to every dock (and to the whole app), which
+ * is how one theme's indicator once ended up painted under another's icons. */
+static void test_scope_multiline_selectors(void) {
+  const char *css = "button.window-focused,\n"
+                    "button.window-focused:hover {\n"
+                    "  color: red;\n"
+                    "}\n";
+  char *out = theme_scope_css_selectors(css, "theme-x");
+
+  g_assert_nonnull(strstr(out, ".theme-x button.window-focused, "
+                               ".theme-x button.window-focused:hover {"));
+  g_assert_null(strstr(out, "\nbutton.window-focused,"));
+
+  g_free(out);
+}
+
+static void test_scope_multiline_selectors_with_window(void) {
+  const char *css = "window,\n"
+                    ".lambdock-window.shelf-mode {\n"
+                    "  a: b;\n"
+                    "}\n";
+  char *out = theme_scope_css_selectors(css, "theme-x");
+
+  g_assert_nonnull(strstr(out, "window.theme-x, "
+                               ".theme-x .lambdock-window.shelf-mode {"));
+  g_assert_null(strstr(out, "\nwindow,"));
+  g_free(out);
+}
+
+/* The block body still passes through, including a one-line rule. */
+static void test_scope_multiline_body_kept(void) {
+  const char *css = ".a,\n.b { color: red; }\n.c {\n  d: e;\n}\n";
+  char *out = theme_scope_css_selectors(css, "theme-x");
+
+  g_assert_nonnull(strstr(out, ".theme-x .a, .theme-x .b { color: red; }"));
+  g_assert_nonnull(strstr(out, ".theme-x .c {"));
+  g_assert_nonnull(strstr(out, "  d: e;"));
+  g_free(out);
+}
+
 static void test_scope_passthrough(void) {
   const char *css = "/* a comment */\n"
                     "@import \"other.css\";\n"
@@ -421,6 +462,12 @@ int main(int argc, char **argv) {
                   test_scope_window_element_boundary);
   g_test_add_func("/ui/theme_engine/scope_multiple_selectors",
                   test_scope_multiple_selectors);
+  g_test_add_func("/ui/theme_engine/scope_multiline_selectors",
+                  test_scope_multiline_selectors);
+  g_test_add_func("/ui/theme_engine/scope_multiline_with_window",
+                  test_scope_multiline_selectors_with_window);
+  g_test_add_func("/ui/theme_engine/scope_multiline_body_kept",
+                  test_scope_multiline_body_kept);
   g_test_add_func("/ui/theme_engine/scope_passthrough", test_scope_passthrough);
   g_test_add_func("/ui/theme_engine/load_guards",
                   test_load_custom_css_guards);

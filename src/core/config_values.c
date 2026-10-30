@@ -170,3 +170,7 @@ const char *lambdock_edge_name(GtkLayerShellEdge edge) {
 gboolean lambdock_dock_mode_is_taskbar(const char *mode) {
   return mode && g_ascii_strcasecmp(mode, "taskbar") == 0;
 }
+
+gboolean lambdock_launchpad_close_on_right(const char *side) {
+  return side && g_ascii_strcasecmp(side, "right") == 0;
+}

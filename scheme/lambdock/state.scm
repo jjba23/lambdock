@@ -9,11 +9,15 @@
   #:use-module (ice-9 format)
   #:use-module (lambdock logger)
   #:use-module (lambdock layout)
+  #:use-module (lambdock looks)
   #:export ( ;Configuration Entry Point
              configure-dock!
             <dock-config>
             dock-config?
             get-dock-config
+
+            ;; Whole-dock recipes (see (lambdock looks))
+            apply-look!
 
             ;; Getters
             get-dock-items
@@ -43,6 +47,7 @@
             get-dock-launchpad-icon-size
             get-dock-launchpad-columns
             get-dock-launchpad-blur?
+            get-dock-launchpad-close-side
             get-dock-reduce-motion?
 
             ;; Setters
@@ -69,6 +74,7 @@
             set-dock-launchpad-icon-size!
             set-dock-launchpad-columns!
             set-dock-launchpad-blur!
+            set-dock-launchpad-close-side!
             set-dock-reduce-motion!))
 
 ;; =============================================================================
@@ -103,6 +109,7 @@
                     launchpad-icon-size
                     launchpad-columns
                     launchpad-blur?
+                    launchpad-close-side
                     reduce-motion?)
   dock-config?
   (position dock-config-position set-dock-config-position!)
@@ -142,6 +149,8 @@
                      set-dock-config-launchpad-columns!)
   (launchpad-blur? dock-config-launchpad-blur?
                    set-dock-config-launchpad-blur?!)
+  (launchpad-close-side dock-config-launchpad-close-side
+                        set-dock-config-launchpad-close-side!)
   (reduce-motion? dock-config-reduce-motion?
                   set-dock-config-reduce-motion?!))
 
@@ -178,11 +187,18 @@
                     80      ; launchpad-icon-size (px)
                     0       ; launchpad-columns (0 = fit the screen)
                     #f      ; launchpad-blur? (frosted backdrop)
+                    'left   ; launchpad-close-side (the launchpad's X)
                     #f))    ; reduce-motion? (disable animations)
 
 ;; =============================================================================
 ;; Configuration Interface
 ;; =============================================================================
+
+(define (normalize-launchpad-close-side value)
+  "Returns 'right when VALUE asks for the launchpad close button on the right,
+and 'left otherwise. The launchpad has exactly two sides to put it on, so
+anything else (an old symbol, a typo, a string) is the documented default."
+  (if (eq? value 'right) 'right 'left))
 
 ;; === FILE: state.scm (Excerpt: configure-dock!) ===
 (define* (configure-dock! #:key (config-path 'default)
@@ -213,6 +229,7 @@
                           (launchpad-icon-size 80)
                           (launchpad-columns 0)
                           (launchpad-blur? #f)
+                          (launchpad-close-side 'left)
                           (reduce-motion? #f))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
@@ -242,6 +259,8 @@
                                launchpad-icon-size
                                launchpad-columns
                                launchpad-blur?
+                               (normalize-launchpad-close-side
+                                launchpad-close-side)
                                reduce-motion?)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
@@ -458,6 +477,14 @@
                                   (car args)))))
     (dock-config-launchpad-blur? cfg)))
 
+(define (get-dock-launchpad-close-side . args)
+  "Returns 'left (the default) or 'right: the end of the launchpad's header the
+close button sits on."
+  (let ((cfg (get-dock-config (if (null? args)
+                                  'default
+                                  (car args)))))
+    (dock-config-launchpad-close-side cfg)))
+
 ;; --- Accessibility -----------------------------------------------------------
 ;; Motion is reduced when this is on, and also when the desktop itself has
 ;; animations turned off (the C side checks both).
@@ -592,8 +619,80 @@
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-launchpad-blur?! cfg val)) args))
 
+(define (set-dock-launchpad-close-side! val . args)
+  (let ((side (normalize-launchpad-close-side val)))
+    (apply-to-targets (lambda (cfg)
+                        (set-dock-config-launchpad-close-side! cfg side))
+                      args)))
+
 ;; --- Accessibility -----------------------------------------------------------
 
 (define (set-dock-reduce-motion! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-reduce-motion?! cfg val)) args))
+
+;; =============================================================================
+;; Whole-dock recipes: (apply-look! 'osx-mavericks)
+;; =============================================================================
+
+(define (apply-look-setting! cfg key value)
+  "Writes one (KEY . VALUE) of a look recipe into the config record CFG."
+  (case key
+    ((theme dock-theme) (set-dock-config-theme! cfg value))
+    ((icon-size dock-icon-size) (set-dock-config-icon-size! cfg value))
+    ((item-spacing dock-item-spacing)
+     (set-dock-config-item-spacing! cfg value))
+    ((capsule-padding dock-capsule-padding)
+     (set-dock-config-capsule-padding! cfg value))
+    ((mode dock-mode) (set-dock-config-mode! cfg value))
+    ((show-window-titles? dock-show-window-titles?)
+     (set-dock-config-show-window-titles?! cfg value))
+    ((hover-animate? dock-hover-animate?)
+     (set-dock-config-hover-animate?! cfg value))
+    ((launchpad-blur? dock-launchpad-blur?)
+     (set-dock-config-launchpad-blur?! cfg value))
+    ((shelf-tilt dock-shelf-tilt) (set-dock-config-shelf-tilt! cfg value))
+    ((shelf-perspective dock-shelf-perspective)
+     (set-dock-config-shelf-perspective! cfg value))
+    ((shelf-margin dock-shelf-margin) (set-dock-config-shelf-margin! cfg value))
+    ((shelf-front dock-shelf-front) (set-dock-config-shelf-front! cfg value))
+    ((shelf-flare dock-shelf-flare) (set-dock-config-shelf-flare! cfg value))
+    ((reflection dock-reflection) (set-dock-config-reflection! cfg value))
+    ((reflection-intensity dock-reflection-intensity)
+     (set-dock-config-reflection-intensity! cfg value))
+    ((reflection-blur dock-reflection-blur)
+     (set-dock-config-reflection-blur! cfg value))
+    (else
+     (log-warn "State" "Look setting '~a' has no runtime setter; ignored" key))))
+
+(define (apply-look! look . args)
+  "Applies the whole-dock LOOK (a recipe name, alias, or string) to the running
+dock and redraws it once.
+
+With no further argument every dock is restyled; pass a settings path or a
+config key to restyle just that one:
+
+  (apply-look! 'osx-mavericks)
+  (apply-look! 'osx-tahoe-dark \"/home/me/.config/lambdock/settings-2.scm\")
+
+The recipe writes the theme, the icon size and spacing, the capsule padding plus
+every shelf and reflection number -- including the ones the look leaves at their
+defaults -- so no geometry is inherited from the look that was there before.
+Only the running dock changes; write the look into settings.scm to keep it."
+  (let ((settings (preset-look look)))
+    (if (not (pair? settings))
+        (begin
+          (log-warn "State" "Unknown look '~a': nothing applied" look)
+          #f)
+        (begin
+          (apply-to-targets
+           (lambda (cfg)
+             (for-each (lambda (pair)
+                         (apply-look-setting! cfg (car pair) (cdr pair)))
+                       settings))
+           args)
+          (log-info "State" "Applied the '~a' look to ~a (~a settings)"
+                    (look-name look)
+                    (if (null? args) "every dock" (car args))
+                    (length settings))
+          #t))))

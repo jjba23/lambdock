@@ -146,6 +146,13 @@ int get_launchpad_columns_config_for(const char *config_path);
 gboolean get_launchpad_blur_config_for(const char *config_path);
 
 /**
+ * get_launchpad_close_on_right_config_for:
+ * Returns TRUE when the launchpad's close button belongs at the right end of its
+ * header. The default, and anything unreadable, is the left end.
+ */
+gboolean get_launchpad_close_on_right_config_for(const char *config_path);
+
+/**
  * get_reduce_motion_config_for:
  * Returns TRUE when the dock itself asks for reduced motion; the desktop's
  * `gtk-enable-animations` setting is checked separately, so either one is
@@ -169,6 +176,17 @@ gboolean get_reduce_motion_config_for(const char *config_path);
 void dock_layout_add_item(const char *config_path, const char *kind,
                           const char *name, const char *icon, const char *arg,
                           const char *view);
+
+/**
+ * dock_layout_add_preset_item:
+ * Appends one of the dock's ready-made widgets to @config_path's dock: @preset
+ * is a preset name ("trash", "clock", "ram", "cpu", "cpu-temp", "battery", or
+ * any launcher preset). This is what the Preferences window's "Add an item" row
+ * calls; the item is stored in the same layout override file as the ones
+ * dragged in, so it can be reordered and removed the same way. A NULL or empty
+ * @config_path targets the default dock's layout file.
+ */
+void dock_layout_add_preset_item(const char *config_path, const char *preset);
 
 /**
  * dock_layout_remove_item:

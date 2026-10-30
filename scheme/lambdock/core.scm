@@ -12,6 +12,7 @@
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
   #:use-module (lambdock presets)
+  #:use-module (lambdock looks)
   #:use-module (lambdock layout)
   #:use-module (lambdock prefs)
   #:use-module (system repl server)
@@ -85,6 +86,7 @@
                get-dock-launchpad-icon-size
                get-dock-launchpad-columns
                get-dock-launchpad-blur?
+               get-dock-launchpad-close-side
                get-dock-reduce-motion?
 
                ;; Setters
@@ -111,6 +113,7 @@
                set-dock-launchpad-icon-size!
                set-dock-launchpad-columns!
                set-dock-launchpad-blur!
+               set-dock-launchpad-close-side!
                set-dock-reduce-motion!
 
                ;; Config Loader
@@ -123,6 +126,16 @@
                preset-icon
                preset-launcher
                preset-launchers-for
+
+               ;; Whole-dock look recipes
+               dock-looks
+               look-aliases
+               look-name
+               preset-look
+               look-settings
+               look-setting
+               look?
+               apply-look!
 
                ;; Dock layout overrides (written by drag and drop)
                dock-layout-path
@@ -148,6 +161,10 @@
 (define* (load-dock-config! file-path)
   "Loads a specific settings file in isolation and registers its configuration record.
 
+A settings file can name a whole-dock recipe with `(define dock-look 'NAME)`
+(see (lambdock looks)); everything the recipe does not mention falls back to the
+dock's defaults, and anything the file defines itself wins over the recipe.
+
 Every shelf/reflection knob is an independent setting; anything you leave out
 keeps its default (the plain flat dock)."
   (if (and file-path
@@ -163,12 +180,33 @@ keeps its default (the plain flat dock)."
                          (apply-dock-preferences
                           (resolve-dock-configuration file-path)
                           file-path))
-                        ;; Helper to lookup both 'dock-foo and 'foo
+                        ;; A whole-dock recipe: (define dock-look 'osx-mavericks)
+                        ;; brings a theme, an icon size and a whole shelf
+                        ;; geometry in one line (see (lambdock looks)).
+                        (look-request (or (assq-ref settings 'dock-look)
+                                          (assq-ref settings 'look)))
+                        (look (look-name look-request))
+                        (look-settings (or (preset-look look-request) '()))
+                        ;; Helper to lookup both 'dock-foo and 'foo: the file
+                        ;; (with the GUI overrides on top) is asked first and
+                        ;; the look's recipe answers for whatever it leaves
+                        ;; out, so an explicit definition always wins.
                         (cfg (lambda (key alt-key default-val)
                                (let ((pair (or (assq key settings)
-                                               (assq alt-key settings))))
+                                               (assq alt-key settings)
+                                               (assq key look-settings)
+                                               (assq alt-key look-settings))))
                                  (if pair
                                      (cdr pair) default-val)))))
+
+                   (when look-request
+                     (if look
+                         (log-info "Core"
+                          "Look '~a' in [~a]: ~a settings from the recipe (the file's own definitions win over it)"
+                          look file-path (length look-settings))
+                         (log-warn "Core"
+                          "Unknown dock-look '~a' in [~a]: ignoring it, the dock keeps the flat defaults"
+                          look-request file-path)))
 
                    (configure-dock! #:config-path file-path
                                     #:position (cfg 'dock-position
@@ -240,6 +278,9 @@ keeps its default (the plain flat dock)."
                                     #:launchpad-blur?
                                     (cfg 'dock-launchpad-blur?
                                          'launchpad-blur? #f)
+                                    #:launchpad-close-side
+                                    (cfg 'dock-launchpad-close-side
+                                         'launchpad-close-side 'left)
                                     #:reduce-motion?
                                     (cfg 'dock-reduce-motion?
                                          'reduce-motion? #f))))

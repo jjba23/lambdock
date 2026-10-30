@@ -345,6 +345,64 @@ static void test_search_focus(void) {
 }
 
 /* ============================================================================
+ * THE HEADER
+ * ============================================================================
+ */
+
+/** TRUE when @widget (or any descendant) is a label showing @text. */
+static gboolean has_label_text(GtkWidget *widget, const char *text) {
+  if (GTK_IS_LABEL(widget) &&
+      g_strcmp0(gtk_label_get_text(GTK_LABEL(widget)), text) == 0)
+    return TRUE;
+
+  for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL;
+       child = gtk_widget_get_next_sibling(child)) {
+    if (has_label_text(child, text))
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+/* The header is the close button and nothing else, and the button goes on the
+ * side the setting asks for -- the left end unless it says "right". */
+static void test_header(void) {
+  GtkWidget *close = NULL;
+  GtkWidget *header = lambdock_launchpad_header_new(&close);
+  g_assert_nonnull(header);
+  g_assert_true(GTK_IS_BOX(header));
+  g_assert_nonnull(close);
+  g_assert_true(GTK_IS_BUTTON(close));
+
+  /* No visible "Applications" title: the grid is the content, and the search
+   * field says what it searches. */
+  g_assert_false(has_label_text(header, "Applications"));
+
+  /* The close button is the first child by default. */
+  g_assert_true(gtk_widget_get_first_child(header) == close);
+
+  /* ...and the last one when the dock asks for the right side. */
+  lambdock_launchpad_header_place_close(header, close, TRUE);
+  GtkWidget *last = gtk_widget_get_last_child(header);
+  g_assert_true(last == close);
+
+  /* Moving it back is the same call with the other side. */
+  lambdock_launchpad_header_place_close(header, close, FALSE);
+  g_assert_true(gtk_widget_get_first_child(header) == close);
+
+  /* A half-built header (no button, or a widget that is not a box) is ignored
+   * rather than fatal. */
+  lambdock_launchpad_header_place_close(NULL, close, TRUE);
+  lambdock_launchpad_header_place_close(header, NULL, TRUE);
+  lambdock_launchpad_header_place_close(gtk_label_new("not a header"), close,
+                                        TRUE);
+  g_assert_true(gtk_widget_get_first_child(header) == close);
+
+  g_object_ref_sink(header);
+  g_object_unref(header);
+}
+
+/* ============================================================================
  * RUNNER
  * ============================================================================
  */
@@ -356,6 +414,7 @@ static void inner_test_launchpad(void *data, int argc, char **argv) {
 
   g_test_add_func("/launchpad/entry_matches", test_entry_matches);
   g_test_add_func("/launchpad/columns", test_columns);
+  g_test_add_func("/launchpad/header", test_header);
 
   /* The user's own applications directory is what makes a copy "Your files",
    * and the preference files must not touch the real home directory. The system

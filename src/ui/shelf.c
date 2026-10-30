@@ -259,8 +259,16 @@ static void reflection_paint_contact_shadow(const LambdockReflection *self,
 
 /**
  * reflection_paint_running_dot:
- * The small white glow the OS X dock showed near the outer edge of the glass
+ * The small glowing dot the OS X dock showed near the outer edge of the glass
  * for apps with open windows.
+ *
+ * The dot is white -- that is what the real one was on the 3D shelf -- but a
+ * white glow disappears into a pale slab (the platinum Mavericks and Aqua Tiger
+ * shelves are exactly that), so it is drawn over a soft dark halo. On the light
+ * material the halo reads as the bead's shadow and the dot stays visible; on
+ * dark glass the halo blends into the shelf and only the glow shows, which is
+ * what the dark themes want. The halo is nearly twice the dot's size, so it
+ * never turns the glow into a grey ring.
  */
 static void reflection_paint_running_dot(const LambdockReflection *self,
                                          GtkSnapshot *snapshot, double w,
@@ -288,6 +296,28 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   double radius_cross = MAX(dot_cross / 2.0, 2.0);
   double radius_along = MAX(dot_along / 2.0, 2.0);
 
+  graphene_point_t center;
+  graphene_point_init(&center, (float)cx, (float)cy);
+
+  /* The bead's shadow, drawn first so the glow sits on top of it. */
+  const double halo_scale = 1.8;
+  graphene_rect_t halo_bounds = GRAPHENE_RECT_INIT(
+      (float)(cx - radius_cross * halo_scale),
+      (float)(cy - radius_along * halo_scale),
+      (float)(radius_cross * 2.0 * halo_scale),
+      (float)(radius_along * 2.0 * halo_scale));
+
+  GskColorStop halo_stops[3] = {
+      {(float)0.0, {0.0f, 0.0f, 0.0f, 0.30f}},
+      {(float)0.55, {0.0f, 0.0f, 0.0f, 0.14f}},
+      {(float)1.0, {0.0f, 0.0f, 0.0f, 0.0f}},
+  };
+
+  gtk_snapshot_append_radial_gradient(snapshot, &halo_bounds, &center,
+                                      (float)(radius_cross * halo_scale),
+                                      (float)(radius_along * halo_scale), 0.0f,
+                                      1.0f, halo_stops, 3);
+
   graphene_rect_t bounds = GRAPHENE_RECT_INIT(
       (float)(cx - radius_cross), (float)(cy - radius_along),
       (float)(radius_cross * 2.0), (float)(radius_along * 2.0));
@@ -297,9 +327,6 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
       {(float)0.45, {0.94f, 0.98f, 1.0f, 0.35f}},
       {(float)1.0, {0.92f, 0.96f, 1.0f, 0.0f}},
   };
-
-  graphene_point_t center;
-  graphene_point_init(&center, (float)cx, (float)cy);
 
   gtk_snapshot_append_radial_gradient(snapshot, &bounds, &center,
                                       (float)radius_cross,

@@ -55,12 +55,18 @@ typedef struct {
   int icon_size;
   int columns; /* 0 = as many as fit */
   gboolean blur;
+  gboolean close_on_right; /* the close button: left end unless asked otherwise */
 } LaunchpadAppearance;
 
 typedef struct {
   GtkWidget *window;
   GtkWidget *grid;   /* GtkFlowBox of tiles */
   GtkWidget *search; /* GtkSearchEntry */
+
+  /* The header and the close button it carries: the button's end is what
+   * `dock-launchpad-close-side' decides. */
+  GtkWidget *header;
+  GtkWidget *close;
 
   /* The copy menu of a tile, when one is open: it is the thing closest to the
    * user, so Escape closes it before the launchpad, and hiding the launchpad
@@ -786,6 +792,7 @@ static LaunchpadAppearance appearance_for(const LambdockState *state) {
       .icon_size = get_launchpad_icon_size_config_for(config_path),
       .columns = get_launchpad_columns_config_for(config_path),
       .blur = get_launchpad_blur_config_for(config_path),
+      .close_on_right = get_launchpad_close_on_right_config_for(config_path),
   };
 
   return appearance;
@@ -803,6 +810,11 @@ static void launchpad_apply_appearance(LambdockLaunchpad *launchpad,
     gtk_widget_add_css_class(launchpad->window, "launchpad-frosted");
   else
     gtk_widget_remove_css_class(launchpad->window, "launchpad-frosted");
+
+  /* The close button follows the setting on every show, so moving it in the
+   * preferences window takes effect the next time the launchpad opens. */
+  lambdock_launchpad_header_place_close(launchpad->header, launchpad->close,
+                                        appearance.close_on_right);
 
   if (launchpad->grid)
     launchpad_fit_columns(launchpad, launchpad->window);
@@ -881,6 +893,67 @@ static void on_close_clicked(GtkButton *button, gpointer user_data) {
 }
 
 /* ============================================================================
+ * THE HEADER
+ * ============================================================================
+ * The launchpad has no visible title: it covers the screen with a grid of every
+ * installed application, which is its own label, and the search field says what
+ * the field is for. What is left of the header is the close button, on the end
+ * the dock's `dock-launchpad-close-side' asks for (left by default, like a
+ * window's own controls).
+ */
+
+GtkWidget *lambdock_launchpad_header_new(GtkWidget **out_close) {
+  GtkWidget *header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
+  gtk_widget_add_css_class(header, "launchpad-top");
+
+  GtkWidget *close = gtk_button_new_from_icon_name("window-close-symbolic");
+  gtk_widget_add_css_class(close, "flat");
+  gtk_widget_add_css_class(close, "launchpad-close");
+  gtk_widget_set_tooltip_text(close, _("Close the launchpad (Esc)"));
+  lambdock_accessible_update(close, _("Close launchpad"),
+                             _("Closes the application grid. Escape does the "
+                               "same."));
+  gtk_widget_set_size_request(close, 38, 38);
+  gtk_widget_set_valign(close, GTK_ALIGN_CENTER);
+  g_signal_connect(close, "clicked", G_CALLBACK(on_close_clicked), NULL);
+
+  GtkWidget *spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_widget_set_hexpand(spacer, TRUE);
+
+  /* Left by default: the button first, then the spacer that fills the row. */
+  gtk_box_append(GTK_BOX(header), close);
+  gtk_box_append(GTK_BOX(header), spacer);
+
+  if (out_close)
+    *out_close = close;
+
+  return header;
+}
+
+void lambdock_launchpad_header_place_close(GtkWidget *header, GtkWidget *close,
+                                           gboolean on_right) {
+  if (!header || !close || !GTK_IS_BOX(header))
+    return;
+
+  if (on_right) {
+    /* Last child: everything else comes before it. */
+    GtkWidget *sibling = NULL;
+    for (GtkWidget *child = gtk_widget_get_first_child(header); child != NULL;
+         child = gtk_widget_get_next_sibling(child)) {
+      if (child != close)
+        sibling = child;
+    }
+
+    if (sibling)
+      gtk_box_reorder_child_after(GTK_BOX(header), close, sibling);
+    return;
+  }
+
+  /* A NULL sibling puts the button first, which is the default side. */
+  gtk_box_reorder_child_after(GTK_BOX(header), close, NULL);
+}
+
+/* ============================================================================
  * WINDOW
  * ============================================================================
  */
@@ -907,32 +980,15 @@ static void configure_layer_shell(GtkWidget *window, LambdockState *state) {
     gtk_layer_set_monitor(gtk_window, state->monitor);
 }
 
-/** The header line: the title, and the close button. */
-static GtkWidget *make_window_header(void) {
-  GtkWidget *top = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 12);
-  gtk_widget_add_css_class(top, "launchpad-top");
+/** The header line: the close button, on the side the dock asked for. */
+static GtkWidget *make_window_header(LambdockLaunchpad *launchpad) {
+  GtkWidget *header = lambdock_launchpad_header_new(&launchpad->close);
+  launchpad->header = header;
 
-  GtkWidget *title = gtk_label_new(_("Applications"));
-  gtk_widget_add_css_class(title, "launchpad-title");
-  gtk_widget_set_halign(title, GTK_ALIGN_START);
-  gtk_box_append(GTK_BOX(top), title);
+  lambdock_launchpad_header_place_close(header, launchpad->close,
+                                        launchpad->appearance.close_on_right);
 
-  GtkWidget *spacer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-  gtk_widget_set_hexpand(spacer, TRUE);
-  gtk_box_append(GTK_BOX(top), spacer);
-
-  GtkWidget *close = gtk_button_new_from_icon_name("window-close-symbolic");
-  gtk_widget_add_css_class(close, "flat");
-  gtk_widget_add_css_class(close, "launchpad-close");
-  gtk_widget_set_tooltip_text(close, _("Close the launchpad (Esc)"));
-  lambdock_accessible_update(close, _("Close launchpad"),
-                             _("Closes the application grid. Escape does the "
-                               "same."));
-  gtk_widget_set_size_request(close, 38, 38);
-  g_signal_connect(close, "clicked", G_CALLBACK(on_close_clicked), NULL);
-  gtk_box_append(GTK_BOX(top), close);
-
-  return top;
+  return header;
 }
 
 /** The search field, with its own key controller. */
@@ -993,7 +1049,7 @@ static GtkWidget *make_window_body(LambdockLaunchpad *launchpad) {
   gtk_widget_set_valign(vbox, GTK_ALIGN_FILL);
   gtk_widget_set_vexpand(vbox, TRUE);
 
-  gtk_box_append(GTK_BOX(vbox), make_window_header());
+  gtk_box_append(GTK_BOX(vbox), make_window_header(launchpad));
   gtk_box_append(GTK_BOX(vbox), make_search_entry(launchpad));
   gtk_box_append(GTK_BOX(vbox), make_grid_viewport());
 
@@ -1189,11 +1245,14 @@ void lambdock_launchpad_shutdown(void) {
 
   launchpad->grid = NULL;
   launchpad->search = NULL;
+  launchpad->header = NULL;
+  launchpad->close = NULL;
 
   LaunchpadAppearance defaults = {
       .icon_size = LAUNCHPAD_ICON_SIZE,
       .columns = LAUNCHPAD_COLUMNS_AUTO,
       .blur = FALSE,
+      .close_on_right = FALSE,
   };
   launchpad->appearance = defaults;
   launchpad->applied_columns = LAUNCHPAD_FALLBACK_COLUMNS;

@@ -7,7 +7,15 @@
   #:declarative? #t
   #:use-module (srfi srfi-1)
   #:use-module (lambdock items)
+  #:use-module (lambdock looks)
   #:use-module (lambdock logger)
+  #:re-export (dock-looks
+               look-aliases
+               look-name
+               preset-look
+               look-settings
+               look-setting
+               look?)
   #:export ( ;Alists
              preset-icons
             preset-launchers
@@ -103,6 +111,7 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
     (pavucontrol-flatpak . "org.pulseaudio.pavucontrol")
     (btop . "btop")
     (btop-flatpak . "io.github.aristocratos.btop")
+    (trash . "user-trash")
     (onepassword . "1password")
     (onepassword-flatpak . "com.onepassword.OnePassword")
     (thunderbird . "thunderbird")
@@ -326,6 +335,8 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
              (battery-item))
     (cpu-temp unquote
               (cpu-temp-item))
+    (trash unquote
+           (trash-item))
     (nautilus unquote
               (app-item #:name "Files"
                         #:exec "nautilus -w"

@@ -727,6 +727,49 @@
              '("app:Z" "app:A" "app:New")
              (map dock-item-key (get-dock-items %preset-cfg)))
 
+;; The dock's ready-made widgets can be added to the layout too, by name -- that
+;; is what the Preferences window's "Add an item" row writes.
+(define %widget-cfg (tmp-path "layout/widget-settings.scm"))
+(configure-dock! #:config-path %widget-cfg
+                 #:items (list (app-item #:name "A" #:icon "a" #:exec "a")))
+(dock-layout-add! %widget-cfg "preset" "trash" "" "" "")
+(dock-layout-add! %widget-cfg "preset" "clock" "" "" "")
+(dock-layout-add! %widget-cfg "preset" "ram" "" "" "")
+(check-equal "preset descriptors are replayed as the dock's widgets"
+             '("app:A" "trash:Trash" "dynamic:Clock" "dynamic:RAM Usage")
+             (map dock-item-key (get-dock-items %widget-cfg)))
+(check-equal "the replayed RAM widget is a live gauge"
+             #t
+             (let ((item (car (reverse (get-dock-items %widget-cfg)))))
+               (and (dock-item-meter? item) (procedure? (dock-item-poll-fn item)))))
+
+;; Adding the same widget twice keeps one of it.
+(dock-layout-add! %widget-cfg "preset" "ram" "" "" "")
+(check-equal "adding the same preset twice is idempotent"
+             4 (length (get-dock-items %widget-cfg)))
+
+;; ...and it can be taken back out with the key it appeared under, which is what
+;; "Remove from Dock" hands over.
+(dock-layout-remove! %widget-cfg "dynamic:RAM Usage")
+(check-equal "a preset widget can be removed by its item key"
+             '("app:A" "trash:Trash" "dynamic:Clock")
+             (map dock-item-key (get-dock-items %widget-cfg)))
+(check-equal "removing a preset widget also drops its stored descriptor"
+             '()
+             (filter (lambda (desc) (equal? desc '("preset" "ram" "" "" "")))
+                     (assq-ref (dock-layout-ref %widget-cfg) 'added)))
+
+;; An unknown preset in the file is a warning, not a broken dock.
+(define %unknown-widget-cfg (tmp-path "layout/unknown-widget.scm"))
+(write-file (dock-layout-path %unknown-widget-cfg)
+            "((order) (removed) (added (\"preset\" \"no-such-widget\" \"\" \"\" \"\")) (views))
+")
+(configure-dock! #:config-path %unknown-widget-cfg
+                 #:items (list (app-item #:name "Solo" #:icon "s" #:exec "s")))
+(check-equal "an unknown stored preset is skipped"
+             '("app:Solo")
+             (map dock-item-key (get-dock-items %unknown-widget-cfg)))
+
 ;; A broken override file must never take the dock down.
 (define %broken-cfg (tmp-path "layout/broken-settings.scm"))
 (write-file (dock-layout-path %broken-cfg) "(this is not (a layout")
@@ -897,6 +940,24 @@
 (check-equal "the frosted background is read from the config"
              #t (get-dock-launchpad-blur? %launchpad-cfg))
 
+;; The launchpad's close button sits on the left unless asked otherwise, and
+;; only "right" is a side: anything else is the documented default.
+(check-equal "the launchpad close button is on the left by default"
+             'left (get-dock-launchpad-close-side %launchpad-cfg))
+
+(define %launchpad-side-cfg (tmp-path "launchpad-side.scm"))
+(write-file %launchpad-side-cfg "(define dock-launchpad-close-side 'right)\n")
+(load-dock-config! %launchpad-side-cfg)
+(check-equal "the close side is read from the config"
+             'right (get-dock-launchpad-close-side %launchpad-side-cfg))
+
+(set-dock-launchpad-close-side! 'left %launchpad-side-cfg)
+(check-equal "set-dock-launchpad-close-side! moves it back"
+             'left (get-dock-launchpad-close-side %launchpad-side-cfg))
+(set-dock-launchpad-close-side! 'sideways %launchpad-side-cfg)
+(check-equal "an unknown side falls back to the left"
+             'left (get-dock-launchpad-close-side %launchpad-side-cfg))
+
 ;; --- accessibility -----------------------------------------------------------
 
 (check-equal "motion is not reduced by default"
@@ -988,6 +1049,346 @@
              48 (get-dock-icon-size %prefs-cfg))
 (check-equal "reset restores the settings file theme"
              'vanilla (get-dock-theme %prefs-cfg))
+
+;; =============================================================================
+;; (lambdock looks) — whole-dock recipes
+;; =============================================================================
+
+(check "preset-look resolves a shipped look"
+       (pair? (preset-look 'osx-tiger)))
+(check-equal "look-settings is the same accessor"
+             (preset-look 'osx-tiger) (look-settings 'osx-tiger))
+(check "look? knows a shipped look" (look? 'osx-mavericks-dark))
+(check-not "look? rejects a made-up look" (look? 'osx-dock-of-theseus))
+(check-not "preset-look returns #f for an unknown look"
+           (preset-look 'no-such-look))
+(check-not "preset-look returns #f for a non-symbol"
+           (preset-look 42))
+
+(check-equal "look-name resolves a short alias"
+             'osx-mavericks (look-name 'mavericks))
+(check-equal "look-name resolves a theme name to its look"
+             'osx-snow-leopard (look-name 'snow-leopard))
+(check-equal "look-name accepts a string"
+             'osx-tahoe-dark (look-name "tahoe-dark"))
+(check-not "look-name returns #f for an unknown name"
+           (look-name 'nonsense))
+
+(check-equal "look-setting reads a recipe value"
+             52 (look-setting 'osx-tahoe 'icon-size))
+(check-equal "look-setting accepts the prefixed spelling"
+             52 (look-setting 'osx-tahoe 'dock-icon-size))
+(check-equal "look-setting reads the theme"
+             'macos-mavericks (look-setting 'osx-mavericks 'theme))
+(check-not "look-setting returns #f for a missing key"
+           (look-setting 'osx-mavericks 'no-such-setting))
+
+(check-equal "the tiger recipe wears the tiger theme"
+             'macos-tiger (look-setting 'osx-tiger 'theme))
+(check-equal "the tiger strip is glass above the icons"
+             14 (look-setting 'osx-tiger 'shelf-margin))
+(check-equal "the tiger strip has a front lip"
+             6 (look-setting 'osx-tiger 'shelf-front))
+
+;; Every recipe has to be a complete dock description: switching looks live
+;; must never inherit a number from the look that was there before.
+(define %look-required-keys
+  '(theme icon-size item-spacing capsule-padding mode show-window-titles?
+    hover-animate?
+    shelf-tilt shelf-perspective shelf-margin shelf-front shelf-flare
+    reflection reflection-intensity reflection-blur))
+
+(define (look-integer-in? value lo hi)
+  (and (integer? value) (>= value lo) (<= value hi)))
+
+(define (look-real-in? value lo hi)
+  (and (real? value) (>= value lo) (<= value hi)))
+
+(define (look-problem look-entry)
+  "Why LOOK-ENTRY is not a usable recipe, or #f when it is."
+  (let* ((name (car look-entry))
+         (settings (cdr look-entry))
+         (ref (lambda (key) (assq-ref settings key))))
+    (cond
+     ((not (symbol? name)) "name is not a symbol")
+     ((any (lambda (key) (not (assq key settings))) %look-required-keys)
+      "missing a required setting")
+     ((not (symbol? (ref 'theme))) "theme is not a symbol")
+     ((not (look-integer-in? (ref 'icon-size) 8 256)) "icon-size out of range")
+     ((not (look-integer-in? (ref 'item-spacing) 0 64)) "item-spacing out of range")
+     ((not (look-integer-in? (ref 'capsule-padding) 0 96))
+      "capsule-padding out of range")
+     ((not (memq (ref 'mode) '(dock taskbar))) "mode is not dock or taskbar")
+     ((not (boolean? (ref 'show-window-titles?)))
+      "show-window-titles? is not a boolean")
+     ((not (boolean? (ref 'hover-animate?)))
+      "hover-animate? is not a boolean")
+     ((not (look-real-in? (ref 'shelf-tilt) -45 45)) "shelf-tilt out of range")
+     ((not (look-integer-in? (ref 'shelf-perspective) 50 5000))
+      "shelf-perspective out of range")
+     ((not (look-integer-in? (ref 'shelf-margin) -200 200))
+      "shelf-margin out of range")
+     ((not (look-integer-in? (ref 'shelf-front) 0 200))
+      "shelf-front out of range")
+     ((not (look-integer-in? (ref 'shelf-flare) -80 80))
+      "shelf-flare out of range")
+     ((not (look-real-in? (ref 'reflection) 0 2)) "reflection out of range")
+     ((not (look-real-in? (ref 'reflection-intensity) 0 1))
+      "reflection-intensity out of range")
+     ((not (look-real-in? (ref 'reflection-blur) 0 0.25))
+      "reflection-blur out of range")
+     (else #f))))
+
+(define %look-problems
+  (filter-map (lambda (entry)
+                (let ((problem (look-problem entry)))
+                  (and problem (cons (car entry) problem))))
+              dock-looks))
+
+(check-equal "every look recipe is complete and in range"
+             '() %look-problems)
+
+(check-equal "every look alias points at a real recipe"
+             '()
+             (filter (lambda (alias) (not (assq (cdr alias) dock-looks)))
+                     look-aliases))
+
+;; Every shipped theme should have a look that was designed for it, so a user
+;; can name a theme and get the dock it belongs to.
+(define %shipped-themes
+  '(vanilla vanilla-light snow-leopard snow-leopard-dark solarized-light
+    unity nature macos-tiger macos-big-sur macos-ventura macos-tahoe
+    macos-tahoe-dark macos-mavericks macos-mavericks-dark windows-xp
+    windows-vista windows-7 windows-10 windows-11))
+
+(check-equal "every shipped theme has a look that wears it"
+             '()
+             (filter (lambda (theme)
+                       (not (any (lambda (entry)
+                                   (eq? theme (assq-ref (cdr entry) 'theme)))
+                                 dock-looks)))
+                     %shipped-themes))
+
+;; The five Windows looks are one family: they must all be bars (taskbar mode,
+;; 32px icons, no shelf geometry) and only differ in their chrome -- the labels
+;; are on where that Windows showed them (XP, Vista) and off where it did not
+;; (7, 10, 11).
+(define %windows-looks
+  '((windows-xp . #t)
+    (windows-vista . #t)
+    (windows-7 . #f)
+    (windows-10 . #f)
+    (windows-11 . #f)))
+
+(check-equal "every Windows look is a taskbar of 32px icons with no shelf"
+             '()
+             (filter-map
+              (lambda (entry)
+                (let* ((name (car entry))
+                       (look (preset-look name))
+                       (theme (assq-ref look 'theme)))
+                  (and (or (not (eq? (assq-ref look 'mode) 'taskbar))
+                           (not (equal? (assq-ref look 'icon-size) 32))
+                           (not (equal? (assq-ref look 'shelf-margin) 24))
+                           (not (equal? (assq-ref look 'shelf-front) 0))
+                           (not (equal? (assq-ref look 'shelf-flare) 0))
+                           (not (equal? (assq-ref look 'shelf-tilt) 0))
+                           (not (equal? (assq-ref look 'reflection) 0.0))
+                           (not (string-prefix? "windows-" (symbol->string theme))))
+                       (cons name theme))))
+              %windows-looks))
+
+(check-equal "window titles follow what each Windows actually showed"
+             '()
+             (filter-map (lambda (entry)
+                           (let ((shown (assq-ref (preset-look (car entry))
+                                                  'show-window-titles?)))
+                             (and (not (eq? shown (cdr entry))) (car entry))))
+                         %windows-looks))
+
+(check-equal "the Windows looks get airier from XP to 11"
+             '(0 4 6 4 8)
+             (map (lambda (name) (look-setting name 'item-spacing))
+                  (map car %windows-looks)))
+
+(check-equal "the vista alias is spelled aero too"
+             'windows-vista (look-name 'aero))
+(check-equal "the seven alias resolves to windows-7"
+             'windows-7 (look-name 'seven))
+(check-equal "the aero look wears the vista theme"
+             'windows-vista (look-setting 'windows-vista 'theme))
+(check-equal "the seven look wears the windows 7 theme"
+             'windows-7 (look-setting 'windows-7 'theme))
+
+;; --- the loader resolves a look ---------------------------------------------
+
+(define %look-cfg (tmp-path "look-settings.scm"))
+(write-file %look-cfg
+            "(define dock-look 'osx-mavericks)
+(define dock-items (list (app-item #:name \"Look\"
+                                   #:icon \"look\"
+                                   #:exec \"look\")))
+")
+(load-dock-config! %look-cfg)
+(check-equal "dock-look brings the recipe's theme"
+             'macos-mavericks (get-dock-theme %look-cfg))
+(check-equal "dock-look brings the recipe's icon size"
+             48 (get-dock-icon-size %look-cfg))
+(check-equal "dock-look brings the recipe's spacing"
+             4 (get-dock-item-spacing %look-cfg))
+(check-equal "dock-look brings the recipe's end padding"
+             8 (get-dock-capsule-padding %look-cfg))
+(check-equal "dock-look brings the recipe's overhang"
+             -18 (get-dock-shelf-margin %look-cfg))
+(check-equal "dock-look brings the recipe's front glass"
+             24 (get-dock-shelf-front %look-cfg))
+(check-equal "dock-look brings the recipe's keystone"
+             24 (get-dock-shelf-flare %look-cfg))
+(check-equal "dock-look brings the recipe's reflection band"
+             0.30 (get-dock-reflection %look-cfg))
+
+;; The dark sibling: only the theme moves.
+(define %look-dark-cfg (tmp-path "look-dark.scm"))
+(write-file %look-dark-cfg "(define dock-look 'mavericks-dark)\n")
+(load-dock-config! %look-dark-cfg)
+(check-equal "an alias brings the dark theme"
+             'macos-mavericks-dark (get-dock-theme %look-dark-cfg))
+(check-equal "an alias keeps the geometry"
+             -18 (get-dock-shelf-margin %look-dark-cfg))
+
+;; A string works too, and a taskbar look switches the mode.
+(define %look-taskbar-cfg (tmp-path "look-taskbar.scm"))
+(write-file %look-taskbar-cfg "(define dock-look \"xp\")\n")
+(load-dock-config! %look-taskbar-cfg)
+(check-equal "a look given as a string is resolved"
+             'windows-xp (get-dock-theme %look-taskbar-cfg))
+(check-equal "the xp look is a taskbar"
+             'taskbar (get-dock-mode %look-taskbar-cfg))
+(check-equal "the xp look shows window titles"
+             #t (get-dock-show-window-titles? %look-taskbar-cfg))
+
+;; The next era along: the same kind of bar, with labels off.
+(define %look-win7-cfg (tmp-path "look-win7.scm"))
+(write-file %look-win7-cfg "(define dock-look 'seven)\n")
+(load-dock-config! %look-win7-cfg)
+(check-equal "the seven alias brings the windows 7 theme"
+             'windows-7 (get-dock-theme %look-win7-cfg))
+(check-equal "the windows 7 look is a taskbar"
+             'taskbar (get-dock-mode %look-win7-cfg))
+(check-equal "the windows 7 look hides window titles"
+             #f (get-dock-show-window-titles? %look-win7-cfg))
+(check-equal "the windows 7 look spaces its icons"
+             6 (get-dock-item-spacing %look-win7-cfg))
+(check-equal "the windows 7 look pads the bar's ends"
+             8 (get-dock-capsule-padding %look-win7-cfg))
+
+;; A look carries the dock's manners too: the OS X docks magnified the icons
+;; under the pointer, no Windows taskbar ever did.
+(check-equal "the macOS looks magnify"
+             #t (look-setting 'osx-mavericks 'hover-animate?))
+(check-equal "the Windows looks do not magnify"
+             '()
+             (filter (lambda (entry)
+                       (assq-ref (preset-look (car entry)) 'hover-animate?))
+                     %windows-looks))
+(check-not "the plain taskbar does not magnify either"
+           (look-setting 'plain-taskbar 'hover-animate?))
+
+;; ...and apply-look! sets and clears it, so switching families switches manners.
+(define %look-magnify-cfg (tmp-path "look-magnify.scm"))
+(write-file %look-magnify-cfg "(define dock-hover-animate? #t)\n")
+(load-dock-config! %look-magnify-cfg)
+(apply-look! 'windows-11 %look-magnify-cfg)
+(check-equal "a Windows look turns the fisheye off"
+             #f (get-dock-hover-animate? %look-magnify-cfg))
+(apply-look! 'osx-tahoe %look-magnify-cfg)
+(check-equal "a macOS look turns the fisheye back on"
+             #t (get-dock-hover-animate? %look-magnify-cfg))
+
+;; What the file says itself beats the recipe.
+(define %look-override-cfg (tmp-path "look-override.scm"))
+(write-file %look-override-cfg
+            "(define dock-look 'osx-tahoe)
+(define dock-icon-size 40)
+(define dock-theme 'vanilla)
+(define dock-shelf-margin 30)
+")
+(load-dock-config! %look-override-cfg)
+(check-equal "an explicit icon size wins over the recipe"
+             40 (get-dock-icon-size %look-override-cfg))
+(check-equal "an explicit theme wins over the recipe"
+             'vanilla (get-dock-theme %look-override-cfg))
+(check-equal "an explicit shelf number wins over the recipe"
+             30 (get-dock-shelf-margin %look-override-cfg))
+(check-equal "the rest of the recipe still applies"
+             16 (get-dock-capsule-padding %look-override-cfg))
+
+;; An unknown look is a warning, not a crash: the file's own settings load and
+;; the dock stays flat.
+(define %look-bogus-cfg (tmp-path "look-bogus.scm"))
+(write-file %look-bogus-cfg
+            "(define dock-look 'no-such-look)
+(define dock-icon-size 36)
+")
+(load-dock-config! %look-bogus-cfg)
+(check-equal "an unknown look keeps the file's own settings"
+             36 (get-dock-icon-size %look-bogus-cfg))
+(check-equal "an unknown look leaves the theme alone"
+             'vanilla (get-dock-theme %look-bogus-cfg))
+(check-equal "an unknown look leaves the shelf flat"
+             24 (get-dock-shelf-margin %look-bogus-cfg))
+
+;; --- apply-look! restyles a running dock ------------------------------------
+
+(define %apply-look-cfg (tmp-path "look-apply.scm"))
+(write-file %apply-look-cfg "(define dock-icon-size 48)\n")
+(load-dock-config! %apply-look-cfg)
+
+(check "apply-look! reports success"
+       (apply-look! 'osx-tahoe-dark %apply-look-cfg))
+(check-equal "apply-look! switches the theme"
+             'macos-tahoe-dark (get-dock-theme %apply-look-cfg))
+(check-equal "apply-look! switches the icon size"
+             52 (get-dock-icon-size %apply-look-cfg))
+(check-equal "apply-look! switches the end padding"
+             16 (get-dock-capsule-padding %apply-look-cfg))
+
+;; A shelf look writes the whole geometry...
+(apply-look! 'snow-leopard %apply-look-cfg)
+(check-equal "apply-look! sets the overhang"
+             -20 (get-dock-shelf-margin %apply-look-cfg))
+(check-equal "apply-look! sets the front glass"
+             28 (get-dock-shelf-front %apply-look-cfg))
+(check-equal "apply-look! sets the keystone"
+             26 (get-dock-shelf-flare %apply-look-cfg))
+(check-equal "apply-look! sets the reflection band"
+             0.42 (get-dock-reflection %apply-look-cfg))
+
+;; ...and a flat look takes it all back again, instead of inheriting it.
+(apply-look! 'osx-tahoe %apply-look-cfg)
+(check-equal "a flat look resets the overhang"
+             24 (get-dock-shelf-margin %apply-look-cfg))
+(check-equal "a flat look resets the front glass"
+             0 (get-dock-shelf-front %apply-look-cfg))
+(check-equal "a flat look resets the keystone"
+             0 (get-dock-shelf-flare %apply-look-cfg))
+(check-equal "a flat look resets the reflection band"
+             0.0 (get-dock-reflection %apply-look-cfg))
+(check-equal "a flat look returns to dock mode"
+             'dock (get-dock-mode %apply-look-cfg))
+
+;; An unknown look changes nothing and says so.
+(define %theme-before-apply (get-dock-theme %apply-look-cfg))
+(check-not "apply-look! refuses an unknown look"
+           (apply-look! 'no-such-look %apply-look-cfg))
+(check-equal "a refused look leaves the dock untouched"
+             %theme-before-apply (get-dock-theme %apply-look-cfg))
+
+;; apply-look! also takes a config key, like the setters do.
+(configure-dock! #:config-path 'look-repl-dock #:theme 'vanilla)
+(apply-look! 'unity 'look-repl-dock)
+(check-equal "apply-look! targets one dock when given its key"
+             'unity (get-dock-theme 'look-repl-dock))
 
 ;; =============================================================================
 ;; Summary

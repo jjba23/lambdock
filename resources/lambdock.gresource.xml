@@ -15,12 +15,17 @@
     <file>css/unity.css</file>
     <file>css/nature.css</file>
     <!-- macOS-inspired themes -->
+    <file>css/macos-tiger.css</file>
     <file>css/macos-big-sur.css</file>
     <file>css/macos-ventura.css</file>
+    <file>css/macos-tahoe.css</file>
+    <file>css/macos-tahoe-dark.css</file>
     <file>css/macos-mavericks.css</file>
     <file>css/macos-mavericks-dark.css</file>
     <!-- Windows-inspired themes -->
     <file>css/windows-xp.css</file>
+    <file>css/windows-vista.css</file>
+    <file>css/windows-7.css</file>
     <file>css/windows-10.css</file>
     <file>css/windows-11.css</file>
     <!-- Taskbar / window-title mode modifier (always available) -->

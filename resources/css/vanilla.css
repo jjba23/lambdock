@@ -85,6 +85,13 @@ button.flat:hover .dynamic-item-label {
   color: #ffffff;
 }
 
+/* Running-window titles, in taskbar mode: light on the dark glass. */
+.window-title-label {
+  color: #f5f5f7;
+  font-weight: 500;
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR (Cyan Glow Pill)
  * ------------------------------------------------------------------------- */
@@ -112,6 +119,24 @@ button.running-app:hover {
   );
   background-size: 18px 6px;
   background-position: center bottom;
+}
+
+/* The focused app keeps the brightest pill even at rest: it is the window you
+ * are working in, so the dock says so with the pointer anywhere. Placed after
+ * `running-app:hover' and with its own `:hover' arm, so hovering a focused icon
+ * never dims it. */
+button.window-focused,
+button.window-focused:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    rgba(220, 245, 255, 1.0) 35%,
+    rgba(0, 200, 255, 0.85) 70%,
+    transparent 85%
+  );
+  background-size: 22px 6px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
 }
 
 /* -------------------------------------------------------------------------

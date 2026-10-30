@@ -180,12 +180,22 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   pump_main_loop(400);
   g_assert_true(get_reduce_motion_config_for(config_path));
 
-  /* The theme dropdown carries a symbol. Index 9 is macOS Mavericks in the
-   * form's theme list. */
+  /* The theme dropdown carries a symbol. Pick macOS Mavericks by name, so
+   * adding a theme to the form's list cannot silently break this test. */
   GtkWidget *theme = find_by_key(content, "dock-theme");
   g_assert_nonnull(theme);
   g_assert_true(GTK_IS_DROP_DOWN(theme));
-  gtk_drop_down_set_selected(GTK_DROP_DOWN(theme), 9);
+  GListModel *theme_model = gtk_drop_down_get_model(GTK_DROP_DOWN(theme));
+  guint mavericks_index = G_MAXUINT;
+  for (guint i = 0; i < g_list_model_get_n_items(theme_model); i++) {
+    g_autoptr(GtkStringObject) item = g_list_model_get_item(theme_model, i);
+    if (g_strcmp0(gtk_string_object_get_string(item), "macOS Mavericks") == 0) {
+      mavericks_index = i;
+      break;
+    }
+  }
+  g_assert_cmpuint(mavericks_index, <, G_MAXUINT);
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(theme), mavericks_index);
   pump_main_loop(400);
   char *applied_theme = get_theme_config_for(config_path);
   g_assert_cmpstr(applied_theme, ==, "macos-mavericks");
@@ -214,6 +224,58 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   pump_main_loop(400);
   g_assert_true(get_launchpad_blur_config_for(config_path));
 
+  /* The launchpad's close button is a two-choice row, and it starts on the left
+   * (the documented default). */
+  GtkWidget *close_side =
+      find_by_key(content, "dock-launchpad-close-side");
+  g_assert_nonnull(close_side);
+  g_assert_true(GTK_IS_DROP_DOWN(close_side));
+  g_assert_false(get_launchpad_close_on_right_config_for(config_path));
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(close_side), 1);
+  pump_main_loop(400);
+  g_assert_true(get_launchpad_close_on_right_config_for(config_path));
+
+  /* The "Dock items" card adds a widget to the dock: the item goes into the
+   * layout override (never into the settings file), and the dock's items grow. */
+  SCM items_fn = scm_c_public_ref("lambdock core", "get-dock-items");
+  SCM items_before = scm_call_1(items_fn, scm_from_utf8_string(config_path));
+  guint before = scm_to_uint(scm_length(items_before));
+
+  GtkWidget *add_item = find_by_key(content, "dock-add-item");
+  g_assert_nonnull(add_item);
+  g_assert_true(GTK_IS_DROP_DOWN(add_item));
+
+  /* Select "RAM usage" (the third row of the dropdown) and press Add. */
+  gtk_drop_down_set_selected(GTK_DROP_DOWN(add_item), 2);
+  GtkWidget *add_button =
+      find_by_key(content, "dock-add-item-button");
+  g_assert_nonnull(add_button);
+  g_assert_true(GTK_IS_BUTTON(add_button));
+  /* A click, as far as the button is concerned. gtk_widget_activate() does not
+   * emit "clicked" for a GtkButton, so the signal is the honest way to press
+   * it from a test. */
+  g_signal_emit_by_name(add_button, "clicked");
+  pump_main_loop(200);
+
+  SCM items_after = scm_call_1(items_fn, scm_from_utf8_string(config_path));
+  g_assert_cmpuint(scm_to_uint(scm_length(items_after)), ==, before + 1);
+
+  /* The new item is the RAM gauge, and it was stored as a layout preset. */
+  SCM last = scm_car(scm_reverse(items_after));
+  SCM key_fn = scm_c_public_ref("lambdock core", "dock-item-key");
+  char *last_key = scm_to_utf8_string(scm_call_1(key_fn, last));
+  g_assert_cmpstr(last_key, ==, "dynamic:RAM Usage");
+  free(last_key);
+
+  char *layout_file = g_build_filename(dir, "lambdock", "layout-settings.scm",
+                                       NULL);
+  char *layout_text = NULL;
+  g_assert_true(g_file_get_contents(layout_file, &layout_text, NULL, NULL));
+  g_assert_nonnull(strstr(layout_text, "preset"));
+  g_assert_nonnull(strstr(layout_text, "ram"));
+  g_free(layout_text);
+  g_free(layout_file);
+
   /* Every edit was remembered in the GUI override file. */
   SCM path_fn = scm_c_public_ref("lambdock core", "dock-preferences-path");
   SCM path_scm = scm_call_1(path_fn, scm_from_utf8_string(config_path));
@@ -226,6 +288,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   g_assert_nonnull(strstr(contents, "dock-reflection"));
   g_assert_nonnull(strstr(contents, "dock-launchpad-icon-size"));
   g_assert_nonnull(strstr(contents, "dock-launchpad-blur?"));
+  g_assert_nonnull(strstr(contents, "dock-launchpad-close-side"));
   g_assert_nonnull(strstr(contents, "dock-reduce-motion?"));
   g_free(contents);
 

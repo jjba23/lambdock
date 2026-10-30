@@ -85,6 +85,13 @@ button.flat:hover .dynamic-item-label {
   color: #000000;
 }
 
+/* Running-window titles, in taskbar mode: dark on the pale glass. */
+.window-title-label {
+  color: #1c1c1e;
+  font-weight: 600;
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR (Royal Blue Glow Pill)
  * ------------------------------------------------------------------------- */
@@ -112,6 +119,21 @@ button.running-app:hover {
   );
   background-size: 18px 6px;
   background-position: center bottom;
+}
+
+/* The focused app keeps the brightest pill even at rest. */
+button.window-focused,
+button.window-focused:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #0044ee 0%,
+    rgba(0, 110, 255, 0.95) 40%,
+    rgba(0, 160, 255, 0.65) 70%,
+    transparent 85%
+  );
+  background-size: 22px 6px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
 }
 
 /* -------------------------------------------------------------------------

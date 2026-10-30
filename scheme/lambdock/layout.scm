@@ -25,6 +25,14 @@
 ;; changed settings file keeps working: new items appear, removed ones stay
 ;; removed, and nothing is lost. Deleting the file resets the dock layout.
 ;;
+;; The `added' descriptors are (kind name icon argument view) tuples. Kind is
+;; "app", "stack", "launchpad" or "preset": the last one names one of the dock's
+;; ready-made widgets -- ("preset" "trash" "" "" "") is the trash can, "clock"
+;; the analog clock, "ram" the memory gauge, and so on (see (lambdock presets)).
+;; A preset descriptor's key is the key of the item it builds, so removing and
+;; reordering work the same way for a widget dragged in, dropped in or added from
+;; the Preferences window.
+;;
 ;; Two rules matter when debugging "my layout was not applied":
 ;;
 ;;   * the file is re-read whenever the dock asks for its items (there is no
@@ -42,6 +50,7 @@
   #:use-module (lambdock items)
   #:use-module (lambdock loader)
   #:use-module (lambdock logger)
+  #:use-module (lambdock presets)
   #:export (dock-layout-path
             dock-layout-ref
             dock-layout-reset!
@@ -159,7 +168,9 @@ the layout it just built, and re-reading would write the file it is replacing."
                      (lambda (port)
                        (format port ";; lambdock dock layout for ~a~%" target)
                        (format port
-                               ";; Written automatically by drag and drop in the dock.~%")
+                               ";; Written automatically by drag and drop in the dock, and by the~%")
+                       (format port
+                               ";; Preferences window's \"Add an item\" row.~%")
                        (format port
                                ";; Delete this file to go back to the items in your settings file.~%")
                        (write layout port)
@@ -179,8 +190,32 @@ the layout it just built, and re-reading would write the file it is replacing."
 ;; Applying overrides to a list of dock items
 ;; =============================================================================
 
+(define (%preset-item preset-name)
+  "The dock item a stored \"preset\" descriptor names, or #f.
+
+The presets are the dock's ready-made widgets (trash, clock, ram, cpu,
+cpu-temp, battery) and its launcher shortcuts; (lambdock presets) is the single
+place that knows them, so this module does not keep a second list."
+  (and (string? preset-name)
+       (not (string-null? preset-name))
+       (preset-launcher (string->symbol preset-name))))
+
+(define (%descriptor-item-key desc)
+  "The dock-item-key of the item DESC builds, without building it twice."
+  (if (and (pair? desc) (equal? (car desc) "preset"))
+      (let ((item (%preset-item (and (>= (length desc) 2) (cadr desc)))))
+        (and item (dock-item-key item)))
+      #f))
+
 (define (%descriptor-key desc)
-  (format #f "~a:~a" (list-ref desc 0) (list-ref desc 1)))
+  "The stable key of a stored descriptor, which must match the key of the item
+it rebuilds: that is what makes \"remove from dock\" and reordering work for an
+added item.
+
+Preset descriptors store the preset's name (\"ram\"), not the item's name
+(\"RAM Usage\"), so their key is derived from the item they build."
+  (or (%descriptor-item-key desc)
+      (format #f "~a:~a" (list-ref desc 0) (list-ref desc 1))))
 
 (define (%descriptor->item desc)
   "Rebuilds a dock item from a stored (kind name icon argument view) descriptor."
@@ -200,6 +235,13 @@ the layout it just built, and re-reading would write the file it is replacing."
                                     #:view-mode view))
                        ((string=? kind "launchpad")
                         (launchpad-item #:name name #:icon icon))
+                       ((string=? kind "preset")
+                        (or (%preset-item name)
+                            (begin
+                              (log-warn "Layout"
+                                        "Skipping unknown stored dock preset ~s"
+                                        name)
+                              #f)))
                        (else #f)))))
          (lambda (key . args)
            (log-warn "Layout" "Skipping invalid stored dock item ~s (~a)"

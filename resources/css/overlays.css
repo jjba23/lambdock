@@ -136,12 +136,6 @@ window.launchpad.launchpad-frosted .launchpad-surface {
   min-height: 38px;
 }
 
-.launchpad-title {
-  font-size: 1.15em;
-  font-weight: bold;
-  opacity: 0.85;
-}
-
 button.launchpad-close {
   min-width: 38px;
   min-height: 38px;

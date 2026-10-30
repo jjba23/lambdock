@@ -47,6 +47,86 @@ window {
 }
 
 /* -------------------------------------------------------------------------
+ * THE 3D GLASS SHELF (dock-shelf-* in use)
+ * -------------------------------------------------------------------------
+ * The Snow Leopard shelf in smoked glass: same trapezoid, same specular line on
+ * the screen edge, but the body is dark, so the mirrors and the running dot
+ * carry the most light. `(define dock-look 'osx-snow-leopard-dark)` sets the
+ * geometry to match the light sibling; this is the material. */
+
+.lambdock-window.shelf-mode {
+  border-radius: 8px 8px 18px 18px;
+
+  background-image: linear-gradient(
+    0deg,
+    rgba(78, 86, 96, 0.52) 0px,
+    rgba(78, 86, 96, 0.52) 2px,
+    rgba(196, 208, 222, 0.46) 2px,
+    rgba(150, 164, 182, 0.34) 3px,
+    rgba(58, 66, 78, 0.44) 9px,
+    rgba(34, 40, 50, 0.40) 45%,
+    rgba(16, 20, 27, 0.46) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.70);
+
+  box-shadow:
+    0 -10px 26px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+.lambdock-window.shelf-mode.shelf-top {
+  border-radius: 18px 18px 8px 8px;
+  background-image: linear-gradient(
+    180deg,
+    rgba(78, 86, 96, 0.52) 0px,
+    rgba(78, 86, 96, 0.52) 2px,
+    rgba(196, 208, 222, 0.46) 2px,
+    rgba(150, 164, 182, 0.34) 3px,
+    rgba(58, 66, 78, 0.44) 9px,
+    rgba(34, 40, 50, 0.40) 45%,
+    rgba(16, 20, 27, 0.46) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-left {
+  border-radius: 8px 18px 18px 8px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(78, 86, 96, 0.52) 0px,
+    rgba(78, 86, 96, 0.52) 2px,
+    rgba(196, 208, 222, 0.46) 2px,
+    rgba(150, 164, 182, 0.34) 3px,
+    rgba(58, 66, 78, 0.44) 9px,
+    rgba(34, 40, 50, 0.40) 45%,
+    rgba(16, 20, 27, 0.46) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-right {
+  border-radius: 18px 8px 8px 18px;
+  background-image: linear-gradient(
+    270deg,
+    rgba(78, 86, 96, 0.52) 0px,
+    rgba(78, 86, 96, 0.52) 2px,
+    rgba(196, 208, 222, 0.46) 2px,
+    rgba(150, 164, 182, 0.34) 3px,
+    rgba(58, 66, 78, 0.44) 9px,
+    rgba(34, 40, 50, 0.40) 45%,
+    rgba(16, 20, 27, 0.46) 100%
+  );
+}
+
+/* A full-width taskbar keeps the material and squares off the corners. */
+.lambdock-window.shelf-mode.taskbar {
+  border-radius: 0;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------------------
  * BUTTONS & SPRING MAGNIFICATION
  * ------------------------------------------------------------------------- */
 
@@ -85,6 +165,14 @@ button.flat:active {
 button.flat:hover .dynamic-item-label {
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 1.0);
+}
+
+/* Running-window titles, in taskbar mode: white on the smoked slab. */
+.window-title-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
 /* -------------------------------------------------------------------------

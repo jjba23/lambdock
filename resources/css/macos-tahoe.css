@@ -1,0 +1,175 @@
+/* lambdock -- hyper-hackable desktop dock for Wayland
+ *
+ * SPDX-License-Identifier: MIT
+ * Copyright © Josep Bigorra <jjbigorra@gmail.com>
+ */
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - macOS 26 TAHOE (LIQUID GLASS, LIGHT)
+ * =========================================================================
+ * The pill of macOS 26: rounder than Big Sur ever was, much more transparent,
+ * with a bright specular rim on every edge and a soft inner wash that reads as
+ * refracted wallpaper rather than as a painted gradient. There are no icon
+ * mirrors in it -- the reflections left with Mavericks -- so the dock keeps the
+ * default capsule geometry and this file is the whole look.
+ *
+ * The ready-made recipe is `(define dock-look 'osx-tahoe)`; everything here is
+ * the material only.
+ */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* A floating pane of glass: the corners are the roundest of any macOS dock, the
+ * body is a light wash, and the rim is a thin bright line all the way round. */
+.lambdock-window {
+  border-radius: 28px;
+  padding: 0;
+  margin: 6px 0;
+
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.62) 0%,
+    rgba(248, 250, 253, 0.46) 18%,
+    rgba(238, 242, 248, 0.34) 62%,
+    rgba(228, 234, 243, 0.42) 100%
+  );
+
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  box-shadow:
+    0 20px 44px rgba(16, 24, 40, 0.22),
+    0 2px 8px rgba(16, 24, 40, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.70),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.30);
+}
+
+/* Full-width taskbar: same glass, square corners, a touch denser so the window
+ * titles keep their contrast. */
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+  background-image: linear-gradient(
+    180deg,
+    rgba(250, 251, 253, 0.72) 0%,
+    rgba(240, 243, 248, 0.64) 100%
+  );
+  border: none;
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+/* -------------------------------------------------------------------------
+ * ITEMS
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 4px;
+  margin: 2px 4px;
+  border-radius: 14px;
+  color: #1c1c1e;
+
+  transition: transform 170ms cubic-bezier(0.22, 1.0, 0.36, 1.0),
+              background-color 140ms ease;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.48);
+  color: #000000;
+}
+
+button.flat:active {
+  background-color: rgba(255, 255, 255, 0.72);
+}
+
+.dynamic-item-label {
+  color: #1c1c1e;
+  font-weight: 500;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.window-title-label {
+  color: #1c1c1e;
+  font-weight: 500;
+}
+
+/* macOS running indicator: a small dot under the icon. On light glass it is
+ * dark; the dark theme draws it white. */
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    rgba(28, 28, 30, 0.85) 0%,
+    rgba(28, 28, 30, 0.70) 38%,
+    transparent 72%
+  );
+  background-size: 5px 5px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-size: 6px 6px;
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 8px 6px;
+  background-color: rgba(28, 28, 30, 0.16);
+  min-width: 1px;
+}
+
+/* -------------------------------------------------------------------------
+ * POPOVERS (light glass, dark text -- macOS 26 in light mode)
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(250, 251, 253, 0.97);
+  color: #1c1c1e;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 18px 40px rgba(16, 24, 40, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.70);
+  padding: 6px;
+}
+
+label.title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #5b5b60;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #1c1c1e;
+  border-radius: 9px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-color: rgba(10, 132, 255, 0.14);
+  color: #0a5cbf;
+}
+
+window.about-dialog {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.97) 0%,
+    rgba(240, 244, 250, 0.95) 100%
+  );
+  color: #1c1c1e;
+}

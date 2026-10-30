@@ -83,6 +83,13 @@ button.flat:hover .dynamic-item-label {
   color: #ffffff;
 }
 
+/* Running-window titles, in taskbar mode: light on the woodland glass. */
+.window-title-label {
+  color: #e8f5e9;
+  font-weight: 500;
+  font-size: 12px;
+}
+
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR (Emerald Leaf Glow Pill)
  * ------------------------------------------------------------------------- */
@@ -110,6 +117,21 @@ button.running-app:hover {
   );
   background-size: 18px 6px;
   background-position: center bottom;
+}
+
+/* The focused app keeps the brightest pip even at rest. */
+button.window-focused,
+button.window-focused:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #ffffff 0%,
+    #74c69d 40%,
+    rgba(82, 183, 136, 0.85) 70%,
+    transparent 90%
+  );
+  background-size: 22px 6px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
 }
 
 /* -------------------------------------------------------------------------

@@ -7,6 +7,7 @@
   #:declarative? #f
   #:use-module (srfi srfi-1)
   #:use-module (lambdock logger)
+  #:use-module (lambdock looks)
   #:export (get-config-path resolve-dock-configuration))
 
 ;; =============================================================================

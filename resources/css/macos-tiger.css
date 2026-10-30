@@ -1,0 +1,319 @@
+/* lambdock -- hyper-hackable desktop dock for Wayland
+ *
+ * SPDX-License-Identifier: MIT
+ * Copyright © Josep Bigorra <jjbigorra@gmail.com>
+ */
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - MAC OS X 10.4 TIGER (AQUA)
+ * =========================================================================
+ * The dock before the 3D shelf: a flat, frosted Aqua strip that the icons sit
+ * *inside*, with a bright bevel along the inner edge and a thin, cool grey lip
+ * where it meets the screen. No mirrors -- reflections arrived with Leopard --
+ * so the shape is the `dock-shelf-margin` / `dock-shelf-front` pair and
+ * `dock-reflection` stays at 0.
+ *
+ * The material is deliberately paler and bluer than the Mavericks platinum
+ * slab: Aqua glass is a wash of white over the wallpaper with a blue cast in the
+ * shadows, not a metal. Everything here is the material only; the geometry comes
+ * from the dock options. Use it flat (the default capsule) or with
+ *
+ *   (define dock-shelf-margin 14)
+ *   (define dock-shelf-front 6)
+ *   (define dock-reflection 0)
+ *
+ * for the strip the icons live in. The ready-made recipe is
+ * `(define dock-look 'osx-tiger)`.
+ */
+
+/* -------------------------------------------------------------------------
+ * WINDOW SHELL & CONTAINER
+ * ------------------------------------------------------------------------- */
+
+window {
+  background-color: transparent;
+}
+
+/* Flat Aqua strip: a pale wash, brightest along the icons' edge, with a cool
+ * grey lip on the screen side. The alphas are deliberately low -- 10.4's dock
+ * was glass you could read the wallpaper through, not a white bar -- but they
+ * stay dense enough for the dark labels to hold their contrast. */
+.lambdock-window {
+  border-radius: 12px;
+  padding: 0;
+  margin: 0;
+
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.84) 0px,
+    rgba(244, 249, 255, 0.62) 1px,
+    rgba(228, 238, 250, 0.48) 3px,
+    rgba(216, 228, 244, 0.36) 45%,
+    rgba(198, 214, 234, 0.44) 92%,
+    rgba(180, 199, 222, 0.54) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.96);
+  border-left: 1px solid rgba(255, 255, 255, 0.62);
+  border-right: 1px solid rgba(255, 255, 255, 0.62);
+  border-bottom: 1px solid rgba(146, 165, 190, 0.66);
+
+  box-shadow:
+    0 -6px 18px rgba(28, 48, 78, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -6px 12px rgba(120, 145, 176, 0.12);
+}
+
+/* -------------------------------------------------------------------------
+ * THE AQUA STRIP (dock-shelf-* in use)
+ * -------------------------------------------------------------------------
+ * Tiger's dock is glass the icons sit in, so the slab is brighter where the
+ * icons are and gains a lip (the "front") on the screen side. Same stops as the
+ * flat strip, read from the screen edge inwards.
+ */
+
+.lambdock-window.shelf-mode {
+  border-radius: 12px;
+
+  background-image: linear-gradient(
+    0deg,
+    rgba(150, 168, 190, 0.50) 0px,
+    rgba(150, 168, 190, 0.50) 3px,
+    rgba(255, 255, 255, 0.88) 3px,
+    rgba(246, 251, 255, 0.64) 4px,
+    rgba(228, 238, 250, 0.48) 9px,
+    rgba(216, 228, 244, 0.36) 45%,
+    rgba(196, 212, 233, 0.40) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.34);
+  border-left: 1px solid rgba(174, 189, 208, 0.52);
+  border-right: 1px solid rgba(174, 189, 208, 0.52);
+  border-bottom: 1px solid rgba(136, 155, 178, 0.60);
+
+  box-shadow:
+    0 -6px 18px rgba(28, 48, 78, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+.lambdock-window.shelf-mode.shelf-top {
+  border-radius: 12px;
+  background-image: linear-gradient(
+    180deg,
+    rgba(150, 168, 190, 0.50) 0px,
+    rgba(150, 168, 190, 0.50) 3px,
+    rgba(255, 255, 255, 0.88) 3px,
+    rgba(246, 251, 255, 0.64) 4px,
+    rgba(228, 238, 250, 0.48) 9px,
+    rgba(216, 228, 244, 0.36) 45%,
+    rgba(196, 212, 233, 0.40) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-left {
+  border-radius: 12px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(150, 168, 190, 0.50) 0px,
+    rgba(150, 168, 190, 0.50) 3px,
+    rgba(255, 255, 255, 0.88) 3px,
+    rgba(246, 251, 255, 0.64) 4px,
+    rgba(228, 238, 250, 0.48) 9px,
+    rgba(216, 228, 244, 0.36) 45%,
+    rgba(196, 212, 233, 0.40) 100%
+  );
+}
+
+.lambdock-window.shelf-mode.shelf-right {
+  border-radius: 12px;
+  background-image: linear-gradient(
+    270deg,
+    rgba(150, 168, 190, 0.50) 0px,
+    rgba(150, 168, 190, 0.50) 3px,
+    rgba(255, 255, 255, 0.88) 3px,
+    rgba(246, 251, 255, 0.64) 4px,
+    rgba(228, 238, 250, 0.48) 9px,
+    rgba(216, 228, 244, 0.36) 45%,
+    rgba(196, 212, 233, 0.40) 100%
+  );
+}
+
+/* Full-width taskbar: the same glass, square corners. */
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+}
+
+.lambdock-window.shelf-mode.taskbar {
+  border-radius: 0;
+  margin: 0;
+}
+
+/* -------------------------------------------------------------------------
+ * BUTTONS, ICONS & FISHEYE
+ * ------------------------------------------------------------------------- */
+
+button.flat {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 3px;
+  margin: 0px 2px;
+  border-radius: 8px;
+  color: #1d2733;
+
+  transition: transform 200ms cubic-bezier(0.32, 1.36, 0.58, 1),
+              background-color 150ms ease-out;
+}
+
+button.flat:hover {
+  background-color: rgba(255, 255, 255, 0.52);
+  box-shadow: 0 3px 8px rgba(46, 74, 112, 0.16);
+}
+
+button.flat:active {
+  background-color: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+}
+
+/* Dynamic Item Labels: Aqua read dark on glass. */
+.dynamic-item-label {
+  color: #1b2530;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 2px;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+button.flat:hover .dynamic-item-label {
+  color: #0c1218;
+}
+
+.window-title-label {
+  color: #1b2530;
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------------------------
+ * RUNNING APP INDICATOR
+ * -------------------------------------------------------------------------
+ * Tiger's dock marked running applications with a small glyph under the icon.
+ * GTK CSS cannot clip a triangle out of a rectangle, so the marker is a tiny
+ * lozenge -- and since the Aqua strip is pale, its core is a saturated blue
+ * rather than white, which is also how the 10.4 marker read. With reflections
+ * on, the reflection widget draws the dot on the glass instead and this one
+ * stays quiet (see shelf.css). */
+
+button.running-app {
+  background-image: radial-gradient(
+    circle at center,
+    #2f7ad0 0%,
+    rgba(96, 148, 220, 0.92) 40%,
+    rgba(150, 190, 240, 0.60) 70%,
+    transparent 88%
+  );
+  background-size: 16px 5px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-image: radial-gradient(
+    circle at center,
+    #1f66b8 0%,
+    rgba(86, 138, 214, 0.98) 45%,
+    rgba(160, 200, 245, 0.75) 75%,
+    transparent 92%
+  );
+  background-size: 22px 6px;
+  background-position: center bottom;
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 6px 8px;
+  background-color: rgba(126, 146, 172, 0.40);
+  border-right: 1px solid rgba(255, 255, 255, 0.74);
+  min-width: 1px;
+}
+
+/* On a shaped slab the divider runs down the glass instead of standing in
+ * front of it, and fades at both ends. */
+.shelf-projected separator {
+  margin: 0;
+  min-width: 3px;
+  border: none;
+  background-color: transparent;
+  background-image:
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(255, 255, 255, 0.24) 18%,
+      rgba(255, 255, 255, 0.24) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(116, 136, 160, 0.30) 18%,
+      rgba(116, 136, 160, 0.30) 74%,
+      transparent 100%
+    );
+  background-size: 2px 100%, 1px 100%;
+  background-position: right, left;
+  background-repeat: no-repeat, no-repeat;
+}
+
+/* -------------------------------------------------------------------------
+ * HUD POPOVER MENUS
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(38, 44, 54, 0.96);
+  color: #f3f7fc;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.58),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  padding: 4px;
+}
+
+label.title {
+  font-weight: bold;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  color: #d7e6f8;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  color: #f3f7fc;
+  border-radius: 5px;
+  padding: 6px 12px;
+  margin: 1px 0;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(150, 196, 246, 0.95) 0%,
+    rgba(72, 132, 208, 0.95) 100%
+  );
+  color: #ffffff;
+}
+
+window.about-dialog {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96) 0%,
+    rgba(240, 246, 253, 0.88) 12%,
+    rgba(222, 233, 247, 0.80) 50%,
+    rgba(200, 216, 236, 0.86) 85%,
+    rgba(182, 202, 226, 0.92) 100%
+  );
+  color: #1b2530;
+}

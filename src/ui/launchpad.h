@@ -155,4 +155,30 @@ int lambdock_launchpad_columns_for(int usable_width, int icon_size,
 GtkWidget *lambdock_launchpad_tile_new(const LambdockDesktopEntry *entry,
                                        int icon_size);
 
+/**
+ * lambdock_launchpad_header_new:
+ * @out_close: (out) (optional) (transfer none): the close button, borrowed.
+ *
+ * Builds the launchpad's header row: the close button, and the spacer that
+ * pushes it to one end. There is deliberately no title -- the grid of every
+ * installed application is what the screen is, and the search field says what
+ * it is for. The close button starts on the left, which is the default side.
+ *
+ * Returns: (transfer none): the header widget (a GtkBox).
+ */
+GtkWidget *lambdock_launchpad_header_new(GtkWidget **out_close);
+
+/**
+ * lambdock_launchpad_header_place_close:
+ * @header: a header built by lambdock_launchpad_header_new().
+ * @close: its close button.
+ * @on_right: TRUE to move the button to the right end, FALSE for the left one.
+ *
+ * Moves the close button to either end of the header, which is what
+ * `dock-launchpad-close-side` decides. Exposed so the layout can be tested
+ * without a display server.
+ */
+void lambdock_launchpad_header_place_close(GtkWidget *header, GtkWidget *close,
+                                           gboolean on_right);
+
 #endif // LAUNCHPAD_H

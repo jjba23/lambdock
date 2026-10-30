@@ -14,6 +14,46 @@
  */
 
 /**
+ * scope_css_selector_list:
+ * Rewrites the selector list in @selectors (the text before a `{`, possibly
+ * spanning several lines) under @scope_class and appends it to @out.
+ */
+static void scope_css_selector_list(GString *out, const char *selectors,
+                                    const char *scope_class) {
+  gchar **parts = g_strsplit(selectors, ",", -1);
+  gboolean first = TRUE;
+
+  for (int j = 0; parts[j] != NULL; j++) {
+    char *sel = g_strstrip(parts[j]);
+    if (strlen(sel) == 0)
+      continue;
+
+    if (!first)
+      g_string_append(out, ", ");
+    first = FALSE;
+
+    // Compound the 'window' element selector directly with the scope
+    // class, but only when 'window' is a whole element (e.g. "window",
+    // "window.background"), never a different element whose name merely
+    // starts with it (e.g. "windowcontrols"). The prefix check must come
+    // first: reading sel[6] unconditionally overflows short selectors.
+    if (g_str_has_prefix(sel, "window")) {
+      char after = sel[6];
+      if (after == '\0' || after == '.' || after == ':' || after == '[' ||
+          g_ascii_isspace(after)) {
+        g_string_append_printf(out, "window.%s%s", scope_class, sel + 6);
+      } else {
+        g_string_append_printf(out, ".%s %s", scope_class, sel);
+      }
+    } else {
+      g_string_append_printf(out, ".%s %s", scope_class, sel);
+    }
+  }
+
+  g_strfreev(parts);
+}
+
+/**
  * scope_css_selectors:
  * Transforms raw CSS rules to be scoped strictly under a target class wrapper.
  *
@@ -21,6 +61,12 @@
  * - ".lambdock-window"  =>  ".theme-unity .lambdock-window"
  * - "window"            =>  "window.theme-unity"
  * - "window.background" =>  "window.theme-unity.background"
+ *
+ * A selector list may span lines (`button.window-focused,` then `:hover {`), so
+ * the text before a `{` is accumulated until the block actually opens. Missing a
+ * selector is not a cosmetic bug: an unscoped rule applies to *every* dock and to
+ * the rest of the application, so one theme's indicator would be painted under
+ * another theme's icons.
  */
 char *theme_scope_css_selectors(const char *css_text,
                                 const char *scope_class) {
@@ -28,12 +74,22 @@ char *theme_scope_css_selectors(const char *css_text,
     return g_strdup("");
 
   GString *result = g_string_new("");
+  GString *pending = g_string_new(""); /* selector text, not scoped yet */
   gchar **lines = g_strsplit(css_text, "\n", -1);
   gboolean in_ruleset = FALSE;
 
   for (int i = 0; lines[i] != NULL; i++) {
     char *line = lines[i];
     char *trimmed = g_strstrip(g_strdup(line));
+
+    // Inside a declaration block nothing is a selector: pass it through.
+    if (in_ruleset) {
+      if (strchr(line, '}'))
+        in_ruleset = FALSE;
+      g_string_append_printf(result, "%s\n", line);
+      g_free(trimmed);
+      continue;
+    }
 
     // Pass empty lines, comments, and top-level @-rules through unchanged
     if (strlen(trimmed) == 0 || g_str_has_prefix(trimmed, "/*") ||
@@ -43,56 +99,27 @@ char *theme_scope_css_selectors(const char *css_text,
       continue;
     }
 
-    if (!in_ruleset && strchr(line, '{')) {
-      gchar **parts = g_strsplit(line, "{", 2);
-      gchar **selectors = g_strsplit(parts[0], ",", -1);
-
-      for (int j = 0; selectors[j] != NULL; j++) {
-        char *sel = g_strstrip(selectors[j]);
-        if (strlen(sel) > 0) {
-          if (j > 0)
-            g_string_append(result, ", ");
-
-          // Compound the 'window' element selector directly with the scope
-          // class, but only when 'window' is a whole element (e.g. "window",
-          // "window.background"), never a different element whose name merely
-          // starts with it (e.g. "windowcontrols"). The prefix check must come
-          // first: reading sel[6] unconditionally overflows short selectors.
-          if (g_str_has_prefix(sel, "window")) {
-            char after = sel[6];
-            if (after == '\0' || after == '.' || after == ':' ||
-                after == '[' || g_ascii_isspace(after)) {
-              g_string_append_printf(result, "window.%s%s", scope_class,
-                                     sel + 6);
-            } else {
-              g_string_append_printf(result, ".%s %s", scope_class, sel);
-            }
-          } else {
-            g_string_append_printf(result, ".%s %s", scope_class, sel);
-          }
-        }
-      }
-      g_string_append(result, " {\n");
-
-      if (parts[1] && strchr(parts[1], '}')) {
-        g_string_append_printf(result, "%s\n", parts[1]);
-        in_ruleset = FALSE;
-      } else {
-        in_ruleset = TRUE;
-      }
-
-      g_strfreev(parts);
-      g_strfreev(selectors);
-    } else {
-      if (strchr(line, '}')) {
-        in_ruleset = FALSE;
-      }
-      g_string_append_printf(result, "%s\n", line);
+    char *brace = strchr(line, '{');
+    if (!brace) {
+      /* Part of a selector list that continues on the next line. */
+      g_string_append(pending, line);
+      g_string_append_c(pending, '\n');
+      g_free(trimmed);
+      continue;
     }
+
+    g_string_append_len(pending, line, brace - line);
+    scope_css_selector_list(result, pending->str, scope_class);
+    g_string_truncate(pending, 0);
+
+    g_string_append(result, " {");
+    in_ruleset = strchr(brace + 1, '}') == NULL;
+    g_string_append_printf(result, "%s\n", brace + 1);
     g_free(trimmed);
   }
 
   g_strfreev(lines);
+  g_string_free(pending, TRUE);
   return g_string_free(result, FALSE);
 }
 

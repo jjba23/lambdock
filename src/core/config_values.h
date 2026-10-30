@@ -139,4 +139,12 @@ const char *lambdock_edge_name(GtkLayerShellEdge edge);
  */
 gboolean lambdock_dock_mode_is_taskbar(const char *mode);
 
+/**
+ * lambdock_launchpad_close_on_right:
+ * Returns: TRUE when @side asks for the launchpad's close button on the right
+ * ("right", case-insensitive). Anything else, including NULL, is the left side,
+ * which is the launchpad's documented default.
+ */
+gboolean lambdock_launchpad_close_on_right(const char *side);
+
 #endif // LAMBDOCK_CORE_CONFIG_VALUES_H

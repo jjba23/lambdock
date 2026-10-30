@@ -188,6 +188,17 @@ static void test_dock_mode(void) {
   g_assert_false(lambdock_dock_mode_is_taskbar("taskbar-ish"));
 }
 
+/* The launchpad's close button is on the left unless the setting says "right";
+ * every other value (including a stale one) is the default side. */
+static void test_launchpad_close_side(void) {
+  g_assert_true(lambdock_launchpad_close_on_right("right"));
+  g_assert_true(lambdock_launchpad_close_on_right("RIGHT"));
+  g_assert_false(lambdock_launchpad_close_on_right("left"));
+  g_assert_false(lambdock_launchpad_close_on_right(""));
+  g_assert_false(lambdock_launchpad_close_on_right(NULL));
+  g_assert_false(lambdock_launchpad_close_on_right("sideways"));
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -199,6 +210,8 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/config_values/launchpad", test_launchpad_values);
   g_test_add_func("/core/config_values/shelf_params", test_shelf_params);
   g_test_add_func("/core/config_values/edge_names", test_edge_names);
+  g_test_add_func("/core/config_values/launchpad_close_side",
+                  test_launchpad_close_side);
   g_test_add_func("/core/config_values/dock_mode", test_dock_mode);
 
   return g_test_run();

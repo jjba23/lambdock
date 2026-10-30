@@ -1,0 +1,232 @@
+/* lambdock -- hyper-hackable desktop dock for Wayland
+ *
+ * SPDX-License-Identifier: MIT
+ * Copyright © Josep Bigorra <jjbigorra@gmail.com>
+ */
+
+/* =========================================================================
+ * LAMBDOCK STYLESHEET - WINDOWS VISTA (AERO GLASS) STYLE
+ * =========================================================================
+ *
+ * What the reference looks like, and why the rules below are these:
+ *
+ *  - The Aero taskbar is a *glass* bar: near-black at the bottom, almost
+ *    transparent at the top, with one very bright specular line along the very
+ *    top edge and a soft inner glow under it. That bright line is what makes it
+ *    read as glass instead of as a black box, so it is drawn as a 1px inset
+ *    highlight on a translucent gradient, not as a solid border.
+ *  - Vista still labelled its task buttons: the default grouped button is the
+ *    icon *and* the window title, which is why the Vista look turns
+ *    `dock-show-window-titles?` on (see `(lambdock looks)`).
+ *  - A task button is invisible until it means something. Hovering one raises a
+ *    pale blue glass tile; the focused window's tile is the bright one (Aero
+ *    lights the active button rather than depressing it, unlike Luna), and a
+ *    running-but-unfocused app keeps a quieter dark tile.
+ *  - Vista's menus are translucent pale glass with a thin blue-grey edge and a
+ *    soft, wide shadow -- the opposite of XP's white, hard-edged Luna menu.
+ *
+ * Motion: gradients cannot be animated by GTK's CSS, so the hover/press feedback
+ * is carried by border-color and box-shadow over 130ms. The geometry never
+ * changes between states, so nothing shifts.
+ * ========================================================================= */
+
+window {
+  background-color: transparent;
+}
+
+/* -------------------------------------------------------------------------
+ * THE BAR
+ * ------------------------------------------------------------------------- */
+
+.lambdock-window {
+  border-radius: 0;
+  padding: 3px 8px;
+  margin: 0;
+
+  /* Glass: densest at the bottom, thinning towards the bright top edge. */
+  background-image: linear-gradient(
+    180deg,
+    rgba(96, 102, 114, 0.62) 0px,
+    rgba(60, 64, 74, 0.82) 2px,
+    rgba(38, 40, 46, 0.88) 40%,
+    rgba(20, 21, 25, 0.92) 82%,
+    rgba(8, 9, 11, 0.94) 100%
+  );
+
+  border-top: 1px solid rgba(255, 255, 255, 0.55);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.75);
+  box-shadow:
+    inset 0 2px 4px rgba(255, 255, 255, 0.12),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.45);
+}
+
+.lambdock-window.taskbar {
+  border-radius: 0;
+  margin: 0;
+  padding: 3px 8px;
+}
+
+/* -------------------------------------------------------------------------
+ * ITEMS
+ * -------------------------------------------------------------------------
+ * Quick Launch / pinned launchers carry no chrome at all; the glass tiles are
+ * reserved for hover and for "this application has windows". */
+
+button.flat {
+  background-color: transparent;
+  background-image: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  padding: 3px 6px;
+  margin: 1px 2px;
+  color: #ffffff;
+
+  transition:
+    border-color 130ms ease-out,
+    box-shadow 130ms ease-out;
+}
+
+button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(198, 222, 250, 0.34) 0%,
+    rgba(126, 170, 226, 0.22) 100%
+  );
+  border-color: rgba(206, 228, 252, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+button.flat:active {
+  background-image: linear-gradient(
+    180deg,
+    rgba(160, 196, 236, 0.40) 0%,
+    rgba(96, 140, 200, 0.30) 100%
+  );
+  border-color: rgba(170, 205, 245, 0.65);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+/* A running app gets the quiet glass tile... */
+button.running-app {
+  background-image: linear-gradient(
+    180deg,
+    rgba(104, 118, 138, 0.26) 0%,
+    rgba(44, 50, 62, 0.30) 100%
+  );
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+button.running-app:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(198, 222, 250, 0.38) 0%,
+    rgba(126, 170, 226, 0.26) 100%
+  );
+  border-color: rgba(206, 228, 252, 0.60);
+}
+
+/* ...and the focused window lights up. Aero brightens the active button rather
+ * than depressing it, so this rule comes last and wins over `running-app' and
+ * over `:hover' (same specificity, later wins). The tile stays dark enough that
+ * the white window title keeps its contrast. */
+button.window-focused,
+button.window-focused:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(186, 216, 252, 0.34) 0%,
+    rgba(96, 144, 206, 0.34) 100%
+  );
+  border-color: rgba(214, 236, 255, 0.60);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1px 2px rgba(20, 46, 84, 0.40),
+    0 0 6px rgba(140, 195, 255, 0.30);
+}
+
+/* -------------------------------------------------------------------------
+ * TEXT - Segoe UI 9pt, i.e. 12px
+ * ------------------------------------------------------------------------- */
+
+.dynamic-item-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 0 3px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.window-title-label {
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR - the tray divider: a dark groove with a lit right edge
+ * ------------------------------------------------------------------------- */
+
+separator {
+  margin: 4px 6px;
+  min-width: 1px;
+  background-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.16);
+}
+
+/* -------------------------------------------------------------------------
+ * POPOVERS - an Aero menu: pale translucent glass, thin blue-grey edge
+ * ------------------------------------------------------------------------- */
+
+popover > contents {
+  background-color: rgba(246, 249, 252, 0.97);
+  color: #1b1b1b;
+  border-radius: 4px;
+  border: 1px solid rgba(120, 140, 168, 0.55);
+  box-shadow:
+    0 10px 26px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.90);
+  padding: 3px;
+}
+
+label.title {
+  font-weight: 700;
+  font-size: 12px;
+  color: #33506e;
+  padding: 4px 8px;
+}
+
+popover button.flat {
+  background-image: none;
+  background-color: transparent;
+  color: #1b1b1b;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  box-shadow: none;
+  padding: 5px 10px;
+  margin: 1px 0;
+  transition: none;
+}
+
+popover button.flat:hover {
+  background-image: linear-gradient(
+    180deg,
+    rgba(226, 240, 255, 0.98) 0%,
+    rgba(196, 220, 247, 0.98) 100%
+  );
+  border-color: rgba(140, 178, 224, 0.75);
+  color: #10243c;
+}
+
+/* Aero's window face: light grey, one soft top highlight. */
+window.about-dialog {
+  background-image: linear-gradient(
+    180deg,
+    rgba(250, 251, 253, 0.99) 0%,
+    rgba(238, 240, 243, 0.99) 100%
+  );
+  color: #1b1b1b;
+}

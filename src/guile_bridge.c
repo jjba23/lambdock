@@ -194,6 +194,20 @@ gboolean get_launchpad_blur_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-launchpad-blur?", config_path);
 }
 
+/**
+ * get_launchpad_close_on_right_config_for:
+ * Returns TRUE when the launchpad's close button belongs on the right end of its
+ * header. The setting is a symbol ("left"/"right"); anything unreadable is the
+ * documented left side.
+ */
+gboolean get_launchpad_close_on_right_config_for(const char *config_path) {
+  char *side = get_guile_string_for("get-dock-launchpad-close-side", NULL,
+                                    config_path, "left");
+  gboolean on_right = lambdock_launchpad_close_on_right(side);
+  g_free(side);
+  return on_right;
+}
+
 gboolean get_reduce_motion_config_for(const char *config_path) {
   return get_guile_bool_for("get-dock-reduce-motion?", config_path);
 }
@@ -679,6 +693,28 @@ void dock_layout_add_item(const char *config_path, const char *kind,
                           scm_from_optional_string(icon),
                           scm_from_optional_string(arg),
                           scm_from_optional_string(view)));
+
+  scm_apply_0(fn, args);
+}
+
+void dock_layout_add_preset_item(const char *config_path, const char *preset) {
+  if (!preset || *preset == '\0')
+    return;
+
+  SCM fn = scm_c_public_ref("lambdock core", "dock-layout-add!");
+  if (!scm_is_true(fn))
+    return;
+
+  /* An empty path is the default dock: the Scheme side resolves it to the
+   * default settings file's layout, which is the same file a path-ed dock
+   * would use. */
+  SCM args =
+      scm_cons(scm_from_utf8_string(config_path ? config_path : ""),
+               scm_list_5(scm_from_utf8_string("preset"),
+                          scm_from_utf8_string(preset),
+                          scm_from_utf8_string(""),
+                          scm_from_utf8_string(""),
+                          scm_from_utf8_string("")));
 
   scm_apply_0(fn, args);
 }

@@ -117,6 +117,7 @@ If you read nothing else, read this.
 |-------------------------------------------+---------------------------------------------------------------|
 | Add or change a configuration option       | =scheme/lambdock/state.scm= → =core.scm= → =src/guile_bridge.c= |
 | Add a launcher or icon preset              | =scheme/lambdock/presets.scm=                                  |
+| Add or retune a whole-dock look recipe     | =scheme/lambdock/looks.scm=                                    |
 | Add a widget (CPU, clock, ...)             | =scheme/lambdock/items.scm=                                    |
 | Change how an item is drawn                | =src/ui/dock_item.c=                                           |
 | Change the window popover                  | =src/ui/popover_menu.c=                                        |
@@ -227,6 +228,7 @@ Repeated cases are data, not switches. If you add a case, add a row:
 | =DOCK_ITEM_BUILDERS=                 | =guile_bridge.c=    | one Scheme item type                     |
 | =STACK_VIEW_OPS=                     | =ui/stack.c=        | one stack view (grid / list)              |
 | =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
+| =k_*_actions=                        | =ui/preferences.c=  | one "do something" row (e.g. add a widget) |
 | =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.c= | one "do this to every dock" action        |
 
 The last one is how a compositor event reaches every dock: the tracker defines one
@@ -326,6 +328,7 @@ lambdock/
 │   ├── state.scm            # <dock-config> record, *dock-configs* table, getters/setters
 │   ├── loader.scm           # Isolated evaluation of a settings file -> alist
 │   ├── presets.scm          # preset-icons / preset-launchers alists + helpers
+│   ├── looks.scm            # Whole-dock recipes: theme + sizes + shelf geometry
 │   └── logger.scm           # Scheme-side colored logging
 ├── resources/               # Embedded via GResource
 │   ├── css/*.css            # Built-in themes (+ taskbar.css / shelf.css modifiers)
@@ -1255,10 +1258,11 @@ Deprecated GTK3 patterns are *not* on this list: there are none left
 | Module               | Key exports                                                                        |
 |----------------------+------------------------------------------------------------------------------------+
 | =(lambdock core)=    | ~init-dock!~, ~load-dock-config!~, ~start-repl!~, and re-exports of items/state/config API |
-| =(lambdock state)=   | ~<dock-config>~, ~*dock-configs*~, ~configure-dock!~, ~get-dock-*~, ~set-dock-*!~   |
+| =(lambdock state)=   | ~<dock-config>~, ~*dock-configs*~, ~configure-dock!~, ~get-dock-*~, ~set-dock-*!~, ~apply-look!~ |
 | =(lambdock items)=   | ~<dock-item>~ accessors, ~app-item~, ~dynamic-item~, ~separator-item~, poller presets |
 | =(lambdock loader)=  | ~resolve-dock-configuration~, ~get-config-path~                                    |
-| =(lambdock presets)= | ~preset-icons~, ~preset-launchers~, ~preset-icon~, ~preset-launcher~, ~preset-launchers-for~ |
+| =(lambdock presets)= | ~preset-icons~, ~preset-launchers~, ~preset-icon~, ~preset-launcher~, ~preset-launchers-for~, and the re-exported look recipes |
+| =(lambdock looks)=   | ~dock-looks~, ~look-aliases~, ~preset-look~, ~look-settings~, ~look-setting~, ~look-name~, ~look?~ |
 | =(lambdock logger)=  | ~log-debug/info/warn/error~                                                        |
 | =(lambdock layout)=  | ~dock-layout-path~, ~dock-layout-ref~, ~apply-dock-overrides~, ~dock-layout-add!/remove!/set-order!/set-view!~, ~dock-layout-reset!~ |
 | =(lambdock prefs)=   | ~dock-preferences-path~, ~dock-preferences-read~, ~apply-dock-preferences~, ~save-dock-preference!~, ~set-dock-preference!~, ~reset-dock-preferences!~ |
@@ -1292,11 +1296,19 @@ extracts -- the conventional names are:
 (define dock-icon-size 48)
 (define dock-theme 'vanilla)        ;; 'vanilla | 'vanilla-light | 'snow-leopard
                                     ;; | 'snow-leopard-dark | 'solarized-light
-                                    ;; | 'nature | 'unity | 'macos-big-sur
-                                    ;; | 'macos-ventura | 'windows-xp | 'windows-10
+                                    ;; | 'nature | 'unity | 'macos-tiger
+                                    ;; | 'macos-big-sur | 'macos-ventura
+                                    ;; | 'macos-tahoe | 'macos-tahoe-dark
+                                    ;; | 'macos-mavericks | 'macos-mavericks-dark
+                                    ;; | 'windows-xp | 'windows-vista
+                                    ;; | 'windows-7 | 'windows-10
                                     ;; | 'windows-11 | 'none
+;; Or a whole dock in one line: theme + sizes + spacing + mode + shelf geometry
+;; (recipes live in scheme/lambdock/looks.scm, see README: Looks).
+;; (define dock-look 'osx-mavericks)
 (define dock-monitor 'all)          ;; 'all | 'default | "DP-1"
 (define dock-mode 'dock)            ;; 'dock | 'taskbar
+(define dock-launchpad-close-side 'left) ;; 'left | 'right
 (define dock-show-window-titles? #f)
 (define dock-exclude-apps '())
 (define dock-enable-repl? #f)
@@ -1315,6 +1327,14 @@ Item constructors: ~app-item~ (~#:name #:icon #:exec #:hover-animate?~),
 #:hover-animate?~), ~separator-item~. Presets: ~preset-icon~, ~preset-launcher~,
 ~preset-launchers-for~. Dynamic presets: ~ram-item~, ~clock-item~, ~cpu-item~,
 ~battery-item~, ~cpu-temp-item~.
+
+Looks (whole-dock recipes) are a separate module, ~(lambdock looks)~, re-exported
+by ~(lambdock presets)~ and ~(lambdock core)~ so a settings file sees them without
+importing anything: ~dock-looks~, ~look-aliases~, ~look-settings~,
+~look-setting~, ~look-name~, ~look?~, plus ~apply-look!~ for the REPL. The loader
+resolves ~dock-look~ into that alist and reads it as a *fallback* beneath the
+file's own definitions. Nothing in the C side knows about looks: they are just
+the existing settings.
 
 Defaults, accepted values and the full preset list are in
 [[file:README.org::#configuration-options][README: Configuration options reference]]
@@ -1356,21 +1376,34 @@ is why a user override still needs to target the dock's own classes.
 An item button carries ~dock-item~ and ~flat~ always, plus these as the running
 state changes (all applied by =dock_item.c:apply_running_state()=):
 
-| Class              | Means                                                    | Typical use                        |
-|--------------------+----------------------------------------------------------+------------------------------------|
-| ~running-app~      | the application has at least one window                  | the raised "task button"           |
-| ~window-focused~   | one of its windows holds the keyboard focus              | the depressed/active task button   |
-| ~window-minimized~ | all of its windows are minimized                         | dim the icon (overlays.css does)   |
+| Class                | Means                                       | Typical use                                        |
+|----------------------+---------------------------------------------+----------------------------------------------------|
+| ~running-app~        | the application has at least one window     | indicator dot/pill, or a raised "task button"       |
+| ~window-focused~     | one of its windows holds the keyboard focus | the lit/long indicator, or the Aero-lit tile        |
+| ~window-minimized~   | all of its windows are minimized            | dim the icon (overlays.css does)                    |
+| ~window-title-label~ | the label on the ~.window-title-label~ widget | the running window's title next to the icon      |
 
 ~window-focused~ and ~window-minimized~ are mirrored from the compositor's
-~state~ event, so they flip within a frame of the user switching windows. A theme
-that only cares about "is it running" can ignore the other two; that is what the
-macOS-shaped themes do.
+~state~ event, so they flip within a frame of the user switching windows. Which
+of the two a theme uses is a matter of fidelity to the desktop it imitates:
+
+- the *Windows* themes use all three. XP raises a running button and depresses
+  the focused one; Vista and 7 keep a quiet glass tile for running and light the
+  focused one (Aero brightens instead of pressing); 10 and 11 draw a short
+  underline/pill for running and the long one for the focused window.
+- the *macOS* themes draw a dot for running apps and ignore ~window-focused~,
+  because OS X does not distinguish. The dot is dark on the light slabs (Tiger,
+  Snow Leopard, Mavericks) and white on the dark ones -- the same rule the C-side
+  shelf dot follows: it paints a soft shadow under its white glow so the dot
+  survives on the platinum and Aqua shelves.
+- lambdock's own stock themes (vanilla, vanilla-light, solarized-light, nature,
+  unity) draw a glow pill for running and widen/brighten it while focused.
 
 Only [[https://docs.gtk.org/gtk4/css-overview.html][GTK CSS]] applies here, not
 browser CSS; the properties are listed in
 [[https://docs.gtk.org/gtk4/css-properties.html][the GTK CSS property reference]].
-User-facing theming -- the thirteen built-in themes and how to override them -- is in
+User-facing theming -- the nineteen built-in themes, the look recipes and how to
+override them -- is in
 [[file:README.org::#styling-and-theming][README: Styling & theming]].
 
 *** Modifiers vs. themes
@@ -1785,7 +1818,10 @@ if the unit needs ~get_active_dock_states~ / ~unregister_dock_state~.
 Scheme suites belong in ~tests/scheme/lambdock_tests.scm~ and are registered
 through ~tests/run_scheme_tests.sh~. Assertions run against the real modules
 (no C), so they are the cheapest place to lock down ~state.scm=, =items.scm=,
-=presets.scm=, =loader.scm= and =core.scm= behaviour.
+=presets.scm=, =looks.scm=, =loader.scm= and =core.scm= behaviour. The look
+recipes are checked there for completeness and range (a recipe that forgets a
+shelf number would be inherited from the previous look when applied live), and so
+is the loader's "the file wins over the recipe" order.
 
 Whichever suite you touch, ~maak test~ builds and runs all of it on a virtual
 display; to iterate on a single case, run that binary directly under ~xvfb-run~
