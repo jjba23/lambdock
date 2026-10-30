@@ -77,6 +77,13 @@
   </screenshots>
 
   <releases>
+    <release version="0.21.0" date="2026-10-31">
+      <description>
+        <p>The round that finished the list of known rough edges. Nothing about how the dock behaves changed; what changed is where the code keeps its values and who owns them.</p>
+        <p>The meter's geometry and its green/amber/red thresholds are now pure, unit-tested functions, and the drawing code only paints what they describe. The glass shelf's value types moved into the pure core layer, so the core headers no longer include the application header or a widget header -- and the application header no longer includes libguile.h at all, because the only Scheme value it carried is an opaque handle now.</p>
+        <p>Dynamic-item pollers go through the Guile bridge (one opaque handle in, one plain reading out), the desktop-entry cache is a single value with one owner, the icon search paths are built from explicit inputs and tested, and the dock's window model (tracking, running/focused/minimized styling and the app-id lookup) moved out of dock_item.c into its own file.</p>
+      </description>
+    </release>
     <release version="0.20.0" date="2026-10-31">
       <description>
         <p>Two theme families, and whole-dock recipes. macOS Tiger (the flat Aqua strip the icons sit inside) and macOS Tahoe (the 26 Liquid Glass pill, light and dark) join the built-in themes, Snow Leopard's dock now carries its own 3D shelf material, and Windows Vista (Aero Glass) and Windows 7 (the Aero superbar) complete the Windows family, which is now consistent: all five are taskbars, all draw 32px icons, and they differ only where their era did.</p>

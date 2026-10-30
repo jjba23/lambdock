@@ -1,3 +1,19 @@
+lambdock (0.21.0-1) unstable; urgency=medium
+
+  * New upstream release: the round that finished the refactor list, with no
+    behaviour change. The meter's geometry and colour thresholds are pure, tested
+    values; the shelf's value types moved to core/shelf_params.h so the pure core
+    headers no longer include the application or a widget header; the
+    desktop-entry cache is one value; the icon search paths are built from
+    explicit inputs; main.c and the preferences window use the registry visitor
+    instead of hand-rolled snapshot loops; and the window model (tracking,
+    running/focused/minimized styling, app-id lookup) moved out of dock_item.c
+    into dock_item_windows.c. Dynamic-item pollers now go through the Guile
+    bridge, so no scm_* call lives outside guile_bridge.c and lambdock.h no
+    longer includes libguile.h.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Sat, 31 Oct 2026 18:00:00 +0100
+
 lambdock (0.20.0-1) unstable; urgency=medium
 
   * New upstream release: two theme families and the dock's first whole-dock

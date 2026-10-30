@@ -15,6 +15,74 @@ Nothing yet.
 
 *[Released]*
 
+** v0.21.0 (2026-10-31)
+- *The honest-TODO list is empty.* HACKING has carried a "known rough edges"
+  table for a while; every row on it is now off, and each fix moved a rule rather
+  than a line count:
+  - The meter's geometry is a value (~LambdockMeterGeometry~ +
+    ~lambdock_meter_geometry_compute()~), with the green/amber/red thresholds
+    behind ~lambdock_meter_tone_for_fraction()~; the snapshot function only draws
+    what they describe, and both are unit tested.
+  - The shelf's *value* types moved to =core/shelf_params.h=, so
+    =core/dock_dims.h= and =core/config_values.h= no longer include the whole
+    application header or a widget header -- the pure layer is now pure in its
+    headers too. =lambdock.h= stopped including =libguile.h= as well: the only
+    SCM value in it is a poll handle, and that is opaque now.
+  - The desktop-entry cache is one ~DesktopEntryCache~ value instead of three
+    file statics.
+  - The icon search paths are built from explicit inputs
+    (~lambdock_icon_search_paths_build()~) and then applied, so "system dirs,
+    then the user's own, only if they exist" is a tested rule.
+  - ~main.c~ and the preferences window use ~dock_registry_foreach()~ instead of
+    hand-rolled snapshot loops, and the process-wide reload timer has one owner.
+  - The window model moved out of =ui/dock_item.c=: tracking, running/focused/
+    minimized styling and the app-id lookup are =ui/dock_item_windows.c= now, and
+    pollers go through the bridge (~lambdock_poll_fn_protect/call/release~ and a
+    plain ~LambdockReading~), so no =scm_*~ call lives outside =guile_bridge.c=.
+  Old names, entry points and behaviour are unchanged: this is the round where the
+  tree is taken all the way, not a round of features.
+
+- *Stacks became a small file browser.* The stack panel used to be a printout of
+  one folder: every entry -- folder or file -- went to the desktop. Now clicking
+  a folder walks into it inside the panel, the header is a breadcrumb
+  ("Downloads / Shots / 2024") with a back button while you are inside, a
+  grid/list toggle that persists where the context-menu one does, and an
+  *Open folder* button that hands the folder you are looking at to your file
+  manager. A folder with more than the 300 entries the panel lists now says so
+  ("300+ items", plus a line explaining the cut) instead of quietly ending.
+  `lambdock_stack_list_directory_limited()`, `lambdock_stack_child_path()`,
+  `lambdock_stack_parent_path()` and `lambdock_stack_breadcrumb()` are the pure
+  pieces that make the browsing testable without a display, and the panel itself
+  is built by the exported `lambdock_stack_panel_new()`.
+- *The window menu grew icons, a focus mark and a keyboard.* Every entry of the
+  context menu and the multi-window HUD now leads with a symbolic icon (a window
+  for a new instance, a concealed eye for a private window, playback glyphs for
+  the MPRIS controls, a bin for removals, the trash and folder icons where they
+  belong), the view switch shows a check on the active view instead of a bullet
+  character inside its label, and the list of windows marks the one that holds
+  the focus with a dot, dims the ones the compositor reported as minimized, and
+  keeps the close button quiet until the row is hovered or focused. The icon-only
+  close button is now named for a screen reader ("Close window", with the window
+  title as its description). The menu is also a keyboard object: it opens with
+  the focus on its first row, Up/Down walk the rows, Home/End jump to the ends,
+  and Escape closes it -- and the same controller stays inert on the stack panel,
+  which handles its own arrow keys.
+- *Both panels got a stylesheet.* The stack panel had no styling of its own
+  (its tiles and rows were whatever the theme's generic `popover button.flat`
+  rule made of them) and menu rows had none at all. A theme-agnostic block in
+  `overlays.css` now gives menu rows their alignment and hover, the stack header
+  its buttons, the grid tiles a card look with rounded thumbnails, the list rows
+  a file-manager hairline, and the truncation note its place -- all expressed in
+  `alpha(currentColor, ...)` so the light and the dark materials both work. The
+  selectors are anchored on the panel's own container rather than on the popover
+  element, which is also what lets them out-specify the themes' rules (GTK CSS
+  has no `!important`), so a theme can still say what a panel *looks* like
+  without losing what it *is*.
+
+---------
+
+*[Released]*
+
 ** v0.20.0 (2026-10-31)
 - *The launchpad lost its title, and its close button can move.* The overlay no
   longer writes "Applications" across the top: the grid of everything installed

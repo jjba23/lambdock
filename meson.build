@@ -9,7 +9,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '0.20.0',
+  version: '0.21.0',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -255,6 +255,7 @@ sources = files(
   'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/dock_item_windows.c',
   'src/ui/dock_dnd.c',
   'src/ui/app_actions.c',
   'src/ui/desktop_entry.c',
@@ -314,6 +315,7 @@ full_app_sources = files(
   'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
+  'src/ui/dock_item_windows.c',
   'src/ui/dock_dnd.c',
   'src/ui/app_actions.c',
   'src/ui/desktop_entry.c',
