@@ -15,6 +15,14 @@ Nothing yet.
 
 *[Released]*
 
+** v0.21.1 (2026-11-01)
+- *The launchpad suite no longer dies on a machine with no display.*
+  `test_header' was registered before `gtk_init_check' had answered, so a
+  headless builder ran that one widget test anyway and the suite ended in a
+  SIGSEGV instead of a skip.  It is registered with the other widget tests now,
+  below the guard, so the Guix package's check phase passes on a builder that
+  has no display server -- the case that broke the 0.21.0 build.
+
 ** v0.21.0 (2026-10-31)
 - *The honest-TODO list is empty.* HACKING has carried a "known rough edges"
   table for a while; every row on it is now off, and each fix moved a rule rather
