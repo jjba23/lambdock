@@ -414,7 +414,6 @@ static void inner_test_launchpad(void *data, int argc, char **argv) {
 
   g_test_add_func("/launchpad/entry_matches", test_entry_matches);
   g_test_add_func("/launchpad/columns", test_columns);
-  g_test_add_func("/launchpad/header", test_header);
 
   /* The user's own applications directory is what makes a copy "Your files",
    * and the preference files must not touch the real home directory. The system
@@ -453,6 +452,11 @@ static void inner_test_launchpad(void *data, int argc, char **argv) {
   SCM load_fn = scm_c_public_ref("lambdock core", "load-dock-config!");
   scm_call_1(load_fn, scm_from_utf8_string(config_path));
 
+  /* Everything below builds widgets, so it is registered only once there is a
+   * display to build them on: `gtk_init_check' above answers that, and the
+   * header would otherwise be the one widget test that ran without one and
+   * took the whole suite down with a SIGSEGV. */
+  g_test_add_func("/launchpad/header", test_header);
   g_test_add_data_func("/launchpad/tile_copies", data_dir,
                        (GTestDataFunc)test_tile_copies);
   g_test_add_func("/launchpad/search_focus", test_search_focus);

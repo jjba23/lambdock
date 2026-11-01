@@ -29,9 +29,10 @@
  *
  * No window on purpose: the hover path only needs the row's geometry, and a
  * test that maps a surface would be exercising the developer's compositor (and
- * flashing a window) instead of the dock's arithmetic. gtk_widget_allocate()
- * runs the real measure/allocate chain, so the bounds the fisheye reads are the
- * ones the dock would have.
+ * flashing a window) instead of the dock's arithmetic.  The row is measured and
+ * then allocated, which is the chain the dock goes through when a compositor
+ * offers it a size, so the bounds the fisheye reads are the ones the dock would
+ * have.
  */
 static GtkWidget *build_row(LambdockState *state, int width, int height) {
   *state = (LambdockState){0};
@@ -51,6 +52,16 @@ static GtkWidget *build_row(LambdockState *state, int width, int height) {
     create_dock_item(state, name, "utilities-terminal", "true", name, TRUE,
                      TRUE);
   }
+
+  /* Measured first, because GTK4 reports an allocate on a widget that was
+   * never measured as a warning -- and this suite treats a warning as fatal,
+   * which is how the row read as a crash rather than a bad layout. */
+  int minimum = 0;
+  int natural = 0;
+  gtk_widget_measure(box, GTK_ORIENTATION_HORIZONTAL, height, &minimum,
+                     &natural, NULL, NULL);
+  gtk_widget_measure(box, GTK_ORIENTATION_VERTICAL, width, &minimum, &natural,
+                     NULL, NULL);
 
   gtk_widget_allocate(box, width, height, -1, NULL);
 
