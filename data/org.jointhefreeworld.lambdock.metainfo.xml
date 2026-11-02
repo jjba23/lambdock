@@ -77,6 +77,13 @@
   </screenshots>
 
   <releases>
+    <release version="0.22.1" date="2026-11-02">
+      <description>
+        <p>Separators, gauges and clocks keep their reserved reflection band -- they line up with the icons beside them -- but they no longer cast the icon's contact shadow, which is the pool an icon makes on the glass and had no business hanging under a divider.</p>
+        <p>The running indicator reads again: the bead is larger than the reference's 12x3px proportions, drawn as a bar with crisp edges rather than a blob that fades in every direction, and the dark pool under it is tight enough to sit around the bead instead of turning the whole band into a grey smear.</p>
+        <p>Changes made in the Preferences window, by dragging icons around, or by anything else writing the local state under ~/.local/state/lambdock are now picked up as they happen: the dock watches that directory and re-reads its settings when it settles, and a preference is persisted before it is applied.</p>
+      </description>
+    </release>
     <release version="0.22.0" date="2026-11-02">
       <description>
         <p>The macOS Mavericks material is no longer an estimate. The 10.9 install image carries the real Dock.app, so the platinum slab is measured off its own artwork: the outer lip is 1px of black with 2px of white in front of it that brightens towards the middle of the dock, the drop shadow starts at 0.60 against the slab and fades over 18px, the running indicator is a 12x3 white bead on a 54x12 cyan glow, the folder panel is charcoal with a light bevel, and the divider is a two-pixel engraved groove.</p>

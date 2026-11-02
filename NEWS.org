@@ -15,6 +15,29 @@ Nothing yet.
 
 *[Released]*
 
+** v0.22.1 (2026-11-02)
+- *Only artwork casts the icon's shadow now.*  Every item reserves the reflection
+  band so a separator, a gauge and a clock line up with the icons beside them,
+  but the band's contact shadow is the *icon's* shadow -- the pool it casts on
+  the glass -- so a separator was painting a grey smudge under a line.  The
+  shadow is enabled by =shelf_reflection_new()= for the items that hand it
+  artwork instead of being the widget's default, and a test snapshots a slot
+  with nothing to mirror to show it paints nothing at all.
+- *The running indicator is legible again.*  It was following the reference too
+  literally: a 12x3 bead on a 64px tile is 9x2.2px at the 48px icons the looks
+  use, drawn as a radial gradient, with a dark pool 4.6 bead widths across that
+  turned the whole band into a grey smear the white bead then had to be seen
+  against.  The bead is 0.20 x 0.07 icon (never under 7x3px) and drawn as a bar
+  with crisp edges, the pool is tight enough to sit right around it, and the
+  glow is stronger and tighter on top.  Its painted size is now a test.
+- *Local state changes are picked up as they are written.*  The Preferences
+  overrides and the drag-and-drop layout live under =~/.local/state/lambdock/=,
+  and the dock only watched =~/.config/lambdock=, so a write there was invisible
+  until something else happened to reload the dock.  It now watches the state
+  directory too and answers by re-reading each dock's settings, and
+  =set-dock-preference!= persists before it applies -- saving afterwards meant
+  the reload it triggers saw the value from *before* the edit.
+
 ** v0.22.0 (2026-11-02)
 - *The Mavericks shelf is measured off Dock.app's own artwork now.*  The 10.9
   install media ships =Essentials.pkg=, which carries the real

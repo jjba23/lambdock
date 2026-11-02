@@ -1,3 +1,17 @@
+lambdock (0.22.1-1) unstable; urgency=medium
+
+  * New upstream release: three fixes to what the dock draws and what it reads.
+    Separators, gauges and clocks reserve the reflection band but have no
+    artwork, so they no longer paint the icon's contact shadow under a line; the
+    running indicator is a crisp bar again, larger than the reference's
+    proportions and over a pool tight enough to be seen against; and local state
+    is picked up as it is written, because the dock now watches
+    ~/.local/state/lambdock (where the Preferences overrides and the
+    drag-and-drop layout live) and persists a preference before applying it
+    rather than after.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 02 Nov 2026 08:10:00 +0100
+
 lambdock (0.22.0-1) unstable; urgency=medium
 
   * New upstream release: the Mavericks material is read off Dock.app's own
