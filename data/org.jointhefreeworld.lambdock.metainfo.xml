@@ -77,6 +77,12 @@
   </screenshots>
 
   <releases>
+    <release version="0.22.2" date="2026-11-02">
+      <description>
+        <p>Every running application painted its indicator twice: the theme draws a dot at the bottom of the button, and the glass shelf draws its own bead on the slab. The rule that was supposed to silence the theme's dot sat in the shelf stylesheet, which is loaded before the theme -- and GTK resolves competing declarations from providers of the same priority by the order they were added, not by specificity, so the rule never won.</p>
+        <p>The suppression is now attached after the theme, only while the glass actually draws the bead, and the user's own stylesheet still wins over both. A test renders a button in both states and asserts the pixels.</p>
+      </description>
+    </release>
     <release version="0.22.1" date="2026-11-02">
       <description>
         <p>Separators, gauges and clocks keep their reserved reflection band -- they line up with the icons beside them -- but they no longer cast the icon's contact shadow, which is the pool an icon makes on the glass and had no business hanging under a divider.</p>

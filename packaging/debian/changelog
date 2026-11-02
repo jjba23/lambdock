@@ -1,3 +1,16 @@
+lambdock (0.22.2-1) unstable; urgency=medium
+
+  * New upstream release: one fix. Every running application painted two
+    indicators -- the theme's dot at the bottom of its button and the glass
+    shelf's bead on the slab -- because the rule meant to silence the theme's dot
+    was in shelf.css, which is loaded before the theme: GTK resolves competing
+    declarations from providers of the same priority by the order they were
+    added, not by selector specificity, so the rule always lost. It is now a
+    guard provider attached after the theme, only while the glass actually draws
+    the bead.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 02 Nov 2026 08:40:00 +0100
+
 lambdock (0.22.1-1) unstable; urgency=medium
 
   * New upstream release: three fixes to what the dock draws and what it reads.

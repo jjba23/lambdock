@@ -15,6 +15,19 @@ Nothing yet.
 
 *[Released]*
 
+** v0.22.2 (2026-11-02)
+- *One running indicator, not two.*  Every running app showed the theme's dot at
+  the bottom of its button *and* the shelf's bead on the glass.  The rule meant to
+  silence the theme's dot was in =shelf.css= with the rest of the shelf material,
+  and it never worked: GTK resolves competing declarations from providers of the
+  same priority by the order the providers were added, not by selector
+  specificity, and the shelf modifier is deliberately added before the theme (so
+  a theme can override the slab).  The rule is now a guard provider that
+  =theme_engine.c= attaches after the theme -- and before the user's stylesheet,
+  which still wins over both -- only when the glass really draws the bead.  A
+  test renders a button in both states and asserts the pixels, which is the half
+  that reading the CSS would have missed.
+
 ** v0.22.1 (2026-11-02)
 - *Only artwork casts the icon's shadow now.*  Every item reserves the reflection
   band so a separator, a gauge and a clock line up with the icons beside them,
