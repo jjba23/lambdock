@@ -6,6 +6,7 @@
 #include "theme_engine.h"
 #include "../lambdock.h"
 #include "../logger.h"
+#include "shelf.h"
 #include <gtk/gtk.h>
 
 /* ============================================================================
@@ -134,7 +135,8 @@ char *theme_scope_css_selectors(const char *css_text,
 LambdockThemeRequest lambdock_theme_request(const char *requested_theme,
                                             gboolean taskbar,
                                             gboolean show_window_titles,
-                                            gboolean shelf_active) {
+                                            gboolean shelf_active,
+                                            gboolean shelf_indicator) {
   const char *theme_name =
       (requested_theme && *requested_theme != '\0') ? requested_theme : "vanilla";
 
@@ -144,6 +146,7 @@ LambdockThemeRequest lambdock_theme_request(const char *requested_theme,
       .disabled = g_ascii_strcasecmp(theme_name, "none") == 0,
       .taskbar_modifier = taskbar || show_window_titles,
       .shelf_modifier = shelf_active,
+      .shelf_indicator = shelf_active && shelf_indicator,
   };
 
   return request;
@@ -230,8 +233,9 @@ static void theme_swap_window_class(LambdockState *state,
  */
 static void theme_detach_providers(LambdockState *state, GdkDisplay *display) {
   GtkCssProvider **providers[] = {
-      &state->base_css_provider, &state->taskbar_css_provider,
-      &state->shelf_css_provider, &state->user_css_provider,
+      &state->base_css_provider,       &state->taskbar_css_provider,
+      &state->shelf_css_provider,      &state->indicator_guard_css_provider,
+      &state->user_css_provider,
   };
 
   for (gsize i = 0; i < G_N_ELEMENTS(providers); i++) {
@@ -298,6 +302,37 @@ static void theme_attach_base_theme(LambdockState *state, GdkDisplay *display,
 }
 
 /**
+ * theme_attach_indicator_guard:
+ * Silences a theme's own running indicator while the shelf draws one.
+ *
+ * This cannot live in shelf.css with the rest of the shelf material.  GTK
+ * resolves competing declarations from providers of the same priority by the
+ * order the providers were added, *not* by selector specificity, and the shelf
+ * modifier is deliberately added before the theme so a theme can override the
+ * slab.  A `window.shelf-mirror button.running-app` rule there therefore lost to
+ * the theme's `button.running-app` no matter how specific it was, and every
+ * running app got two indicators: the theme's dot at the bottom of the button
+ * and the shelf's bead on the glass.
+ *
+ * Attached after the theme, at the same priority, this one rule is the last word
+ * on the indicator while the glass is mirroring -- and the user's own
+ * stylesheet, attached after even this, still wins over both.
+ */
+static void theme_attach_indicator_guard(LambdockState *state,
+                                         GdkDisplay *display,
+                                         const LambdockThemeRequest *request) {
+  if (!request->shelf_indicator)
+    return;
+
+  static const char k_guard_css[] =
+      "window.shelf-mirror button.running-app { background-image: none; }";
+
+  state->indicator_guard_css_provider = provider_from_scoped_css(
+      display, k_guard_css, request->theme_class,
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+}
+
+/**
  * theme_attach_user_css:
  * Layers ~/.config/lambdock/styles.css on top of everything, at user priority,
  * so a hand-written override wins over any shipped theme.
@@ -336,10 +371,16 @@ void load_custom_css(LambdockState *state) {
   if (!display)
     return;
 
+  gboolean shelf_active = lambdock_shelf_active(state);
+  /* The glass draws the running indicator only when it shows reflections: that
+   * is the band the bead is painted on. */
+  gboolean shelf_indicator =
+      lambdock_shelf_geometry_for(state, state->icon_size).band_px > 0;
+
   g_auto(LambdockThemeRequest) request =
       lambdock_theme_request(state->theme, state->taskbar,
-                             state->show_window_titles,
-                             lambdock_shelf_active(state));
+                             state->show_window_titles, shelf_active,
+                             shelf_indicator);
 
   theme_swap_window_class(state, request.theme_class);
   theme_detach_providers(state, display);
@@ -349,9 +390,11 @@ void load_custom_css(LambdockState *state) {
     return;
   }
 
-  /* Order matters: modifiers first, then the theme over them, then the user's
-   * own stylesheet over everything. */
+  /* Order matters: modifiers first, then the theme over them, then the guard
+   * that silences the theme's indicator, then the user's own stylesheet over
+   * everything. */
   theme_attach_modifiers(state, display, &request);
   theme_attach_base_theme(state, display, &request);
+  theme_attach_indicator_guard(state, display, &request);
   theme_attach_user_css(state, display, &request);
 }

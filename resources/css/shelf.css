@@ -146,11 +146,15 @@ window.shelf-mode button.flat:active {
   margin: 0;
 }
 
-/* When the glass shows icon reflections, the running indicator is drawn by the
- * reflection widget near the outer edge, so the CSS dot must stay quiet. */
-window.shelf-mirror button.running-app {
-  background-image: none;
-}
+/* The running indicator has to be painted exactly once: while the glass is
+ * mirroring, the reflection widget draws the bead on the slab, and the theme's
+ * own dot has to stay quiet.  That rule is NOT here: GTK resolves declarations
+ * from providers of the same priority by the order the providers were added, and
+ * this modifier is added before the theme on purpose (so a theme can override the
+ * slab).  A rule here lost to the theme's `button.running-app` however specific
+ * it was, which is what made every running app show two indicators.
+ * `theme_attach_indicator_guard()` in src/ui/theme_engine.c attaches it after the
+ * theme instead. */
 
 /* -------------------------------------------------------------------------
  * MENUS ABOVE THE GLASS

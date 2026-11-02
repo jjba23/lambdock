@@ -40,6 +40,7 @@ typedef struct {
   gboolean disabled;
   gboolean taskbar_modifier;
   gboolean shelf_modifier;
+  gboolean shelf_indicator; /* the glass draws the running dot itself */
 } LambdockThemeRequest;
 
 /**
@@ -58,7 +59,8 @@ typedef struct {
 LambdockThemeRequest lambdock_theme_request(const char *requested_theme,
                                             gboolean taskbar,
                                             gboolean show_window_titles,
-                                            gboolean shelf_active);
+                                            gboolean shelf_active,
+                                            gboolean shelf_indicator);
 
 /** Releases the strings a LambdockThemeRequest owns; safe on a cleared value. */
 void lambdock_theme_request_clear(LambdockThemeRequest *request);

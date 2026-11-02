@@ -15,7 +15,7 @@
 static void test_theme_request_defaults(void) {
   /* A dock with no theme configured gets vanilla, not an empty class. */
   g_auto(LambdockThemeRequest) request =
-      lambdock_theme_request(NULL, FALSE, FALSE, FALSE);
+      lambdock_theme_request(NULL, FALSE, FALSE, FALSE, FALSE);
 
   g_assert_cmpstr(request.theme_name, ==, "vanilla");
   g_assert_cmpstr(request.theme_class, ==, "theme-vanilla");
@@ -26,11 +26,11 @@ static void test_theme_request_defaults(void) {
 
 static void test_theme_request_normalises(void) {
   g_auto(LambdockThemeRequest) empty =
-      lambdock_theme_request("", FALSE, FALSE, FALSE);
+      lambdock_theme_request("", FALSE, FALSE, FALSE, FALSE);
   g_assert_cmpstr(empty.theme_name, ==, "vanilla");
 
   g_auto(LambdockThemeRequest) unity =
-      lambdock_theme_request("unity", FALSE, FALSE, FALSE);
+      lambdock_theme_request("unity", FALSE, FALSE, FALSE, FALSE);
   g_assert_cmpstr(unity.theme_name, ==, "unity");
   g_assert_cmpstr(unity.theme_class, ==, "theme-unity");
   g_assert_false(unity.disabled);
@@ -38,7 +38,7 @@ static void test_theme_request_normalises(void) {
 
 static void test_theme_request_none_disables(void) {
   g_auto(LambdockThemeRequest) none =
-      lambdock_theme_request("none", TRUE, TRUE, TRUE);
+      lambdock_theme_request("none", TRUE, TRUE, TRUE, FALSE);
 
   /* 'none' still names a class (so the old one can be swapped out) but loads
    * nothing, whatever the modifiers say. */
@@ -46,34 +46,48 @@ static void test_theme_request_none_disables(void) {
   g_assert_cmpstr(none.theme_class, ==, "theme-none");
 
   g_auto(LambdockThemeRequest) upper =
-      lambdock_theme_request("NONE", FALSE, FALSE, FALSE);
+      lambdock_theme_request("NONE", FALSE, FALSE, FALSE, FALSE);
   g_assert_true(upper.disabled);
 }
 
 static void test_theme_request_modifiers(void) {
   /* Taskbar mode needs the modifier... */
   g_auto(LambdockThemeRequest) taskbar =
-      lambdock_theme_request("vanilla", TRUE, FALSE, FALSE);
+      lambdock_theme_request("vanilla", TRUE, FALSE, FALSE, FALSE);
   g_assert_true(taskbar.taskbar_modifier);
 
   /* ...and so do window titles, on their own. */
   g_auto(LambdockThemeRequest) titles =
-      lambdock_theme_request("vanilla", FALSE, TRUE, TRUE);
+      lambdock_theme_request("vanilla", FALSE, TRUE, TRUE, FALSE);
   g_assert_true(titles.taskbar_modifier);
   g_assert_true(titles.shelf_modifier);
 
   /* Neither means neither. */
   g_auto(LambdockThemeRequest) plain =
-      lambdock_theme_request("vanilla", FALSE, FALSE, FALSE);
+      lambdock_theme_request("vanilla", FALSE, FALSE, FALSE, FALSE);
   g_assert_false(plain.taskbar_modifier);
   g_assert_false(plain.shelf_modifier);
+
+  /* The indicator guard needs the shelf *and* a reflection band to draw on: a
+   * shelf with no mirrors has no bead, so the theme's dot must stay. */
+  g_auto(LambdockThemeRequest) mirror =
+      lambdock_theme_request("vanilla", FALSE, FALSE, TRUE, TRUE);
+  g_assert_true(mirror.shelf_indicator);
+
+  g_auto(LambdockThemeRequest) no_band =
+      lambdock_theme_request("vanilla", FALSE, FALSE, TRUE, FALSE);
+  g_assert_false(no_band.shelf_indicator);
+
+  g_auto(LambdockThemeRequest) no_shelf =
+      lambdock_theme_request("vanilla", FALSE, FALSE, FALSE, TRUE);
+  g_assert_false(no_shelf.shelf_indicator);
 }
 
 /* The cleanup has to be safe to run twice, because ~g_auto~ runs it on the way
  * out even for a request whose strings were already released. */
 static void test_theme_request_clear_is_idempotent(void) {
   LambdockThemeRequest request =
-      lambdock_theme_request("unity", FALSE, FALSE, FALSE);
+      lambdock_theme_request("unity", FALSE, FALSE, FALSE, FALSE);
 
   lambdock_theme_request_clear(&request);
   g_assert_null(request.theme_name);
@@ -396,6 +410,127 @@ static void test_all_shipped_css_parse(void) {
 }
 
 /* ============================================================================
+ * THE INDICATOR GUARD (one indicator, not two)
+ * ============================================================================ */
+
+static gboolean pump_allocated(GtkWidget *widget) {
+  for (int i = 0; i < 600; i++) {
+    if (gtk_widget_get_width(widget) > 0)
+      return TRUE;
+    g_main_context_iteration(NULL, FALSE);
+    g_usleep(1000);
+  }
+  return gtk_widget_get_width(widget) > 0;
+}
+
+static graphene_rect_t painted_bounds(GtkWidget *parent, GtkWidget *child) {
+  /* Let the CSS change land in a frame before snapshotting, or the snapshot
+   * still holds the previous style. */
+  for (int i = 0; i < 4; i++) {
+    g_main_context_iteration(NULL, FALSE);
+    g_usleep(2000);
+  }
+
+  GtkSnapshot *snapshot = gtk_snapshot_new();
+  gtk_widget_snapshot_child(parent, child, snapshot);
+  GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+
+  graphene_rect_t bounds = GRAPHENE_RECT_INIT(0, 0, 0, 0);
+  if (node) {
+    gsk_render_node_get_bounds(node, &bounds);
+    gsk_render_node_unref(node);
+  }
+  return bounds;
+}
+
+/** A window carrying the classes a mirroring glass shelf puts on it. */
+static GtkWidget *mirroring_dock(GtkWidget **out_box, GtkWidget **out_button) {
+  GtkWidget *window = gtk_window_new();
+  gtk_widget_add_css_class(window, "lambdock-window");
+  gtk_widget_add_css_class(window, "shelf-mode");
+  gtk_widget_add_css_class(window, "shelf-mirror");
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  GtkWidget *button = gtk_button_new();
+  gtk_widget_add_css_class(button, "flat");
+  gtk_widget_add_css_class(button, "running-app");
+  gtk_widget_set_size_request(button, 48, 48);
+  gtk_box_append(GTK_BOX(box), button);
+  gtk_window_set_child(GTK_WINDOW(window), box);
+  gtk_window_set_default_size(GTK_WINDOW(window), 200, 120);
+
+  *out_box = box;
+  *out_button = button;
+  return window;
+}
+
+/* The running indicator must be painted exactly once: the theme draws a dot at
+ * the bottom of the button, and the glass shelf draws its own bead on the slab.
+ * While the slab mirrors, the theme's dot has to stay quiet -- and that cannot
+ * be decided by a shelf.css rule, because GTK resolves same-priority providers
+ * by the order they were added (the shelf modifier goes in *before* the theme so
+ * themes can override the slab). Getting this wrong is what made every running
+ * app show two indicators, so it is asserted on the rendered pixels.
+ *
+ * The two states are checked in the order a dock goes through them: first a dock
+ * whose glass does not mirror (the theme's dot is the only indicator), then one
+ * that does (the glass draws the bead, the dot goes quiet). */
+static void test_shelf_indicator_is_painted_once(void) {
+  GtkWidget *box = NULL;
+  GtkWidget *button = NULL;
+  GtkWidget *window = mirroring_dock(&box, &button);
+
+  LambdockState state = {0};
+  state.window = window;
+  state.box = box;
+  state.config_path = g_strdup("test_settings.scm");
+  state.theme = g_strdup("macos-mavericks");
+  state.icon_size = 48;
+  state.shelf = lambdock_shelf_params_default();
+  state.shelf.margin_px = -18;
+  state.shelf.front_px = 14;
+  state.shelf.flare_px = 24;
+  state.shelf.reflection_ratio = 0.0;
+
+  gtk_window_present(GTK_WINDOW(window));
+  if (!pump_allocated(button)) {
+    g_test_skip("window was never allocated");
+    gtk_window_destroy(GTK_WINDOW(window));
+    return;
+  }
+
+  /* No mirror band: no bead on the glass, so no guard, and the theme's dot is
+   * the indicator. Poll for it: a loaded stylesheet lands a frame or two later,
+   * and "nothing painted yet" must not be mistaken for "suppressed". */
+  load_custom_css(&state);
+  g_assert_null(state.indicator_guard_css_provider);
+
+  graphene_rect_t flat = painted_bounds(box, button);
+  for (int i = 0; i < 200 && flat.size.width <= 0.0; i++)
+    flat = painted_bounds(box, button);
+  g_assert_cmpfloat(flat.size.width, >, 0.0);
+  g_assert_cmpfloat(flat.size.height, >, 0.0);
+
+  /* A glass that mirrors: the guard goes in and the dot must stop painting. */
+  state.shelf.reflection_ratio = 0.3;
+  load_custom_css(&state);
+  g_assert_nonnull(state.indicator_guard_css_provider);
+
+  g_autofree char *guard_css =
+      gtk_css_provider_to_string(state.indicator_guard_css_provider);
+  g_assert_nonnull(strstr(guard_css, "shelf-mirror"));
+  g_assert_nonnull(strstr(guard_css, "background-image: none"));
+
+  graphene_rect_t mirrored = painted_bounds(box, button);
+  for (int i = 0; i < 200 && mirrored.size.width > 0.0; i++)
+    mirrored = painted_bounds(box, button);
+  g_assert_cmpfloat(mirrored.size.width, ==, 0.0);
+  g_assert_cmpfloat(mirrored.size.height, ==, 0.0);
+
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+/* ============================================================================
  * TASKBAR / WINDOW-TITLE MODIFIER
  * ============================================================================ */
 
@@ -483,6 +618,8 @@ int main(int argc, char **argv) {
                   test_all_shipped_css_parse);
   g_test_add_func("/ui/theme_engine/load_taskbar_modifier",
                   test_load_custom_css_taskbar_modifier);
+  g_test_add_func("/ui/theme_engine/indicator_painted_once",
+                  test_shelf_indicator_is_painted_once);
 
   return g_test_run();
 }

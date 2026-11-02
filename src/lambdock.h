@@ -318,6 +318,7 @@ struct LambdockState {
   GtkCssProvider *base_css_provider;
   GtkCssProvider *taskbar_css_provider; /* Loaded in taskbar / window titles */
   GtkCssProvider *shelf_css_provider;   /* Loaded when the shelf is active */
+  GtkCssProvider *indicator_guard_css_provider; /* Silences the theme's dot */
   GtkCssProvider *user_css_provider;
 };
 
