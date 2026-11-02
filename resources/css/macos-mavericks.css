@@ -65,72 +65,134 @@ window {
 .lambdock-window.shelf-mode {
   border-radius: 8px 8px 16px 16px;
 
-  /* Measured off a screenshot of the real 10.9 dock, read as a white wash over
-   * whatever sits behind it: a 3px grey lip on the screen edge, a bright
-   * specular line, then a body that is most opaque where it meets that edge
-   * (~0.74) and fades to its most transparent at the inner edge (~0.38). 0deg
-   * points up, so the first stops are the outer edge. */
-  background-image: linear-gradient(
-    0deg,
-    rgba(122, 131, 141, 0.46) 0px,
-    rgba(122, 131, 141, 0.46) 3px,
-    rgba(255, 255, 255, 0.96) 3px,
-    rgba(255, 255, 255, 0.78) 4px,
-    rgba(226, 234, 243, 0.66) 9px,
-    rgba(214, 225, 238, 0.52) 45%,
-    rgba(204, 216, 230, 0.38) 100%
-  );
+  /* Measured off Dock.app's own artwork from the 10.9 install media, read as a
+   * white wash over whatever sits behind it.  `frontline.png` is the outer lip:
+   * 1px of black at 0.30 (the outer border below) with 2px of white in front of
+   * it, and that white runs from 0.56 at the dock's ends to 0.82 in the middle
+   * -- which is what the sheen layer here is for, sized to exactly those 2px.
+   * Behind it the body is most opaque where it meets the edge (~0.74) and fades
+   * to its most transparent at the inner edge (~0.38).  0deg points up, so the
+   * first stops of the slab layer are the outer edge. */
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.00) 0%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.00) 100%
+    ),
+    linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.56) 0px,
+      rgba(255, 255, 255, 0.56) 2px,
+      rgba(226, 234, 243, 0.62) 2px,
+      rgba(226, 234, 243, 0.62) 8px,
+      rgba(214, 225, 238, 0.50) 45%,
+      rgba(204, 216, 230, 0.38) 100%
+    );
+  background-size: 100% 2px, auto;
+  background-position: center bottom, center;
+  background-repeat: no-repeat, no-repeat;
 
   border-top: 1px solid rgba(255, 255, 255, 0.38);
   border-left: 1px solid rgba(178, 190, 205, 0.55);
   border-right: 1px solid rgba(178, 190, 205, 0.55);
-  border-bottom: 1px solid rgba(140, 152, 166, 0.60);
+  /* The outer border *is* the lip's black line: 1px of it, then the 2px
+   * of white the gradient paints just inside. */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.30);
 
+  /* `shadow.png` again: black at 0.60 against the slab, 0.42 two pixels out,
+   * 0.23 eight pixels out, and a long 0.02 tail at eighteen.  Three stacked
+   * blurs sum to that curve instead of the 0.16 wash of a single soft one. */
   box-shadow:
-    0 -8px 20px rgba(0, 0, 0, 0.16),
+    0 0 2px rgba(0, 0, 0, 0.35),
+    0 0 8px rgba(0, 0, 0, 0.28),
+    0 0 20px rgba(0, 0, 0, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .lambdock-window.shelf-mode.shelf-top {
   border-radius: 16px 16px 8px 8px;
-  background-image: linear-gradient(
-    180deg,
-    rgba(122, 131, 141, 0.46) 0px,
-    rgba(122, 131, 141, 0.46) 3px,
-    rgba(255, 255, 255, 0.96) 3px,
-    rgba(255, 255, 255, 0.78) 4px,
-    rgba(226, 234, 243, 0.66) 9px,
-    rgba(214, 225, 238, 0.52) 45%,
-    rgba(204, 216, 230, 0.38) 100%
-  );
+  background-image:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.00) 0%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.00) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.56) 0px,
+      rgba(255, 255, 255, 0.56) 2px,
+      rgba(226, 234, 243, 0.62) 2px,
+      rgba(226, 234, 243, 0.62) 8px,
+      rgba(214, 225, 238, 0.50) 45%,
+      rgba(204, 216, 230, 0.38) 100%
+    );
+  background-size: 100% 2px, auto;
+  background-position: center top, center;
+  background-repeat: no-repeat, no-repeat;
+
+  /* The lip follows the edge, so the black line does too. */
+  border-top: 1px solid rgba(0, 0, 0, 0.30);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.38);
 }
 
 .lambdock-window.shelf-mode.shelf-left {
   border-radius: 8px 16px 16px 8px;
-  background-image: linear-gradient(
-    90deg,
-    rgba(122, 131, 141, 0.46) 0px,
-    rgba(122, 131, 141, 0.46) 3px,
-    rgba(255, 255, 255, 0.96) 3px,
-    rgba(255, 255, 255, 0.78) 4px,
-    rgba(226, 234, 243, 0.66) 9px,
-    rgba(214, 225, 238, 0.52) 45%,
-    rgba(204, 216, 230, 0.38) 100%
-  );
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.00) 0%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.00) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.56) 0px,
+      rgba(255, 255, 255, 0.56) 2px,
+      rgba(226, 234, 243, 0.62) 2px,
+      rgba(226, 234, 243, 0.62) 8px,
+      rgba(214, 225, 238, 0.50) 45%,
+      rgba(204, 216, 230, 0.38) 100%
+    );
+  background-size: 2px 100%, auto;
+  background-position: left center, center;
+  background-repeat: no-repeat, no-repeat;
+
+  /* The lip follows the edge, so the black line does too. */
+  border-left: 1px solid rgba(0, 0, 0, 0.30);
+  border-right: 1px solid rgba(255, 255, 255, 0.38);
+  border-top: 1px solid rgba(178, 190, 205, 0.55);
+  border-bottom: 1px solid rgba(178, 190, 205, 0.55);
 }
 
 .lambdock-window.shelf-mode.shelf-right {
   border-radius: 16px 8px 8px 16px;
-  background-image: linear-gradient(
-    270deg,
-    rgba(122, 131, 141, 0.46) 0px,
-    rgba(122, 131, 141, 0.46) 3px,
-    rgba(255, 255, 255, 0.96) 3px,
-    rgba(255, 255, 255, 0.78) 4px,
-    rgba(226, 234, 243, 0.66) 9px,
-    rgba(214, 225, 238, 0.52) 45%,
-    rgba(204, 216, 230, 0.38) 100%
-  );
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.00) 0%,
+      rgba(255, 255, 255, 0.55) 50%,
+      rgba(255, 255, 255, 0.00) 100%
+    ),
+    linear-gradient(
+      270deg,
+      rgba(255, 255, 255, 0.56) 0px,
+      rgba(255, 255, 255, 0.56) 2px,
+      rgba(226, 234, 243, 0.62) 2px,
+      rgba(226, 234, 243, 0.62) 8px,
+      rgba(214, 225, 238, 0.50) 45%,
+      rgba(204, 216, 230, 0.38) 100%
+    );
+  background-size: 2px 100%, auto;
+  background-position: right center, center;
+  background-repeat: no-repeat, no-repeat;
+
+  /* The lip follows the edge, so the black line does too. */
+  border-right: 1px solid rgba(0, 0, 0, 0.30);
+  border-left: 1px solid rgba(255, 255, 255, 0.38);
+  border-top: 1px solid rgba(178, 190, 205, 0.55);
+  border-bottom: 1px solid rgba(178, 190, 205, 0.55);
 }
 
 /* Full-width taskbar: same slab, square corners. */
@@ -190,43 +252,85 @@ button.flat:hover .dynamic-item-label {
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR
  * -------------------------------------------------------------------------
- * With reflections on, the reflection widget draws the dot on the slab itself;
- * this dot is for the flat variant. The 10.9 slab is light, so the dot is dark
- * -- a white glow would vanish into the platinum -- which is what a running app
- * looked like on the real light dock. */
+ * With reflections on, the reflection widget draws the bead and its glow on the
+ * slab itself; this is the flat variant.
+ *
+ * The reference is Dock.app's `indicator_medium.png` (54x12 against a 64px tile:
+ * a 12x3 white bead sitting on a 54x12 cyan glow, 139/207/255 peaking at 0.13
+ * alpha). Scaled to this look's 48px icons that is a ~9x3 bead in a ~40x9 glow.
+ *
+ * The bead is white on the real dock because it sits in the dark pool each
+ * icon's shadow makes on the glass. The flat capsule here has no such pool, and
+ * white on platinum is invisible -- so the same shadow is painted as the
+ * bottom layer: it is what the real dock looks like, and it keeps the bead
+ * legible. */
 
 button.running-app {
-  background-image: radial-gradient(
-    circle at center,
-    rgba(44, 52, 66, 0.92) 0%,
-    rgba(52, 62, 78, 0.70) 45%,
-    transparent 82%
-  );
-  background-size: 20px 7px;
-  background-position: center bottom;
-  background-repeat: no-repeat;
+  background-image:
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 1.00) 0%,
+      rgba(255, 255, 255, 0.94) 55%,
+      rgba(255, 255, 255, 0.00) 78%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(139, 207, 255, 0.34) 0%,
+      rgba(139, 207, 255, 0.14) 50%,
+      rgba(139, 207, 255, 0.00) 82%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(10, 14, 22, 0.26) 0%,
+      rgba(10, 14, 22, 0.12) 55%,
+      rgba(10, 14, 22, 0.00) 88%
+    );
+  background-size: 10px 3px, 40px 9px, 46px 12px;
+  background-position: center bottom, center bottom, center bottom;
+  background-repeat: no-repeat, no-repeat, no-repeat;
 }
 
 button.running-app:hover {
-  background-image: radial-gradient(
-    circle at center,
-    rgba(28, 34, 46, 1.00) 0%,
-    rgba(40, 50, 66, 0.85) 50%,
-    transparent 86%
-  );
-  background-size: 26px 9px;
-  background-position: center bottom;
+  background-image:
+    radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 1.00) 0%,
+      rgba(255, 255, 255, 1.00) 58%,
+      rgba(255, 255, 255, 0.00) 80%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(139, 207, 255, 0.44) 0%,
+      rgba(139, 207, 255, 0.18) 50%,
+      rgba(139, 207, 255, 0.00) 84%
+    ),
+    radial-gradient(
+      circle at center,
+      rgba(10, 14, 22, 0.32) 0%,
+      rgba(10, 14, 22, 0.15) 55%,
+      rgba(10, 14, 22, 0.00) 90%
+    );
+  background-size: 12px 4px, 46px 10px, 52px 13px;
+  background-position: center bottom, center bottom, center bottom;
+  background-repeat: no-repeat, no-repeat, no-repeat;
 }
 
 /* -------------------------------------------------------------------------
  * SEPARATOR GROOVE
  * ------------------------------------------------------------------------- */
 
+/* `separatorstraight-horizontal.png` is two pixels: black at 0.14 and white at
+ * 0.14 next to it -- the engraved groove, no more. */
 separator {
   margin: 6px 8px;
-  background-color: rgba(120, 135, 155, 0.45);
-  border-right: 1px solid rgba(255, 255, 255, 0.70);
-  min-width: 1px;
+  min-width: 2px;
+  background-image: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.14) 0px,
+    rgba(0, 0, 0, 0.14) 1px,
+    rgba(255, 255, 255, 0.14) 1px,
+    rgba(255, 255, 255, 0.14) 2px
+  );
 }
 
 /* On the glass shelf the separator is part of the slab rather than a divider
@@ -241,20 +345,25 @@ separator {
   background-color: transparent;
 
   /* Two layers: the groove on the left and its lit edge one pixel to the
-   * right, both fading into the slab at either end. */
+   * right, both fading into the slab at either end.  The alphas are
+   * `separator.png`'s: near-black at 0.24 for the groove, white at 0.26 for the
+   * edge.  That image is sheared -- it leans 22px sideways over its 66px of
+   * height, being painted on the tilted floor -- but the shear belongs to the
+   * projection, which the shelf frame already applies to this widget; here the
+   * groove is drawn square in its own space and the lean comes from outside. */
   background-image:
     linear-gradient(
       to bottom,
       transparent 0%,
-      rgba(255, 255, 255, 0.22) 18%,
-      rgba(255, 255, 255, 0.22) 74%,
+      rgba(255, 255, 255, 0.26) 18%,
+      rgba(255, 255, 255, 0.26) 74%,
       transparent 100%
     ),
     linear-gradient(
       to bottom,
       transparent 0%,
-      rgba(112, 126, 146, 0.30) 18%,
-      rgba(112, 126, 146, 0.30) 74%,
+      rgba(2, 2, 2, 0.24) 18%,
+      rgba(2, 2, 2, 0.24) 74%,
       transparent 100%
     );
   background-size: 2px 100%, 1px 100%;
@@ -303,6 +412,57 @@ popover button.flat:hover {
     rgba(238, 243, 250, 0.97) 100%
   );
   color: #ffffff;
+}
+
+/* -------------------------------------------------------------------------
+ * STACK PANEL (a folder opened as a grid or a list)
+ * -------------------------------------------------------------------------
+ * Also Dock.app's artwork: `stackbackground-*.png` is the 9-slice the real dock
+ * grew its folder panel from.  Read off those tiles, the panel is
+ *   - a charcoal fill of rgb(33, 33, 33) at 0.85 alpha,
+ *   - a 1px near-black outline (alpha 0.07) with a 2px band of rgb(200, 200, 200)
+ *     at 0.35 just inside it on the lit edges, top and left, and nothing on the
+ *     bottom or right,
+ *   - rounded by ~10px: the corner tiles are 40x40, but the panel's edge sits
+ *     ~23px into them -- the rest is shadow margin -- and the arc that is left
+ *     has a radius of nine pixels.
+ * `stack.c` puts `stack-panel` on the popover so this does not touch the HUD
+ * menus that share it.  The header, entries and rows keep the layout and
+ * hover/pressed states `overlays.css` gives every theme; only the material is
+ * replaced here. */
+
+popover.stack-panel > contents {
+  background-color: rgba(33, 33, 33, 0.85);
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(200, 200, 200, 0.35) 0px,
+      rgba(200, 200, 200, 0.35) 2px,
+      rgba(200, 200, 200, 0.00) 2px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(200, 200, 200, 0.35) 0px,
+      rgba(200, 200, 200, 0.35) 2px,
+      rgba(200, 200, 200, 0.00) 2px
+    );
+  border: 1px solid rgba(0, 0, 0, 0.30);
+  border-radius: 10px;
+  /* The tiles carry an ~8px soft shadow outside the panel, peaking near 0.07 on
+   * the shadow side; the drop below is the same thing seen from a distance. */
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* The header's rule is the panel's own bevel again, a groove rather than the
+ * slab separator above. */
+popover.stack-panel separator {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.16) 0px,
+    rgba(255, 255, 255, 0.16) 1px,
+    rgba(0, 0, 0, 0.30) 1px,
+    rgba(0, 0, 0, 0.30) 2px
+  );
 }
 
 window.about-dialog {

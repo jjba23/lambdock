@@ -1123,7 +1123,7 @@ static GtkWidget *stack_panel_header(DockItem *item, const char *path,
       (view == LAMBDOCK_STACK_VIEW_LIST); /* what a click would switch to */
   GtkWidget *toggle = stack_header_button(
       listing ? "view-grid-symbolic" : "view-list-symbolic",
-      listing ? _("Show as a grid") : _("Show as a list"),
+      listing ? _("View content as a grid") : _("View content as a list"),
       _("Changes how this folder is laid out, and remembers it."));
   gtk_widget_add_css_class(toggle, "stack-view-toggle");
   g_signal_connect(toggle, "clicked", G_CALLBACK(on_stack_view_toggle_clicked),
@@ -1206,6 +1206,10 @@ static void stack_popover_fill(DockItem *item, const char *path) {
 
   g_object_set_data_full(G_OBJECT(item->popover), STACK_PATH_KEY,
                          g_strdup(path ? path : ""), g_free);
+  /* The item's popover is also the right-click menu, so the stack panel has to
+   * say who it is: the themes style this panel differently from the HUD menus,
+   * and popover_menu.c takes the class off again when it installs a menu. */
+  gtk_widget_add_css_class(item->popover, "stack-panel");
   gtk_popover_set_child(GTK_POPOVER(item->popover), panel);
 }
 

@@ -100,12 +100,12 @@ static void test_popover_menu_no_windows_with_exec(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, Launch Application, sep, New Window, New Private Window */
+  /* header, sep, Open, sep, New Window, New Private Window */
   g_assert_cmpint(menu_child_count(item), ==, 6);
   GPtrArray *labels = menu_labels(item);
   g_assert_cmpint(labels->len, ==, 4);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
-  g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Launch Application");
+  g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Open");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Window");
   g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Private Window");
   g_ptr_array_unref(labels);
@@ -291,7 +291,7 @@ static void test_popover_menu_app_actions(void) {
   collect_labels(gtk_popover_get_child(GTK_POPOVER(other->popover)), labels);
   g_assert_false(labels_contain(labels, "New Window"));
   g_assert_false(labels_contain(labels, "New Private Window"));
-  g_assert_true(labels_contain(labels, "Launch Application"));
+  g_assert_true(labels_contain(labels, "Open"));
   g_ptr_array_unref(labels);
   free_item(other);
 }
@@ -314,7 +314,7 @@ static void test_popover_menu_stack(void) {
   g_assert_true(labels_contain(labels, "Grid"));
   g_assert_true(labels_contain(labels, "List"));
   g_assert_false(labels_contain(labels, "Fan"));
-  g_assert_true(labels_contain(labels, "Open Folder"));
+  g_assert_true(labels_contain(labels, "Open"));
   g_assert_true(labels_contain(labels, "Remove from Dock"));
 
   /* The active view mode is the one carrying the check and the `active' class
@@ -419,7 +419,7 @@ static void test_popover_menu_trash(void) {
   }
 
   g_assert_true(has_count);
-  g_assert_true(labels_contain(labels, "Open Trash"));
+  g_assert_true(labels_contain(labels, "Open"));
   g_assert_true(labels_contain(labels, "Empty Trash"));
   g_assert_true(labels_contain(labels, "Remove from Dock"));
 
@@ -570,7 +570,7 @@ static void test_popover_menu_icons(void) {
   item = new_item("Calculator", "org.gnome.Calculator", "gnome-calculator");
   populate_popover_menu(item);
   content = gtk_popover_get_child(GTK_POPOVER(item->popover));
-  GtkWidget *launch_app = find_menu_button(content, "Launch Application");
+  GtkWidget *launch_app = find_menu_button(content, "Open");
   g_assert_nonnull(launch_app);
   g_assert_cmpstr(row_icon_name(launch_app), ==, "system-run-symbolic");
   free_item(item);
@@ -580,7 +580,7 @@ static void test_popover_menu_icons(void) {
   item->kind = LAMBDOCK_ITEM_TRASH;
   populate_popover_menu(item);
   content = gtk_popover_get_child(GTK_POPOVER(item->popover));
-  g_assert_cmpstr(row_icon_name(find_menu_button(content, "Open Trash")), ==,
+  g_assert_cmpstr(row_icon_name(find_menu_button(content, "Open")), ==,
                   "user-trash-symbolic");
   g_assert_cmpstr(row_icon_name(find_menu_button(content, "Empty Trash")), ==,
                   "edit-delete-symbolic");

@@ -199,76 +199,108 @@ static int reflection_band_size(const LambdockReflection *self, int icon_size) {
  * ============================================================================ */
 
 /**
- * reflection_edge_rect:
- * Builds a gradient from the icon-side edge of the band towards its far edge
- * (the mirror axis depends on the docked edge).
+ * reflection_paint_ellipse:
+ * Appends one elliptical radial gradient: centre and radii in pixels, stops as
+ * fractions of the radius. Every decoration the band paints goes through here,
+ * because Gsk wants the bounds rectangle and both radii and it is easy to get
+ * the axes the wrong way round by hand.
  */
-static void reflection_axis_gradient(GtkSnapshot *snapshot, double w, double h,
-                                     gboolean vertical, gboolean from_begin,
-                                     double length,
+static void reflection_paint_ellipse(GtkSnapshot *snapshot, double cx, double cy,
+                                     double rx, double ry,
                                      const GskColorStop *stops, gsize n_stops) {
-  graphene_rect_t bounds;
-  graphene_point_t start;
-  graphene_point_t end;
+  if (rx <= 0.0 || ry <= 0.0 || n_stops == 0)
+    return;
 
-  if (vertical) {
-    graphene_rect_init(&bounds, 0.0f, 0.0f, (float)w, (float)h);
-    float y0 = from_begin ? 0.0f : (float)h;
-    float y1 = from_begin ? (float)length : (float)(h - length);
-    graphene_point_init(&start, (float)(w / 2.0), y0);
-    graphene_point_init(&end, (float)(w / 2.0), y1);
-  } else {
-    graphene_rect_init(&bounds, 0.0f, 0.0f, (float)w, (float)h);
-    float x0 = from_begin ? 0.0f : (float)w;
-    float x1 = from_begin ? (float)length : (float)(w - length);
-    graphene_point_init(&start, x0, (float)(h / 2.0));
-    graphene_point_init(&end, x1, (float)(h / 2.0));
-  }
+  graphene_rect_t bounds = GRAPHENE_RECT_INIT(
+      (float)(cx - rx), (float)(cy - ry), (float)(rx * 2.0), (float)(ry * 2.0));
+  graphene_point_t center;
+  graphene_point_init(&center, (float)cx, (float)cy);
 
-  gtk_snapshot_append_linear_gradient(snapshot, &bounds, &start, &end, stops,
-                                      n_stops);
+  gtk_snapshot_append_radial_gradient(snapshot, &bounds, &center, (float)rx,
+                                      (float)ry, 0.0f, 1.0f, stops, n_stops);
 }
 
 /**
  * reflection_paint_contact_shadow:
- * Soft dark halo where the icon meets the glass, so the icon reads as resting
- * on the shelf instead of floating above it.
+ * Soft dark pool where the icon meets the glass, so the icon reads as resting on
+ * the shelf instead of floating above it.
+ *
+ * The shape is Dock.app's `wviconshadow.png`, the shadow the real dock puts under
+ * an icon: a Gaussian pool that measures 0.40 alpha at the icon's centre, 0.28
+ * at a third of an icon out, 0.06 at three quarters, and nothing past 0.61 icon.
+ * Drawing it as a pool centred on the mirror axis -- rather than a linear band
+ * running down the whole band -- is what keeps it under the icon: it fades out
+ * at the icon's sides too instead of turning the band into the flat grey strip
+ * that made this decoration worth switching off.
+ *
+ * The pool follows `reflection-intensity`, since it is part of the same material
+ * as the mirror: at the default 0.55 it peaks at 0.22, and at zero it is gone.
  */
 static void reflection_paint_contact_shadow(const LambdockReflection *self,
                                             GtkSnapshot *snapshot, double w,
                                             double h) {
   gboolean vertical = reflection_is_vertical_band(self);
+  double cross = vertical ? w : h;
   double axis_len = vertical ? h : w;
-  double shadow_len = MIN(axis_len * 0.8, MAX(5.0, axis_len * 0.45));
-  if (shadow_len <= 0.0)
+  double peak = MIN(0.45, 0.40 * MAX(0.0, self->intensity));
+
+  if (cross <= 0.0 || axis_len <= 0.0 || peak <= 0.0)
     return;
 
-  GskColorStop stops[3] = {
-      {(float)0.0, {0.05f, 0.07f, 0.10f, 0.18f}},
-      {(float)0.35, {0.05f, 0.07f, 0.10f, 0.10f}},
-      {(float)1.0, {0.05f, 0.07f, 0.10f, 0.0f}},
+  /* The icon-side edge of the band is the mirror axis: the top of the band for a
+   * bottom dock, the left for a left dock. The pool is centred there, so the half
+   * the glass can show is the half that fades away from the icon. */
+  double cx = w / 2.0;
+  double cy = h / 2.0;
+  if (vertical) {
+    cy = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) ? 0.0 : h;
+  } else {
+    cx = (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) ? 0.0 : w;
+  }
+
+  /* Across the mirror axis the measured pool spans 0.61 icon; along it the band's
+   * own depth is the extent, so the shadow dies out before the outer edge. */
+  double radius_cross = cross * 0.625;
+  double radius_along = axis_len;
+
+  GskColorStop stops[6] = {
+      {(float)0.00, {0.0f, 0.0f, 0.0f, (float)peak}},
+      {(float)0.20, {0.0f, 0.0f, 0.0f, (float)(peak * 0.79)}},
+      {(float)0.40, {0.0f, 0.0f, 0.0f, (float)(peak * 0.43)}},
+      {(float)0.60, {0.0f, 0.0f, 0.0f, (float)(peak * 0.17)}},
+      {(float)0.80, {0.0f, 0.0f, 0.0f, (float)(peak * 0.04)}},
+      {(float)1.00, {0.0f, 0.0f, 0.0f, 0.0f}},
   };
 
-  /* The icon-side edge is the beginning of the band for a bottom dock and the
-   * end for a top dock; side docks use the horizontal axis. */
-  reflection_axis_gradient(snapshot, w, h, vertical,
-                           self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM ||
-                               self->edge == GTK_LAYER_SHELL_EDGE_LEFT,
-                           shadow_len, stops, 3);
+  reflection_paint_ellipse(snapshot, cx, cy, vertical ? radius_cross : radius_along,
+                          vertical ? radius_along : radius_cross, stops, 6);
 }
 
 /**
  * reflection_paint_running_dot:
- * The small glowing dot the OS X dock showed near the outer edge of the glass
- * for apps with open windows.
+ * The small glowing dot the OS X dock showed for apps with open windows: a
+ * white bead sitting on a cyan glow.
  *
- * The dot is white -- that is what the real one was on the 3D shelf -- but a
- * white glow disappears into a pale slab (the platinum Mavericks and Aqua Tiger
- * shelves are exactly that), so it is drawn over a soft dark halo. On the light
- * material the halo reads as the bead's shadow and the dot stays visible; on
- * dark glass the halo blends into the shelf and only the glow shows, which is
- * what the dark themes want. The halo is nearly twice the dot's size, so it
- * never turns the glow into a grey ring.
+ * Two images describe it, and they are not the same shape rotated:
+ *
+ *   - `indicator_medium.png` (bottom/top docks): a 54x12 glow on a 64px tile
+ *     with a 12x3 white bead at its outer edge, so the bead is 0.19 icon along
+ *     the row and 0.05 across it;
+ *   - `indicator_side_medium.png` (left/right docks): a 6x16 glow with a 2x11
+ *     bead, so the bead is 0.03 icon across the row and 0.17 along it.
+ *
+ * In both cases the bead runs along the row of icons and the glow is stretched
+ * that way too, but the side dock's glow is the tighter of the two: 1.5x the
+ * bead along the row and 3.1x across it, against 4.4x and 4.0x for the bottom
+ * dock. The glow is 139/207/255 on the bottom dock and 0/158/250 on the side
+ * one, which is what the two colours below are.
+ *
+ * The bead is white -- that is what the real one was on the 3D shelf -- but a
+ * white bead disappears into a pale slab (the platinum Mavericks and Aqua Tiger
+ * shelves are exactly that), so it is drawn over a soft dark pool. On the light
+ * material the pool reads as the shadow the icon casts on the glass and the
+ * bead stays visible; on dark glass the pool blends into the shelf and only the
+ * glow shows, which is what the dark themes want.
  */
 static void reflection_paint_running_dot(const LambdockReflection *self,
                                          GtkSnapshot *snapshot, double w,
@@ -276,62 +308,76 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   gboolean vertical = reflection_is_vertical_band(self);
   double cross = vertical ? w : h;
 
-  /* The OS X dot reads as a small spotlight on the glass: wide enough to see at a
-   * glance, shallow enough to stay a dot rather than a bar. */
-  double dot_cross = MAX(7.0, cross * 0.24);
-  double dot_along = MAX(4.0, dot_cross * 0.52);
-  double margin = 2.5;
+  /* Bead and glow as fractions of the icon, per orientation. `cross` is the axis
+   * along the row of icons, so the bead's long side is the cross one. */
+  const double bead_cross_ratio = vertical ? 0.19 : 0.17;
+  const double bead_along_ratio = vertical ? 0.05 : 0.03;
+  const double glow_cross_scale = vertical ? 4.4 : 1.5;
+  const double glow_along_scale = vertical ? 4.0 : 3.1;
+  const double pool_cross_scale = vertical ? 4.6 : 2.0;
+  const double pool_along_scale = vertical ? 4.4 : 4.0;
+  const double edge_lift = 2.0;
+
+  double bead_cross = MAX(6.0, cross * bead_cross_ratio);
+  double bead_along = MAX(1.5, cross * bead_along_ratio);
+
+  /* Distance from the outer edge to the middle of the bead. */
+  double lift = bead_along / 2.0 + edge_lift;
 
   double cx = w / 2.0;
   double cy = h / 2.0;
 
   if (vertical) {
-    cy = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) ? (h - dot_along - margin)
-                                                     : (dot_along + margin);
+    cy = (self->edge == GTK_LAYER_SHELL_EDGE_BOTTOM) ? (h - lift) : lift;
   } else {
-    cx = (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) ? (w - dot_along - margin)
-                                                   : (dot_along + margin);
+    cx = (self->edge == GTK_LAYER_SHELL_EDGE_LEFT) ? (w - lift) : lift;
   }
 
-  double radius_cross = MAX(dot_cross / 2.0, 2.0);
-  double radius_along = MAX(dot_along / 2.0, 2.0);
+  /* Which of x and y is the cross axis depends on the band's orientation; the
+   * radial gradients below take explicit radii, so this is the only place the
+   * swap has to happen. */
+  double bead_rx = vertical ? bead_cross / 2.0 : bead_along / 2.0;
+  double bead_ry = vertical ? bead_along / 2.0 : bead_cross / 2.0;
 
-  graphene_point_t center;
-  graphene_point_init(&center, (float)cx, (float)cy);
-
-  /* The bead's shadow, drawn first so the glow sits on top of it. */
-  const double halo_scale = 1.8;
-  graphene_rect_t halo_bounds = GRAPHENE_RECT_INIT(
-      (float)(cx - radius_cross * halo_scale),
-      (float)(cy - radius_along * halo_scale),
-      (float)(radius_cross * 2.0 * halo_scale),
-      (float)(radius_along * 2.0 * halo_scale));
-
-  GskColorStop halo_stops[3] = {
-      {(float)0.0, {0.0f, 0.0f, 0.0f, 0.30f}},
-      {(float)0.55, {0.0f, 0.0f, 0.0f, 0.14f}},
+  /* Three layers, back to front: the pool the bead sits in, the cyan glow, and
+   * the bead. */
+  GskColorStop pool_stops[3] = {
+      {(float)0.0, {0.0f, 0.0f, 0.0f, 0.26f}},
+      {(float)0.55, {0.0f, 0.0f, 0.0f, 0.12f}},
       {(float)1.0, {0.0f, 0.0f, 0.0f, 0.0f}},
   };
 
-  gtk_snapshot_append_radial_gradient(snapshot, &halo_bounds, &center,
-                                      (float)(radius_cross * halo_scale),
-                                      (float)(radius_along * halo_scale), 0.0f,
-                                      1.0f, halo_stops, 3);
+  reflection_paint_ellipse(
+      snapshot, cx, cy,
+      vertical ? bead_rx * pool_cross_scale : bead_ry * pool_along_scale,
+      vertical ? bead_ry * pool_along_scale : bead_rx * pool_cross_scale,
+      pool_stops, 3);
 
-  graphene_rect_t bounds = GRAPHENE_RECT_INIT(
-      (float)(cx - radius_cross), (float)(cy - radius_along),
-      (float)(radius_cross * 2.0), (float)(radius_along * 2.0));
+  /* The glow colour is the one the reference image for this orientation uses:
+   * 139/207/255 across, 0/158/250 down the side. */
+  const float glow_r = vertical ? 0.55f : 0.0f;
+  const float glow_g = vertical ? 0.81f : 0.62f;
+  const float glow_b = 1.0f;
 
-  GskColorStop stops[3] = {
-      {(float)0.0, {1.0f, 1.0f, 1.0f, 0.90f}},
-      {(float)0.45, {0.94f, 0.98f, 1.0f, 0.35f}},
-      {(float)1.0, {0.92f, 0.96f, 1.0f, 0.0f}},
+  GskColorStop glow_stops[3] = {
+      {(float)0.0, {glow_r, glow_g, glow_b, 0.34f}},
+      {(float)0.50, {glow_r, glow_g, glow_b, 0.14f}},
+      {(float)1.0, {glow_r, glow_g, glow_b, 0.0f}},
   };
 
-  gtk_snapshot_append_radial_gradient(snapshot, &bounds, &center,
-                                      (float)radius_cross,
-                                      (float)radius_along, 0.0f, 1.0f, stops,
-                                      3);
+  reflection_paint_ellipse(
+      snapshot, cx, cy,
+      vertical ? bead_rx * glow_cross_scale : bead_ry * glow_along_scale,
+      vertical ? bead_ry * glow_along_scale : bead_rx * glow_cross_scale,
+      glow_stops, 3);
+
+  GskColorStop stops[3] = {
+      {(float)0.0, {1.0f, 1.0f, 1.0f, 0.98f}},
+      {(float)0.55, {1.0f, 1.0f, 1.0f, 0.92f}},
+      {(float)1.0, {1.0f, 1.0f, 1.0f, 0.0f}},
+  };
+
+  reflection_paint_ellipse(snapshot, cx, cy, bead_rx, bead_ry, stops, 3);
 }
 
 /* ============================================================================
@@ -515,11 +561,9 @@ static void lambdock_reflection_init(LambdockReflection *self) {
   self->blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
   self->intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
   self->running = FALSE;
-  /* The contact shadow is off: drawn through a linear gradient its fade ends up
-   * covering the whole band instead of the few pixels under the icon, which is
-   * exactly the flat grey strip a reflection must not have. The mirror alone is
-   * what the OS X dock shows. */
-  self->has_shadow = FALSE;
+  /* The contact shadow is on: it is an elliptical pool under the icon now, not
+   * the linear band that used to darken the whole reflection strip. */
+  self->has_shadow = TRUE;
 
   gtk_widget_set_can_focus(GTK_WIDGET(self), FALSE);
   gtk_widget_set_can_target(GTK_WIDGET(self), FALSE);

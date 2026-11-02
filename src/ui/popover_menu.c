@@ -406,7 +406,7 @@ static void on_popover_close_all_windows(GtkButton *btn, gpointer user_data) {
  * on_popover_launch_clicked:
  * @item: Pointer to the associated `DockItem`.
  *
- * Callback triggered when clicking "Launch Application" or "New Instance" in
+ * Callback triggered when clicking "Open" or "New Instance" in
  * the popover. Spawns a new application process asynchronously and dismisses
  * the popover.
  */
@@ -811,7 +811,7 @@ static void menu_append_trash_section(GtkWidget *vbox, DockItem *item) {
   gtk_box_append(GTK_BOX(vbox), count_label);
 
   GtkWidget *btn_open =
-      menu_row_new("user-trash-symbolic", _("Open Trash"));
+      menu_row_new("user-trash-symbolic", _("Open"));
   g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_trash), item);
   gtk_box_append(GTK_BOX(vbox), btn_open);
 
@@ -835,7 +835,7 @@ static void menu_append_stack_section(GtkWidget *vbox, DockItem *item) {
   gtk_box_append(GTK_BOX(vbox), views);
 
   GtkWidget *btn_open =
-      menu_row_new("folder-open-symbolic", _("Open Folder"));
+      menu_row_new("folder-open-symbolic", _("Open"));
   g_signal_connect(btn_open, "clicked", G_CALLBACK(on_popover_open_folder),
                    item);
   gtk_box_append(GTK_BOX(vbox), btn_open);
@@ -955,7 +955,7 @@ static void menu_append_window_section(GtkWidget *vbox, DockItem *item,
     /* Nothing is running: offer to start it. */
     if (item->exec && *item->exec != '\0') {
       GtkWidget *btn_launch =
-          menu_row_new("system-run-symbolic", _("Launch Application"));
+          menu_row_new("system-run-symbolic", _("Open"));
       g_signal_connect_swapped(btn_launch, "clicked",
                                G_CALLBACK(on_popover_launch_clicked), item);
       gtk_box_append(GTK_BOX(vbox), btn_launch);
@@ -992,6 +992,9 @@ static void menu_append_app_actions(GtkWidget *vbox, DockItem *item,
 /** Installs @vbox as the popover's child. */
 static void menu_finish(DockItem *item, GtkWidget *vbox) {
   append_remove_entry(vbox, item);
+  /* The same popover carries the stack panel; a menu is not one, so the class
+   * that lets the themes style the panel goes away here (see stack.c). */
+  gtk_widget_remove_css_class(item->popover, "stack-panel");
   gtk_popover_set_child(GTK_POPOVER(item->popover), vbox);
 }
 
