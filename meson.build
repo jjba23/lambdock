@@ -243,6 +243,7 @@ sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
   'src/dock_registry.c',
@@ -266,6 +267,7 @@ sources = files(
   'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
+  'src/ui/poof.c',
   'src/ui/preferences.c',
   'src/ui/trash.c',
 )
@@ -303,6 +305,7 @@ full_app_sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
   'src/dock_registry.c',
@@ -326,6 +329,7 @@ full_app_sources = files(
   'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
+  'src/ui/poof.c',
   'src/ui/preferences.c',
   'src/ui/trash.c',
 )
@@ -397,6 +401,13 @@ unit_tests = [
     'deps': [dependency('glib-2.0')],
   },
   {
+    # The poof's cloud is arithmetic too: puffs in, puffs out. The widget only
+    # draws what this returns, so the burst is tested without a display.
+    'id': 'poof',
+    'extra_sources': ['src/core/poof.c'],
+    'deps': [dependency('glib-2.0'), libm_dep],
+  },
+  {
     # Deliberately no GTK here: dock_motion.c is pure arithmetic, and the test
     # binary proves it by linking nothing else.
     'id': 'dock_motion',
@@ -411,6 +422,14 @@ unit_tests = [
   },
   {
     'id': 'stack',
+    'extra_sources': full_test_sources,
+  },
+  {
+    # The poof widget's life: it takes the removed icon's slot, paints, and
+    # takes itself out of the box without leaking. Needs a display, so it skips
+    # where there is none (tests/test_poof.c covers the arithmetic headlessly).
+    'id': 'poof_widget',
+    'name': 'poof_widget_tests',
     'extra_sources': full_test_sources,
   },
   {

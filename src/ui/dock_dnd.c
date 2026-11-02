@@ -9,6 +9,7 @@
 #include "../logger.h"
 #include "desktop_entry.h"
 #include "dock_item.h"
+#include "poof.h"
 #include "stack.h"
 #include "trash.h"
 
@@ -107,8 +108,12 @@ static gboolean on_drop_outside_idle(gpointer user_data) {
   GtkWidget *button = GTK_WIDGET(user_data);
   DockItem *item = dock_item_from_widget(button);
 
-  if (item)
+  if (item) {
+    /* The puff takes the icon's place before it is removed, so the smoke is
+     * where the icon was and the dock keeps its width until it clears. */
+    lambdock_poof_take_slot(item);
     remove_dock_item(item->state, item);
+  }
 
   return G_SOURCE_REMOVE;
 }
