@@ -22,8 +22,11 @@
 ;; settings file exactly.
 ;;
 ;; The same file also survives restarts, so `set-dock-preference!' does two
-;; things on every GUI edit: it updates the running dock through the ordinary
-;; `set-dock-*!' setter, and it remembers the value here.
+;; things on every GUI edit: it remembers the value here, and only then updates
+;; the running dock through the ordinary `set-dock-*!' setter.  The order is the
+;; point -- that setter triggers a reload, and a reload re-reads this file on top
+;; of the settings file, so saving afterwards would make the dock apply the value
+;; from before the edit.
 ;; =============================================================================
 
 (define-module (lambdock prefs)
@@ -198,13 +201,16 @@ settings file, can have GUI edits for the session but nowhere to keep them."
     (dock-reduce-motion? . set-dock-reduce-motion!)))
 
 (define (set-dock-preference! key value config-path)
-  "Applies one GUI edit: updates the running dock and remembers it.
+  "Applies one GUI edit: remembers it and updates the running dock.
 
 KEY is a settings-file name (a symbol such as `dock-icon-size'), VALUE is the
-new setting, and CONFIG-PATH selects the dock. The ordinary setter both mutates
-the in-memory configuration and triggers `(reload-dock!)', so the change is
-visible immediately; persisting it afterwards is what makes it survive a
-restart."
+new setting, and CONFIG-PATH selects the dock.
+
+The value is persisted *first*, and only then handed to the ordinary setter: the
+setter triggers `(reload-dock!)', and a reload re-reads this override file on top
+of the settings file. Saving afterwards would therefore have the running dock
+apply the value from *before* the edit, and the edit itself would only be picked
+up when the next one arrived."
   (let ((setter-name (assq-ref %preference-setters key)))
     (when setter-name
       (let ((setter (module-ref (resolve-module '(lambdock state))
@@ -212,6 +218,6 @@ restart."
                                 #f)))
         (if (procedure? setter)
             (begin
-              (setter value config-path)
-              (save-dock-preference! config-path key value))
+              (save-dock-preference! config-path key value)
+              (setter value config-path))
             (log-warn "Preferences" "Unknown preference setter ~a" setter-name))))))

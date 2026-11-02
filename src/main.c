@@ -33,12 +33,15 @@
  * MainTimers:
  * @config_reload: source id debouncing settings-file changes, 0 when nothing is
  *   scheduled.
+ * @state_reload: source id debouncing local-state changes (the Preferences
+ *   overrides and the drag-and-drop layout), 0 when nothing is scheduled.
  *
  * The process-wide timers live in one value, so their ownership and their
  * teardown are one thing to look at.
  */
 typedef struct {
   guint config_reload;
+  guint state_reload;
 } MainTimers;
 
 static MainTimers g_timers;
@@ -78,6 +81,18 @@ static gboolean is_settings_filename(const char *filename) {
 static char *get_config_dir_c(void) {
   const char *config_dir = g_get_user_config_dir();
   return g_build_filename(config_dir, "lambdock", NULL);
+}
+
+/**
+ * get_state_dir_c:
+ * Resolves the runtime state directory (~/.local/state/lambdock).
+ *
+ * The preferences the Preferences window remembers and the layout drag and drop
+ * writes live here, not in the config directory: they are runtime state, and
+ * `(lambdock layout)` and `(lambdock prefs)` name the same place.
+ */
+static char *get_state_dir_c(void) {
+  return g_build_filename(g_get_user_state_dir(), "lambdock", NULL);
 }
 
 /**
@@ -582,6 +597,52 @@ static gboolean on_config_reload_timeout(gpointer user_data) {
 }
 
 /**
+ * state_reload_visitor:
+ * Re-reads one dock's settings and redraws it.
+ *
+ * A local-state file is not a settings file: it is replayed *on top of* one, by
+ * the Scheme loader. Reading the settings file again is therefore what makes
+ * the new preferences or layout visible -- the in-memory configuration the
+ * setters already updated is not the whole story, because the state files are
+ * also written by other tools (a reconfigured home, a second dock, a hand
+ * edit).
+ */
+static void state_reload_visitor(LambdockState *state, gpointer user_data) {
+  (void)user_data;
+  if (!state)
+    return;
+
+  if (state->config_path && *state->config_path != '\0')
+    load_dock_config_scm(state->config_path);
+
+  reload_dock_instance(state);
+}
+
+/** Debounced redraw after the local state directory settled. */
+static gboolean on_state_reload_timeout(gpointer user_data) {
+  (void)user_data;
+
+  g_timers.state_reload = 0;
+  dock_registry_foreach(state_reload_visitor, NULL);
+  return G_SOURCE_REMOVE;
+}
+
+/** Debounces local-state events: a write is several events on some backends. */
+static void on_state_changed_cb(GFileMonitor *monitor, GFile *file,
+                                GFile *other_file, GFileMonitorEvent event_type,
+                                gpointer user_data) {
+  (void)monitor;
+  (void)file;
+  (void)other_file;
+  (void)event_type;
+  (void)user_data;
+
+  g_clear_handle_id(&g_timers.state_reload, g_source_remove);
+  g_timers.state_reload =
+      g_timeout_add(CONFIG_RELOAD_DEBOUNCE_MS, on_state_reload_timeout, NULL);
+}
+
+/**
  * on_file_changed_cb:
  * Event handler triggered whenever files/directories in ~/.config/lambdock are
  * modified, created, or deleted.
@@ -602,8 +663,17 @@ static void on_file_changed_cb(GFileMonitor *monitor, GFile *file,
 
 /**
  * setup_config_file_monitors:
- * Sets up directory-level watcher (`GFileMonitor`) on ~/.config/lambdock/
- * to detect addition, deletion, and modification of configuration files.
+ * Sets up directory-level watchers (`GFileMonitor`) on ~/.config/lambdock/ for
+ * settings files, and on ~/.local/state/lambdock/ for the local state they are
+ * layered with.
+ *
+ * Both are watched for the same reason: what the dock draws is the settings file
+ * *plus* the preferences and layout overrides, and a change to either half is
+ * something the user expects to see. The state directory is created first, since
+ * a dock that has never been edited has not made one yet.
+ *
+ * The monitors are deliberately left referenced: they are process-lifetime
+ * objects whose signal is the only thing that keeps them doing their job.
  */
 static void setup_config_file_monitors(GtkApplication *app) {
   char *config_dir = get_config_dir_c();
@@ -617,6 +687,22 @@ static void setup_config_file_monitors(GtkApplication *app) {
   }
   g_object_unref(dir_file);
   g_free(config_dir);
+
+  char *state_dir = get_state_dir_c();
+  g_mkdir_with_parents(state_dir, 0700);
+
+  GFile *state_file = g_file_new_for_path(state_dir);
+  GFileMonitor *state_mon =
+      g_file_monitor_directory(state_file, G_FILE_MONITOR_NONE, NULL, NULL);
+
+  if (state_mon) {
+    g_signal_connect(state_mon, "changed", G_CALLBACK(on_state_changed_cb),
+                     NULL);
+    LOG_C_INFO("Main", "Watching directory for local state changes: %s",
+               state_dir);
+  }
+  g_object_unref(state_file);
+  g_free(state_dir);
 }
 
 /* =========================================================================
