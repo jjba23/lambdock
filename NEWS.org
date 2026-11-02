@@ -15,6 +15,62 @@ Nothing yet.
 
 *[Released]*
 
+** v0.22.0 (2026-11-02)
+- *The Mavericks shelf is measured off Dock.app's own artwork now.*  The 10.9
+  install media ships =Essentials.pkg=, which carries the real
+  =System/Library/CoreServices/Dock.app=, so the two Mavericks themes stopped
+  being a reading of screenshots and started being a reading of the source
+  images:
+  - =frontline.png= is the outer lip, and it is not the grey 3px band the theme
+    used to paint: 1px of black at 0.30 with 2px of white in front of it, and
+    that white runs from 0.56 at the dock's ends to 0.82 in the middle.  The lip
+    is a second background layer sized to those 2px, so the sheen never washes
+    the black line, and it follows the dock to all four edges.
+  - =shadow.png= is 18px of black that starts at 0.60 against the slab and ends
+    at 0.02.  Three stacked blurs sum to that curve in place of the single 0.16
+    wash the shelf used to cast.
+  - =indicator_medium.png= is what a running app looked like: a 12x3 white bead
+    resting on a 54x12 glow of 139/207/255, for a 64px tile.  The flat themes
+    now paint those three layers (bead, glow, and the shadow pool that keeps a
+    white bead legible on platinum), and the shelf's own dot in =shelf.c= takes
+    the same proportions -- a bead 0.19 icon across and 0.05 along, a glow 4.5x
+    its width and 4x its height -- instead of the round 0.24 blob it drew.
+  - =separatorstraight-horizontal.png= settles the divider: black at 0.14 with
+    white at 0.14 beside it, nothing more.  The projected separator takes
+    =separator.png='s 0.24/0.26; the real image is sheared 22px over its 66px of
+    height because it is painted on a tilted floor, and the theme keeps it
+    vertical because the look runs with =shelf-tilt= 0.
+  - =stackbackground-*.png= is the real stack panel, so the Mavericks themes now
+    dress the folder popover in it: charcoal rgb(33,33,33) at 0.85, a 2px
+    rgb(200,200,200) band at 0.35 inside the top and left edges, a 1px near-black
+    outline and a nine-pixel rounding (the 40x40 corner tiles are mostly shadow
+    margin).  =stack.c= marks the popover with a =stack-panel= class, so the HUD
+    menus that share it are untouched -- which is what makes per-theme overlay
+    styling possible at all.
+  - =indicator_side_medium.png= is *not* the bottom-dock indicator rotated: a side
+    dock gets a 2x11 bead in a 6x16 glow, and it is 139/207/255 across versus
+    0/158/250 down.  The shelf's dot now knows which way the band runs -- it was
+    painting the cross-axis radius on x regardless, so side docks got a wide
+    oval -- and takes the side asset's own proportions.
+  - =wviconshadow.png= is the icon shadow the real dock had: a Gaussian pool of
+    0.40 alpha at its centre, 0.28 a third of an icon out and nothing past 0.61.
+    The contact shadow under each icon is that elliptical pool now (scaled by
+    =dock-reflection-intensity=) instead of a linear band down the whole
+    reflection strip, which is what made it look like a grey stripe and what had
+    it switched off since it was written.
+  - =poof.png= is five 128x128 frames of smoke, and dragging an icon out of the
+    dock plays it: ~src/core/poof.c~ is the burst as arithmetic (fourteen
+    deterministic puffs that start spread out, travel 0.12 to 0.28 icon and die
+    from the outside in, plus the dense core), ~src/ui/poof.c~ draws it on the
+    frame clock in the removed icon's own square, and the poof keeps the dock's
+    width until it clears so the remaining icons close the gap afterwards.  Both
+    halves are tested: the cloud headlessly, the widget in a real window.
+  - The dock's menu wording follows =DockMenus.plist=: "Open" for launching an
+    application, for a stack and for the trash (Apple's ~OPEN~), and "View content
+    as a grid/list" for the stack panel's view switch (Apple's ~SHOW_AS~).  The
+    pot was regenerated (which also dropped the long-gone "Fan") and the seven
+    catalogues carry the new "Open".
+
 ** v0.21.1 (2026-11-01)
 - *The launchpad suite no longer dies on a machine with no display.*
   `test_header' was registered before `gtk_init_check' had answered, so a

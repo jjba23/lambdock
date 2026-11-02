@@ -1,3 +1,22 @@
+lambdock (0.22.0-1) unstable; urgency=medium
+
+  * New upstream release: the Mavericks material is read off Dock.app's own
+    artwork, and an icon dragged out of the dock leaves in a puff of smoke. The
+    10.9 install media carries the real Dock.app, so the platinum slab's lip, its
+    drop shadow, the running indicator, the folder panel and the separator are
+    the images' own values: a 1px black lip with 2px of white in front of it,
+    that white brightening from 0.56 at the dock's ends to 0.82 in the middle;
+    black at 0.60 against the slab fading over 18px; a white bead on a cyan
+    glow; charcoal rgb(33,33,33) at 0.85 with a rgb(200,200,200) bevel for stack
+    panels; and a two-pixel engraved divider. The side-dock indicator is its own
+    image rather than the bottom one rotated, the icon's contact shadow is an
+    elliptical Gaussian pool again instead of a linear band, and the menus use
+    Dock.app's wording ("Open", "View content as"). Dragging an icon out of the
+    dock plays the five-frame poof the real dock had, and the layout closes the
+    gap once the smoke clears.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Mon, 02 Nov 2026 07:40:00 +0100
+
 lambdock (0.21.0-1) unstable; urgency=medium
 
   * New upstream release: the round that finished the refactor list, with no

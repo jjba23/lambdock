@@ -77,6 +77,13 @@
   </screenshots>
 
   <releases>
+    <release version="0.22.0" date="2026-11-02">
+      <description>
+        <p>The macOS Mavericks material is no longer an estimate. The 10.9 install image carries the real Dock.app, so the platinum slab is measured off its own artwork: the outer lip is 1px of black with 2px of white in front of it that brightens towards the middle of the dock, the drop shadow starts at 0.60 against the slab and fades over 18px, the running indicator is a 12x3 white bead on a 54x12 cyan glow, the folder panel is charcoal with a light bevel, and the divider is a two-pixel engraved groove.</p>
+        <p>The side-dock indicator got its own measurements (it is a tall bead on a narrow glow, not the bottom one rotated), and the contact shadow under each icon is the elliptical pool the real dock had instead of a grey stripe -- which is what had kept that decoration switched off. The dock's menus also follow Dock.app's wording: "Open" for an application, a stack and the trash, and "View content as a grid/list" for a stack's view switch.</p>
+        <p>Dragging an icon out of the dock now bursts it into a puff of smoke, as the real dock did: a third of a second of smoke sized to the icon, in the icon's own place, with the dock keeping its width until the puff clears and the remaining icons closing the gap afterwards. The burst is deterministic arithmetic in the core (fourteen puffs that start spread out, travel outwards and die from the outside in) drawn by a frame-clock widget, so both halves are tested -- the cloud without a display, the widget in a real window.</p>
+      </description>
+    </release>
     <release version="0.21.0" date="2026-10-31">
       <description>
         <p>The round that finished the list of known rough edges. Nothing about how the dock behaves changed; what changed is where the code keeps its values and who owns them.</p>
