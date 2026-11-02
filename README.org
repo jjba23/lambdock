@@ -100,8 +100,8 @@ a rebuild without ever restarting the process or dropping a frame.
   one desktop's private store, so it works the same on GNOME, KDE, Xfce, Cinnamon
   and MATE; see [[#trash][The trash]].
 - *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
-  to remove it, drop a ~.desktop~ file to add an application or a folder to add a
-  stack -- and the layout survives restarts; see
+  to remove it in a puff of smoke, drop a ~.desktop~ file to add an application
+  or a folder to add a stack -- and the layout survives restarts; see
   [[#drag-and-drop][Rearranging the dock]].
 - *Keyboard and screen reader friendly* ♿: the whole dock, its menus, stacks and
   the launchpad can be driven from the keyboard (arrows, Home/End, Menu,
@@ -658,7 +658,10 @@ The dock is not a fixed row of icons: it is something you arrange.
   item is inserted on the side of the icon you dropped over.
 - *Remove*: drag an icon *out* of the dock and let go anywhere that is not the
   dock (the desktop, a window, empty space).  The icon goes away; nothing is
-  uninstalled, the app just leaves the dock.
+  uninstalled, the app just leaves the dock.  It goes away in a puff of smoke,
+  as it did on the dock this one learned its manners from: a burst of smoke
+  sized to the icon, drawn for a third of a second in the icon's place while the
+  remaining icons close the gap (see [[#the-poof][the poof]]).
 - *Add an application*: drag a ~.desktop~ file from your file manager onto the
   dock and it becomes a launcher, using the entry's own name, icon and command.
 - *Add a stack*: drag a *folder* onto the dock and it becomes a stack showing that
@@ -697,6 +700,34 @@ Item identity is =kind:name= (the Scheme procedure ~dock-item-key~), which is wh
 the file is readable and why two items with the same name and kind are treated as
 the same item.  Separators have no stable name, so they are not listed at all:
 they keep their place between their neighbours.
+
+** The poof 💨
+:PROPERTIES:
+:CUSTOM_ID: the-poof
+:END:
+
+Dragging an icon off the dock does not just delete it: the icon bursts into a
+puff of smoke, keeps the dock's width for as long as the smoke lasts, and the
+remaining icons close the gap once it clears.
+
+The animation is Dock.app's, and its artwork is where the numbers come from.
+~poof.png~ in the 10.9 install media is five 128x128 frames -- one icon's worth
+of smoke -- whose mean alpha falls from 139 to 11 over the animation while the
+visible cloud shrinks from the whole frame to about 76x86: the outside of the
+puff thins out first, which is what makes it read as smoke rather than as a fade.
+
+~lambdock~ reproduces that as arithmetic, in ~src/core/poof.h~: fourteen puffs,
+each with a direction, a reach of 0.12 to 0.28 icon, a radius of 0.06 to 0.18,
+a start delay and a lifetime -- the ones that travel furthest die first, so the
+cloud contracts the way the reference does -- plus the dense core they leave from.
+~src/ui/poof.c~ only draws what those functions return, as a frame-clock
+animation of one light-cored, grey-edged radial gradient per puff, in the icon's
+own square so it fits the slot it replaces.
+
+Because the burst is a value, it is tested without a display (the puffs are
+deterministic from a seed, they spread, they thin and they end invisible), and
+the widget's own life -- take the icon's slot, paint, clear itself out and
+re-measure the dock -- is tested separately in a real GTK window.
 
 ** Keyboard and accessibility ♿
 :PROPERTIES:
@@ -1588,12 +1619,15 @@ of them is a CSS file you are free to read, copy and argue with.
   glass, one bright specular rim and no icon mirrors at all. The light theme
   reads dark text and a dark running dot; the dark one is the same pane smoked.
 - *macOS Mavericks* 🍎 (~'macos-mavericks~): the last of the 3D OS X docks -- the
-  platinum slab, with a bright specular line along the screen edge and a
-  translucent body that thins out towards the icons. Pair it with a negative
-  ~dock-shelf-margin~, a ~dock-shelf-flare~ and a ~dock-reflection~
-  (see [[#shelf][The glass shelf]]) for the full 3D shelf with mirrored icons. Its
-  dark sibling, ~'macos-mavericks-dark~, is the same slab in smoked graphite for
-  a dark session, with the same geometry.
+  platinum slab, and the one theme whose material is read straight off Dock.app's
+  own artwork: a 1px black lip with 2px of white that brightens towards the
+  middle of the dock (=frontline.png=), its 18px drop shadow (=shadow.png=), the
+  white-on-cyan running indicator (=indicator_medium.png=) and the engraved
+  separator (=separatorstraight-horizontal.png=), at the alphas those images
+  carry. Pair it with a negative ~dock-shelf-margin~, a ~dock-shelf-flare~ and a
+  ~dock-reflection~ (see [[#shelf][The glass shelf]]) for the full 3D shelf with
+  mirrored icons. Its dark sibling, ~'macos-mavericks-dark~, is the same slab in
+  smoked graphite for a dark session, with the same geometry.
 - *Windows XP (Luna)* 🪟 (~'windows-xp~): the Luna taskbar as it was -- a flat
   blue slab with one bright line along its top edge, square-pressed task buttons
   with a single blue border, and pinned launchers sitting chrome-less on the bar
@@ -1633,12 +1667,15 @@ all of them, so a dock behaves the same whichever material it wears:
 
 Two details are worth calling out because they are fidelity, not taste:
 
-- *The indicator is dark on light slabs and light on dark ones.* Tiger, Snow
-  Leopard and Mavericks are pale glass, so their running dot is a dark bead (a
-  white glow vanishes into the platinum); their dark siblings, Big Sur, Ventura
-  and Tahoe keep the white dot. The dot the glass shelf draws itself (C side,
-  =src/ui/shelf.c=) is white like the real one, but it is painted over a soft
-  shadow so it also survives on the pale slabs.
+- *The indicator is a white bead on a cyan glow, as on the real dock, and the
+  pale slabs put a shadow pool under it.* That is Dock.app's own
+  =indicator_medium.png=: a 12x3 white bead resting on a 54x12 glow of
+  139/207/255 against a 64px tile. A white bead vanishes into platinum, so on
+  Mavericks it is painted over a soft dark pool -- the shadow the icon casts on
+  the glass -- which is exactly what the real light dock looked like; the dark
+  variant drops the pool and lets the glow do the work. Tiger and Snow Leopard
+  keep their blue Aqua bead. The dot the glass shelf draws itself (C side,
+  =src/ui/shelf.c=) uses the same bead/glow/pool stack, so it reads on both.
 - *Labels follow the slab, not the theme's family.* Snow Leopard and Mavericks
   are light docks with dark window titles and dark meter text -- the colours the
   labels had on the real light dock -- while their dark variants are light.
@@ -2085,6 +2122,12 @@ half an icon (so their centre sits on the slab's top edge), a mirror band of
 ~0.30 icons inside the 24px of front glass, ends padded by ~0.25 icons, and
 sides that flare ~0.5 icons per side towards the screen.
 
+The *material* comes from somewhere better than a screenshot: the 10.9 install
+media's =Essentials.pkg= carries the real =Dock.app=, so the lip, the drop
+shadow, the running indicator and the separator are read off =frontline.png=,
+=shadow.png=, =indicator_medium.png= and =separatorstraight-horizontal.png=
+themselves -- the gradients and alphas in the theme are the images'.
+
 For a dark session the same geometry works with
 ~'macos-mavericks-dark~ -- swap the theme line and nothing else moved: ~dock-shelf-flare~ is what makes
 the silhouette look like a shelf rather than a rectangle: the edge lying on the
@@ -2223,10 +2266,10 @@ at both ends -- is CSS, and only applies while the slab is shaped:
   margin: 0;
   min-width: 3px;
   background-image:
-    linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.22) 18%,
-                    rgba(255, 255, 255, 0.22) 74%, transparent),
-    linear-gradient(to bottom, transparent, rgba(112, 126, 146, 0.30) 18%,
-                    rgba(112, 126, 146, 0.30) 74%, transparent);
+    linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.26) 18%,
+                    rgba(255, 255, 255, 0.26) 74%, transparent),
+    linear-gradient(to bottom, transparent, rgba(2, 2, 2, 0.24) 18%,
+                    rgba(2, 2, 2, 0.24) 74%, transparent);
   background-size: 2px 100%, 1px 100%;
   background-position: right, left;
   background-repeat: no-repeat, no-repeat;
