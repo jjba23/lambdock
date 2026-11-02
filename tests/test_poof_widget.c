@@ -93,16 +93,24 @@ static void test_poof_takes_the_slot_and_leaves_it(void) {
   g_assert_cmpint(gtk_widget_get_height(poof), >, 0);
   g_assert_true(gtk_widget_get_next_sibling(icon) == poof);
 
-  /* ... and it paints something while it plays. */
-  for (int i = 0; i < 60; i++) {
+  /* ... and it paints something while it plays. The burst is empty on the frame
+   * the clock starts it, so wait for the first frame that actually has a puff
+   * instead of for a wall-clock delay: a busy builder may not have delivered one
+   * yet. */
+  GskRenderNode *node = NULL;
+  for (int i = 0; i < 600 && node == NULL; i++) {
     g_main_context_iteration(NULL, FALSE);
     g_usleep(1000);
-  }
 
-  GtkSnapshot *snapshot = gtk_snapshot_new();
-  gtk_widget_snapshot_child(box, poof, snapshot);
-  GskRenderNode *node = gtk_snapshot_free_to_node(snapshot);
+    if (!find_poof(box))
+      break;
+
+    GtkSnapshot *snapshot = gtk_snapshot_new();
+    gtk_widget_snapshot_child(box, poof, snapshot);
+    node = gtk_snapshot_free_to_node(snapshot);
+  }
   g_assert_nonnull(node);
+
   graphene_rect_t bounds;
   gsk_render_node_get_bounds(node, &bounds);
   g_assert_cmpfloat(bounds.size.width, >, 0.0);
