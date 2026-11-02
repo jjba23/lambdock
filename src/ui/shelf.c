@@ -295,9 +295,21 @@ static void reflection_paint_contact_shadow(const LambdockReflection *self,
  * dock. The glow is 139/207/255 on the bottom dock and 0/158/250 on the side
  * one, which is what the two colours below are.
  *
+ * Three things are drawn on purpose rather than by the reference's proportions
+ * alone, because a 12x3px bead on a 64px tile is 9x2.2px at 48px icons and
+ * antialiases into the glass:
+ *
+ *   - the bead is 0.20 x 0.07 icon (and never under 7x3px), not 0.19 x 0.05;
+ *   - it is painted as a bar with crisp top and bottom edges, the way an icon's
+ *     artwork reads, instead of a radial blob that fades out in every direction;
+ *   - the dark pool under it is tight -- about 2.4 bead widths -- because a wide
+ *     pool turns the reflection band into a grey smear that the white bead then
+ *     has to be seen against. It is the icon's own shadow, and it only has to
+ *     sit right around the bead.
+ *
  * The bead is white -- that is what the real one was on the 3D shelf -- but a
  * white bead disappears into a pale slab (the platinum Mavericks and Aqua Tiger
- * shelves are exactly that), so it is drawn over a soft dark pool. On the light
+ * shelves are exactly that), so it is drawn over that pool. On the light
  * material the pool reads as the shadow the icon casts on the glass and the
  * bead stays visible; on dark glass the pool blends into the shelf and only the
  * glow shows, which is what the dark themes want.
@@ -309,17 +321,20 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   double cross = vertical ? w : h;
 
   /* Bead and glow as fractions of the icon, per orientation. `cross` is the axis
-   * along the row of icons, so the bead's long side is the cross one. */
-  const double bead_cross_ratio = vertical ? 0.19 : 0.17;
-  const double bead_along_ratio = vertical ? 0.05 : 0.03;
-  const double glow_cross_scale = vertical ? 4.4 : 1.5;
-  const double glow_along_scale = vertical ? 4.0 : 3.1;
-  const double pool_cross_scale = vertical ? 4.6 : 2.0;
-  const double pool_along_scale = vertical ? 4.4 : 4.0;
-  const double edge_lift = 2.0;
+   * along the row of icons, so the bead's long side is the cross one. The bead
+   * is drawn a little larger and appreciably taller than the reference's 3px on
+   * a 64px tile: at 48px icons that is 2.2px of white, which antialiases into
+   * the glass and stops reading as a dot at all. */
+  const double bead_cross_ratio = vertical ? 0.20 : 0.18;
+  const double bead_along_ratio = vertical ? 0.07 : 0.04;
+  const double glow_cross_scale = vertical ? 3.2 : 1.6;
+  const double glow_along_scale = vertical ? 2.6 : 2.6;
+  const double pool_cross_scale = vertical ? 2.4 : 2.0;
+  const double pool_along_scale = vertical ? 1.9 : 3.2;
+  const double edge_lift = 2.5;
 
-  double bead_cross = MAX(6.0, cross * bead_cross_ratio);
-  double bead_along = MAX(1.5, cross * bead_along_ratio);
+  double bead_cross = MAX(7.0, cross * bead_cross_ratio);
+  double bead_along = MAX(3.0, cross * bead_along_ratio);
 
   /* Distance from the outer edge to the middle of the bead. */
   double lift = bead_along / 2.0 + edge_lift;
@@ -334,16 +349,22 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   }
 
   /* Which of x and y is the cross axis depends on the band's orientation; the
-   * radial gradients below take explicit radii, so this is the only place the
-   * swap has to happen. */
+   * gradients below take explicit radii, so this is the only place the swap has
+   * to happen. */
   double bead_rx = vertical ? bead_cross / 2.0 : bead_along / 2.0;
   double bead_ry = vertical ? bead_along / 2.0 : bead_cross / 2.0;
 
   /* Three layers, back to front: the pool the bead sits in, the cyan glow, and
-   * the bead. */
+   * the bead.
+   *
+   * The pool is deliberately tight. It is the icon's shadow -- the same one
+   * reflection_paint_contact_shadow() draws -- so it only has to darken the
+   * glass right around the bead; spread any wider and it turns the whole band
+   * into a grey smear that the bead then has to fight, which is what made the
+   * dot hard to read on the platinum shelf. */
   GskColorStop pool_stops[3] = {
-      {(float)0.0, {0.0f, 0.0f, 0.0f, 0.26f}},
-      {(float)0.55, {0.0f, 0.0f, 0.0f, 0.12f}},
+      {(float)0.0, {0.0f, 0.0f, 0.0f, 0.34f}},
+      {(float)0.45, {0.0f, 0.0f, 0.0f, 0.16f}},
       {(float)1.0, {0.0f, 0.0f, 0.0f, 0.0f}},
   };
 
@@ -360,8 +381,8 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
   const float glow_b = 1.0f;
 
   GskColorStop glow_stops[3] = {
-      {(float)0.0, {glow_r, glow_g, glow_b, 0.34f}},
-      {(float)0.50, {glow_r, glow_g, glow_b, 0.14f}},
+      {(float)0.0, {glow_r, glow_g, glow_b, 0.45f}},
+      {(float)0.45, {glow_r, glow_g, glow_b, 0.18f}},
       {(float)1.0, {glow_r, glow_g, glow_b, 0.0f}},
   };
 
@@ -371,13 +392,34 @@ static void reflection_paint_running_dot(const LambdockReflection *self,
       vertical ? bead_ry * glow_along_scale : bead_rx * glow_cross_scale,
       glow_stops, 3);
 
-  GskColorStop stops[3] = {
-      {(float)0.0, {1.0f, 1.0f, 1.0f, 0.98f}},
-      {(float)0.55, {1.0f, 1.0f, 1.0f, 0.92f}},
-      {(float)1.0, {1.0f, 1.0f, 1.0f, 0.0f}},
+  /* The bead itself is a bar, not a radial blob: a gradient that fades along
+   * the row gives it soft ends, and drawing it as a rectangle keeps its two or
+   * three pixels of height crisp instead of smearing them into the glass. That
+   * crisp edge is most of what makes the dot legible. */
+  graphene_rect_t bead = GRAPHENE_RECT_INIT(
+      (float)(cx - bead_rx), (float)(cy - bead_ry), (float)(bead_rx * 2.0),
+      (float)(bead_ry * 2.0));
+
+  graphene_point_t from;
+  graphene_point_t to;
+  if (vertical) {
+    graphene_point_init(&from, (float)(cx - bead_rx), (float)cy);
+    graphene_point_init(&to, (float)(cx + bead_rx), (float)cy);
+  } else {
+    graphene_point_init(&from, (float)cx, (float)(cy - bead_ry));
+    graphene_point_init(&to, (float)cx, (float)(cy + bead_ry));
+  }
+
+  const GdkRGBA white = {1.0f, 1.0f, 1.0f, 0.99f};
+  GskColorStop bead_stops[4] = {
+      {(float)0.00, {1.0f, 1.0f, 1.0f, 0.0f}},
+      {(float)0.22, white},
+      {(float)0.78, white},
+      {(float)1.00, {1.0f, 1.0f, 1.0f, 0.0f}},
   };
 
-  reflection_paint_ellipse(snapshot, cx, cy, bead_rx, bead_ry, stops, 3);
+  gtk_snapshot_append_linear_gradient(snapshot, &bead, &from, &to, bead_stops,
+                                      G_N_ELEMENTS(bead_stops));
 }
 
 /* ============================================================================
@@ -561,9 +603,12 @@ static void lambdock_reflection_init(LambdockReflection *self) {
   self->blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
   self->intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
   self->running = FALSE;
-  /* The contact shadow is on: it is an elliptical pool under the icon now, not
-   * the linear band that used to darken the whole reflection strip. */
-  self->has_shadow = TRUE;
+  /* Nothing casts a shadow until there is artwork to cast it: shelf_reflection_new()
+   * turns this on for the items that mirror an icon, so separators, gauges and
+   * clocks -- which reserve the band but have nothing in it -- stay clean.
+   * The pool itself is the icon's own shadow (see the paint function below),
+   * which is why it cannot be a permanent feature of the band. */
+  self->has_shadow = FALSE;
 
   gtk_widget_set_can_focus(GTK_WIDGET(self), FALSE);
   gtk_widget_set_can_target(GTK_WIDGET(self), FALSE);
@@ -1015,6 +1060,12 @@ GtkWidget *shelf_reflection_new(GtkWidget *source) {
       self->paintable = gtk_widget_paintable_new(source);
       self->paintable_ready = FALSE;
     }
+
+    /* The contact shadow belongs to this artwork: it is the pool the icon
+     * casts on the glass. An item with nothing to mirror -- a separator, a
+     * gauge, a clock -- reserves the band so it lines up with its neighbours,
+     * but it must not paint a shadow of an icon it does not have. */
+    self->has_shadow = TRUE;
   }
 
   return GTK_WIDGET(self);

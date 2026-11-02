@@ -461,6 +461,95 @@ static graphene_rect_t painted_bounds(GtkWidget *parent, GtkWidget *child) {
   return bounds;
 }
 
+/* The reflection band is reserved by every item -- a separator, a gauge and a
+ * clock all carry one, so they line up with the icons beside them -- but only an
+ * item with artwork casts the icon's shadow. A slot with nothing to mirror must
+ * paint nothing at all; a shadow hanging off a separator was the bug this
+ * guards. */
+static void test_reflection_without_artwork_paints_nothing(void) {
+  GtkWidget *reflection = shelf_reflection_new(NULL);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
+
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), reflection);
+  gtk_window_set_default_size(GTK_WINDOW(window), ICON, BAND(0.5, ICON) + 40);
+  gtk_window_present(GTK_WINDOW(window));
+
+  if (!pump_until_allocated(reflection)) {
+    g_test_skip("window was never allocated");
+    gtk_window_destroy(GTK_WINDOW(window));
+    return;
+  }
+
+  graphene_rect_t bounds = painted_bounds(window, reflection);
+  g_assert_cmpfloat(bounds.size.width, ==, 0.0);
+  g_assert_cmpfloat(bounds.size.height, ==, 0.0);
+
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+/* ... and an item that does have artwork still paints: the mirror, the fade and
+ * the pool under the icon. */
+static void test_reflection_with_artwork_paints(void) {
+  GtkWidget *image = gtk_image_new_from_icon_name("folder");
+  gtk_image_set_pixel_size(GTK_IMAGE(image), ICON);
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+  gtk_box_append(GTK_BOX(box), image);
+
+  GtkWidget *reflection = shelf_reflection_new(image);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
+  gtk_box_append(GTK_BOX(box), reflection);
+
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), box);
+  gtk_window_set_default_size(GTK_WINDOW(window), ICON,
+                              ICON + BAND(0.5, ICON) + 40);
+  gtk_window_present(GTK_WINDOW(window));
+
+  if (!pump_until_allocated(image) || !pump_until_allocated(reflection)) {
+    g_test_skip("window was never allocated");
+    gtk_window_destroy(GTK_WINDOW(window));
+    return;
+  }
+
+  graphene_rect_t bounds = painted_bounds(box, reflection);
+  g_assert_cmpfloat(bounds.size.width, >, 0.0);
+  g_assert_cmpfloat(bounds.size.height, >, 0.0);
+
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
+/* The running indicator has to be legible: a bead that antialiases into the
+ * glass reads as nothing. This pins what the shelf actually paints for it. */
+static void test_running_dot_paints_at_a_legible_size(void) {
+  GtkWidget *reflection = shelf_reflection_new(NULL);
+  shelf_reflection_configure(reflection, GTK_LAYER_SHELL_EDGE_BOTTOM, ICON, 0.5,
+                             0.05, 0.55);
+  shelf_reflection_set_running(reflection, TRUE);
+
+  GtkWidget *window = gtk_window_new();
+  gtk_window_set_child(GTK_WINDOW(window), reflection);
+  gtk_window_set_default_size(GTK_WINDOW(window), ICON, BAND(0.5, ICON) + 40);
+  gtk_window_present(GTK_WINDOW(window));
+
+  if (!pump_until_allocated(reflection)) {
+    g_test_skip("window was never allocated");
+    gtk_window_destroy(GTK_WINDOW(window));
+    return;
+  }
+
+  graphene_rect_t bounds = painted_bounds(window, reflection);
+  /* The bead is 0.20 icon across at least, and the glow around it is wider
+   * still, so anything under half an icon of width means the dot vanished. */
+  g_assert_cmpfloat(bounds.size.width, >=, ICON * 0.5);
+  g_assert_cmpfloat(bounds.size.height, >=, 4.0);
+
+  gtk_window_destroy(GTK_WINDOW(window));
+}
+
 /* A dock that has not been given a shape is a rectangle: nothing to project, and
  * nothing to follow. */
 static void test_frame_projection_flat(void) {
@@ -716,6 +805,12 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/shelf/flare_activates_shelf",
                   test_flare_activates_the_shelf);
   g_test_add_func("/ui/shelf/frame_without_child", test_frame_without_child);
+  g_test_add_func("/ui/shelf/reflection_without_artwork",
+                  test_reflection_without_artwork_paints_nothing);
+  g_test_add_func("/ui/shelf/reflection_with_artwork",
+                  test_reflection_with_artwork_paints);
+  g_test_add_func("/ui/shelf/running_dot_size",
+                  test_running_dot_paints_at_a_legible_size);
   g_test_add_func("/ui/shelf/wrap_item_ordering", test_wrap_item_ordering);
   g_test_add_func("/ui/shelf/layout_toggle",
                   test_apply_shelf_layout_toggles_visibility);
