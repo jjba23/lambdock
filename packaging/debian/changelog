@@ -1,3 +1,13 @@
+lambdock (1.1.0-1) unstable; urgency=medium
+
+  * New upstream release: the manual is split into eight pages under docs/,
+    one per task, and the README is a landing page that indexes them. Every
+    heading kept its CUSTOM_ID and every cross-reference was rewritten to the
+    page that now owns the section; all file and anchor links were resolved
+    against the tree. No code change.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 05 Nov 2026 20:00:00 +0100
+
 lambdock (0.23.1-1) unstable; urgency=medium
 
   * New upstream release: one fix. Startup and a hot reload each read their own

@@ -1,0 +1,130 @@
+#+title: Contributing
+#+author: Josep Jesus Bigorra Algaba
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[file:../README.org][← lambdock]]
+
+* Contributing
+:PROPERTIES:
+:CUSTOM_ID: contributing
+:END:
+
+Contributing to free software (as in freedom) is a uniquely beautiful act,
+because it embodies principles of generosity, collaboration and empowerment.  We
+welcome everyone to feel invited to the ~lambdock~ project, and we encourage
+active contribution in all forms: improving it, reporting issues, brainstorming,
+making it more modular or more flexible, translating it, or simply sharing a
+screenshot of your desktop.
+
+** Reporting a bug or an idea
+:PROPERTIES:
+:CUSTOM_ID: reporting-a-bug
+:END:
+
+Open an issue on the [[https://github.com/jjba23/lambdock][repository's homepage]],
+or bring it up on [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][Zulip]]
+first if you are not sure yet whether it is a bug.
+
+A report is easiest to act on when it says what you did, what you expected, and
+what happened instead -- plus your compositor and its version, your GTK, Guile
+and (if you use it) Guix versions, whether you are on a released tag or ~trunk~,
+and the contents of your =~/.config/lambdock/settings.scm=.  If the dock crashes
+or misbehaves, the output of ~lambdock~ from a terminal, plus
+~ninja -C build && ./build/lambdock~ if you can reproduce it on ~trunk~, saves a
+round trip.
+
+You can also mail me <jjbigorra@gmail.com> to chat, discuss or send feedback.
+
+** Sending a PR/patch
+:PROPERTIES:
+:CUSTOM_ID: sending-a-patch
+:END:
+
+The branch is ~trunk~.  Small, focused commits are the easiest to review.
+
+- Build and test before you send: ~maak test~ should pass (it rebuilds
+  =build/= and runs everything on a virtual display), and the C compiler is
+  configured with ~-Werror~ for things like implicit conversions, so a warning
+  is a build failure.
+- New behaviour wants a test.  C behaviour goes in ~tests/~, the configuration
+  engine in ~tests/scheme/~, and both are cheap to extend.
+- New user-visible strings should be wrapped in ~(G_ "...")~ in C so they can be
+  translated, and the ~.po~ files refreshed with ~maak i18n-update~.
+- New themes are a CSS file in ~resources/css~ plus a build define; new presets
+  are an entry in [[file:../scheme/lambdock/presets.scm][presets.scm]], and a new
+  whole-dock recipe is an entry in
+  [[file:../scheme/lambdock/looks.scm][looks.scm]] (the scheme tests check that it
+  is complete and in range).
+- Documentation counts as code here: if this README, [[file:../HACKING.org][HACKING.org]] or
+  [[file:../NEWS.org][NEWS.org]] no longer matches what the program does, that is a
+  bug worth a patch.
+
+** Trying it before you trust it
+:PROPERTIES:
+:CUSTOM_ID: trying-it
+:END:
+
+Everything here is meant to be read and run.  Clone it, run ~maak run~, change a
+theme symbol in your settings file, watch the dock change under you, then open
+~M-x geiser-connect-local~ and ask the running dock what it thinks its theme is.
+If something in this document does not match what the code does, tell us.
+
+------------------
+
+** AI Policy
+:PROPERTIES:
+:CUSTOM_ID: ai-policy
+:END:
+
+This project adheres to the
+[[https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-ai-policy/index.html][jointhefreeworld AI (Artificial Intelligence) policy]].
+
+Our core principle is simple: *AI should assist human creativity and
+problem-solving, never replace human reasoning.*
+
+While tools like Large Language Models (LLMs) and interactive chatbots can be
+beneficial for reviewing, refactoring small functions, or acting as a sounding
+board, they should be used with moderation.
+
+We require a human in the loop for all contributions.
+
+------------------
+
+** Code of conduct
+:PROPERTIES:
+:CUSTOM_ID: code-of-conduct
+:END:
+
+This project adheres to the jointhefreeworld code of conduct. Find it here:
+
+https://jointhefreeworld.org/blog/articles/personal/jointhefreeworld-code-of-conduct/index.html
+
+In summary, we foster an inclusive, respectful, and cooperative environment for
+all contributors and users of this free software project. Inspired by the ideals
+of the GNU Project, we strive to uphold freedom, equality, and community as
+guiding principles. We believe that collaboration in a community of mutual
+respect is essential to creating excellent free software.
+
+------------------
+
+** Etymology
+:PROPERTIES:
+:CUSTOM_ID: etymology
+:END:
+
+The name /lambdock/ is a play on words combining:
+
+- *Ship Docks* ⚓ where containers and applications dock safely.
+- ~lambda λ~ expressions from functional programming & Lisp enlightenment.
+- *Lambs* 🐑 (gentle, fluffy, lightweight, and clean).
+- *Docks* as desktop UI components (e.g., Plank, Cairo-Dock, reference dock).
+
+~lambdock~ adopts as its project logo a modified version of the
+[[https://en.wikipedia.org/wiki/Agnus_Dei][Agnus Dei]], but without attaching
+itself to any religious meaning or belief.
+
+You could say using this dock /es casi una experiencia religiosa como la de
+[[https://www.youtube.com/watch?v=3DV57Y4tEAM&t=3s][Enrique Iglesias]].

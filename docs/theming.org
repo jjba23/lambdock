@@ -1,0 +1,859 @@
+#+title: Theming and the shelf
+#+author: Josep Jesus Bigorra Algaba
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[file:../README.org][← lambdock]]
+
+* Theming and the shelf
+:PROPERTIES:
+:CUSTOM_ID: theming
+:END:
+
+** Styling & theming
+:PROPERTIES:
+:CUSTOM_ID: styling-and-theming
+:END:
+
+~lambdock~ ships with pre-baked themes embedded via build defines, and every one
+of them is a CSS file you are free to read, copy and argue with.
+
+- *Vanilla Glassmorphism* 🧊 (~'vanilla~): Modern translucent dark pill layout
+  with soft backdrop reflections, glow indicators, and spring physics button
+  effects.
+
+- *Vanilla Light Glassmorphism* 🧊 (~'vanilla-light~): Modern frosted glass
+  translucent pill layout with soft backdrop reflections, glow indicators, and
+  spring physics button effects.
+
+- *Frost 3D Glass* (~'frost~, ~'frost-dark~): Classic 3D
+  glossy shelf aesthetics with reflective top bevels, ice-blue indicator dots,
+  and vertical lift displacement.
+
+- *Brushed* (~'brushed~): the dock before the 3D shelf -- a
+  flat, pale gloss strip the icons sit *inside*, with a bright bevel along the
+  icons' edge and a cool grey lip on the screen side. No mirrors: they arrived
+  with the 3D shelf. Pair it with ~dock-shelf-margin 14~ and ~dock-shelf-front 6~
+  (or just say ~'brushed~, see [[#looks][Looks]]).
+
+- *Solarized Light* ☀️ (~'solarized-light~): Timeless palette, easy on the eyes,
+  ivory, roasted, off-white goodness.
+
+- *Nature* 🍀 (~'nature~): deep organic woodland green gradients, warm leaf-tinted
+  specular borders, and a lively Emerald Leaf glowing running app indicator.
+
+- *Ambiance* 🪘 (~'ambiance~): signature the distro design language: rich dark
+  aubergine glass background, the distro warm orange highlights, and an active
+  indicator glowing in iconic Orange.
+- *Dune* (~'dune~): frosted, softly-rounded translucent
+  capsule with a white running dot, echoing the frosted era.
+- *Stage* (~'stage~): darker, denser frosted capsule
+  with a stronger shadow and a small dock dot, echoing the denser era.
+- *Glass* (~'glass~, ~'glass-dark~): the newest *Liquid
+  Glass* pill -- the roundest corners of any shelf dock, a much thinner wash of
+  glass, one bright specular rim and no icon mirrors at all. The light theme
+  reads dark text and a dark running dot; the dark one is the same pane smoked.
+- *Platinum* (~'platinum~): the last of the 3D shelf docks -- the
+  platinum slab, and the one theme whose material is read straight off the reference dock's
+  own artwork: a 1px black lip with 2px of white that brightens towards the
+  middle of the dock (=frontline.png=), its 18px drop shadow (=shadow.png=), the
+  white-on-cyan running indicator (=indicator_medium.png=) and the engraved
+  separator (=separatorstraight-horizontal.png=), at the alphas those images
+  carry. Pair it with a negative ~dock-shelf-margin~, a ~dock-shelf-flare~ and a
+  ~dock-reflection~ (see [[#shelf][The glass shelf]]) for the full 3D shelf with
+  mirrored icons. Its dark sibling, ~'platinum-dark~, is the same slab in
+  smoked graphite for a dark session, with the same geometry.
+- *Luna* (~'luna~): the Luna taskbar as it was -- a flat
+  blue slab with one bright line along its top edge, square-pressed task buttons
+  with a single blue border, and pinned launchers sitting chrome-less on the bar
+  like Quick Launch icons. The focused application's button is the depressed one;
+  a running app that is not focused keeps a raised button, and a fully minimized
+  one dims its icon.
+
+- *Aurora* (~'aurora~): the glass bar -- almost
+  transparent at the top with one very bright specular line, near-black at the
+  bottom -- and glass task buttons that stay invisible until they mean something.
+  Hovering raises a pale blue tile and the focused window's tile is the lit one
+  (glass brightens rather than depresses). Menus are pale translucent glass.
+
+- *Seven* (~'seven~): Aurora's glass one generation
+  later and cooler -- a taller, bluer, darker bar with a thinner specular line,
+  and buttons with square shoulders and rounded feet, which is the one shape that
+  tells the superbar apart from Aurora's. Labels are off, as Seven has them.
+- *Tiles* (~'tiles~): flat, near-black rectangular taskbar with a
+  thin blue accent underline on running apps.
+- *Island* (~'island~): translucent, subtly-rounded dark surface with
+  a small accent pill running indicator.
+- *None* (~'none~): no styling applied, using default GTK appearance.
+
+*** The states every theme styles
+There are more states on a dock icon than "idle", and every theme here answers
+all of them, so a dock behaves the same whichever material it wears:
+
+| State | Class | What the themes draw |
+|-------+-------+----------------------|
+| pinned, not running | ~flat~ | the icon, no chrome |
+| pointer over it | ~:hover~ | a highlight tile (glass, brushed, or a flat wash, per theme) |
+| pressed | ~:active~ | a stronger tile, or a pressed one |
+| running | ~running-app~ | a dot or pill under the icon; on the taskbar looks, a raised (Luna) or glass (Aurora/Seven/Tiles/Island) button |
+| the focused window | ~window-focused~ | the lit/long version of the indicator: glass lights the focused tile, Tiles and 11 draw the long underline or pill, and the stock themes widen and brighten their glow pill |
+| every window minimized | ~window-minimized~ | the icon dims (one rule in =overlays.css=, shared by all themes) |
+| running window titles | ~window-title-label~ | the title next to the icon, in a colour that holds contrast on that theme's material |
+
+Two details are worth calling out because they are fidelity, not taste:
+
+- *The indicator is a white bead on a cyan glow, as on the real dock, and the
+  pale slabs put a shadow pool under it.* That is the reference dock's own
+  =indicator_medium.png=: a 12x3 white bead resting on a 54x12 glow of
+  139/207/255 against a 64px tile. A white bead vanishes into platinum, so on
+  Platinum it is painted over a soft dark pool -- the shadow the icon casts on
+  the glass -- which is exactly what the real light dock looked like; the dark
+  variant drops the pool and lets the glow do the work. Brushed and Frost
+  keep their blue bead. The dot the glass shelf draws itself (C side,
+  =src/ui/shelf.c=) uses the same bead/glow/pool stack, so it reads on both.
+- *Labels follow the slab, not the theme's family.* Frost and Platinum
+  are light docks with dark window titles and dark meter text -- the colours the
+  labels had on the real light dock -- while their dark variants are light.
+
+** Looks: whole-dock recipes 🍱
+:PROPERTIES:
+:CUSTOM_ID: looks
+:END:
+
+A theme is the *material* of the dock: its colours, gradients, borders and
+corner radii. A *look* is the whole dock. It sets, in one name:
+
+- the *material*: the theme;
+- the *size*: icon size, the gap between items, the end padding;
+- the *shape*: dock or taskbar, and all eight numbers of the glass shelf;
+- the *manners*: whether running apps show their window titles, and whether the
+  icons magnify under the pointer (shelf docks do, and no taskbar ever
+  did).
+
+~lambdock~ ships one look per theme, and a single line asks for one:
+
+#+begin_src scheme
+(define dock-look 'platinum-dark)
+#+end_src
+
+That is the same dock as writing the numbers out by hand, which is what the
+recipe contains:
+
+#+begin_src scheme
+(define dock-theme 'platinum-dark)
+(define dock-icon-size 48)
+(define dock-item-spacing 4)
+(define dock-capsule-padding 8)
+(define dock-mode 'dock)
+(define dock-shelf-margin -18)         ; icons overhang the slab by 18px
+(define dock-shelf-front 24)           ; one icon of glass in front of them
+(define dock-shelf-flare 24)           ; keystone: wider at the screen edge
+(define dock-reflection 0.30)          ; mirror band, 0.30 of an icon
+(define dock-reflection-intensity 0.70)
+(define dock-reflection-blur 0.03)
+#+end_src
+
+Use one form or the other: the recipe is a *fallback*, not an override. Anything
+you define next to it wins, so this is Glass with bigger icons,
+
+#+begin_src scheme
+(define dock-look 'glass)
+(define dock-icon-size 64)
+#+end_src
+
+and the Preferences window still has the last word, because its overrides are
+layered on top of both (see [[file:configuration.org#preferences-window][the preferences window]]). A look
+never touches your items, position, monitor or auto-hide settings; it only
+restyles the dock. An unknown name is logged as a warning and ignored, so a typo
+cannot leave you with a dock that will not start.
+
+*** The the shelf looks, with their numbers
+
+| Look                        | Theme                 | Icons | Spacing | End pad | margin | front | flare | reflection / intensity / blur |
+|-----------------------------+-----------------------+-------+---------+---------+--------+-------+-------+-------------------------------|
+| ~brushed~                 | ~brushed~         | ~48~  | ~6~     | ~10~    | ~14~   | ~6~   | ~0~   | off                           |
+| ~frost~          | ~frost~        | ~48~  | ~8~     | ~10~    | ~-20~  | ~28~  | ~26~  | ~0.42 / 0.65 / 0.06~          |
+| ~frost-dark~     | ~frost-dark~   | ~48~  | ~8~     | ~10~    | ~-20~  | ~28~  | ~26~  | ~0.42 / 0.65 / 0.06~          |
+| ~platinum~             | ~platinum~     | ~48~  | ~4~     | ~8~     | ~-18~  | ~24~  | ~24~  | ~0.30 / 0.70 / 0.03~          |
+| ~platinum-dark~        | ~platinum-dark~| ~48~  | ~4~     | ~8~     | ~-18~  | ~24~  | ~24~  | ~0.30 / 0.70 / 0.03~          |
+| ~dune~               | ~dune~       | ~48~  | ~6~     | ~0~     | ~24~   | ~0~   | ~0~   | off                           |
+| ~stage~               | ~stage~       | ~48~  | ~4~     | ~0~     | ~24~   | ~0~   | ~0~   | off                           |
+| ~glass~                 | ~glass~         | ~52~  | ~8~     | ~16~    | ~24~   | ~0~   | ~0~   | off                           |
+| ~glass-dark~            | ~glass-dark~    | ~52~  | ~8~     | ~16~    | ~24~   | ~0~   | ~0~   | off                           |
+
+*End pad* is ~dock-capsule-padding~, the setting; the inset you actually see is
+that plus whatever the theme paints at the ends of its capsule. In shelf mode
+(Brushed, Frost, Platinum) the theme's own padding is zeroed, so the setting
+is the whole inset -- 8 to 10px, ~0.2 icon, which is what those docks keep. Big
+Sur and Stage are flat looks, and their themes already carry 12px and 14px of
+their own end padding, so their recipes leave the setting at ~0~ and the visible
+inset is exactly the theme's ~0.25 icon. Glass's theme has no padding of its own,
+so its recipe carries the whole 16px (~0.3 icon).
+
+What those numbers buy, in the order the dock was built:
+
+- *Brushed (10.4)* is a flat strip, not a shelf: 14px of glass above the icons and
+  a 6px lip below them make a 68px strip, about 1.4 icons tall -- which is what
+  the real dock measured. Nothing overhangs, nothing is mirrored.
+- *Frost (10.6)* is the 3D shelf at its most dramatic: the icons hang 20px
+  over the top of the slab, the slab is 28px thick in front of them (a 56px
+  capsule), the mirrors fill 0.42 of an icon (20px at 48px icons, softened by a
+  6 % blur) and the silhouette flares 26px per side towards the screen.
+- *Platinum (10.9)* is the same idea, tamed: 18px of overhang, a 24px front face
+  (a 54px capsule, one icon of slab), a shorter 0.30-icon mirror band and a
+  sharper 3 % blur. It was measured off a screenshot of the real dock and scaled
+  from its 49px icons to 48px.
+- *Dune, Stage and Glass* have no shelf at all, because those docks have no
+  mirrors: the default 24px of inner glass keeps the capsule flat and the theme's
+  own material does the rest. Glass's icons and gaps are the largest of the three
+  (52px icons, 8px of setting spacing on top of the theme's padding, 16px of end
+  padding), which is what makes the Liquid Glass pill read as roomy rather than
+  crowded.
+
+*** The stock and taskbar looks
+
+| Look             | Theme           | Icons | Spacing | End pad | Mode      | Window titles |
+|------------------+-----------------+-------+---------+---------+-----------+---------------|
+| ~vanilla~        | ~vanilla~       | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~vanilla-light~  | ~vanilla-light~ | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~solarized-light~| ~solarized-light~| ~48~ | ~4~     | ~12~    | ~'dock~   | off           |
+| ~nature~         | ~nature~        | ~48~  | ~4~     | ~12~    | ~'dock~   | off           |
+| ~ambiance~          | ~ambiance~         | ~48~  | ~6~     | ~10~    | ~'dock~   | off           |
+| ~luna~     | ~luna~    | ~32~  | ~0~     | ~4~     | ~'taskbar~| *on*          |
+| ~aurora~  | ~aurora~ | ~32~  | ~4~     | ~6~     | ~'taskbar~| *on*          |
+| ~seven~      | ~seven~     | ~32~  | ~6~     | ~8~     | ~'taskbar~| off           |
+| ~tiles~     | ~tiles~    | ~32~  | ~4~     | ~8~     | ~'taskbar~| off           |
+| ~island~     | ~island~    | ~32~  | ~8~     | ~12~    | ~'taskbar~| off           |
+| ~plain-taskbar~  | ~vanilla-light~ | ~28~  | ~8~     | ~12~    | ~'taskbar~| off           |
+
+The stock looks are the default capsule with the theme's material, so most of
+them only move the rhythm: the shelf look reference of ~4px~ of setting spacing (which
+lands at the 14-16px gap the real dock keeps at 48px icons, once the theme's own
+button padding is added) and 12px of end padding. ~ambiance~ opens the gaps a
+little, and ~plain-taskbar~ is a bar with no costume at all, for people who want
+a taskbar and nothing else. The five stock themes also paint 12px of their own
+padding at each end, so ~12~ here is a 24px inset in total -- roomier than the
+number reads, and deliberate: those capsules are lambdock's own design.
+
+*** The taskbar looks are one family
+
+The five the taskbar era recipes share everything that *can* be shared, so they behave
+identically where it matters and differ only where the era did:
+
+- every one is a ~'taskbar~ -- a full-width bar, not a floating capsule;
+- every one draws 32px icons and leaves the shelf at its flat defaults
+  (24px of inner glass, no overhang, no front face, no keystone, no mirrors),
+  because a taskbar is a bar and not a shelf;
+- window titles follow what that the taskbar era actually showed: *on* for Luna and Aurora
+  (whose task buttons carried labels), *off* for 7, 10 and 11 (7 made
+  "always combine, hide labels" the default, and nothing since has shown them);
+- none of them magnifies: the fisheye under the pointer is an the shelf look mannerism, so
+  all five recipes turn ~dock-hover-animate?~ off (and every the shelf look and stock look
+  turns it back on);
+- the gaps follow the chrome. Luna's task buttons touch, so ~luna~ keeps
+  ~0~ of setting spacing; glass's glass tiles keep a few pixels, so Vista takes
+  ~4~; the taller superbar takes ~6~; Tiles goes back to a compact ~4~; and
+  Island, with its rounded tile and room around it, takes the most at ~8~.
+  The end padding runs the same way, from XP's tight ~4~ (Quick Launch hard
+  against the Start button) to Island's ~12~.
+
+So a the taskbar era dock is one line, and the line says which era:
+
+#+begin_src scheme
+(define dock-look 'luna)      ; or 'aurora, 'seven,
+                                    ;    'tiles, 'island
+#+end_src
+
+The short names work too: ~'xp~ and ~'luna~, ~'vista~ and ~'aero~, ~'seven~ and
+~'win7~, ~'win10~, ~'win11~. The theme's own 6-10px of end padding adds to the
+*End pad* column above, so the first icon sits 10px from the bar's edge in XP and
+22px in Island, which is where the Start button and the centred group left it.
+
+One number a the taskbar era look cannot pin down exactly is the *thickness* of the bar:
+it is ~icon-size + dock-shelf-margin~ -- the flat capsule's 24px of inner glass --
+so a 32px look is 56px tall, where the real bars were 30-40px. Set
+~(define dock-icon-size 16)~ next to the look for XP's own proportion (a 40px bar
+of 16px icons, like a taskbar at 96 dpi); leave it at 32 for a modern, readable
+bar. That is exactly the kind of thing the recipe is a *fallback* for.
+
+*** Aliases
+
+The short names work, and so do the theme names, so writing the theme you
+already know gets you the dock it was designed for: ~mavericks~ and
+~platinum~ both mean ~platinum~, ~frost-dark~ means
+~frost-dark~, ~tahoe-dark~ and ~glass-dark~ mean
+~glass-dark~; on the taskbar era side ~luna~, ~xp~ and ~win-xp~ mean
+~luna~, ~aero~, ~vista~ and ~win-vista~ mean ~aurora~, ~seven~,
+~win7~ and ~win-7~ mean ~seven~, ~win10~ means ~tiles~ and ~win11~
+means ~island~; and ~taskbar~ means ~plain-taskbar~.
+~(map car look-aliases)~ prints the whole list from the REPL.
+
+*** Looking at the recipes from the REPL
+
+The recipes are plain data, so they can be inspected and applied live. With the
+REPL enabled (see [[file:repl.org#repl][the REPL]]):
+
+#+begin_example
+scheme@(guile-user)> (map car dock-looks)
+$1 = (vanilla vanilla-light solarized-light nature ambiance plain-taskbar
+      brushed frost frost-dark platinum
+      platinum-dark dune stage glass glass-dark
+      luna aurora seven tiles island)
+scheme@(guile-user)> (look-settings 'brushed)
+$2 = ((theme . brushed) (icon-size . 48) (item-spacing . 6) ...)
+scheme@(guile-user)> (look-setting 'platinum 'shelf-margin)
+$3 = -18
+scheme@(guile-user)> (apply-look! 'frost)      ; every dock
+$4 = #t
+scheme@(guile-user)> (apply-look! 'glass-dark "/home/me/.config/lambdock/settings.scm")
+$5 = #t
+#+end_example
+
+~apply-look!~ writes the whole recipe into the running dock -- theme, geometry
+and all -- and redraws it once, so cycling through the looks takes one call each
+and never inherits a number from the look before it. It does not rewrite
+=settings.scm=: once you like a look, put ~(define dock-look 'name)~ in the file
+to keep it.
+
+| Procedure                                | What it does                                                       |
+|------------------------------------------+--------------------------------------------------------------------|
+| ~(look-settings 'NAME)~                  | The recipe as an alist (also ~preset-look~)                        |
+| ~(look-setting 'NAME 'KEY)~              | One value, with or without the ~dock-~ prefix                      |
+| ~(look-name 'NAME)~                      | The canonical name after aliases, or ~#f~                          |
+| ~(look? 'NAME)~                          | Whether the name resolves                                          |
+| ~(apply-look! 'NAME [PATH])~             | Apply it to every dock, or to the one at ~PATH~                    |
+| ~dock-looks~, ~look-aliases~             | The whole table, and the alias list                                |
+
+The same recipes are what the numbers in [[#shelf][The glass shelf]] are made of:
+the shelf section shows each knob on its own, and this section packages the ones
+that belong together. To write your own look, copy one and change the numbers --
+or set them one by one from the REPL with the setters (see
+[[#shelf][Changing the look live]]).
+
+** Overriding a theme with your own CSS
+:PROPERTIES:
+:CUSTOM_ID: overriding-a-theme
+:END:
+
+You can override any GTK style class on the fly without re-compiling C sources.
+~lambdock~ automatically monitors and loads user styles from:
+
+#+begin_src sh
+~/.config/lambdock/styles.css
+#+end_src
+
+User styles are loaded with ~GTK_STYLE_PROVIDER_PRIORITY_USER~ priority, taking
+precedence over default app themes.
+
+Make sure you use [[https://docs.gtk.org/gtk4/css-properties.html][GTK CSS]], not
+"web-browser CSS". For understanding better what is available and what you can
+override, you should look at the theme definitions at ~./resources/css~.
+
+An example override of a theme could look like this:
+
+#+begin_src css
+/* Custom user tweaks in ~/.config/lambdock/styles.css */
+
+.lambdock-window {
+    background-image: linear-gradient(180deg, rgba(255, 0, 20, 0.85) 0%, rgba(5, 5, 8, 0.95) 100%);
+    border: 1px solid rgba(255, 0, 0, 0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+}
+#+end_src
+
+Save the file and the change is applied live, just like the Scheme settings.
+
+** Dock mode: floating dock or full-width taskbar 📊
+:PROPERTIES:
+:CUSTOM_ID: dock-mode
+:END:
+
+~dock-mode~ switches between the default floating, content-hugging dock capsule
+(~'dock~) and a full-width bar anchored edge-to-edge (~'taskbar~). In taskbar
+mode the layer-shell surface is stretched across the monitor, the capsule is
+squared off, and icons are laid out from the start of the bar.
+
+#+begin_src scheme
+;; 'dock (default) -> floating capsule sized to its icons
+;; 'taskbar        -> full-width (or full-height) bar spanning the monitor
+(define dock-mode 'taskbar)
+#+end_src
+
+On top of that, ~dock-show-window-titles?~ renders the focused window's title next
+to each running app's icon, like the classic the taskbar era XP taskbar. Pinned apps that
+are not running stay icon-only, and titles are ellipsized when they get long.
+
+#+begin_src scheme
+;; Show window titles on running app items (the taskbar era XP-style taskbar buttons)
+(define dock-show-window-titles? #t)
+#+end_src
+
+Combine either mode with any theme. The the taskbar and shelf themes themes
+include dedicated taskbar styling, and a generic taskbar modifier squares off the
+capsule and styles the title labels when needed.
+
+** Spacing and sizing: how far apart the icons sit
+:PROPERTIES:
+:CUSTOM_ID: spacing
+:END:
+
+Three numbers decide how the row of icons looks:
+
+| Option                 | Default | What it does                                            |
+|------------------------+---------+----------------------------------------------------------|
+| ~dock-icon-size~       | ~48~    | How big each icon is drawn, in px.                       |
+| ~dock-item-spacing~    | ~4~     | How much room sits between the items.                    |
+| ~dock-capsule-padding~ | ~12~    | How much room sits between the capsule's ends and the first/last icon. |
+
+`dock-capsule-padding` is the *end* padding, the one that decides how much glass
+sticks out past the icons on either side. The the shelf look dock keeps it around ~0.25 ×
+the icon size (12px for 50px icons); with the theme's own button padding on top,
+~8~ at 48px icons lands there.
+
+The *visible* gap is ~dock-item-spacing~ plus whatever the active theme gives
+its buttons as padding and margins, so it is the knob for the rhythm while the
+theme keeps control of the clickable area. As a reference, the shelf look dock keeps
+its icons about ~0.3 × their size~ apart: 50px icons with ~15px between them.
+With 48px icons and ~dock-item-spacing 4~ that is a ~14–16px~ gap: the
+~'vanilla~ and ~'platinum~ themes keep no horizontal button margin, so
+their ~6px~ / ~10px~ of padding plus the setting land right there.
+
+#+begin_src scheme
+;; packed tight, icons almost touching
+(define dock-item-spacing 0)
+
+;; the default: the shelf look rhythm
+(define dock-item-spacing 4)
+
+;; airy, for a big or wall-mounted screen
+(define dock-item-spacing 16)
+#+end_src
+
+#+begin_src scheme
+;; end padding: the shelf look (12px of glass past the first and last icon)
+(define dock-capsule-padding 8)   ; 8 here + ~4px of theme button padding
+
+;; flush: icons right up against the capsule's ends
+(define dock-capsule-padding 0)
+#+end_src
+
+Spacing and padding are applied live: change them from the REPL with
+~(set-dock-item-spacing! 8)~ / ~(set-dock-capsule-padding! 8)~ or in
+=settings.scm= and the row re-lays out immediately. It is also what makes a dock of many items scroll sooner or later,
+since the items have to fit on screen either way.
+
+** The glass shelf: one dock, any shape 🐆
+:PROPERTIES:
+:CUSTOM_ID: shelf
+:END:
+
+~lambdock~ has *one* dock implementation. Its shape is described by plain
+numbers, so a flat capsule, a frosted plinth, a subtle 3D shelf and the Mac the shelf look
+*Platinum* dock are the same code with different values. There are no modes
+and no presets: every knob is independent, and all of them default to the classic
+flat capsule, so a dock that says nothing looks exactly like it always did.
+
+*** The eight numbers
+| Parameter                   | Default | Range      | What it does                                                   |
+|-----------------------------+---------+------------+----------------------------------------------------------------|
+| ~dock-shelf-tilt~           | ~0~     | -45 … 45   | Tilt of the shelf plane in degrees. 0 = flat (orthographic).    |
+| ~dock-shelf-perspective~    | ~400~   | 50 … 5000  | Projection distance for the tilt, px (only used with a tilt).   |
+| ~dock-shelf-margin~         | ~24~    | -200 … 200 | Glass on the *inner* side of the icons, px. Negative = overhang.|
+| ~dock-shelf-front~          | ~0~     | 0 … 200    | Glass on the *outer* side (the front face), px.                 |
+| ~dock-shelf-flare~          | ~0~     | -80 … 80   | Keystone: how much wider the slab is at the *screen* edge, per side, px. 0 = a plain rectangle. |
+| ~dock-reflection~           | ~0~     | 0 … 2      | Reflection band height / icon size. 0 = no reflections.         |
+| ~dock-reflection-intensity~ | ~0.55~  | 0 … 1      | Alpha of the reflection where it touches the icon.              |
+| ~dock-reflection-blur~      | ~0.05~  | 0 … 0.25   | Gaussian blur radius / icon size.                               |
+
+Out-of-range values are clamped instead of failing, and every option can also be
+set from the ~(configure-dock! ...)~ keyword arguments (~#:shelf-margin~,
+~#:reflection~, ...).
+
+*** The geometry in one line
+#+begin_example
+ ──────────────────────────────────────────────  inner edge of the glass
+                    ↑
+      dock-shelf-margin (glass above the icons; make it negative and
+                    ↓   the icons overhang past this line)
+       [icon]      [icon]      [icon]
+ ──────────────────────────────────────────────  the icons' bottom
+      mirrored icons, fading out                  ← dock-shelf-front
+ ──────────────────────────────────────────────  the screen edge
+#+end_example
+
+#+begin_src scheme
+band    = round(dock-icon-size * dock-reflection)
+outer   = max(dock-shelf-front, band)     ; glass in front of the icons
+capsule = dock-icon-size + dock-shelf-margin + outer
+;; and, across the dock:
+bottom edge = top edge + 2 * dock-shelf-flare
+#+end_src
+
+Three consequences worth remembering:
+
+- ~dock-shelf-margin~ and ~dock-shelf-front~ are *pixels*, so they do not follow
+  ~dock-icon-size~. ~dock-reflection~ is a *ratio*, so the mirror does scale with
+  the icons.
+- A negative ~dock-shelf-margin~ is what makes the icons overhang the glass, like
+  the shelf look dock. The overlay reserves room for the overhang, so nothing is clipped.
+- If the mirror is taller than the front face, the capsule grows to fit it
+  (~outer = band~); if the front face is taller, the extra glass stays empty and
+  the mirror fades before reaching it.
+
+*** Recipes
+Every recipe below is a complete, copy-pasteable settings fragment: add the lines
+to your =settings.scm= and the dock redraws itself. (The ones that describe a
+whole desktop are also packaged as [[#looks][looks]], with the icon size, spacing
+and padding that go with them.)
+
+**** 1. The classic flat dock (the default)
+Write nothing. That is ~tilt 0~, ~margin 24~, no front face, no reflections.
+
+**** 2. A frosted plinth: glass all around the icons
+#+begin_src scheme
+(define dock-shelf-margin 18)   ; glass above the icons
+(define dock-shelf-front 18)    ; glass below them
+(define dock-reflection 0)      ; no mirror
+#+end_src
+
+**** 3. A subtle 3D shelf
+#+begin_src scheme
+(define dock-shelf-tilt 4)          ; a hint of perspective
+(define dock-shelf-perspective 900) ; ... with a long camera distance
+(define dock-shelf-margin 8)
+(define dock-shelf-front 12)
+(define dock-reflection 0.25)
+(define dock-reflection-intensity 0.35)
+#+end_src
+
+**** 4. The the shelf look Platinum dock (platinum slab)
+The dock is a light, glossy slab that the icons overhang, with short blurred
+mirrors fading over the glass in front of them. It is orthographic, so the tilt
+stays at 0:
+
+#+begin_src scheme
+(define dock-theme 'platinum)   ; platinum slab material
+
+(define dock-icon-size 48)
+(define dock-shelf-margin -18)         ; icons overhang by half an icon
+(define dock-shelf-front 24)           ; slab = 48px = exactly one icon
+(define dock-reflection 0.30)          ; mirror band inside that front glass
+(define dock-reflection-intensity 0.70)
+(define dock-reflection-blur 0.03)
+(define dock-shelf-flare 24)           ; wider at the screen edge: the 3D shelf
+(define dock-capsule-padding 8)        ; ~12px of glass past the end icons
+;; tilt stays 0 - the real dock is orthographic, the flare does the keystone
+(define dock-shelf-tilt 0)
+#+end_src
+
+#+begin_src scheme
+;; ... and the same slab in smoked graphite
+(define dock-theme 'platinum-dark)
+#+end_src
+
+Those numbers are measured off a screenshot of the real dock, scaled from
+its 49px icons to 48px: a slab exactly one icon tall, icons overhanging it by
+half an icon (so their centre sits on the slab's top edge), a mirror band of
+~0.30 icons inside the 24px of front glass, ends padded by ~0.25 icons, and
+sides that flare ~0.5 icons per side towards the screen.
+
+The *material* comes from somewhere better than a screenshot: the install
+media's =Essentials.pkg= carries the real =the reference dock=, so the lip, the drop
+shadow, the running indicator and the separator are read off =frontline.png=,
+=shadow.png=, =indicator_medium.png= and =separatorstraight-horizontal.png=
+themselves -- the gradients and alphas in the theme are the images'.
+
+For a dark session the same geometry works with
+~'platinum-dark~ -- swap the theme line and nothing else moved: ~dock-shelf-flare~ is what makes
+the silhouette look like a shelf rather than a rectangle: the edge lying on the
+screen keeps its width and the inner edge is pulled in, so the icons and their
+padding stay on the slab while its skirt spreads out. It works on all four
+edges, and it reserves the room it needs in the layout, so nothing gets clipped.
+
+Any other theme works with the same numbers; it just wears its own material
+instead of the platinum one (see [[#shelf-material][styling the material]]).
+
+**** 5. A dark smoked-glass shelf
+Same geometry, dark material: pick a dark theme and override the shelf material
+in =~/.config/lambdock/styles.css= (user styles always win):
+
+#+begin_src scheme
+(define dock-theme 'vanilla)
+(define dock-shelf-margin -18)
+(define dock-shelf-front 16)
+(define dock-reflection 0.35)
+(define dock-reflection-intensity 0.75)  ; brighter mirror on dark glass
+(define dock-reflection-blur 0.06)
+#+end_src
+
+#+begin_src css
+/* ~/.config/lambdock/styles.css */
+.lambdock-window.shelf-mode {
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.55) 0px,
+    rgba(96, 108, 130, 0.95) 2px,
+    rgba(44, 52, 70, 0.95) 7px,
+    rgba(60, 70, 90, 0.92) 8px,
+    rgba(24, 29, 40, 0.90) 100%
+  );
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.45),
+              inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+#+end_src
+
+**** 6. Icons hanging over the glass, with a long mirror
+#+begin_src scheme
+(define dock-shelf-margin -34)   ; a lot of overhang
+(define dock-shelf-front 26)
+(define dock-reflection 0.45)    ; a tall mirror in the front face
+(define dock-reflection-blur 0.04)
+#+end_src
+
+**** 7. Only the mirror: keep the flat capsule, add reflections
+#+begin_src scheme
+(define dock-reflection 0.4)     ; no margin/front changes at all
+#+end_src
+
+**** 8. No glass at all: icons and their mirrors over the wallpaper
+Keep a theme -- with ~dock-theme 'none~ the dock falls back to the default GTK
+window background -- and delete the shelf material instead. The geometry and the
+reflections stay:
+
+#+begin_src scheme
+(define dock-theme 'vanilla)
+(define dock-shelf-front 14)     ; room for the mirror under the icons
+(define dock-reflection 0.3)
+#+end_src
+
+#+begin_src css
+/* ~/.config/lambdock/styles.css - the "shelf" is only a mirror now */
+.lambdock-window.shelf-mode {
+  background-image: none;
+  border: none;
+  box-shadow: none;
+}
+#+end_src
+
+**** 9. A shelf in taskbar mode
+The shelf works in a full-width bar too: the material squares off and the front
+face stays below the icons.
+
+#+begin_src scheme
+(define dock-mode 'taskbar)
+(define dock-shelf-margin -10)
+(define dock-shelf-front 14)
+(define dock-reflection 0.2)
+#+end_src
+
+**** 10. Top, left and right docks
+Nothing special to do: the geometry mirrors with the dock edge, and the tilt
+direction is flipped for you. ~margin~ is always the *inner* side (away from the
+screen edge) and ~front~ always the *outer* one.
+
+#+begin_src scheme
+(define dock-position 'top)
+(define dock-shelf-margin -20)
+(define dock-shelf-front 16)
+(define dock-reflection 0.3)
+#+end_src
+
+*** Turning the knobs: what the extremes do
+| Knob                     | Lower it to get…                       | Raise it to get…                                  |
+|--------------------------+----------------------------------------+---------------------------------------------------|
+| ~dock-shelf-tilt~        | a flat, edge-on dock (0 = orthographic) | a shelf that leans away, foreshortened            |
+| ~dock-shelf-perspective~ | a violent wide-angle taper             | an almost orthographic tilt                       |
+| ~dock-shelf-margin~      | icons overhanging more and more        | a thicker glass body around the icons             |
+| ~dock-shelf-front~       | no room under the icons                | a tall front face (reflections fade inside it)    |
+| ~dock-reflection~        | a shorter mirror, or none at 0         | a mirror as tall as the icons                     |
+| ~dock-reflection-intensity~ | a ghost of a mirror (0 = invisible) | a strong mirror (1 = solid copy)                  |
+| ~dock-reflection-blur~   | a sharp, recognisable mirror           | a soft frosted smear                              |
+
+Two things to keep in mind:
+
+- ~dock-reflection~ is also what enables the whole reflection machinery: the
+  contact shadow under the icons, the mirror, and the running-app dot on the
+  glass (white, over a soft shadow so it also reads on the pale platinum and
+  gloss shelves). At ~0~ the dock uses the theme's own running indicator instead.
+- The mirror follows the fisheye magnification sideways, but the band stays the
+  same thickness, so hovering one icon never pushes the row up and down.
+
+*** Separators on the glass
+A separator belongs to the slab rather than to the row of icons, and on a shaped
+dock it is drawn that way: it runs down the glass's face instead of standing in
+front of it, and it leans with the surface. The lean is the keystone's own --
+proportional to how far the separator sits from the middle of the dock, and away
+from the middle as it comes towards the viewer, exactly as the slab's sides do --
+emphasised, because lambdock's keystone is a gentler projection than the dock this
+look comes from. Dead centre a separator is perfectly vertical; the further out it
+sits, the more it leans.
+
+On a flat capsule (no ~dock-shelf-flare~, no ~dock-shelf-tilt~) nothing changes:
+the separator is the plain divider the theme draws, with the theme's own margins.
+
+What a separator that is *on* the glass looks like -- how wide it is, how it fades
+at both ends -- is CSS, and only applies while the slab is shaped:
+
+#+begin_src css
+.shelf-projected separator {
+  margin: 0;
+  min-width: 3px;
+  background-image:
+    linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.26) 18%,
+                    rgba(255, 255, 255, 0.26) 74%, transparent),
+    linear-gradient(to bottom, transparent, rgba(2, 2, 2, 0.24) 18%,
+                    rgba(2, 2, 2, 0.24) 74%, transparent);
+  background-size: 2px 100%, 1px 100%;
+  background-position: right, left;
+  background-repeat: no-repeat, no-repeat;
+}
+#+end_src
+
+*** Changing the look live
+Every option has a setter, and calling one redraws every dock immediately, so you
+can tune a look from the REPL with the dock in front of you:
+
+#+begin_src scheme
+scheme@(guile-user)> (set-dock-shelf-margin! -22)
+scheme@(guile-user)> (set-dock-shelf-front! 18)
+scheme@(guile-user)> (set-dock-reflection! 0.28)
+scheme@(guile-user)> (set-dock-reflection-intensity! 0.5)
+scheme@(guile-user)> (set-dock-reflection-blur! 0.05)
+;; one instance only: pass its settings path as the second argument
+scheme@(guile-user)> (set-dock-shelf-tilt! 0 "/home/me/.config/lambdock/settings.scm")
+#+end_src
+
+The matching getters (~get-dock-shelf-margin~, ~get-dock-reflection~, ...) tell
+you what the dock is using right now. Setters only change the running dock: they
+do not rewrite =settings.scm=, so once you like a value, write it into the file to
+keep it across restarts.
+
+*** Styling the material in CSS
+:PROPERTIES:
+:CUSTOM_ID: shelf-material
+:END:
+
+The numbers above are geometry; the *material* (colour, gradients, borders,
+corners) is CSS, and it is theme-agnostic:
+
+| Where | What it styles |
+|-------+----------------|
+| =resources/css/shelf.css= | the generic light frosted slab, loaded for *any* theme while the shelf is active |
+| =resources/css/platinum.css= | the platinum slab: a white wash that is densest at the screen edge (~0.74 alpha), thins towards the icons (~0.38), with a 3px grey lip and a bright specular line along that edge |
+| =resources/css/platinum-dark.css= | the same slab in smoked graphite, same structure and geometry |
+| =resources/css/frost.css=, =frost-dark.css= | the cold, pale glass of the shelf, and its smoked-glass sibling, with the specular line on the outer edge |
+| =resources/css/brushed.css= | the flat gloss strip: a pale wash with a blue cast, a bright bevel along the icons' edge and a cool grey lip on the screen side (no mirrors) |
+| =resources/css/glass.css=, =glass-dark.css= | Liquid Glass: a thin, very round pane with one bright rim, dark text and a dark dot in the light theme, white in the dark one |
+| =~/.config/lambdock/styles.css= | your overrides, loaded last at user priority |
+
+Classes you can hook into:
+
+| Class | Applies to |
+|-------+------------|
+| ~.lambdock-window.shelf-mode~ | the capsule while any shelf parameter differs from the defaults |
+| ~.lambdock-window.shelf-mirror~ | the capsule while reflections are on |
+| ~.shelf-top~ / ~.shelf-bottom~ / ~.shelf-left~ / ~.shelf-right~ | on both the window and the capsule: which edge the dock is on |
+| ~window.shelf-mode~ | the whole dock (icons, popovers, labels) |
+| ~.shelf-frame~, ~.shelf-item~, ~.shelf-reflection~ | the tilt frame, the per-item wrapper and the reflection widget |
+
+The modifier is loaded *before* the theme at the same priority, so a theme that
+wants its own shelf material has to repeat the selector
+(~.lambdock-window.shelf-mode~) — that is exactly what =platinum.css= does.
+Without that, the generic frosted slab is what you get.
+
+A couple of shapes worth stealing:
+
+#+begin_src css
+/* a flat matte bar: no gloss, no rounded outer corners */
+.lambdock-window.shelf-mode {
+  background-image: linear-gradient(180deg, #2b3140 0%, #1b2029 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+
+/* a two-tone slab: bright inner strip, darker front face */
+.lambdock-window.shelf-mode.shelf-bottom {
+  background-image: linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.85) 0px,
+    rgba(120, 134, 156, 0.95) 2px,
+    rgba(88, 100, 120, 0.95) 6px,
+    rgba(232, 238, 246, 0.92) 7px,
+    rgba(246, 249, 252, 0.92) 100%
+  );
+}
+#+end_src
+
+*** Under the hood
+- *Tilt* projects the themed capsule onto a plane that recedes from the screen
+  edge; the icons stay upright on top of it. It is a real =GskTransform= (rotate +
+  perspective) because GTK CSS transforms are affine only and would just squash
+  the shelf.
+- *Margin / front* place the icons in the glass: a negative margin lets them
+  overhang the inner edge, and the front face is the glass in front of them.
+- *Reflection* paints a mirrored, gaussian-blurred copy that fades out over the
+  front face, plus a soft contact shadow under the icon and the running-app dot
+  near the outer edge. The fade is drawn in bands sized to the band height, so a
+  short mirror fades smoothly instead of showing steps.
+- Everything is derived: the capsule, the overlay's reserved space, the exclusive
+  zone, the auto-hide distance and the fisheye geometry all read the same numbers.
+  Put them back to their defaults and the dock is pixel-identical to before, live,
+  with no restart.
+
+*** What it cannot do
+A Wayland layer-shell surface cannot read the pixels behind it, so a *real*
+backdrop blur is impossible without compositor help (e.g. a KWin blur rule). The
+frosted look is drawn with gradients instead; the blur the shelf adds for real is
+the gaussian blur on the icon reflections.
+
+** Finding icon names
+:PROPERTIES:
+:CUSTOM_ID: finding-icon-names
+:END:
+
+~lambdock~ supports loading and specifying icons in different ways. It loads the
+active GTK 4 Icon theme and proceeds to load the icon.
+
+When you pass an icon string to ~app-item~, the C runtime's
+~create_image_for_icon~ function checks for the icon in this order:
+
+1. *Embedded Resource*: A ~resource://~ path, or one under
+   ~/org/jointhefreeworld/lambdock/~, is loaded straight from the GResource
+   bundle.
+2. *Direct File Path*: Checks if the string is a valid file path on disk.
+3. *Theme Icon*: Queries
+   [[https://docs.gtk.org/gtk4/class.IconTheme.html][GtkIconTheme]] for the icon
+   name in your active GTK icon theme (e.g., Papirus, Adwaita, the distro), otherwise
+   through [[https://en.wikipedia.org/wiki/Dconf][DConf]].
+4. *System Pixmaps*: Searches ~pixmaps/<name>.png~ in each XDG system data
+   directory (usually ~/usr/share/pixmaps/~).
+5. *Symbolic Fallback*: Appends ~-symbolic~ to try a monochrome fallback.
+6. *Generic Fallback*: Displays the standard application-x-executable icon if no
+   match is found.
+
+The pipeline lives in ~create_image_for_icon~
+([[file:../src/ui/icon_resolver.c][src/ui/icon_resolver.c]]);
+[[file:../HACKING.org::#module-reference-c][HACKING.org]] lists the same stages from
+the C side.
+
+You can also find available icons already in many ways, see some examples below:
+
+#+begin_src shell
+grep -R -i "^Icon=" /usr/share/applications/
+# or using ripgrep which is nicer
+rg -i "^Icon=" /usr/share/applications/
+
+# or flatpaks
+rg -i "^Icon=" /var/lib/flatpak/exports/share/applications/*.desktop
+
+# or (user) flatpaks
+rg -i "^Icon=" ~/.local/share/flatpak/exports/share/applications/*.desktop
+
+# or icons from scalable SVG
+find /usr/share/icons/Adwaita/ -name "*.svg" | xargs -n1 basename | sed 's/\.svg$//' | sort -u
+#+end_src

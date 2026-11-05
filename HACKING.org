@@ -800,7 +800,7 @@ Then thin typed wrappers: ~get_autohide_config_for~, ~get_position_config_for~,
 ~is_app_excluded(app_id, path)~.
 
 The key names, their defaults and their meanings are tabulated for users in
-[[file:README.org::#configuration-options][README: Configuration options reference]].
+[[file:docs/configuration.org::#configuration-options][README: Configuration options reference]].
 
 ** 2. Items: Scheme records → GTK widgets
 :PROPERTIES:
@@ -827,7 +827,7 @@ The record and constructors live in =items.scm=; the dispatch reads the
 accessors can change freely as long as the public wrappers stay stable.
 
 The item DSL as users see it (including the presets and dynamic widgets) is
-documented in [[file:README.org::#the-dock-dsl][README: The dock DSL: items and presets]].
+documented in [[file:docs/configuration.org::#the-dock-dsl][README: The dock DSL: items and presets]].
 
 ** What a click does (minimize to dock)
 :PROPERTIES:
@@ -897,7 +897,7 @@ flowchart TD
 The protocol itself is
 [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][zwlr_foreign_toplevel_management_unstable_v1]]
 on [[https://wayland.app/][wayland.app]]; the user-visible behaviour is in
-[[file:README.org::#toplevel-tracking][README: Wayland Toplevel Tracking & Popovers]].
+[[file:docs/internals.org::#toplevel-tracking][README: Wayland Toplevel Tracking & Popovers]].
 
 ** 4. Hot reload & reconciliation
 :PROPERTIES:
@@ -1159,7 +1159,7 @@ The six stages of ~create_image_for_icon~, in order, are: an embedded
 file path, a [[https://docs.gtk.org/gtk4/class.IconTheme.html][GtkIconTheme]]
 lookup, an XDG data-directory ~pixmaps~ search, a ~-symbolic~ variant, and
 finally the generic ~application-x-executable~ icon. Users see this list from the
-other side in [[file:README.org::#finding-icon-names][README: Finding icon names]].
+other side in [[file:docs/theming.org::#finding-icon-names][README: Finding icon names]].
 
 ------------------
 
@@ -1285,7 +1285,7 @@ The setter side matters for the REPL: every ~set-dock-*!~ goes through
 Scheme mutation into a ~(reload-dock!)~ call on the C side.
 
 Setting up a working REPL (Geiser, ~socat~, ~ncat~) is described for users in
-[[file:README.org::#repl][README: Interactive lambdock REPL]].
+[[file:docs/repl.org::#repl][README: Interactive lambdock REPL]].
 
 ------------------
 
@@ -1350,8 +1350,8 @@ file's own definitions. Nothing in the C side knows about looks: they are just
 the existing settings.
 
 Defaults, accepted values and the full preset list are in
-[[file:README.org::#configuration-options][README: Configuration options reference]]
-and [[file:README.org::#the-preset-zoo][README: The preset zoo]].
+[[file:docs/configuration.org::#configuration-options][README: Configuration options reference]]
+and [[file:docs/configuration.org::#the-preset-zoo][README: The preset zoo]].
 
 ** CSS & themes
 :PROPERTIES:
@@ -1417,7 +1417,7 @@ browser CSS; the properties are listed in
 [[https://docs.gtk.org/gtk4/css-properties.html][the GTK CSS property reference]].
 User-facing theming -- the nineteen built-in themes, the look recipes and how to
 override them -- is in
-[[file:README.org::#styling-and-theming][README: Styling & theming]].
+[[file:docs/theming.org::#styling-and-theming][README: Styling & theming]].
 
 *** Modifiers vs. themes
 Modifier stylesheets are loaded *before* the base theme at the same provider
@@ -2037,7 +2037,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
 
 Words that belong to the wider stack (compositor, layer shell, GSK, thunk,
 foreign toplevel, XDG, ...) are defined in
-[[file:README.org::#glossary][README: Glossary: the words in this document]].
+[[file:docs/getting-started.org::#glossary][README: Glossary: the words in this document]].
 
 ------------------
 

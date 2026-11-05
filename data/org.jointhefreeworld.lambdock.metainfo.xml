@@ -77,6 +77,11 @@
   </screenshots>
 
   <releases>
+    <release version="1.1.0" date="2026-11-05">
+      <description>
+        <p>The manual is split into eight pages under docs/, one per task (getting started, the dock itself, configuration, theming and the shelf, the REPL, internals, development, contributing), and the README is a landing page that indexes them. Every heading kept its CUSTOM_ID and every cross-reference was rewritten to the page that now owns the section, with all file and anchor links resolved against the tree. No code changed.</p>
+      </description>
+    </release>
     <release version="0.23.1" date="2026-11-05">
       <description>
         <p>Startup and a hot reload now read the dock's settings through one reader instead of each reading its own subset. A reload used to build its stylesheet before it had read the new icon size, so the shelf indicator was decided from the previous size; the same split is how a setting could reach one path and not the other.</p>

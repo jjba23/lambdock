@@ -1,0 +1,74 @@
+#+title: The live REPL
+#+author: Josep Jesus Bigorra Algaba
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[file:../README.org][← lambdock]]
+
+* Interactive lambdock REPL
+:PROPERTIES:
+:CUSTOM_ID: repl
+:END:
+
+For purposes of development, experimentation and live hackability, ~lambdock~
+features an embedded GNU Guile Scheme runtime. You can enable a background
+[[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]] REPL to
+query or dynamically alter the running dock's state in real time.
+
+In your =~/.config/lambdock/settings.scm= file, set ~dock-enable-repl?~ to ~#t~.
+You can optionally customize the socket path using ~dock-repl-socket-path~
+(defaults to =/tmp/lambdock-repl.sock=):
+
+#+begin_src scheme
+(configure-dock!
+ #:position 'bottom
+ #:items (list ...)
+ ;; .... other settings
+ #:enable-repl? #t
+ #:repl-socket-path "/tmp/lambdock-repl.sock")
+#+end_src
+
+You can then inspect or modify the dock state, and when desired also reload the
+dock (with ~reload-dock!~).
+
+Once connected, you can evaluate Scheme expressions against the running
+~lambdock~ instance, possibilities are endless, e.g.
+
+#+begin_example
+scheme@(guile-user)> (use-modules (lambdock core))
+scheme@(guile-user)> (get-dock-theme) ;; -> 'vanilla
+scheme@(guile-user)> (set-dock-theme! 'nature)
+scheme@(guile-user)> (apply-look! 'platinum) ;; theme + size + shelf, one call
+scheme@(guile-user)> (reload-dock!)
+#+end_example
+
+** Emacs (Geiser) -- Recommended
+:PROPERTIES:
+:CUSTOM_ID: emacs-geiser
+:END:
+
+If you use [[https://www.gnu.org/software/emacs/][Emacs]] with
+[[https://www.nongnu.org/geiser/][Geiser]]:
+
+1. Run ~M-x geiser-connect-local~.
+2. Select ~guile~ as the Scheme implementation.
+3. Enter the socket path: ~/tmp/lambdock-repl.sock~.
+
+** Other options
+:PROPERTIES:
+:CUSTOM_ID: repl-other-options
+:END:
+
+You can connect directly from your terminal using different tooling, like
+[[https://en.wikipedia.org/wiki/Netcat][nc]], [[https://nmap.org/ncat/][ncat]] or
+[[http://www.dest-unreach.org/socat/][socat]] wrapped with
+[[https://github.com/hanslub42/rlwrap][rlwrap]], and others:
+
+#+begin_src sh
+socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+ncat -U /tmp/lambdock-repl.sock
+nc -U /tmp/lambdock-repl.sock
+rlwrap socat - UNIX-CONNECT:/tmp/lambdock-repl.sock
+#+end_src

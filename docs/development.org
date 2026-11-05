@@ -1,0 +1,187 @@
+#+title: Developing and community
+#+author: Josep Jesus Bigorra Algaba
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[file:../README.org][← lambdock]]
+
+* Translation status
+:PROPERTIES:
+:CUSTOM_ID: translations
+:END:
+
+This project aims for accessibility and ease-of-use for users. For this purpose,
+we try to translate lambdock to all languages we can maintain. See below the
+status of translations for this project:
+
+| Language      | Status |
+|---------------+--------|
+| English 🇬🇧     | 100%   |
+| Catalan 🇪🇸     | 100%   |
+| Dutch 🇳🇱       | 100%   |
+| French 🇫🇷      | 100%   |
+| German 🇩🇪      | 100%   |
+| Italian 🇮🇹     | 100%   |
+| Portuguese 🇵🇹  | 100%   |
+| Spanish 🇪🇸     | 100%   |
+
+Translations live in ~po/~ and are managed with
+[[https://www.gnu.org/software/gettext/][GNU gettext]] through Meson.  The
+~i18n-update~ maak task regenerates the =.pot= template and merges it into every
+=.po=, and adding a new language is a matter of adding its code to ~po/LINGUAS~.
+If your language is missing, or if a string reads badly in yours, that is a
+welcome patch -- and a good first contribution.
+
+------------------
+
+** Developing lambdock
+:PROPERTIES:
+:CUSTOM_ID: developing
+:END:
+
+*** Read the guide first
+:PROPERTIES:
+:CUSTOM_ID: read-the-guide
+:END:
+
+New to the codebase? Start with the [[file:../HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C core, the embedded GNU Guile Scheme
+engine, the bi-directional data flow, the full dock/item/window lifecycles, the
+build and test workflow, and the common pitfalls to watch out for. It covers the
+threading model, memory ownership rules, GTK/GLib hazards and the invariants that
+used to be bugs.
+
+*** Hacking with ~maak~ & CCLS
+:PROPERTIES:
+:CUSTOM_ID: hacking-with-maak
+:END:
+
+~lambdock~ uses [[https://codeberg.org/jjba23/maak][Maak]], a Scheme task
+runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
+~maak <task>~ from the repository root:
+
+| Task               | What it does                                                          |
+|--------------------+-----------------------------------------------------------------------|
+| ~maak run~         | Build and run lambdock inside the pinned Guix environment.            |
+| ~maak meson-build~ | Plain Meson/Ninja build of the project.                               |
+| ~maak test~        | Rebuild and run the whole suite headlessly (Xvfb + X11 backend).      |
+| ~maak debug-run~   | Rebuild and launch under ~gdb --args~.                                 |
+| ~maak repl~        | Start a development REPL for the project.                             |
+| ~maak add-libs~    | Regenerate ~.ccls~ with the right Guix package flags.                  |
+| ~maak i18n-update~ | Refresh the gettext =.pot= and =.po= files.                            |
+| ~maak deb-build~   | Build the Debian package (unsigned).                                  |
+| ~maak rpm-build~   | Build the RPM packages and lint them.                                 |
+| ~maak arch-build~  | Build the Arch package and run ~namcap~.                               |
+| ~maak nix-build~   | Build the Nix package (~nix-test~ runs the flake checks).              |
+| ~maak flatpak-build~ | Build the Flatpak bundle.                                           |
+| ~maak container-build~ | Build the Podman/Docker image (~container-run~ runs it).          |
+
+If you use [[https://github.com/MaskRay/ccls][ccls]] or another
+[[https://microsoft.github.io/language-server-protocol/][LSP]] client, generate
+your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the
+solution.
+
+#+begin_src sh
+# Generate .ccls with correct Guix package flags
+maak add-libs
+
+# Run lambdock inside time-machine environment
+maak run
+#+end_src
+
+*** Tests
+:PROPERTIES:
+:CUSTOM_ID: tests
+:END:
+
+The suite has two halves, and both run under Meson:
+
+#+begin_src sh
+meson setup build
+ninja -C build test
+#+end_src
+
+- *C tests* (~tests/test_*.c~): dock items, dock window, Guile bridge, popover
+  menu, theme engine, icon resolver, the glass shelf, the desktop-entry parser,
+  stacks and drag and drop.  These build and exercise real GTK widgets through
+  Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
+  ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
+  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
+  ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The pure
+  halves of the C side have their own display-free tests: ~test_config_values~
+  (range rules, clamping, NaN handling, edge and mode names) and ~test_dock_dims~
+  (the capsule/overlay/margin arithmetic), plus ~test_dock_registry~ for the
+  active-dock list.  The trash
+  tests build throwaway trash directories and cover the freedesktop.org layout,
+  the count, emptying (including read-only directories and orphans), moving
+  dropped files and folders in with GIO (including name collisions) and the
+  item's full/empty states; the stack tests cover the directory listing
+  (dot-files, ordering, missing folders) and the view-mode names; the drag
+  and drop tests cover the drop-position arithmetic, the list reordering and the
+  item identity that the layout overrides are built on.
+- *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by
+  [[file:../tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]): the pure-Guile configuration engine -- state,
+  items, presets, loader, layout overrides and core -- with no display server and
+  no C runtime needed, so they are fast and easy to run in a loop.
+
+The Nix package runs exactly this suite under
+[[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a
+controlled font configuration.
+
+The Guix side does the same through ~maak test~: it rebuilds =build/ inside the
+pinned environment and runs the suite on a virtual X server with
+the X11 backend and an icon theme, so a CI runner with no compositor
+runs the real GTK tests instead of skipping them.  That is why the Guix
+manifest carries ~xvfb-run~ and ~adwaita-icon-theme~ alongside the compiler and
+Meson.
+
+*** Translations
+:PROPERTIES:
+:CUSTOM_ID: developing-translations
+:END:
+
+See [[#translations][Translation status]] above. ~po/~ is the place to be, and
+~maak i18n-update~ keeps the template in step with the source.
+
+------------------
+
+** Community & Support
+:PROPERTIES:
+:CUSTOM_ID: community
+:END:
+
+Join the ~lambdock~ community to ask questions, discuss development, share
+configurations, screenshots, report issues, or just hang out:
+
+- *Issues & development:* [[https://github.com/jjba23/lambdock][GitHub repository]]
+- *Chat, support, discussion, announcements (Zulip):*
+  [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
+
+If you're unsure where to start, Zulip is recommended. The GitHub issue tracker
+is also a good place to add ideas, report bugs or improvements.
+
+------------------
+
+** News and Changelog
+:PROPERTIES:
+:CUSTOM_ID: news
+:END:
+
+You can find the [[file:../NEWS.org][NEWS file with the Changelog here]], and the packaged
+release notes in [[file:../data/org.jointhefreeworld.lambdock.metainfo.xml][the AppStream metadata]].
+
+------------------
+
+** What people are saying
+:PROPERTIES:
+:CUSTOM_ID: what-people-say
+:END:
+
+See what people are saying about the ~lambdock~ project:
+
+- https://jointhefreeworld.org/blog/articles/gnu-linux/quest-for-eternal-dock/index.html
+- https://hackernoon.com/lambdock-a-hackable-wayland-dock-built-with-c-and-lisp
+- https://lobste.rs/s/lvspri/quest_for_eternal_dock_on_wayland
+- https://dev.to/jjba23/quest-for-eternal-dock-on-wayland-lambdock-c-gtk4-lisp-gnu-guile-scheme-1mm9
+- https://news.ycombinator.com/item?id=49476653

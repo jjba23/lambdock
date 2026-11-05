@@ -1,0 +1,434 @@
+#+title: How lambdock works
+#+author: Josep Jesus Bigorra Algaba
+#+email: jjbigorra@gmail.com
+#+language: en
+#+options: toc:nil num:nil html-style:nil
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
+
+[[file:../README.org][← lambdock]]
+
+* Wayland Toplevel Tracking & Popovers
+:PROPERTIES:
+:CUSTOM_ID: toplevel-tracking
+:END:
+
+~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly
+from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
+
+- *Single Window*: Left-clicking a running app launcher focuses and raises its
+  existing window surface.
+- *Multiple the taskbar era*: Left-clicking or right-clicking an app launcher with
+  multiple open instances opens a floating GTK Popover HUD.
+- *Popover Capabilities*: Select individual windows by title, close specific
+  window instances, open a new window, or execute a "Close All the taskbar era" command.
+- *App-specific entries*: the popover also carries the actions that belong to
+  the kind of application the item is. A browser gets *New Window* and *New
+  Private Window* (Firefox's ~--private-window~, Chrome/Chromium/Brave/Vivaldi's
+  ~--incognito~, Edge's ~--inprivate~, Opera's ~--private~); a running music
+  player gets *Play/Pause*, *Previous Track*, *Next Track* and *Stop Playback*,
+  sent over MPRIS. Applications are classified from their desktop entry's
+  ~Categories=~ (~WebBrowser~, ~Music~, ~Audio;Player~), with their id, name and
+  command line as the fallback, so a hand written Scheme item for Spotify is
+  understood as well as one that came from a desktop file.
+
+The playback controls are only there while the player is on the session bus
+(~org.mpris.MediaPlayer2.<instance>~), matched to the item by its app id or its
+name, so a pinned but closed player does not grow buttons that would do nothing.
+The window commands are always there, because launching a browser works whether
+it is running or not.
+
+Window tracking can be switched off entirely with ~dock-track-windows?~ for a
+dock that is purely a launcher, and specific applications can be kept out of the
+dock with ~dock-exclude-apps~.
+
+** Application Identity: App Ids, Desktop Entries and Names
+:PROPERTIES:
+:CUSTOM_ID: app-identity
+:END:
+
+Tracking a window means answering one question: which dock item is this? The only
+thing the compositor gives you is an application id (~xdg_toplevel.app_id~), and
+that id is whatever the toolkit set -- ~org.gnome.Nautilus~,
+~org.gnome.SystemMonitor~, ~wezterm~, ~google-chrome~, ~jetbrains-idea~,
+~Freebuff~, or sometimes nothing at all. It is not a name, and it is not an icon
+name either. ~lambdock~ resolves it against the applications actually installed on
+the machine, so the answer comes from the desktop file rather than from string
+guessing.
+
+*** The XDG desktop entry cache
+On first need, ~lambdock~ scans the freedesktop.org applications directories, in
+this order of precedence:
+
+1. =$XDG_DATA_HOME/applications= (=~/.local/share/applications=) -- your own
+   entries, and where JetBrains Toolbox, ~appimaged~ and friends install.
+2. The Flatpak exports, =$XDG_DATA_HOME/flatpak/exports/share= then
+   =/var/lib/flatpak/exports/share=, so a Flatpak wins over the distro package of
+   the same application.
+3. Every =$XDG_DATA_DIRS= entry (=/usr/share=, =/usr/local/share=, Guix and Nix
+   profiles, ...), which is where =/usr/share/applications/=.desktop files live.
+
+Each file's =[Desktop Entry]= group is parsed with the usual ~GKeyFile~
+localization, so ~Name[de]~ wins over ~Name~ in a German session, and the freedesktop
+field codes (~%f~, ~%U~, ~%i~, ...) are stripped out of ~Exec=~ so the command can
+be run as-is. The first file to provide an id wins, and =Hidden=true= or
+=NoDisplay=true= entries are dropped from the launcher list (though an override in
+your own directory still suppresses the system one, instead of resurfacing it).
+
+The result is kept in a cache: one array of entries plus a hash index, rebuilt
+whenever it is older than ~DESKTOP_CACHE_TTL_MS~ (60 seconds) or after
+~lambdock_desktop_cache_invalidate()~. Lookups are therefore a single hash probe
+on the hot path, but installing an application still shows up in the dock within a
+minute without a restart.
+
+*** Resolving an app id
+Every entry is indexed under all of the names an application can plausibly be
+reported as, so the match does not depend on the two sides spelling things the
+same way:
+
+- the desktop file's name (=org.gnome.SystemMonitor.desktop=) and its stem
+  (=org.gnome.SystemMonitor=);
+- ~StartupWMClass=~, the window class the application announces to the
+  compositor -- often the only link at all for Electron, Java and Flatpak apps;
+- the base name of the ~Exec=~ line (=idea= for the JetBrains entry, which is why
+  a pinned launcher running ~idea~ and a window reporting ~jetbrains-idea~ land on
+  the same item);
+- the last component of a reverse-DNS stem (=SystemMonitor=).
+
+All of these are compared case- and punctuation-insensitively (~org.gnome.Nautilus~,
+~org-gnome-nautilus~ and ~orggnomenautilus~ are one key), and a lookup that misses
+retries once without the vendor prefix, so ~SystemMonitor~ still finds
+~org.gnome.SystemMonitor~. A few real examples:
+
+| Compositor app id            | Resolved from       | Desktop entry                        |
+|------------------------------+---------------------+--------------------------------------|
+| ~org.gnome.SystemMonitor~    | desktop id          | =org.gnome.SystemMonitor.desktop=    |
+| ~jetbrains-idea~             | ~StartupWMClass=~   | =jetbrains-idea-<uuid>.desktop=      |
+| ~idea~                       | ~Exec=~ base name   | =jetbrains-idea-<uuid>.desktop=      |
+| ~org.pulseaudio.pavucontrol~ | desktop id          | =org.pulseaudio.pavucontrol.desktop= |
+| ~SystemMonitor~              | vendor-prefix retry | =org.gnome.SystemMonitor.desktop=    |
+
+A pinned launcher resolves the same way, from its own ~exec~, then its icon, then
+its ~app-id~, and remembers the entry it landed on. Matching compares those two
+canonical desktop ids first, which is what keeps a pinned launcher and its running
+window from appearing as two icons -- and keeps a pinned "Files" item tracking a
+window whose app id is ~org.gnome.Nautilus~ even though the item was written with
+~#:icon "nautilus"~.
+
+*** Names, and what to show when there is no desktop file
+Once an entry is found, the dock takes its ~Name=~ (localized), its ~Icon=~ and its
+~Exec=~ from it. That is the whole point: the item is called "System Monitor" and
+not ~org.gnome.SystemMonitor~, in the language of the session.
+
+Not every window has a desktop file (a self-built binary, a script, a Java
+launcher without an entry, a compositor reporting a debug id). Those still deserve
+a readable label, so the app id is turned into one: the =.desktop= suffix goes, the
+reverse-DNS vendor prefix goes, camel case and separators are split into words, and
+all-lowercase words are capitalised (acronyms are left alone).
+
+| App id                    | Derived name   |
+|---------------------------+----------------|
+| ~org.gnome.SystemMonitor~ | System Monitor |
+| ~google-chrome~           | Google Chrome  |
+| ~wezterm~                 | Wezterm        |
+| ~ZFSManager~              | ZFS Manager    |
+| ~Freebuff~                | Freebuff       |
+
+The same idea saves the icon: if a configured icon name is not resolvable at all
+(not a resource, not a file, not in the icon theme, not a ~-symbolic~ sibling), the
+resolved entry's ~Icon=~ is used instead. A preset that names ~pavucontrol~ will
+therefore still draw the icon that actually exists,
+~org.pulseaudio.pavucontrol~. When there is no entry either, the app id itself is
+used as the icon name, since icon themes often name an icon after the application.
+
+All of this is the C side of the dock -- ~src/ui/desktop_entry.c~ -- and needs no
+configuration. The launchpad and the drag-and-drop of =.desktop= files onto the
+dock use the same parsed entries, so there is exactly one interpretation of what an
+application is.
+
+------------------
+
+** Bi-Directionality of C and Guile Scheme
+:PROPERTIES:
+:CUSTOM_ID: c-guile-bidirectionality
+:END:
+
+~lambdock~ is not merely configured by Scheme. It has an embedded, extensible
+Lisp engine and runtime environment which complements a high-performance C
+application core and graphics engine. Execution flows bi-directionally between C
+and Guile.
+
+The entry point of the binary (~main.c~) boots the Guile interpreter using
+~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to
+manage state and extract settings.
+
+Scheme is not restricted to passive data declarations, as it can trigger actions
+inside the running C engine.
+
+#+begin_src mermaid
+flowchart LR
+    subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
+        direction TB
+        main["main()"] --> scm_boot_guile["scm_boot_guile()"]
+        scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
+        setup_primitives -- "Exports C Subrs" --> reload_dock["(reload-dock!)"]
+        reload_dock --> file_monitor["GFileMonitor / REPL Event"]
+        file_monitor --> reload_instance["reload_dock_instance()"]
+        reload_dock -- "Thread-safe<br/>g_idle_add()" --> reload_instance
+    end
+
+    subgraph GUILE_ENGINE["GUILE SCHEME ENGINE"]
+        direction TB
+        core["(lambdock core)"] --> init_dock["(init-dock!)"]
+        init_dock --> state["(lambdock state)"]
+        state --> start_repl["(start-repl!)"]
+        state --> getters_setters["Getters / Setters"]
+        getters_setters <--> repl_thread["Socket REPL Thread"]
+        repl_thread --> reload_dock
+    end
+
+    subgraph LIBGUILE["libguile.h"]
+    end
+
+    %% Cross-Boundary Inter-Runtime Connections
+    C_RUNTIME --> LIBGUILE
+    LIBGUILE -- "Calls Scheme<br/>Procedures" --> GUILE_ENGINE
+    GUILE_ENGINE --> LIBGUILE
+    LIBGUILE -- "Invokes C<br/>Primitives" --> C_RUNTIME
+
+    %% Subgraph Styles
+    style C_RUNTIME fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
+    style GUILE_ENGINE fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#c2410c,font-weight:bold
+
+    %% Class Definitions for Nodes
+    classDef cNode fill:#ffffff,stroke:#0284c7,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+    classDef guileNode fill:#ffffff,stroke:#ea580c,stroke-width:1.5px,color:#0f172a,rx:6px,ry:6px
+
+    %% Apply Classes
+    class main,scm_boot_guile,setup_primitives,reload_dock,file_monitor,reload_instance cNode
+    class core,init_dock,state,start_repl,getters_setters,repl_thread guileNode
+#+end_src
+
+#+begin_export html
+<details>
+  <summary>See <strong>a more detailed explanation here</strong></summary>
+#+end_export
+
+*** C → Guile (Embedding & Inspection)
+:PROPERTIES:
+:CUSTOM_ID: c-to-guile
+:END:
+
+- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and
+  evaluate the user's =~/.config/lambdock/settings.scm=.
+- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and
+  Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to
+  retrieve properties like ~get-dock-position~, ~get-dock-theme~, and
+  ~get-dock-items~.
+- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's
+  ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix
+  domain socket thread.
+
+*** Guile → C (Extending & Primitives)
+:PROPERTIES:
+:CUSTOM_ID: guile-to-c
+:END:
+
+- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses
+  ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside
+  the ~(lambdock core)~ module.
+- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly
+  calls the C function ~scm_reload_dock~.
+
+*** Thread-Safe Async Dispatch (~g_idle_add~)
+:PROPERTIES:
+:CUSTOM_ID: thread-safe-dispatch
+:END:
+
+Because the socket REPL server runs on a background Guile thread while GTK4
+requires all UI updates to occur on the main thread, calling GTK primitives
+directly from Scheme would cause thread panics.
+
+To solve this, ~lambdock~ bridges thread boundaries using GLib's ~g_idle_add~
+event loop dispatcher.
+
+For example, when ~(reload-dock!)~ is called over the socket REPL, C safely
+schedules the UI teardown and rebuild onto the GTK main loop without blocking or
+crashing the application.
+
+------------------
+
+#+begin_export html
+</details>
+#+end_export
+
+------------------
+
+** Animations
+:PROPERTIES:
+:CUSTOM_ID: animations
+:END:
+
+There are several approaches and layers to getting animations and smooth visual
+effects on the dock.
+
+Lambdock features a smooth, frame-clock-driven auto-hide mechanism powered by
+modern GTK4 APIs and the Wayland Layer Shell protocol; the timings a user actually
+sees are described in [[file:using-the-dock.org#auto-hide][Auto-hide]].
+
+Starting with the auto-hide feature, lambdock features a cubic ease-out spatial
+transition to give a smooth showing and hiding to screen edge (within 250ms), and
+synchronizes with display refresh rates (60 Hz, 120 Hz, etc.) using
+=gtk_widget_add_tick_callback=.
+
+Also the fish-eye effect (~dock-hover-animate?~) uses a cosine bell curve scaling
+for smooth zooming and sizing: magnification peaks at 1.45x within a 140-pixel
+radius of the pointer, and each item can opt out with ~#:hover-animate? #f~.
+
+Magnifying does not re-render the icons. Asking an icon theme for an icon is not
+free -- every new pixel size means a fresh lookup, decode and resample of the
+artwork -- and the first version of this effect asked for one per icon for every
+size the pointer passed through, which is tens of milliseconds of work per frame
+and why hovering felt heavy. Now each icon is resolved at the two sizes that
+matter (how it rests, and how big it gets) and painted through a
+=GskTransform=, so magnification is a matrix on the GPU: a slow sweep across the
+whole dock costs about 6% of a core instead of about 40%, and the icon follows the
+pointer continuously rather than stepping through whole pixels. Pointer events are
+also applied once per frame rather than once per event, so a high-rate mouse
+cannot do the same work twice before it is ever drawn.
+
+Of course, you are also free to add CSS ~transform~ directives or other things to
+your liking, e.g.
+
+#+begin_src css
+button.flat:hover {
+  transform: scale(1.15) translateY(-4px);
+}
+#+end_src
+
+------------------
+
+** Why Lisp (GNU Guile Scheme) ?
+:PROPERTIES:
+:CUSTOM_ID: why-lisp
+:END:
+
+Desktop docks traditionally rely on static configuration formats like
+[[https://www.json.org/][JSON]], [[https://en.wikipedia.org/wiki/INI_file][INI]], or
+[[https://yaml.org/][YAML]]. While straightforward, these formats force a compromise: adding dynamic
+behavior or custom logic requires writing C plugins or re-compiling the binary.
+
+~lambdock~ uses *GNU Guile Scheme* because desktop configuration shouldn't be
+limited to static key-value pairs. It should be an active, extensible programming
+environment.
+
+*** Live Interactive REPL & Inspectability
+:PROPERTIES:
+:CUSTOM_ID: live-repl
+:END:
+
+Lisp is built around live interactive development. With Guile embedded directly
+inside the C graphics core, you can connect a Unix domain socket REPL (via
+Emacs/Geiser or terminal tools like ~socat~) directly into the running dock
+process.  With ~lambdock~ you can inspect state variables, swap themes,
+dynamically insert launchers, or execute arbitrary Scheme functions on the fly,
+all without restarting the application or dropping Wayland frames.
+
+*** Power of Lisp
+:PROPERTIES:
+:CUSTOM_ID: power-of-lisp
+:END:
+
+- Clean and powerful abstractions to batch-generate config dynamically and
+  without boilerplate.
+- *S-Expression Templating:* Use meta-programming, quasiquoting and macro
+  expansion for Lisp super powers
+  ([[https://www.gnu.org/software/guile/manual/html_node/Quasiquote.html][quasiquote]],
+  [[https://www.gnu.org/software/guile/manual/html_node/Macros.html][macros]]).
+- *Code that writes code* for a deep system integration with your OS, as
+  demonstrated in my
+  [[https://codeberg.org/jjba23/heks-linux/src/branch/trunk/src/heks-linux/lambdock.scm][Heks GNU/Linux lambdock config]].
+
+*** Bi-Directional C / Guile Interop
+:PROPERTIES:
+:CUSTOM_ID: interop
+:END:
+
+Guile is engineered from the ground up as the official GNU extension language.
+Through the ~libguile~ API, execution flows seamlessly in both directions. This
+gives many interesting advantages, and it is what allows the same process to own
+both the rendering and the language you control it with.
+
+------------------
+
+** On Reproducibility: Why GNU Guix?
+:PROPERTIES:
+:CUSTOM_ID: reproducibility
+:END:
+
+A build should never fail because "it worked on my machine." Reliable software
+development requires explicit, bit-for-bit reproducibility and a functional
+approach to package management
+([[https://guix.gnu.org/manual/en/html_node/Introduction.html][the Guix manual]]) and
+system deployment.
+
+#+BEGIN_EXPORT html
+<a href="https://guix.gnu.org/">
+  <img src="https://jointhefreeworld.org/ggg/dist/gnu-guix.svg" alt="GNU Guix logo" style="max-width: 250px; width: 100%; height: auto;" />
+</a>
+#+END_EXPORT
+
+- *Declarative Build Graphs:* Packages are pure functions of their inputs with no
+  implicit system state.
+- *Programmable with Guile:* Full system and package configurations written in
+  [[https://www.gnu.org/software/guile/][Guile Scheme]] rather than rigid DSLs or
+  static files.
+- *Time Travel:* Rebuild the exact system state from any point in git history
+  using
+  [[https://guix.gnu.org/manual/en/html_node/Invoking-guix-time_002dmachine.html][guix time-machine]].
+- *Atomic Operations:* Instantly upgrade or roll back environments without
+  leaving orphaned dependencies or broken states.
+- *Unified Tooling:* One tool manages development shells, isolated containers,
+  package builds, and full system configurations.
+
+And for the Nix people, ~flake.nix~ and ~package.nix~ provide the same guarantees
+in their ecosystem: the flake pins ~nixpkgs~, builds the C core with Meson, and
+runs the test suite under ~xvfb~ with a private DBus session, so ~nix flake check~
+means something.
+
+------------------
+
+** Why lambdock? A comparison table
+:PROPERTIES:
+:CUSTOM_ID: comparison
+:END:
+
+While tools like [[https://github.com/Alexays/Waybar][Waybar]] and
+[[https://github.com/elkowar/eww][EWW]] excel as status bars or custom widget
+dashboards, ~lambdock~ is specifically engineered as a hyper-hackable,
+Wayland-native high-performance application dock with an embedded Lisp engine and
+full GTK4 graphics core.  The comparison names other docks, toolkits and the shelf look
+APIs; [[file:getting-started.org#glossary][the glossary]] says what each one is.
+
+| Feature / Dimension               | ~lambdock~                         | Cairo-Dock / Plank | Waybar             | EWW / Bar Engines     | reference dock        |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Primary Design Target             | Application Dock                   | Application Dock   | Top/Bottom Bar     | Widget Dashboard      | Application Dock  |
+| Wayland Native (~wlr-layer-shell~) | ✅                                 | ❌ (X11 / WNCK)    | ✅                 | ✅                    | (the shelf look Quartz)    |
+| UI Toolkit & Graphics Core        | GTK4 (GL / GSK)                    | GTK2 / GTK3        | GTK3               | GTK3 / Cairo          | Cocoa / Metal     |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Config & Scripting Engine         | GNU Guile Scheme (Lisp)            | Static INI / C     | JSON / JSONC       | yuck (Custom DSL)     | Static plist      |
+| Multi-Dock Instances (Files)      | ✅ Dynamic (~settings-*.scm~)      | ⚠️ Limited         | ⚠️ Multi-bar config| ⚠️ Multi-bar config   | ❌ Single dock    |
+| Live Interactive Socket REPL      | ✅ (Emacs/Geiser, ~socat~)         | ❌                 | ❌                 | ❌                    | ❌                |
+| Hot-Reloading                     | ✅ Runtime Code, Docks & CSS  | ❌                 | ⚠️ Config/CSS      | ✅ Config/CSS         | ❌ (~killall Dock~) |
+| Thread-Safe Async Dispatch        | ✅ GLib ~g_idle_add~               | ❌                 | ⚠️ Thread sync     | ⚠️ IPC daemon         | ✅ GCD / Dispatch |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Wayland Window Tracking           | ✅ ~zwlr_foreign_toplevel_v1~      | ❌ (X11 only)      | ⚠️ Taskbar module  | ❌ (External scripts) | (the shelf look Server)    |
+| Multi-Instance Window HUD         | ✅ Focus / Close / Close-All     | ⚠️ Basic menu      | ⚠️ Basic menu      | ❌ Manual IPC         | ⚠️ Basic menu      |
+| Dynamic Polling Widgets           | ✅ Scheme Thunks (RAM/CPU/Clock)   | ⚠️ C Plugins       | ✅ Custom modules  | ✅ Yuck pollers       | ❌ Static         |
+| Hover Magnification (Fish-eye)    | ✅ Cosine-Bell (Per-Item Toggle)   | ✅ (X11 composite) | ❌                 | ❌                    | ✅ Native         |
+| Dock Viewport Scrolling           | ✅ Mouse Wheel / Touchpad          | ❌                 | ❌                 | ❌                    | ❌                |
+| Smooth Auto-Hide Animations       | ✅ Frame-Clock Eased Slide         | ⚠️ Basic           | ⚠️ Basic           | ⚠️ CSS transitions    | ✅ Native         |
+|-----------------------------------+------------------------------------+--------------------+--------------------+-----------------------+-------------------|
+| Metaprogramming & Macros          | ✅ S-Exprs & Quasiquoting          | ❌                 | ❌                 | ⚠️ Limited yuck       | ❌                |
+| Hermetic Guix & Nix Packaging     | ✅ ~guix.scm~ + ~flake.nix~        | ❌                 | ⚠️ Distro packages | ⚠️ Distro packages   | ❌ Proprietary OS |
+| Preset Launcher Builders          | ✅ ~preset-launchers-for~          | ❌                 | ❌                 | ❌                    | ❌ Drag-and-drop  |
+| Whole-Dock Looks (one-line recipes)| ✅ 20 recipes (~dock-look~)        | ⚠️ Fixed themes    | ❌                 | ⚠️ Hand-written config| ❌ (SIP)          |

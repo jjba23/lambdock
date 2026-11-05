@@ -15,6 +15,21 @@ Nothing yet.
 
 *[Released]*
 
+** v1.1.0 (2026-11-05)
+- *The guide is a set of pages now, not one file.*  =README.org= was 3258 lines
+  long and ran the feature list, the manual, the internals, the community pages
+  and the licence together.  It is now a landing page -- features, a
+  documentation index, the licence, the project links -- and the manual lives in
+  eight pages under =docs/=, one per thing you are trying to do: getting
+  started, using the dock, configuration, theming and the shelf, the live REPL,
+  how it works, developing, and contributing.  Every heading kept its
+  =CUSTOM_ID=, and every cross-reference was rewritten to the page that now owns
+  the section, including the ones in =HACKING.org= and =NEWS.org=.
+- *The links are checked, not assumed.*  Every =file:= link and every =#anchor=
+  in the guide was resolved against the tree by following it: 0 broken.
+- This is the first 1.x release; the 0.x line ended at 0.23.1.  No code changed
+  in this release.
+
 ** v0.23.1 (2026-11-05)
 - *One reader for the settings, so the CSS cannot lag behind them.*  Startup
   (=dock_state_read_config()= in =main.c=) and a hot reload
@@ -353,7 +368,7 @@ nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
   =shelf.css= used to impose on them, in pale glass and in smoked glass. All
   three new themes are in the Preferences dropdown, in the GResource bundle and
   documented with their numbers.
-- *The README documents the recipes.* A new [[#looks][Looks]] section tabulates
+- *The README documents the recipes.* A new [[file:docs/theming.org#looks][Looks]] section tabulates
   every recipe (theme, icons, spacing, end padding, overhang, front glass,
   keystone and mirror band) and explains what those numbers buy, with the
   measurements the shelf look ones came from.
