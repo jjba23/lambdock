@@ -673,6 +673,40 @@ void populate_dock_items_for(LambdockState *state) {
   update_dock_dimensions(state);
 }
 
+/**
+ * dock_read_settings:
+ * @state: dock state whose config_path names the settings file.
+ *
+ * Reads every value the dock takes from the settings file, in one place: the
+ * theme and the mode flags the stylesheet depends on, the shelf geometry, and
+ * the sizes the row is built from. Startup and a reload both go through here,
+ * so neither can drift into reading a different subset of the other -- and the
+ * sizes are already current when load_custom_css() asks the shelf for its band.
+ */
+void dock_read_settings(LambdockState *state) {
+  if (!state)
+    return;
+
+  g_free(state->theme);
+  state->theme = get_theme_config_for(state->config_path);
+
+  /* Mode flags: the taskbar and window-title modifiers are attached from them,
+   * so they are read before the stylesheet is loaded. */
+  state->taskbar = get_taskbar_config_for(state->config_path);
+  state->show_window_titles =
+      get_show_window_titles_config_for(state->config_path);
+  get_shelf_config_for(state->config_path, &state->shelf);
+
+  state->auto_hide = get_autohide_config_for(state->config_path);
+  state->track_windows = get_track_windows_config_for(state->config_path);
+  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
+  state->hover_animate = get_hover_animate_config_for(state->config_path);
+  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
+  state->icon_size = get_icon_size_config_for(state->config_path);
+  state->item_spacing = get_item_spacing_config_for(state->config_path);
+  state->capsule_padding = get_capsule_padding_config_for(state->config_path);
+}
+
 /* =================================================================================
  * DOCK LAYOUT OVERRIDES (drag and drop persistence)
  * =================================================================================

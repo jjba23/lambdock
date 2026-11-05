@@ -1776,37 +1776,22 @@ static DockModeSnapshot reload_appearance(LambdockState *state) {
       .shelf = state->shelf,
   };
 
-  g_free(state->theme);
-  state->theme = get_theme_config_for(state->config_path);
-
-  /* Mode flags refresh before the CSS so the taskbar modifier stylesheet is
-   * (un)loaded to match. */
-  state->taskbar = get_taskbar_config_for(state->config_path);
-  state->show_window_titles =
-      get_show_window_titles_config_for(state->config_path);
-  get_shelf_config_for(state->config_path, &state->shelf);
-
+  /* One reader, before the CSS: it fills the mode flags *and* the icon size the
+   * shelf's band is computed from, so the stylesheet is never built from the
+   * size the previous reload happened to leave behind. */
+  dock_read_settings(state);
   load_custom_css(state);
 
   return before;
 }
 
-/** Re-reads the geometry and behaviour settings. */
-static void reload_settings(LambdockState *state) {
+/** Applies the settings a widget takes once it exists. */
+static void apply_settings(LambdockState *state) {
   /* A pending auto-hide timeout would fire against the layout being replaced. */
   if (state->hide_timer_id != 0) {
     g_source_remove(state->hide_timer_id);
     state->hide_timer_id = 0;
   }
-
-  state->auto_hide = get_autohide_config_for(state->config_path);
-  state->track_windows = get_track_windows_config_for(state->config_path);
-  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
-  state->hover_animate = get_hover_animate_config_for(state->config_path);
-  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
-  state->icon_size = get_icon_size_config_for(state->config_path);
-  state->item_spacing = get_item_spacing_config_for(state->config_path);
-  state->capsule_padding = get_capsule_padding_config_for(state->config_path);
 
   if (state->box)
     gtk_box_set_spacing(GTK_BOX(state->box), state->item_spacing);
@@ -1902,7 +1887,7 @@ void reload_dock_instance(LambdockState *state) {
              state->config_path ? state->config_path : "default");
 
   DockModeSnapshot before = reload_appearance(state);
-  reload_settings(state);
+  apply_settings(state);
   apply_edge_change(state, get_position_config_for(state->config_path));
   reload_items(state);
 

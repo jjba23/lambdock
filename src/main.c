@@ -810,24 +810,6 @@ static void setup_monitor_listeners(GtkApplication *app) {
  */
 
 /** Reads everything the dock needs out of the settings file into @state. */
-static void dock_state_read_config(LambdockState *state) {
-  /* Mode flags are resolved BEFORE the CSS is loaded, so the taskbar modifier
-   * stylesheet is applied when taskbar mode or window titles are enabled. */
-  state->taskbar = get_taskbar_config_for(state->config_path);
-  state->show_window_titles =
-      get_show_window_titles_config_for(state->config_path);
-  get_shelf_config_for(state->config_path, &state->shelf);
-
-  state->auto_hide = get_autohide_config_for(state->config_path);
-  state->track_windows = get_track_windows_config_for(state->config_path);
-  state->show_when_clear = get_show_when_clear_config_for(state->config_path);
-  state->hover_animate = get_hover_animate_config_for(state->config_path);
-  state->reduce_motion = get_reduce_motion_config_for(state->config_path);
-  state->icon_size = get_icon_size_config_for(state->config_path);
-  state->item_spacing = get_item_spacing_config_for(state->config_path);
-  state->capsule_padding = get_capsule_padding_config_for(state->config_path);
-}
-
 /** The scrolling content viewport: the item box inside a scroller. */
 static GtkWidget *dock_viewport_build(LambdockState *state) {
   GtkWidget *scrolled_window = gtk_scrolled_window_new();
@@ -995,7 +977,8 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
                            ? GTK_ORIENTATION_VERTICAL
                            : GTK_ORIENTATION_HORIZONTAL;
 
-  dock_state_read_config(state);
+  /* One reader for the whole settings file, shared with the reload path. */
+  dock_read_settings(state);
 
   state->window = gtk_application_window_new(app);
   /* A window without a title is announced as an unnamed frame; name the dock so
@@ -1003,7 +986,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   gtk_window_set_title(GTK_WINDOW(state->window), _("Lambdock dock"));
 
   /* The theme stylesheet needs the window's CSS context, hence this order. */
-  state->theme = get_theme_config_for(state->config_path);
   load_custom_css(state);
 
   dock_widgets_build(state);

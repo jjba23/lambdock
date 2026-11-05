@@ -49,6 +49,8 @@ static void make_fixtures(void) {
              "(define dock-position 'bottom)\n"
              "(define dock-theme 'vanilla)\n"
              "(define dock-icon-size 48)\n"
+             "(define dock-item-spacing 7)\n"
+             "(define dock-capsule-padding 9)\n"
              "(define dock-shelf-margin 24)\n"
              "(define dock-shelf-front 14)\n"
              "(define dock-reflection 0.3)\n"
@@ -80,6 +82,33 @@ static void make_fixtures(void) {
   g_free(config_dir);
   g_free(prefs);
   g_free(layout);
+}
+
+/* Startup and a hot reload must read the settings through the same reader: when
+ * they each read their own subset, the CSS could be built from an icon size the
+ * reload had not updated yet, and a key added to one path was silently missing
+ * from the other. */
+static void check_settings_read_in_one_pass(void) {
+  LambdockState state = {0};
+  state.config_path = config_path;
+
+  dock_read_settings(&state);
+
+  g_assert_cmpstr(state.theme, ==, "platinum-dark");
+  g_assert_cmpint(state.icon_size, ==, 48);
+  g_assert_cmpint(state.item_spacing, ==, 7);
+  g_assert_cmpint(state.capsule_padding, ==, 9);
+  g_assert_false(state.taskbar);
+  g_assert_false(state.show_window_titles);
+  g_assert_cmpint(state.shelf.margin_px, ==, -18);
+  g_assert_cmpint(state.shelf.front_px, ==, 14);
+
+  /* The stylesheet asks the shelf for its band from this icon size, so both
+   * have to be current by the time load_custom_css() runs. */
+  g_assert_cmpint(lambdock_shelf_geometry_for(&state, state.icon_size).band_px,
+                  ==, (int)lround(48 * 0.3));
+
+  g_free(state.theme);
 }
 
 static void check_overrides_apply(void) {
@@ -174,6 +203,7 @@ static void load_and_check(void *data) {
   load_dock_config_scm(config_path);
 
   check_overrides_apply();
+  check_settings_read_in_one_pass();
   check_row_layout_is_derived();
 }
 

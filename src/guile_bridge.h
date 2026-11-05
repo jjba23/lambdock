@@ -62,6 +62,16 @@ int get_capsule_padding_config_for(const char *config_path);
  * Evaluates configured dock launchers from Scheme for state->config_path
  * and populates dock items into the GTK box container and tracking lists.
  */
+/**
+ * dock_read_settings:
+ * @state: dock state whose config_path names the settings file.
+ *
+ * The one reader for everything the dock takes from its settings: theme, mode
+ * flags, shelf geometry, behaviour and sizes. Startup and a hot reload both
+ * call it, so a value cannot be read on one path and forgotten on the other.
+ */
+void dock_read_settings(LambdockState *state);
+
 void populate_dock_items_for(LambdockState *state);
 
 /**
