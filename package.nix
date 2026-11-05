@@ -28,7 +28,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "1.1.0";
+  version = "1.2.0";
 
   strictDeps = true;
   __structuredAttrs = true;

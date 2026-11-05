@@ -15,6 +15,40 @@ Nothing yet.
 
 *[Released]*
 
+** v1.2.0 (2026-11-05)
+- *The showcase runs faster, is less zoomed in, and ends on the settings this
+  machine runs.*  The encoder plays the result at =--speed= (default 1.25x) in a
+  lossless =setpts= pass of its own -- folding it into the composite filter is
+  silently undone by the overlay's frame clock -- and the nested session records
+  at scale 1.5 instead of 2.0, so a 48 px icon no longer fills 4.3% of the frame.
+  Ordered (bayer) dithering replaces error diffusion, which the brighter
+  wallpapers had inflated to 20 MiB, and the frame is 1080 px at 18 fps.  The storyboard gains a closing scene that types one form into the
+  dock's REPL -- Platinum, shelf margin -17, shelf front 14, capsule padding 8,
+  item spacing 5, 48 px icons, reflection 0.3 with the intensity and blur the
+  file sets -- which are the values in =~/.config/lambdock/settings.scm= and the
+  overrides in =~/.local/state/lambdock/preferences-settings.scm=.
+- *Each theme arrives on a wallpaper of its own temperature, and the wallpaper
+  is visible.*  The galaxy and the mountain haze were darkened until they read as
+  black; both are brightened, the vignette is softened, and the recorder derives
+  a warm dusk and a blue ocean from them.  The montage switches wallpaper with
+  the theme family: galaxy for the dark themes, mountain haze for the light ones,
+  dusk under the Platinum slab, ocean under the taskbar looks.
+- *The demo's own windows leave when they are in the way.*  A stray calculator or
+  terminal sat behind the REPL and theme scenes; the storyboard now closes the
+  tools it launched before those scenes, so the frame only holds what the caption
+  describes.
+- *The rename's collateral damage is repaired.*  The v0.23.0 sweep that removed
+  the desktop names also rewrote the word "Windows" inside prose and inside one
+  user-visible string: the window popover offered "Close All the taskbar era",
+  and a dozen paragraphs said "the taskbar era" where they meant the taskbar.
+  The row is "Close All" again, its translations keep their text under the new
+  msgid, and the prose says what it means.
+- *The manual is written in the register of the thing it describes.*  The landing
+  page states the design argument -- a C renderer, a Scheme policy layer, the
+  dock as the fixed point of a program you can rewrite -- and each guide page
+  opens by saying what it is for instead of greeting the reader.  No behaviour
+  changed in this release beyond the popover label.
+
 ** v1.1.0 (2026-11-05)
 - *The guide is a set of pages now, not one file.*  =README.org= was 3258 lines
   long and ran the feature list, the manual, the internals, the community pages
@@ -345,7 +379,7 @@ nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
   defaults, so cycling through the looks never inherits a geometry from the look
   before it. Each recipe is unit tested for completeness and range, and so is the
   loader's "the file wins over the recipe" order.
-- *Five the taskbar era themes, one consistent family.* Aurora (~'aurora~,
+- *Five taskbar themes, one consistent family.* Aurora (~'aurora~,
   glass glass: a near-black bar that is almost transparent at the top under one
   very bright specular line, glass task buttons that stay invisible until hover
   or a running window, and a lit -- rather than depressed -- focused tile) and
@@ -581,7 +615,7 @@ nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
   change issued between two reloads lands in the same redraw as the neighbouring
   theme and paints the wrong pair.
 - The Preferences scene of the recording shows the dialog on its own.  Two
-  things were wrong: the window popover's *Close All the taskbar era* row was being
+  things were wrong: the window popover's *Close All* row was being
   clicked twenty pixels into the separator below it (the row coordinates had been
   measured against an older layout, and the rows are anchored from the bottom so
   the number of windows moves them), so the demo's terminals never closed and
@@ -595,7 +629,7 @@ nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
 - The taskbar scene is captioned for what it shows.  It said "with window
   titles", but the label taskbar mode adds for a running window is measured away
   in this layout -- the button is allocated less than its content asks for and
-  the title ellipsizes to "..." -- so the scene now says "Or a the taskbar era XP-style
+  the title ellipsizes to "..." -- so the scene now says "Or a Luna-style
   taskbar" and the recording no longer promises a detail that is not on screen.
   The toggle itself is unchanged and still in Preferences.
 
@@ -682,7 +716,7 @@ nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
 - Polish: the launchpad fades in when it opens (and simply appears when motion is
   reduced), and every shipped theme was checked against GTK's CSS parser at
   runtime -- all of them parse clean.
-- The the taskbar era XP theme was rebuilt against Luna reference material: a flat blue
+- The Luna theme was rebuilt against Luna reference material: a flat blue
   slab with a single bright top line instead of a glossy mirrored gradient, square
   task buttons with one 1px blue border instead of a white outline on every icon,
   pinned launchers with no chrome at all (like Quick Launch), Tahoma-sized 11px

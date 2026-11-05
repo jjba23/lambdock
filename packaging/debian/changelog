@@ -1,3 +1,14 @@
+lambdock (1.2.0-1) unstable; urgency=medium
+
+  * New upstream release: the showcase recording plays 1.25x faster, switches
+    wallpaper with each theme family and closes by applying the settings this
+    machine runs (Platinum shelf at -17, 48 px icons, 5 px spacing) to the live
+    dock over its REPL. The window popover row mangled by the v0.23.0 rename --
+    "Close All the taskbar era" -- reads "Close All" again, and the manual is
+    rewritten in a technical register.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 05 Nov 2026 21:30:00 +0100
+
 lambdock (1.1.0-1) unstable; urgency=medium
 
   * New upstream release: the manual is split into eight pages under docs/,
