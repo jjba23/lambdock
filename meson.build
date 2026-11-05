@@ -9,7 +9,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '1.2.0',
+  version: '1.2.1',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -293,6 +293,14 @@ test_env = environment()
 # accessibility bus, so those assertions run on headless CI instead of aborting
 # when the environment turns accessibility off with `GTK_A11Y=none'.
 test_env.set('GTK_A11Y', 'test')
+# Icons resolve through the desktop's icon theme, so the suites inherited
+# whatever the developer runs (Tela, Papirus, a theme without
+# `utilities-terminal'): `create_dock_item' then logged its fallback warning,
+# which GLib's fatal-warning policy turns into an abort. The fixture settings
+# pin Adwaita, whose symbolic set has the icon, so the result does not depend on
+# the machine. XDG_CONFIG_HOME points at the parent of `gtk-3.0'.
+test_env.set('XDG_CONFIG_HOME',
+  meson.project_source_root() / 'tests' / 'xdg-config')
 
 test_stubs = files('tests/test_stubs.c')
 
