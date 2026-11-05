@@ -1,3 +1,12 @@
+lambdock (1.2.1-1) unstable; urgency=medium
+
+  * New upstream release: the unit tests pin the icon theme they resolve against
+    instead of inheriting the desktop's, which aborted the accessibility and
+    dock-item suites on machines whose theme lacks utilities-terminal. No
+    behaviour changed.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 05 Nov 2026 22:15:00 +0100
+
 lambdock (1.2.0-1) unstable; urgency=medium
 
   * New upstream release: the showcase recording plays 1.25x faster, switches

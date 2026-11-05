@@ -15,6 +15,18 @@ Nothing yet.
 
 *[Released]*
 
+** v1.2.1 (2026-11-05)
+- *The test suites no longer resolve icons through the icon theme of whoever
+  runs them.*  =create_dock_item= looks its icon up in the desktop theme and logs
+  a warning when the name is missing; GLib's fatal-warning policy turns that
+  warning into an abort, so =accessibility_unit_tests= and =dock_item_unit_tests=
+  failed on every machine whose theme lacks =utilities-terminal= -- Tela,
+  Papirus, a stock HiDPI desktop -- while passing on the maintainer's.  The
+  build now points =XDG_CONFIG_HOME= at =tests/xdg-config=, whose
+  =gtk-3.0/settings.ini= pins Adwaita, whose symbolic set carries the icon.  No
+  assertion changed: the icon still comes from a theme, just a named one, and the
+  suite is 32 of 32 green on a desktop that ships neither.
+
 ** v1.2.0 (2026-11-05)
 - *The showcase runs faster, is less zoomed in, and ends on the settings this
   machine runs.*  The encoder plays the result at =--speed= (default 1.25x) in a
@@ -22,8 +34,8 @@ Nothing yet.
   silently undone by the overlay's frame clock -- and the nested session records
   at scale 1.5 instead of 2.0, so a 48 px icon no longer fills 4.3% of the frame.
   Ordered (bayer) dithering replaces error diffusion, which the brighter
-  wallpapers had inflated to 20 MiB, and the frame is 1080 px at 18 fps.  The storyboard gains a closing scene that types one form into the
-  dock's REPL -- Platinum, shelf margin -17, shelf front 14, capsule padding 8,
+  wallpapers had inflated to 20 MiB, and the frame is 1080 px at 18 fps.  The
+  storyboard gains a closing scene that types one form into the dock's REPL -- Platinum, shelf margin -17, shelf front 14, capsule padding 8,
   item spacing 5, 48 px icons, reflection 0.3 with the intensity and blur the
   file sets -- which are the values in =~/.config/lambdock/settings.scm= and the
   overrides in =~/.local/state/lambdock/preferences-settings.scm=.

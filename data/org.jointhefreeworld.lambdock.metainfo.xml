@@ -77,6 +77,11 @@
   </screenshots>
 
   <releases>
+    <release version="1.2.1" date="2026-11-05">
+      <description>
+        <p>The unit tests no longer resolve icons through the icon theme of the desktop running them. They used whatever theme was configured, so on a desktop whose theme lacks utilities-terminal the dock logged its icon fallback and GLib's fatal-warning policy aborted the accessibility and dock-item suites. The build now pins the test icon theme to Adwaita through a fixture XDG_CONFIG_HOME; no assertion changed, and the suite is green on a machine that ships neither Adwaita's application icons nor utilities-terminal.</p>
+      </description>
+    </release>
     <release version="1.2.0" date="2026-11-05">
       <description>
         <p>The showcase recording plays 1.25x faster, shows each theme family on a wallpaper of its own temperature (galaxy, mountain haze, warm dusk, blue ocean) and closes by applying the settings this machine runs to the live dock: Platinum on its shelf at -17 with 48 px icons five pixels apart. The popover row that the previous rename had mangled reads "Close All" again, and the guide is rewritten in the register of the thing it describes.</p>
