@@ -1,3 +1,20 @@
+lambdock (0.23.0-1) unstable; urgency=medium
+
+  * New upstream release. Breaking: every theme and look is named after its
+    material instead of the desktop it was traced from, and the old names and
+    short aliases are removed. macos-tiger/osx-tiger is brushed,
+    snow-leopard/osx-snow-leopard is frost (dark: frost-dark),
+    macos-mavericks/osx-mavericks is platinum (dark: platinum-dark),
+    macos-big-sur/osx-big-sur is dune, macos-ventura/osx-ventura is stage,
+    macos-tahoe/osx-tahoe is glass (dark: glass-dark), windows-xp is luna,
+    windows-vista is aurora, windows-7 is seven, windows-10 is tiles,
+    windows-11 is island and unity is ambiance.
+  * Popover menus keep the dock's material: the shelf modifier no longer
+    repaints them, and every hovered row clears WCAG AA contrast.
+  * The shelf is laid out on the first frame rather than on the next reload.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 05 Nov 2026 09:00:00 +0100
+
 lambdock (0.22.2-1) unstable; urgency=medium
 
   * New upstream release: one fix. Every running application painted two
@@ -27,9 +44,9 @@ lambdock (0.22.1-1) unstable; urgency=medium
 
 lambdock (0.22.0-1) unstable; urgency=medium
 
-  * New upstream release: the Mavericks material is read off Dock.app's own
+  * New upstream release: the Platinum material is read off the reference dock's own
     artwork, and an icon dragged out of the dock leaves in a puff of smoke. The
-    10.9 install media carries the real Dock.app, so the platinum slab's lip, its
+    install media carries the reference dock, so the platinum slab's lip, its
     drop shadow, the running indicator, the folder panel and the separator are
     the images' own values: a 1px black lip with 2px of white in front of it,
     that white brightening from 0.56 at the dock's ends to 0.82 in the middle;
@@ -38,7 +55,7 @@ lambdock (0.22.0-1) unstable; urgency=medium
     panels; and a two-pixel engraved divider. The side-dock indicator is its own
     image rather than the bottom one rotated, the icon's contact shadow is an
     elliptical Gaussian pool again instead of a linear band, and the menus use
-    Dock.app's wording ("Open", "View content as"). Dragging an icon out of the
+    the reference dock's wording ("Open", "View content as"). Dragging an icon out of the
     dock plays the five-frame poof the real dock had, and the layout closes the
     gap once the smoke clears.
 
@@ -63,13 +80,13 @@ lambdock (0.21.0-1) unstable; urgency=medium
 lambdock (0.20.0-1) unstable; urgency=medium
 
   * New upstream release: two theme families and the dock's first whole-dock
-    recipes. macOS Tiger and Tahoe (light and dark) join Snow Leopard, Mavericks,
-    Big Sur and Ventura, which now carry their own 3D shelf material, and Windows
-    Vista (Aero Glass) and Windows 7 (Aero superbar) join XP, 10 and 11; the five
-    Windows looks are one family -- all taskbars, all 32px icons, all flat -- and
+    recipes. Brushed and Glass (light and dark) join Frost, Platinum,
+    Dune and Stage, which now carry their own 3D shelf material, and the
+    Aurora and Seven join Luna, Tiles and Island; the five
+    taskbar looks are one family -- all taskbars, all 32px icons, all flat -- and
     differ only where their era did. Twenty look recipes set the theme, the sizes,
     the shelf geometry, the window titles and the fisheye in one line
-    (`(define dock-look 'osx-mavericks-dark)`), with aliases and an
+    (`(define dock-look 'platinum-dark)`), with aliases and an
     `(apply-look!)` for the REPL. Every theme was audited state by state (focused
     window, labels, light-slab indicators), and theme scoping no longer loses a
     selector written across two lines. The launchpad loses its title and puts its
@@ -133,7 +150,7 @@ lambdock (0.8.1-1) unstable; urgency=medium
 
   * New upstream release: one dock implementation described by plain shelf
     options (no special modes or presets), ten documented recipes including
-    the OS X Mavericks platinum slab, and mirrored icon reflections.
+    the Platinum slab, and mirrored icon reflections.
 
  -- Josep Bigorra <jjbigorra@gmail.com>  Sun, 25 Oct 2026 13:20:00 +0100
 

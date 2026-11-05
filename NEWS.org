@@ -15,6 +15,68 @@ Nothing yet.
 
 *[Released]*
 
+** v0.23.0 (2026-11-05)
+*** BREAKING: every theme and look is named after its material
+The themes were named after the desktops they were modelled on, and the recipes
+kept a second, older spelling (`osx-mavericks` for the `macos-mavericks` theme).
+Both are gone: a theme and its look now carry one name that says what the
+material is, and the brand pages they were traced from no longer appear in the
+tree. The old spellings and every short alias are removed rather than kept as
+aliases, so a settings file that still uses one fails to resolve (the loader logs
+the unknown name and keeps the default). Migrate with this table:
+
+| Before                                              | After          |
+|-----------------------------------------------------+----------------|
+| =macos-tiger=, =osx-tiger=                           | =brushed=      |
+| =snow-leopard=, =osx-snow-leopard=                   | =frost=        |
+| =snow-leopard-dark=, =osx-snow-leopard-dark=         | =frost-dark=   |
+| =macos-mavericks=, =osx-mavericks=                   | =platinum=     |
+| =macos-mavericks-dark=, =osx-mavericks-dark=         | =platinum-dark=|
+| =macos-big-sur=, =osx-big-sur=                       | =dune=         |
+| =macos-ventura=, =osx-ventura=                       | =stage=        |
+| =macos-tahoe=, =osx-tahoe=                           | =glass=        |
+| =macos-tahoe-dark=, =osx-tahoe-dark=                 | =glass-dark=   |
+| =windows-xp=                                        | =luna=         |
+| =windows-vista=                                     | =aurora=       |
+| =windows-7=                                         | =seven=        |
+| =windows-10=                                        | =tiles=        |
+| =windows-11=                                        | =island=       |
+| =unity=                                             | =ambiance=     |
+
+The short aliases (=mavericks=, =tahoe-dark=, =xp=, =aero=, =win7=, =win10=,
+=win11=, ...) are removed with them; the only alias left is =taskbar= for
+=plain-taskbar=. =dock-theme= and =dock-look= now accept the same names, so
+=(define dock-look 'platinum)= and =(define dock-theme 'platinum)= agree.
+
+*** Popover menus wear the dock's material, with readable text
+Every theme already painted =popover > contents=, but the shelf modifier
+overrode all of them with one blue slab, and two hovers were unreadable: the
+Platinum glow put white text on a near-white gradient, and Brushed's pale blue
+tile did the same. The shelf modifier no longer touches menus, and every hover
+now clears WCAG AA (4.5:1) against its own background -- measured for all
+nineteen themes, the worst is 4.50:1 and the Platinum hover is 8.79:1.
+
+- *The shelf is laid out on the first frame, not on the next reload.*  Every
+  item's reflection slot is created hidden and only =update_dock_dimensions()=
+  makes it visible and gives it the band's height.  Startup ran that pass
+  before the row existed and never again, so until something reloaded the dock
+  (the Preferences window, a drag, a =set-dock-*= call from the REPL) the band
+  took no room and the icons sat one band lower than the shelf expects -- the
+  shelf numbers were read correctly, but they only reached the row on a reload.
+  The row builder now re-derives the row-dependent layout once the items are
+  appended, which is the same pass a reload runs.
+- *One formula for the overlay's cross size.* =dock_cross_axis_dim()=, which the
+  auto-hide margin is computed from, repeated the arithmetic of
+  =lambdock_dock_dims_compute()=.  It now calls it, so the room the dock is
+  hidden by and the surface it asks for cannot drift apart.
+- *The runtime state paths are named in one place.* =(lambdock layout)= and
+  =(lambdock prefs)= each carried their own copy of the XDG state directory, the
+  settings-file stem and the recursive =mkdir=.  =(lambdock loader)= owns them
+  now, so both files land next to each other by construction.
+
+
+*[Released]*
+
 ** v0.22.2 (2026-11-02)
 - *One running indicator, not two.*  Every running app showed the theme's dot at
   the bottom of its button *and* the shelf's bead on the glass.  The rule meant to
@@ -52,9 +114,9 @@ Nothing yet.
   the reload it triggers saw the value from *before* the edit.
 
 ** v0.22.0 (2026-11-02)
-- *The Mavericks shelf is measured off Dock.app's own artwork now.*  The 10.9
+- *The Platinum shelf is measured off the reference dock's own artwork now.*  The 10.9
   install media ships =Essentials.pkg=, which carries the real
-  =System/Library/CoreServices/Dock.app=, so the two Mavericks themes stopped
+  =System/Library/CoreServices/the reference dock=, so the two Platinum themes stopped
   being a reading of screenshots and started being a reading of the source
   images:
   - =frontline.png= is the outer lip, and it is not the grey 3px band the theme
@@ -76,7 +138,7 @@ Nothing yet.
     =separator.png='s 0.24/0.26; the real image is sheared 22px over its 66px of
     height because it is painted on a tilted floor, and the theme keeps it
     vertical because the look runs with =shelf-tilt= 0.
-  - =stackbackground-*.png= is the real stack panel, so the Mavericks themes now
+  - =stackbackground-*.png= is the real stack panel, so the Platinum themes now
     dress the folder popover in it: charcoal rgb(33,33,33) at 0.85, a 2px
     rgb(200,200,200) band at 0.35 inside the top and left edges, a 1px near-black
     outline and a nine-pixel rounding (the 40x40 corner tiles are mostly shadow
@@ -102,8 +164,8 @@ Nothing yet.
     width until it clears so the remaining icons close the gap afterwards.  Both
     halves are tested: the cloud headlessly, the widget in a real window.
   - The dock's menu wording follows =DockMenus.plist=: "Open" for launching an
-    application, for a stack and for the trash (Apple's ~OPEN~), and "View content
-    as a grid/list" for the stack panel's view switch (Apple's ~SHOW_AS~).  The
+    application, for a stack and for the trash (the reference dock's ~OPEN~), and "View content
+    as a grid/list" for the stack panel's view switch (the reference dock's ~SHOW_AS~).  The
     pot was regenerated (which also dropped the long-gone "Fan") and the seven
     catalogues carry the new "Open".
 
@@ -209,70 +271,70 @@ Nothing yet.
   hover and pressed states, the running indicator (~running-app~), the *focused*
   window (~window-focused~), the minimized dimming (~window-minimized~) and the
   running window's title (~window-title-label~). That set was audited across all
-  nineteen themes and filled in where it was missing: Windows 10 now draws the
-  long accent underline for the focused window and Windows 11 the wide pill (both
+  nineteen themes and filled in where it was missing: Tiles now draws the
+  long accent underline for the focused window and Island the wide pill (both
   had a single running indicator before), and the nine themes that never coloured
   the window-title label now do -- which is what made titles invisible on the
-  light slabs. Two fidelity fixes came out of the same pass: the light macOS
-  docks (Tiger, Snow Leopard, Mavericks) get a **dark** running dot and dark
+  light slabs. Two fidelity fixes came out of the same pass: the light the shelf look
+  docks (Brushed, Frost, Platinum) get a **dark** running dot and dark
   labels, because a white glow vanishes into pale glass, while their dark
-  siblings, Big Sur, Ventura and Tahoe keep the white one; and the dot the glass
+  siblings, Dune, Stage and Glass keep the white one; and the dot the glass
   shelf paints itself (C side) now sits on a soft shadow, so the white bead also
-  reads on the platinum and Aqua slabs without changing how it looks on dark
+  reads on the platinum and gloss slabs without changing how it looks on dark
   glass. The five stock themes (vanilla, vanilla-light, solarized-light, nature,
-  unity) widen and brighten their glow pill for the focused window, so every look
+  ambiance) widen and brighten their glow pill for the focused window, so every look
   says which app you are in.
 - *Scoping no longer loses a selector.* =theme_scope_css_selectors()= walks CSS
   line by line, and a selector list written across two lines
   (=button.window-focused,= / =:hover {=) had its first selector passed through
   *unscoped* -- so it applied to every dock and to the rest of the application.
   That is how one theme's indicator ended up painted under another theme's icons,
-  and it was latent in =shelf.css= and =windows-xp.css= before this release. The
+  and it was latent in =shelf.css= and =luna.css= before this release. The
   scoper now accumulates the selector text until the block opens, and three unit
   tests cover multi-line lists (including one that starts with =window=).
 - *A look carries the manners, not just the numbers.* The recipes now set
-  ~hover-animate?~ too: the OS X docks magnify the icons under the pointer and
-  every look descended from them turns the fisheye on, while the five Windows
-  taskbars and the plain taskbar lay it off, because no Windows taskbar ever
-  magnified anything. ~(apply-look! 'windows-11)~ therefore turns the fisheye off
-  and ~(apply-look! 'osx-tahoe)~ turns it back on.
+  ~hover-animate?~ too: shelf docks magnify the icons under the pointer and
+  every look descended from them turns the fisheye on, while the five taskbar
+  taskbars and the plain taskbar lay it off, because no taskbar ever
+  magnified anything. ~(apply-look! 'island)~ therefore turns the fisheye off
+  and ~(apply-look! 'glass)~ turns it back on.
 - *Looks: a whole dock in one line.* A theme gives the dock its material, but a
   dock is also a set of numbers -- icon size, spacing, end padding, dock or
   taskbar, and the eight glass-shelf parameters. Those numbers belong together,
   and they now do: =scheme/lambdock/looks.scm= ships twenty complete recipes,
-  one per shipped theme, from Tiger's flat Aqua strip and Snow Leopard's 3D
-  shelf to Mavericks (light and dark), Tahoe's Liquid Glass and the five Windows
+  one per shipped theme, from Brushed's flat gloss strip and Frost's 3D
+  shelf to Platinum (light and dark), Glass's Liquid Glass and the five taskbar
   taskbars (XP, Vista, 7, 10, 11). A settings file says
-  ~(define dock-look 'osx-mavericks-dark)~ and gets the dock of that desktop;
+  ~(define dock-look 'platinum-dark)~ and gets the dock of that desktop;
   anything it defines itself still wins over the
   recipe, and so do the choices made in the Preferences window. Short names and
   theme names are aliases (~'mavericks~, ~'tahoe-dark~, ~'xp~, ~'aero~,
   ~'seven~, ~'taskbar~), an unknown name is a warning instead of a broken
-  config, and ~(apply-look! 'osx-snow-leopard)~ applies one to the running dock.
+  config, and ~(apply-look! 'frost)~ applies one to the running dock.
   Every
   recipe writes *all* of its numbers, including the ones that happen to be the
   defaults, so cycling through the looks never inherits a geometry from the look
   before it. Each recipe is unit tested for completeness and range, and so is the
   loader's "the file wins over the recipe" order.
-- *Five Windows themes, one consistent family.* Windows Vista (~'windows-vista~,
-  Aero glass: a near-black bar that is almost transparent at the top under one
+- *Five the taskbar era themes, one consistent family.* Aurora (~'aurora~,
+  glass glass: a near-black bar that is almost transparent at the top under one
   very bright specular line, glass task buttons that stay invisible until hover
   or a running window, and a lit -- rather than depressed -- focused tile) and
-  Windows 7 (~'windows-7~, the Aero superbar: taller, bluer, darker, a thinner
+  Seven (~'seven~, the glass superbar: taller, bluer, darker, a thinner
   specular line, and buttons with square shoulders and rounded feet) join XP, 10
   and 11 in the bundle, the Preferences dropdown and the look recipes. The five
-  Windows looks now share everything that can be shared -- all ~'taskbar~, all
+  taskbar looks now share everything that can be shared -- all ~'taskbar~, all
   32px icons, all flat (no shelf geometry) -- and differ only where the era did:
-  window titles are on for XP and Vista and off for 7, 10 and 11, and the gaps
+  window titles are on for Luna and Aurora and off for 7, 10 and 11, and the gaps
   run from XP's edge-to-edge Luna buttons (~0~ spacing, ~4~ of end padding) to
-  Windows 11's airy rounded tile (~8~, ~12~). A test asserts the whole family
+  Island's airy rounded tile (~8~, ~12~). A test asserts the whole family
   stays that way.
-- *Three more themes, and a shelf for the two that missed it.* macOS Tiger
-  (~'macos-tiger~) is the dock before the 3D shelf: a flat, pale Aqua strip the
+- *Three more themes, and a shelf for the two that missed it.* Brushed
+  (~'brushed~) is the dock before the 3D shelf: a flat, pale gloss strip the
   icons sit *inside*, with a bright bevel along the icons' edge and a cool grey
-  lip on the screen side. macOS Tahoe (~'macos-tahoe~, ~'macos-tahoe-dark~) is
-  the 26 *Liquid Glass* pill -- rounder and thinner than Ventura, one bright rim,
-  no mirrors. Snow Leopard's themes (~'snow-leopard~, ~'snow-leopard-dark~) can
+  lip on the screen side. Glass (~'glass~, ~'glass-dark~) is
+  the 26 *Liquid Glass* pill -- rounder and thinner than Stage, one bright rim,
+  no mirrors. Frost's themes (~'frost~, ~'frost-dark~) can
   now wear the 3D shelf properly: they carry the slab material the generic
   =shelf.css= used to impose on them, in pale glass and in smoked glass. All
   three new themes are in the Preferences dropdown, in the GResource bundle and
@@ -280,7 +342,7 @@ Nothing yet.
 - *The README documents the recipes.* A new [[#looks][Looks]] section tabulates
   every recipe (theme, icons, spacing, end padding, overhang, front glass,
   keystone and mirror band) and explains what those numbers buy, with the
-  measurements the OS X ones came from.
+  measurements the shelf look ones came from.
 
 ---------
 
@@ -399,7 +461,7 @@ Nothing yet.
   rebuilds.
 - The reflection fade's cost is a number instead of a guess:
   =lambdock_reflection_band_count()= is pure, unit tested, and documents that one
-  reflection repaint costs 14 clipped draws at the 14 px band the macOS Mavericks
+  reflection repaint costs 14 clipped draws at the 14 px band the Platinum
   shelf uses (16 at worst).
 - =HACKING.org= documents the widget tree, the three clocks (layout, animation,
   data) and the measured per-frame budget.
@@ -458,7 +520,7 @@ Nothing yet.
     between. The icon-sized cell -- not the button -- now carries the cross
     size, and every item's content sits in one, so the theme's button padding
     is outside the sum instead of missing from it.
-  - On a shelf theme (the two macOS Mavericks materials) the gauges sat a whole
+  - On a shelf theme (the two Platinum materials) the gauges sat a whole
     reflection band lower than the icons: a meter dropped its reflection widget
     when it was built, and that widget is what reserves the band at the bottom
     of each item. Every item now gets a reflection slot, empty when it has
@@ -467,30 +529,30 @@ Nothing yet.
     is one pixel by default); it fills its cell now, so it spans the icons'
     height and is centred on them.
 - The showcase recording and its stills are re-recorded with the fix, so the
-  Mavericks shelf frames show the gauges level with the icons.
+  Platinum shelf frames show the gauges level with the icons.
 
 ---------
 
 *[Released]*
 
 ** v0.18.1 (2026-10-29)
-- The two macOS Mavericks materials are in the showcase, and shown as the shelf
-  they are written for.  =macos-mavericks.css= and =macos-mavericks-dark.css=
+- The two Platinum materials are in the showcase, and shown as the shelf
+  they are written for.  =platinum.css= and =platinum-dark.css=
   are the *material* only: the polished platinum slab with the icons mirrored
   onto the glass in front of them only appears once the dock takes the matching
   shelf geometry (=dock-shelf-margin -22=, =dock-shelf-front 18=,
   =dock-reflection 0.5=), which is exactly the trio the stylesheet documents.
-  The montage ends its dark half on macOS Mavericks Dark and its light half on
-  macOS Mavericks, each held for a beat longer than a straight colour swap (the
+  The montage ends its dark half on Platinum Dark and its light half on
+  Platinum, each held for a beat longer than a straight colour swap (the
   slab slides in, and the mirrors have to be readable), and the light one stays
   on screen after the last swap instead of losing its label in the same frame.
   The REPL helper the scene teaches now takes the shelf as a second argument --
-  ~(swap! 'macos-mavericks 'shelf)~ -- because a theme and its geometry have to
+  ~(swap! 'platinum 'shelf)~ -- because a theme and its geometry have to
   travel in one expression: ~reload-dock!~ only queues a redraw, so a geometry
   change issued between two reloads lands in the same redraw as the neighbouring
   theme and paints the wrong pair.
 - The Preferences scene of the recording shows the dialog on its own.  Two
-  things were wrong: the window popover's *Close All Windows* row was being
+  things were wrong: the window popover's *Close All the taskbar era* row was being
   clicked twenty pixels into the separator below it (the row coordinates had been
   measured against an older layout, and the rows are anchored from the bottom so
   the number of windows moves them), so the demo's terminals never closed and
@@ -504,7 +566,7 @@ Nothing yet.
 - The taskbar scene is captioned for what it shows.  It said "with window
   titles", but the label taskbar mode adds for a running window is measured away
   in this layout -- the button is allocated less than its content asks for and
-  the title ellipsizes to "..." -- so the scene now says "Or a Windows XP-style
+  the title ellipsizes to "..." -- so the scene now says "Or a the taskbar era XP-style
   taskbar" and the recording no longer promises a detail that is not on screen.
   The toggle itself is unchanged and still in Preferences.
 
@@ -591,7 +653,7 @@ Nothing yet.
 - Polish: the launchpad fades in when it opens (and simply appears when motion is
   reduced), and every shipped theme was checked against GTK's CSS parser at
   runtime -- all of them parse clean.
-- The Windows XP theme was rebuilt against Luna reference material: a flat blue
+- The the taskbar era XP theme was rebuilt against Luna reference material: a flat blue
   slab with a single bright top line instead of a glossy mirrored gradient, square
   task buttons with one 1px blue border instead of a white outline on every icon,
   pinned launchers with no chrome at all (like Quick Launch), Tahoma-sized 11px
@@ -771,7 +833,7 @@ Nothing yet.
   phase the hicolor and Adwaita icon themes so the dock-item tests can resolve
   `utilities-terminal`.
 
-** v0.10.9 (2026-10-26)
+** v0.(2026-10-26)
 - Remove the preferences test's temporary directory when it finishes. Every
   `meson test` run used to leave a `lambdock-prefs-test-*` directory behind,
   including on the display-less path where the GTK half of the test is skipped.
@@ -801,12 +863,12 @@ Nothing yet.
   still opens at a size worth browsing, and a long filename no longer stretches
   the grid (names ellipsize in one line, with the full name in the tooltip). The
   entries themselves are larger too: a bigger icon and a wider cell.
-- Larger running-app indicators in the Mavericks themes: the dot on the glass is
+- Larger running-app indicators in the Platinum themes: the dot on the glass is
   about half again as large, and so is the flat dock's CSS dot (20x7, 26x9 while
   hovered).
 
-** v0.10.6 (2026-10-25)
-- Finish the fix for the bouncing dock. v0.10.5 stopped believing the crossings
+** v0.(2026-10-25)
+- Finish the fix for the bouncing dock. v0.stopped believing the crossings
   that arrive the moment a slide stops, which slowed the bounce instead of ending
   it: a pointer parked on the edge produces a fresh crossing every time the dock
   settles. A leave is now only taken seriously when the dock is sitting still *and*
@@ -814,7 +876,7 @@ Nothing yet.
   have left -- so a stationary pointer keeps the dock out however long it rests
   there, and moving away still hides it.
 
-** v0.10.5 (2026-10-25)
+** v0.(2026-10-25)
 - Fix the dock bouncing at the screen edge in auto-hide mode. A pointer resting on
   the edge leaves the dock's revealing strip under it when the dock is in, and one
   pixel past the window's far edge when the dock is out, because the revealed
@@ -826,13 +888,13 @@ Nothing yet.
   been sitting still, and the pointer has actually moved since it arrived, still
   hides it as before -- a pointer that has not moved cannot have left.
 
-** v0.10.4 (2026-10-25)
+** v0.(2026-10-25)
 - Draw dock separators on the glass when the dock is shaped. On a keystoned or
   tilted shelf a separator is part of the slab, not a divider standing in front of
   it: it now runs down the glass's face (it used to be confined to the icons' box,
   which is only half the slab deep) and leans with the surface, further the further
   it sits from the middle of the dock, and away from the middle as it comes
-  forwards -- the way the 10.9 dock's do. The `macos-mavericks` themes give those
+  forwards -- the way the dock's do. The `platinum` themes give those
   separators the rod look, fading out at both ends, while a flat dock keeps the
   plain divider it had.
 
@@ -882,7 +944,7 @@ Nothing yet.
 ** v0.10.0 (2026-10-25)
 - `dock-capsule-padding`: how much room sits between the capsule's ends and the
   first/last icon, in pixels (0 … 96, default 12). It was a compile-time
-  constant, which is why the dock's ends could not be matched to the OS X one;
+  constant, which is why the dock's ends could not be matched to the shelf look one;
   the theme's own button padding still adds on top of it.
 - The shelf material is now measured rather than guessed: the slab is a wash that
   is densest where it meets the screen edge (~0.74 alpha) and thins out towards
@@ -890,7 +952,7 @@ Nothing yet.
   dock has along that edge. Over a dark wallpaper it reads as glass instead of as
   a white bar, and it is defined once in the shelf modifier, so every theme that
   wears the shelf gets it.
-- New theme `macos-mavericks-dark`: the same slab in smoked graphite, for dark
+- New theme `platinum-dark`: the same slab in smoked graphite, for dark
   sessions. Same geometry knobs, same structure, its own material.
 
 - Fix the icon reflections. They were mirroring a `GtkWidgetPaintable` that had
@@ -902,11 +964,11 @@ Nothing yet.
   contact shadow is gone with it: drawn through a linear gradient it covered the
   whole band rather than the few pixels under the icon, which is exactly the grey
   strip the reflections must not have.
-- The icons now sit where the OS X dock puts them: the front glass is measured
+- The icons now sit where the shelf look dock puts them: the front glass is measured
   from the icons' bottom edge rather than counting the reflection band twice, so
   their centre lands on the slab's top edge (and a dock with reflections no longer
   floats its icons one band higher than the same dock without them).
-- The Mavericks theme's running-app dot is a light glow again, like the real one,
+- The Platinum theme's running-app dot is a light glow again, like the real one,
   instead of a dark blue pill.
 
 - The CPU, RAM and temperature meters are now *gauges* instead of text: a ring
@@ -921,10 +983,10 @@ Nothing yet.
   wrap them).
 - `dock-shelf-flare`: a keystone for the dock's silhouette. The edge lying on the
   screen keeps its width and the inner edge is pulled in by that many pixels per
-  side, which is what makes the OS X dock's slab look like a 3D shelf instead of a
+  side, which is what makes the shelf look dock's slab look like a 3D shelf instead of a
   rectangle. It is a real projection (not a shear), it works on all four edges, and
   the shelf frame reserves the room it needs so the flare is never clipped.
-- The README's Mavericks recipe now carries the numbers measured off the real 10.9
+- The README's Platinum recipe now carries the numbers measured off the real 10.9
   dock (a 0.92-icon slab, a 0.48-icon overhang, mirrors filling the front glass and
   a 0.54-icon flare per side), and the shelf section documents the eighth knob.
 - Tests: a new `meter` C suite plus flare checks in the shelf suite (14 C suites in
@@ -933,7 +995,7 @@ Nothing yet.
 
 ** v0.9.0 (2026-10-25)
 - Stacks: `(stack-item #:name "Downloads" #:path "~/Downloads" #:view-mode 'grid)`
-  turns a dock icon into a folder popover, macOS Downloads style. The popover
+  turns a dock icon into a folder popover, the desktop's Downloads style. The popover
   lists the folder (dot-files skipped, folders first, capped at 300 entries) in
   one of three view modes: an icon `grid`, a `list` of rows, or a `fan` of tilted
   cards painted by hand (GTK cannot rotate child widgets, so the fan snapshots
@@ -959,7 +1021,7 @@ Nothing yet.
   stacks, the launchpad and the drag feedback, so they look right whatever dock
   theme is active.
 - Add `dock-item-spacing` (default 4px) for the gap between dock items, plus
-  `set-dock-item-spacing!` for live changes. The default reproduces the OS X
+  `set-dock-item-spacing!` for live changes. The default reproduces the shelf look
   dock's rhythm (icons about 0.3 x their size apart, counting the theme's button
   padding), and the README has a short section on spacing and sizing.
 - Fix the REPL setters: `reload-dock!` was being defined in `(guile-user)`
@@ -986,7 +1048,7 @@ Nothing yet.
 ** v0.8.1 (2026-10-25)
 - README: document the glass shelf properly -- every option with its default and
   clamped range, the geometry in one line, ten copy-pasteable recipes (flat,
-  frosted plinth, subtle 3D, the OS X Mavericks platinum slab, dark smoked glass,
+  frosted plinth, subtle 3D, the shelf look Platinum platinum slab, dark smoked glass,
   overhanging icons with a long mirror, mirror-only, no glass at all, taskbar and
   side docks), what the extremes of each knob do, live tuning from the REPL, and
   how to restyle the material with the `shelf-*` CSS classes
@@ -997,12 +1059,12 @@ Nothing yet.
   `dock-shelf-tilt`, `dock-shelf-perspective`, `dock-shelf-margin`,
   `dock-shelf-front`, `dock-reflection`, `dock-reflection-intensity` and
   `dock-reflection-blur`. All default to the classic flat capsule.
-- `dock-shelf-margin` accepts negative values, which is how the OS X dock lets
+- `dock-shelf-margin` accepts negative values, which is how the shelf look dock lets
   its icons overhang the shelf; `dock-shelf-front` is the glass (front face) in
   front of them.
 - Icon reflections now fade over the front face, with a soft contact shadow
   under each icon and the white running-app glow dot near the outer edge
-- New light frosted `css/shelf.css` modifier plus a rewritten `'macos-mavericks`
+- New light frosted `css/shelf.css` modifier plus a rewritten `'platinum`
   theme (platinum slab, specular outer edge, bluish thickness band)
 - Add `ui/shelf.c` (`LambdockShelfFrame` + `LambdockReflection`) with a unit
   test suite covering the derived geometry

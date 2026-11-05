@@ -19,7 +19,7 @@
   <description>
     <p>
       Lambdock is a Wayland-native desktop dock for GNU/Linux, in the spirit of
-      Cairo-Dock, Plank and the macOS Dock. It is built with GTK4 and
+      Cairo-Dock, Plank and the reference dock. It is built with GTK4 and
       gtk4-layer-shell, and can be themed, extended and reconfigured live with
       GNU Guile Scheme.
     </p>
@@ -72,11 +72,18 @@
     </screenshot>
     <screenshot>
       <image>https://raw.githubusercontent.com/jjba23/lambdock/trunk/resources/img/screens/taskbar.png</image>
-      <caption>Taskbar mode with the Windows XP theme and dynamic widgets</caption>
+      <caption>Taskbar mode with the taskbar era XP theme and dynamic widgets</caption>
     </screenshot>
   </screenshots>
 
   <releases>
+    <release version="0.23.0" date="2026-11-05">
+      <description>
+        <p>Every theme and look is now named after its material, not after the desktop it was traced from: Brushed, Frost, Platinum, Dune, Stage and Glass join Luna, Aurora, Seven, Tiles and Island, and the old names and short aliases are removed. A settings file that still names an old theme resolves to the default, and the changelog carries the migration table.</p>
+        <p>Popover menus keep the dock's own material again: the shelf modifier no longer repaints them, and every hovered row clears WCAG AA contrast against its background. The worst case across the nineteen themes is 4.50:1.</p>
+        <p>The shelf is also laid out on the first frame now, instead of waiting for the next reload, and the dock's runtime state paths are named in one place.</p>
+      </description>
+    </release>
     <release version="0.22.2" date="2026-11-02">
       <description>
         <p>Every running application painted its indicator twice: the theme draws a dot at the bottom of the button, and the glass shelf draws its own bead on the slab. The rule that was supposed to silence the theme's dot sat in the shelf stylesheet, which is loaded before the theme -- and GTK resolves competing declarations from providers of the same priority by the order they were added, not by specificity, so the rule never won.</p>
@@ -92,8 +99,8 @@
     </release>
     <release version="0.22.0" date="2026-11-02">
       <description>
-        <p>The macOS Mavericks material is no longer an estimate. The 10.9 install image carries the real Dock.app, so the platinum slab is measured off its own artwork: the outer lip is 1px of black with 2px of white in front of it that brightens towards the middle of the dock, the drop shadow starts at 0.60 against the slab and fades over 18px, the running indicator is a 12x3 white bead on a 54x12 cyan glow, the folder panel is charcoal with a light bevel, and the divider is a two-pixel engraved groove.</p>
-        <p>The side-dock indicator got its own measurements (it is a tall bead on a narrow glow, not the bottom one rotated), and the contact shadow under each icon is the elliptical pool the real dock had instead of a grey stripe -- which is what had kept that decoration switched off. The dock's menus also follow Dock.app's wording: "Open" for an application, a stack and the trash, and "View content as a grid/list" for a stack's view switch.</p>
+        <p>The Platinum material is no longer an estimate. The install image carries the real the reference dock, so the platinum slab is measured off its own artwork: the outer lip is 1px of black with 2px of white in front of it that brightens towards the middle of the dock, the drop shadow starts at 0.60 against the slab and fades over 18px, the running indicator is a 12x3 white bead on a 54x12 cyan glow, the folder panel is charcoal with a light bevel, and the divider is a two-pixel engraved groove.</p>
+        <p>The side-dock indicator got its own measurements (it is a tall bead on a narrow glow, not the bottom one rotated), and the contact shadow under each icon is the elliptical pool the real dock had instead of a grey stripe -- which is what had kept that decoration switched off. The dock's menus also follow the reference dock's wording: "Open" for an application, a stack and the trash, and "View content as a grid/list" for a stack's view switch.</p>
         <p>Dragging an icon out of the dock now bursts it into a puff of smoke, as the real dock did: a third of a second of smoke sized to the icon, in the icon's own place, with the dock keeping its width until the puff clears and the remaining icons closing the gap afterwards. The burst is deterministic arithmetic in the core (fourteen puffs that start spread out, travel outwards and die from the outside in) drawn by a frame-clock widget, so both halves are tested -- the cloud without a display, the widget in a real window.</p>
       </description>
     </release>
@@ -106,9 +113,9 @@
     </release>
     <release version="0.20.0" date="2026-10-31">
       <description>
-        <p>Two theme families, and whole-dock recipes. macOS Tiger (the flat Aqua strip the icons sit inside) and macOS Tahoe (the 26 Liquid Glass pill, light and dark) join the built-in themes, Snow Leopard's dock now carries its own 3D shelf material, and Windows Vista (Aero Glass) and Windows 7 (the Aero superbar) complete the Windows family, which is now consistent: all five are taskbars, all draw 32px icons, and they differ only where their era did.</p>
-        <p>Twenty look recipes set a whole dock in one line -- "(define dock-look 'osx-mavericks-dark)" brings the theme, the icon size and spacing, the end padding, the dock/taskbar mode, the window titles and every glass-shelf number, plus the fisheye, because the OS X docks magnify and no Windows taskbar did. Anything you define yourself still wins, and "(apply-look! 'osx-tahoe)" restyles a running dock. Every recipe is unit tested for completeness.</p>
-        <p>Polish across all nineteen themes: the focused window now has its own indicator everywhere (the long Windows underline, the wide Windows 11 pill, a brighter glow on the stock themes), every theme colours its window titles, the light macOS docks get dark labels and dark running dots so nothing vanishes into pale glass, and theme scoping no longer loses a selector written across two lines -- which is what used to let one theme's indicator paint under another's icons.</p>
+        <p>Two theme families, and whole-dock recipes. Brushed (the flat gloss strip the icons sit inside) and Glass (the 26 Liquid Glass pill, light and dark) join the built-in themes, Frost's dock now carries its own 3D shelf material, and Aurora and Seven (the glass superbar) complete the taskbar family, which is now consistent: all five are taskbars, all draw 32px icons, and they differ only where their era did.</p>
+        <p>Twenty look recipes set a whole dock in one line -- "(define dock-look 'platinum-dark)" brings the theme, the icon size and spacing, the end padding, the dock/taskbar mode, the window titles and every glass-shelf number, plus the fisheye, because shelf docks magnify and no taskbar did. Anything you define yourself still wins, and "(apply-look! 'glass)" restyles a running dock. Every recipe is unit tested for completeness.</p>
+        <p>Polish across all nineteen themes: the focused window now has its own indicator everywhere (the long the taskbar era underline, the wide Island pill, a brighter glow on the stock themes), every theme colours its window titles, the light shelf docks get dark labels and dark running dots so nothing vanishes into pale glass, and theme scoping no longer loses a selector written across two lines -- which is what used to let one theme's indicator paint under another's icons.</p>
         <p>The launchpad loses its "Applications" title -- the grid of what is installed is the screen -- and its close button sits on the left by default, with a new dock-launchpad-close-side setting (and Preferences row) to move it to the right. The Preferences window gains a "Dock items" card that appends a trash can, a clock, or a RAM, CPU, temperature or battery meter to the dock, stored with the drag-and-drop layout so it survives a restart.</p>
       </description>
     </release>
@@ -155,14 +162,14 @@
     </release>
     <release version="0.18.1" date="2026-10-29">
       <description>
-        <p>The showcase recording now shows the two macOS Mavericks materials the way their stylesheet intends: the polished platinum slab with the icons mirrored onto the glass in front of them, which needs the dock's shelf geometry as well as the theme. The montage gives each of them a longer beat, and the REPL helper it teaches applies the theme and the geometry in one expression.</p>
-        <p>The Preferences scene shows the dialog on its own: the demo clears its terminals first, the popover row it clicks targets Close All Windows again, and the dialog opens floating at the size the scene uses, clear of the caption. The taskbar scene is captioned for what it shows instead of promising window titles, which this layout measures away.</p>
+        <p>The showcase recording now shows the two Platinum materials the way their stylesheet intends: the polished platinum slab with the icons mirrored onto the glass in front of them, which needs the dock's shelf geometry as well as the theme. The montage gives each of them a longer beat, and the REPL helper it teaches applies the theme and the geometry in one expression.</p>
+        <p>The Preferences scene shows the dialog on its own: the demo clears its terminals first, the popover row it clicks targets Close All the taskbar era again, and the dialog opens floating at the size the scene uses, clear of the caption. The taskbar scene is captioned for what it shows instead of promising window titles, which this layout measures away.</p>
       </description>
     </release>
     <release version="0.18.0" date="2026-10-29">
       <description>
-        <p>The showcase recording is now framed and captioned like a product video, and every scene in it was re-filmed and checked against its caption: auto-hide at the screen edge, fish-eye magnification, launching with running indicators, the window popover, the dock's own menu and the Preferences window, a folder stack, the launchpad filtered from the REPL, a live Guile REPL session changing the icon size and the themes, and the Windows XP taskbar mode. The recording now contains exactly one cursor -- the compositor's own -- instead of one drawn in post.</p>
-        <p>Also in this release: the launchpad search field takes the keyboard as soon as the launchpad opens, launching minimizes and restores the focused window on compositors that support it, larger launchpad tiles, a rebuilt Windows XP theme, and a quality pass over running the dock across compositors without wlr-layer-shell or wlr-foreign-toplevel.</p>
+        <p>The showcase recording is now framed and captioned like a product video, and every scene in it was re-filmed and checked against its caption: auto-hide at the screen edge, fish-eye magnification, launching with running indicators, the window popover, the dock's own menu and the Preferences window, a folder stack, the launchpad filtered from the REPL, a live Guile REPL session changing the icon size and the themes, and the taskbar era XP taskbar mode. The recording now contains exactly one cursor -- the compositor's own -- instead of one drawn in post.</p>
+        <p>Also in this release: the launchpad search field takes the keyboard as soon as the launchpad opens, launching minimizes and restores the focused window on compositors that support it, larger launchpad tiles, a rebuilt the taskbar era XP theme, and a quality pass over running the dock across compositors without wlr-layer-shell or wlr-foreign-toplevel.</p>
       </description>
     </release>
     <release version="0.15.0" date="2026-10-28">
