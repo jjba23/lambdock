@@ -15,6 +15,20 @@ Nothing yet.
 
 *[Released]*
 
+** v0.23.1 (2026-11-05)
+- *One reader for the settings, so the CSS cannot lag behind them.*  Startup
+  (=dock_state_read_config()= in =main.c=) and a hot reload
+  (=reload_appearance()= / =reload_settings()= in =dock_item.c=) each read their
+  own subset of the same keys.  The reload path therefore built its stylesheet
+  before it had read the new =dock-icon-size=, so the shelf-indicator decision
+  used the size from the previous reload, and a key added on one path was
+  silently missing from the other -- the same shape of bug as the shelf that was
+  laid out before the row existed.  Both paths now call =dock_read_settings()=,
+  which owns the whole file: theme, mode flags, shelf geometry, behaviour and
+  sizes; a reload only applies what a widget must be told afterwards (the box
+  spacing, and cancelling a pending auto-hide).  =tests/test_config_startup.c=
+  asserts every field the reader is responsible for.
+
 ** v0.23.0 (2026-11-05)
 *** BREAKING: every theme and look is named after its material
 The themes were named after the desktops they were modelled on, and the recipes
