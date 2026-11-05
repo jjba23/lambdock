@@ -12,8 +12,9 @@
 :CUSTOM_ID: using-the-dock
 :END:
 
-A dock is a mouse-first object, so here is everything it can do once it is on
-your screen.
+The dock is a pointer-driven surface: every operation below is reachable with
+one pointer, and the keyboard reaches the same operations (see
+[[#accessibility][Keyboard and accessibility]]).
 
 ** Launching, focusing and switching
 :PROPERTIES:
@@ -56,7 +57,7 @@ compositor told it:
   list of crosses;
 - *New Instance*, to start another instance of the application, when the item has
   an exec command;
-- *Close All the taskbar era*, shown only when more than one window is open;
+- *Close All*, shown only when more than one window is open;
 - *Launch Application*, when an app is in the dock but nothing is running yet.
 
 Every entry carries a symbolic icon -- a window for a new instance, an eye with

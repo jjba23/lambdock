@@ -105,7 +105,7 @@ THEME_LABELS = {
     "vanilla-light": "Vanilla Light",
     "frost": "Frost 3D Glass",
     "solarized-light": "Solarized Light",
-    "luna": "the taskbar era XP Luna",
+    "luna": "Luna",
     "none": "No theme (GTK default)",
 }
 
@@ -125,6 +125,32 @@ LIGHT_THEMES = [
     "platinum",
 ]
 
+# Each theme family gets a backdrop of the same temperature, so the theme being
+# demonstrated is the only thing that changes colour.  Themes not named here sit
+# on the galaxy (dark) or the mountain haze (light).
+THEME_WALLPAPERS = {
+    "platinum": "dusk.png",
+    "platinum-dark": "dusk.png",
+    "luna": "ocean.png",
+    "tiles": "ocean.png",
+    "island": "ocean.png",
+}
+
+# The dock this repository is developed on, as one form: the values in
+# ~/.config/lambdock/settings.scm with the overrides that
+# ~/.local/state/lambdock/preferences-settings.scm applies (spacing 5, shelf
+# margin -17, capsule padding 8, icon size 48).  One evaluation, so no frame
+# shows half of them.
+YOUR_SETTINGS = (
+    "(begin (set-dock-theme! 'platinum) "
+    "(set-dock-shelf-margin! -17) (set-dock-shelf-front! 14) "
+    "(set-dock-capsule-padding! 8) (set-dock-item-spacing! 5) "
+    "(set-dock-icon-size! 48) (set-dock-reflection! 0.3) "
+    "(set-dock-reflection-intensity! 0.7) (set-dock-reflection-blur! 0.03) "
+    "(set-dock-shelf-flare! 24) (set-dock-shelf-tilt! 0) "
+    "(set-dock-launchpad-blur! #t) (reload-dock!))"
+)
+
 
 class Demo:
     def __init__(self, args: argparse.Namespace) -> None:
@@ -139,6 +165,7 @@ class Demo:
         self.repl_index = 0
         self.repl_done = self.tmp / "repl.done"
         self.wallpaper_pid_file = self.tmp / "swaybg.pid"
+        self.wallpaper = "galaxy.png"
         self.pointer_x = 0.0
         self.pointer_y = 0.0
         self.out_w = REF_W
@@ -562,6 +589,20 @@ class Demo:
         self.place(window_id, x, y, width, height)
         return window_id
 
+    def close_strays(self, *app_ids: str) -> None:
+        """Close the demo's own windows when they would sit in the shot.
+
+        The scenes borrow terminals and, occasionally, whatever an earlier
+        click launched.  None of them belongs in a scene about the dock, so the
+        stage is cleared before the camera lands on the themes and the REPL.
+        """
+        wanted = {app_id.lower() for app_id in app_ids}
+        for window in self.windows():
+            app_id = (window.get("app_id") or "").lower()
+            if app_id in wanted:
+                self.close_window(int(window["id"]))
+        time.sleep(0.4)
+
     def close_terminals(self) -> None:
         for window in self.windows():
             if window.get("app_id") == "Alacritty":
@@ -569,7 +610,7 @@ class Demo:
 
     # ---------------------------------------------------------- storyboard
     def phase_intro(self) -> None:
-        self.title("lambdock", "a dock you can reprogram while it runs")
+        self.title("lambdock", "a dock whose policy layer is Scheme")
         self.park()
         time.sleep(2.3)
         self.title_end()
@@ -731,8 +772,14 @@ class Demo:
         self.caption_end()
 
     def montage_theme(self, theme: str) -> None:
-        """Swap one theme through the REPL, with the shelf for Platinum."""
+        """Swap one theme, its backing wallpaper and the shelf for Platinum."""
         shelf = theme.startswith("platinum")
+        wallpaper = THEME_WALLPAPERS.get(
+            theme, "mountains.png" if theme in LIGHT_THEMES else "galaxy.png"
+        )
+        if wallpaper != self.wallpaper:
+            self.switch_wallpaper(wallpaper)
+            self.wallpaper = wallpaper
         call = f"(swap! '{theme} 'shelf)" if shelf else f"(swap! '{theme})"
         # The Platinum slab slides in and mirrors the icons onto its glass, so
         # it needs a beat longer on screen than a straight colour change.
@@ -741,6 +788,10 @@ class Demo:
 
     def phase_repl(self) -> None:
         self.caption("Reprogram the running dock over its socket REPL")
+        # The theme montage and the REPL are about the dock; a leftover
+        # calculator or terminal behind them is clutter, not context.
+        self.close_strays("alacritty", "org.gnome.calculator", "gnome-calculator",
+                          "calculator", "kitty")
         kitty_id = self.launch_repl_window()
         self.open_repl_writer()
         # Park the pointer on the dock (that is what keeps it on screen) and
@@ -762,7 +813,6 @@ class Demo:
         self.caption("Built-in themes, swapped live")
         for theme in DARK_THEMES:
             self.montage_theme(theme)
-        self.switch_wallpaper("mountains.png")
         for theme in LIGHT_THEMES:
             self.montage_theme(theme)
         # The montage stops on a theme, so let the last one stand before its
@@ -771,8 +821,16 @@ class Demo:
         time.sleep(1.5)
         self.theme_end()
         self.caption_end()
-        # Leave the shelf and the frozen fish-eye behind.
-        self.dock_eval(f"(begin {SHELF_OFF} (reload-dock!))")
+        # The montage ends where this machine actually lives: the settings file
+        # in ~/.config/lambdock plus the Preferences override in
+        # ~/.local/state/lambdock, applied as one form in one evaluation.
+        self.caption("The settings I run: Platinum, shelf at -17, 48 px icons")
+        self.repl(YOUR_SETTINGS, speed_ms=4, hold=2.4)
+        self.theme("platinum")
+        time.sleep(1.2)
+        self.theme_end()
+        self.caption_end()
+        # Leave the frozen fish-eye behind; the taskbar scene drops the shelf.
         self.dock_eval("(begin (set-dock-hover-animate! #t) (reload-dock!))")
         # Step off the capsule: a pointer resting on it leaves a tooltip behind
         # for the next scene.
@@ -791,7 +849,7 @@ class Demo:
         self.spawn_terminal("build", "fetch", 66, 118, 500, 330)
         self.spawn_terminal("logs", "files", 562, 118, 500, 330)
         time.sleep(0.6)
-        self.caption("Or a the taskbar era XP-style taskbar")
+        self.caption("Or a full-width taskbar: Luna, with window titles")
         self.reveal_dock(self.X(ITEM_SEPARATOR))
         # Back off the bar before it can grow a tooltip under the pointer.
         self.move(self.out_w / 2, self.out_h * 0.45)

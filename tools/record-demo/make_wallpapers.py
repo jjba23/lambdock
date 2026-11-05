@@ -94,19 +94,19 @@ def make_galaxy(width: int, height: int, path: str) -> None:
     img = vertical_gradient(
         height,
         [
-            (0.00, "#03040a"),
-            (0.35, "#06080f"),
-            (0.70, "#0a0d1c"),
-            (1.00, "#04050b"),
+            (0.00, "#0a1030"),
+            (0.35, "#111b44"),
+            (0.70, "#182352"),
+            (1.00, "#0b1233"),
         ],
     ) * np.ones((1, width, 1), np.float32)
 
     for cx, cy, sigma, colour, strength in [
-        (0.30, 0.16, 0.42, "#1c2f6e", 0.50),
-        (0.72, 0.30, 0.34, "#3b2a7d", 0.42),
-        (0.16, 0.72, 0.36, "#0d4a63", 0.32),
-        (0.86, 0.82, 0.30, "#4a2360", 0.26),
-        (0.52, 0.52, 0.22, "#1e3a78", 0.20),
+        (0.30, 0.16, 0.42, "#2f56b8", 0.78),
+        (0.72, 0.30, 0.34, "#6b48c8", 0.64),
+        (0.16, 0.72, 0.36, "#1f7fa8", 0.52),
+        (0.86, 0.82, 0.30, "#7a3f9a", 0.44),
+        (0.52, 0.52, 0.22, "#2f5fc0", 0.34),
     ]:
         img = screen(img, soft_glow(width, height, cx, cy, sigma, colour, strength))
 
@@ -127,7 +127,7 @@ def make_galaxy(width: int, height: int, path: str) -> None:
         ),
         np.float32,
     ) / 255.0
-    img = screen(img, band[..., None] * np.array([0.32, 0.30, 0.58], np.float32) * 0.62)
+    img = screen(img, band[..., None] * np.array([0.46, 0.42, 0.86], np.float32) * 0.88)
 
     # Vignette: pulls the eye to the dock and the captions, and keeps the frame
     # edges from competing with them.
@@ -135,7 +135,7 @@ def make_galaxy(width: int, height: int, path: str) -> None:
     radius = np.sqrt(
         ((xx / width - 0.5) * 1.10) ** 2 + ((yy / height - 0.55) * 1.05) ** 2
     )
-    vignette = np.clip(1.0 - 0.42 * radius**2, 0.55, 1.0)[..., None]
+    vignette = np.clip(1.0 - 0.28 * radius**2, 0.72, 1.0)[..., None]
     img *= vignette
 
     # Stars: sparse, a couple of pixels across so they survive the downscale,
@@ -178,17 +178,17 @@ def make_mountains(width: int, height: int, path: str) -> None:
     img = vertical_gradient(
         height,
         [
-            (0.00, "#7c99bb"),
-            (0.28, "#a9c1d6"),
-            (0.48, "#e2e6e8"),
-            (0.60, "#f6e4c8"),
-            (1.00, "#3d4d63"),
+            (0.00, "#4f7fb5"),
+            (0.28, "#93b9da"),
+            (0.48, "#efe4d2"),
+            (0.60, "#ffd7a2"),
+            (1.00, "#2f4256"),
         ],
     ) * np.ones((1, width, 1), np.float32)
 
     for cx, cy, sigma, colour, strength in [
-        (0.68, 0.42, 0.30, "#f0cf9a", 0.30),
-        (0.68, 0.42, 0.13, "#fff2d4", 0.85),
+        (0.68, 0.42, 0.30, "#ffc978", 0.55),
+        (0.68, 0.42, 0.13, "#fff0c8", 1.0),
         (0.68, 0.42, 0.045, "#fffdf6", 1.0),
         (0.20, 0.22, 0.34, "#8fb0cd", 0.35),
     ]:
@@ -221,6 +221,17 @@ def make_mountains(width: int, height: int, path: str) -> None:
     save(np.clip(img, 0.0, 1.0), path, seed=9)
 
 
+def tinted(source: str, path: str, colour: str, strength: float, seed: int) -> None:
+    """Recolour a finished wallpaper for a theme family.
+
+    A screen of one colour keeps the composition and changes its temperature,
+    so the palette pass has a backdrop that matches the material in front of it.
+    """
+    image = np.asarray(Image.open(source), np.float32) / 255.0
+    image = screen(image, hex_rgb(colour) * strength)
+    save(np.clip(image, 0.0, 1.0), path, seed=seed)
+
+
 def main() -> int:
     if len(sys.argv) != 4:
         print(__doc__.strip().splitlines()[2], file=sys.stderr)
@@ -229,6 +240,14 @@ def main() -> int:
     os.makedirs(outdir, exist_ok=True)
     make_galaxy(width, height, os.path.join(outdir, "galaxy.png"))
     make_mountains(width, height, os.path.join(outdir, "mountains.png"))
+    tinted(
+        os.path.join(outdir, "mountains.png"), os.path.join(outdir, "dusk.png"),
+        "#d08a3c", 0.40, seed=13,
+    )
+    tinted(
+        os.path.join(outdir, "galaxy.png"), os.path.join(outdir, "ocean.png"),
+        "#1d6f86", 0.34, seed=17,
+    )
     print(f"wrote wallpapers to {outdir}")
     return 0
 

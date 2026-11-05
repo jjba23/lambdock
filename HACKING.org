@@ -94,7 +94,7 @@ If you read nothing else, read this.
    =guile_bridge.c= into ~LambdockState~.
 5. *Items path:* Scheme ~<dock-item>~ records → ~populate_dock_items_for~ →
    GTK buttons/dynamic labels/separators appended to ~state->box~.
-6. *the taskbar era path:* the compositor's foreign-toplevel manager → =toplevel_tracker.c=
+6. *taskbar path:* the compositor's foreign-toplevel manager → =toplevel_tracker.c=
    → ~DockItem~ + ~AppWindow~ → running indicator and the window popover.
 7. *Reload path:* =GFileMonitor= on =~/.config/lambdock= → 150 ms debounce →
    ~sync_docks_with_disk~ → create/reload/destroy dock instances.
@@ -1400,7 +1400,7 @@ state changes (all applied by =dock_item.c:apply_running_state()=):
 ~state~ event, so they flip within a frame of the user switching windows. Which
 of the two a theme uses is a matter of fidelity to the desktop it imitates:
 
-- the *the taskbar era* themes use all three. XP raises a running button and depresses
+- the *taskbar* themes use all three. XP raises a running button and depresses
   the focused one; Vista and 7 keep a quiet glass tile for running and light the
   focused one (glass brightens instead of pressing); 10 and 11 draw a short
   underline/pill for running and the long one for the focused window.

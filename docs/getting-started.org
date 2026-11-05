@@ -13,15 +13,18 @@
 :END:
 
 #+begin_quote
-~lambdock~ is a modern, hyper-hackable, Wayland-native desktop dock application
-(as made popular by CairoDock, the shelf look, Plank) engineered for GNU/Linux users,
-people that like docks, desktop refugees, ricers, free software and Lisp
-enthusiasts, Wayland minimalists...
+A dock is a table of launchers with a little policy attached: what exists, what
+is running, what a click does.  ~lambdock~ keeps the table and the policy in
+Scheme and the pixels in C, so both can be rewritten in the process that is
+drawing them.
 #+end_quote
 
-It is built in the C programming language using the GTK4 libraries and toolkit,
-~gtk4-layer-shell~, and Lisp (GNU Guile Scheme), with full runtime
-inspectability and configurability, hot-reload of the config and of the GTK CSS.
+The rendering core is C against GTK4 and ~gtk4-layer-shell~.  The decisions --
+which items exist, which theme is in force, where the shelf sits, what a meter
+reads -- are bindings in an embedded GNU Guile image.  The configuration file is
+evaluated into that image at start and on every save, and a socket REPL evaluates
+forms in the same image, which is why inspection and mutation are one operation
+here rather than two.
 
 Whether you are running Niri, Sway, Hyprland, River, or any ~wlroots~ / Layer
 Shell compliant compositor, ~lambdock~ brings clean application launching,
@@ -210,7 +213,7 @@ The storyboard runs twelve scenes: a title card, auto-hide at the screen edge,
 fish-eye magnification, launching with running indicators, the window popover,
 the dock's own menu and the Preferences window, a folder stack opened as a grid,
 the launchpad filtered from the REPL, a live Guile REPL session (icon size, then
-eleven built-in themes), the taskbar era XP taskbar mode, and a
+eleven built-in themes), the Luna taskbar mode, and a
 closing card.  Each scene is checked frame by frame against its caption before a
 recording is published.  See [[file:../tools/record-demo/README.org][tools/record-demo/README.org]] for prerequisites
 and options.

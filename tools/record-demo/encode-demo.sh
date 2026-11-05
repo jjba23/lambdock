@@ -22,10 +22,14 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 RAW=""
 EVENTS=""
 OUT=""
-WIDTH="${WIDTH:-1100}"
-FPS="${FPS:-20}"
+WIDTH="${WIDTH:-1080}"
+FPS="${FPS:-18}"
 MAX_MIB="${MAX_MIB:-12}"
-DITHER="${DITHER:-sierra2_4a}"
+# bayer, not sierra2_4a: with the brighter wallpapers the error-diffusion
+# noise was 20 MiB of GIF at any lossy setting, and ordered dithering costs a
+# little banding for half the file.
+DITHER="${DITHER:-bayer}"
+SPEED="${SPEED:-1.25}"
 CAPTIONS=1
 KEEP=0
 
@@ -39,6 +43,7 @@ Options:
   --out PATH        output GIF (required)
   --width N         output width; the screen inside the frame (default: $WIDTH)
   --fps N           GIF frame rate (default: $FPS)
+  --speed N         play this many times faster (default: $SPEED)
   --max-mib N       size budget before extra compression is tried (default: $MAX_MIB)
   --dither NAME     paletteuse dither (default: $DITHER)
   --no-captions     leave the captions out (still keeps the frame)
@@ -54,6 +59,7 @@ while (($#)); do
     --out) OUT="$2"; shift 2 ;;
     --width) WIDTH="$2"; shift 2 ;;
     --fps) FPS="$2"; shift 2 ;;
+    --speed) SPEED="$2"; shift 2 ;;
     --max-mib) MAX_MIB="$2"; shift 2 ;;
     --dither) DITHER="$2"; shift 2 ;;
     --no-captions) CAPTIONS=0; shift ;;
@@ -99,7 +105,7 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/lambdock-encode.XXXXXX")"
 cleanup() { [[ "$KEEP" -eq 1 ]] && echo "kept $TMP" >&2 || rm -rf "$TMP"; }
 trap cleanup EXIT
 
-note "presentation ${SW}x${SH} + ${MARGIN}px frame, ${FPS} fps, ${DURATION_INT}s"
+note "presentation ${SW}x${SH} + ${MARGIN}px frame, ${FPS} fps, ${DURATION_INT}s source at ${SPEED}x"
 python3 "$SCRIPT_DIR/make_overlay.py" \
   --events "$EVENTS" --outdir "$TMP" --screen "${SW}x${SH}" \
   --margin "$MARGIN" --duration "$DURATION"
@@ -131,7 +137,20 @@ mkdir -p "$(dirname -- "$OUT")"
     -loop 1 -framerate "$FPS" -i mask.png \
     -filter_complex "$FILTER" -map "[v]" \
     -t "$DURATION" -c:v ffv1 -level 3 -pix_fmt rgb24 \
+    -fps_mode passthrough \
     "$TMP/composited.mkv"
+
+  # The speed change gets its own lossless pass.  Folding setpts into the
+  # composite filter is silent and wrong: the overlay's per-frame branch and
+  # the muxer's clock put the original timing back, so the GIF came out at
+  # exactly the source duration.  A plain setpts pass on a real file does not.
+  if [[ "$SPEED" != "1" ]]; then
+    note "shortening to ${SPEED}x..."
+    ffmpeg -y -loglevel error -i composited.mkv \
+      -vf "setpts=PTS/${SPEED}" -fps_mode passthrough \
+      -c:v ffv1 -level 3 -pix_fmt rgb24 "$TMP/sped.mkv"
+    mv "$TMP/sped.mkv" "$TMP/composited.mkv"
+  fi
 
   note "building the palette..."
   ffmpeg -y -loglevel error -i composited.mkv \
@@ -141,7 +160,7 @@ mkdir -p "$(dirname -- "$OUT")"
   note "quantising to a GIF..."
   ffmpeg -y -loglevel error -i composited.mkv -i palette.png \
     -lavfi "paletteuse=dither=${DITHER}:diff_mode=rectangle" \
-    -loop 0 "$TMP/out.gif"
+    -fps_mode passthrough -loop 0 "$TMP/out.gif"
 )
 
 # ---------------------------------------------------------------------- size

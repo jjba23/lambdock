@@ -1,5 +1,5 @@
 #+title: lambdock
-#+subtitle: quest for the eternal dock
+#+subtitle: a dock whose configuration is a Scheme program
 #+author: Josep Jesus Bigorra Algaba
 #+email: jjbigorra@gmail.com
 #+language: en
@@ -12,23 +12,29 @@
 #+attr_html: :width 160 :alt lambdock logo
 [[file:logo.svg]]
 
-/a desktop dock for Wayland that you can reprogram while it is running./
+/An ordinary dock is a compiled artefact with a settings dialog in front of it.
+lambdock is a small C renderer driven by a Guile image: the dock on screen is the
+fixed point of a Scheme program you can rewrite while it runs./
 
-~lambdock~ is a dock for your GNU/Linux desktop: the strip of application
-launchers that sits on an edge of the screen, shows which apps are running, and
-brings their windows back when you click them.  It is built on *[[https://gtk.org/][GTK4]]* and
-*[[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]*, so it belongs on a *[[https://wayland.freedesktop.org/][Wayland]]* compositor --
-[[https://github.com/YaLTeR/niri][Niri]], [[https://swaywm.org/][Sway]], [[https://hyprland.org/][Hyprland]], [[https://github.com/riverwm/river][River]], [[https://kde.org/plasma-desktop/][Plasma]], and friends -- and it is engineered
-the way *[[https://www.gnu.org/software/emacs/][Emacs]]* is: a small, fast *[[https://en.wikipedia.org/wiki/C_(programming_language)][C]]* core for rendering, Wayland protocol work and frame-clock animation, wrapped around an
-embedded *[[https://www.gnu.org/software/guile/][GNU Guile Scheme]]* engine that is the brain of the whole thing.
+~lambdock~ puts a strip of launchers on an edge of a GNU/Linux desktop, shows
+which applications are running, and brings their windows back when you click
+them.  The rendering core -- GTK4 widgets, ~gtk4-layer-shell~ anchoring, the
+foreign-toplevel listener, the frame clock -- is C.  The policy layer -- which
+items exist, which theme is in force, where the glass shelf sits, what a meter
+reads -- is a set of bindings in an embedded *[[https://www.gnu.org/software/guile/][GNU Guile]]* image.  The settings
+file is evaluated into that image at start and again on every save; a socket
+*[[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop][REPL]]* evaluates forms in the same image, so inspecting the dock and mutating
+it are the same operation.
 
-That architecture is what makes ~lambdock~ different from every other dock.  You
-configure it in *[[https://en.wikipedia.org/wiki/Lisp_(programming_language)][Lisp]]*, theme it in *[[https://developer.mozilla.org/en-US/docs/Web/CSS][CSS]]*, and then you hot-reload both from disk or poke at the running dock
-over a *live socket [[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop][REPL]]* -- inspecting state, swapping themes, adding launchers and forcing
-a rebuild without ever restarting the process or dropping a frame.
+That arrangement is the whole design argument.  A dock is small enough to hold in
+one head, and its state is a value; when the configuration language is Lisp, the
+value can be computed, composed and replaced at run time instead of serialised
+into a file and read back by a parser.  The rest of this manual is the
+consequence: nineteen themes as CSS, a theme per look in one line, settings that
+take effect on the next frame.
 
 #+name: lambdock-showcase
-#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1100 px, 20 fps): auto-hide at the screen edge, the fish-eye under the pointer, launching applications with running indicators, the multi-window popover, the dock's own menu and the Preferences window, a folder stack opened as a grid, the launchpad filtered from the REPL, a live Guile REPL changing the icon size and every theme, and the taskbar era XP taskbar mode.
+#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1080 px): auto-hide at the screen edge, the fish-eye under the pointer, launching applications with running indicators, the multi-window popover, the dock's own menu and the Preferences window, a folder stack opened as a grid, the launchpad filtered from the REPL, a live Guile REPL changing the icon size and every theme, and the full-width Luna taskbar.
 [[file:resources/img/lambdock-demo.gif]]
 
 - 🐑 *Read the source (and send PR/issue/patches):* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
@@ -68,77 +74,63 @@ This page keeps the feature list, the licence and the project links.
 :CUSTOM_ID: features
 :END:
 
-- *Wayland Native*: Built on GTK4 and ~gtk4-layer-shell~ for smooth edge
-  anchoring, cubic-eased slide animations, and compositor integration.
-- *Dynamic Window Tracking*: Uses ~zwlr_foreign_toplevel_manager_v1~, the Wayland
-  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
-  to display active app indicators, window titles, and popover
-  HUDs for focusing or closing instances; see
-  [[file:docs/internals.org#toplevel-tracking][Wayland toplevel tracking]].
-- *Multi-Monitor Flexibility*: Span docks across all connected screens
-  (~#:monitor 'all~) or lock them to specific output connectors (e.g., ~"DP-1"~);
-  see [[file:docs/configuration.org#configuration-options][the options reference]].
-- *Smooth Auto-Hide*: Keeps the dock out of your way with a two-pixel reveal
-  strip and fluid, frame-clock-driven sliding animations.
-- *Declarative Lisp Configurations* 🔮: Harness the power of GNU Guile Scheme for
-  declarative dock setups, custom app launchers, separators, and options.
-  Multiple config files and multiple docks are supported.
-- *Smart and Safe Hot-Reloading*: Automatic file watcher
-  ([[https://docs.gtk.org/glib/][GLib]] ~GFileMonitor~, with a 150 ms debounce) and
-  REPL hook (~reload-dock!~) safely re-evaluate Scheme settings and GTK CSS
-  without blocking the UI thread.
-- *Live Interactive Socket REPL*: Query state or alter dock parameters live over a
-  [[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]]
-  (=/tmp/lambdock-repl.sock=) via Emacs/Geiser, ~socat~, or ~ncat~; see
+- *Two languages, one process.* Rendering, layer-shell anchoring, protocol
+  listeners and the frame clock are C; every decision about what to draw is a
+  Scheme value bound in the embedded image.
+- *The configuration is a program.* =settings.scm= is evaluated, not parsed:
+  every option is a top-level binding, presets are procedures, and the item list
+  is an ordinary list you can build with =map=, =filter= and =append=; see
+  [[file:docs/configuration.org][Configuring lambdock]].
+- *A live image.* A Unix-socket REPL evaluates forms in the running process:
+  read state, replace it, and the next frame draws the result; see
   [[file:docs/repl.org#repl][the REPL section]].
-- *Theme Engine*: Extensible with CSS, and ships with nineteen built-in themes,
-  while supporting user extensions and overrides via
-  =~/.config/lambdock/styles.css=; see [[file:docs/theming.org#styling-and-theming][Styling & theming]]
-  and the one-line [[file:docs/theming.org#looks][looks]].
-- *Flexible Icon Resolution*: Best-effort fallback pipeline resolving GTK theme
-  icons, absolute paths, system pixmaps, and symbolic variants.
-- *Async Command Launching*: Spawns binaries, scripts, and
-  [[https://flatpak.org/][Flatpaks]] asynchronously using GLib process spawning
-  without freezing the UI.
-- *App Noise Filtering*: Flexible exclusion lists (~#:exclude-apps~) to prevent
-  background utilities or specific application IDs from creating unwanted
-  launchers.
-- *Reproducible Builds*: Fully hermetic development environment and builds
-  powered by GNU Guile, Meson, and GNU Guix.
-- *Native fluid fish-eye* magnification effect on hover (a la the shelf look), enabled by
-  default and switchable per item or globally if you want less animation.
-- *Dock Scrolling*: Seamless mouse wheel scrolling over dock items when the bar
-  exceeds available display dimensions.
-- *Dynamic Widgets*: RAM, CPU, CPU temperature, battery and clock items, driven by
-  Scheme thunks you can replace with your own pollers. The meters are drawn as
-  icon-sized gauges that fill up and change colour, and the clock as an analogue
-  face -- not as text; see [[file:docs/configuration.org#dynamic-widgets][Dynamic widgets]].
-- *Stacks* 📁: a dock icon that opens a folder (Downloads, Screenshots, projects)
-  as an icon grid or a list; see [[file:docs/using-the-dock.org#stacks][Stacks]].
-- *Launchpad* 🚀: a full-screen, searchable grid of every installed application,
-  parsed from the XDG desktop entries; see [[file:docs/using-the-dock.org#launchpad][The launchpad]].
-- *Trash* 🗑️: a dock icon that follows the desktop trash -- empty/full artwork and
-  an item count, opening it with a click and emptying it from its menu, and taking
-  files dropped on it. It reads and writes the freedesktop.org trash layout, not
-  one desktop's private store, so it works the same on GNOME, KDE, Xfce, Cinnamon
-  and MATE; see [[file:docs/using-the-dock.org#trash][The trash]].
-- *Drag and drop* 🖱️: reorder icons by dragging them along the dock, drag one out
-  to remove it in a puff of smoke, drop a ~.desktop~ file to add an application
-  or a folder to add a stack -- and the layout survives restarts; see
+- *Wayland native.* Built on GTK4 and ~gtk4-layer-shell~ for edge anchoring,
+  cubic-eased slide animation and compositor integration.
+- *Foreign-toplevel tracking.* Uses
+  ~zwlr_foreign_toplevel_manager_v1~, the Wayland
+  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
+  for running indicators, window titles and a popover that focuses, closes or
+  opens individual instances; see [[file:docs/internals.org#toplevel-tracking][Wayland toplevel tracking]].
+- *Multi-monitor.* Span the dock across all outputs (~#:monitor 'all~) or bind
+  it to one connector (=~\"DP-1\"~); see
+  [[file:docs/configuration.org#configuration-options][the options reference]].
+- *Auto-hide.* A two-pixel reveal strip at the screen edge, with a
+  frame-clock-driven slide that is cancelled if the pointer returns.
+- *Fish-eye magnification.* Icons grow under the pointer as a function of
+  distance, per item or globally; the mapping is [[file:docs/theming.org][documented with the recipes]].
+- *Dock scrolling.* A wheel over a crowded row scrolls it, so the item count is
+  not bounded by the screen width.
+- *Dynamic widgets.* RAM, CPU, CPU temperature, battery and clock items driven by
+  Scheme thunks you can replace with your own pollers.  Meters are drawn as
+  icon-sized gauges that fill and change colour, the clock as an analogue face;
+  see [[file:docs/configuration.org#dynamic-widgets][Dynamic widgets]].
+- *Stacks.* A dock item that opens a folder (Downloads, Screenshots, projects) as
+  an icon grid or a list; see [[file:docs/using-the-dock.org#stacks][Stacks]].
+- *Launchpad.* A searchable grid of every installed application, built from the
+  XDG desktop entries; see [[file:docs/using-the-dock.org#launchpad][The launchpad]].
+- *Trash.* A dock item over the freedesktop.org trash layout -- empty and full
+  artwork, an item count, open on click, empty from the menu, and files can be
+  dropped on it -- so it behaves the same on GNOME, KDE, Xfce, Cinnamon and
+  MATE; see [[file:docs/using-the-dock.org#trash][The trash]].
+- *Drag and drop.* Reorder items along the row, drag one out to remove it, drop a
+  ~.desktop~ file to add an application or a folder to add a stack; the order is
+  written to a state file and survives restarts; see
   [[file:docs/using-the-dock.org#drag-and-drop][Rearranging the dock]].
-- *Keyboard and screen reader friendly* ♿: the whole dock, its menus, stacks and
-  the launchpad can be driven from the keyboard (arrows, Home/End, Menu,
-  Ctrl+Arrow to rearrange), every icon announces its name and state, focus rings
-  are visible, and reduced motion is honoured -- both from the dock's own setting
-  and from the desktop's accessibility preferences; see
+- *Keyboard and screen readers.* The dock, its menus, stacks and the launchpad
+  are reachable from the keyboard (arrows, Home/End, Menu, Ctrl+Arrow to
+  rearrange), every icon announces name and state, focus rings are visible, and
+  reduced motion is honoured from the dock's setting or the desktop's
+  accessibility preferences; see
   [[file:docs/using-the-dock.org#accessibility][Keyboard and accessibility]].
-- *Nineteen Themes, Two Layout Modes*: from Brushed's glazed glass and Snow
-  the 3D shelf's 3D shelf through Platinum and Glass to the five taskbar looks
-  (XP, Vista, 7, 10, 11), as a
-  floating capsule or a full-width taskbar with window titles -- and a
-  [[file:docs/theming.org#looks][look]] per theme that sets the whole thing in one line.
-- *Free software*: MIT licensed, documentation included.  Yours to run, read,
-  fork and extend.
+- *Nineteen themes, two geometries.* Brushed, Frost, Platinum, Dune, Stage and
+  Glass for the glass shelf, Luna, Aurora, Seven, Tiles and Island for the
+  taskbar, plus Vanilla, Nature, Solarized and Ambiance -- each with a
+  [[file:docs/theming.org#looks][look]] that sets the whole dock in one line, as a floating capsule or a
+  full-width taskbar with window titles.
+- *Reproducible builds.* A hermetic environment and build from GNU Guix, or a
+  pinned flake from Nix, plus Meson/Ninja for a plain source build.
+- *Free software.* MIT licensed, documentation included: run it, read it, fork
+  it, extend it.
 
 ------------------
 

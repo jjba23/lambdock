@@ -371,7 +371,7 @@ static void on_popover_close_window(GtkButton *btn, gpointer user_data) {
  * @btn: GTK Button widget clicked (unused).
  * @user_data: Pointer to the associated `DockItem`.
  *
- * Callback triggered when clicking the "Close All the taskbar era" option in the
+ * Callback triggered when clicking the "Close All" option in the
  * popover. Iterates through all open windows attached to this dock item and
  * sends a close request for each.
  */
@@ -935,14 +935,14 @@ static void menu_append_new_instance_row(GtkWidget *vbox, DockItem *item,
   gtk_box_append(GTK_BOX(vbox), btn_launch);
 }
 
-/** "Close All the taskbar era", only for an item that has more than one. */
+/** "Close All", only for an item that has more than one. */
 static void menu_append_close_all_row(GtkWidget *vbox, DockItem *item,
                                       int window_count) {
   if (window_count <= 1)
     return;
 
   GtkWidget *btn_close_all =
-      menu_row_new("window-close-symbolic", _("Close All the taskbar era"));
+      menu_row_new("window-close-symbolic", _("Close All"));
   g_signal_connect(btn_close_all, "clicked",
                    G_CALLBACK(on_popover_close_all_windows), item);
   gtk_box_append(GTK_BOX(vbox), btn_close_all);

@@ -118,7 +118,7 @@ gboolean get_taskbar_config_for(const char *config_path);
 /**
  * get_show_window_titles_config_for:
  * Returns TRUE when window title labels should be shown on running app items
- * (the taskbar era XP-style taskbar buttons).
+ * (Luna-style taskbar buttons).
  */
 gboolean get_show_window_titles_config_for(const char *config_path);
 

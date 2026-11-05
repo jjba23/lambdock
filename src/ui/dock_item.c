@@ -1233,7 +1233,7 @@ DockItem *create_dock_item(LambdockState *state, const char *name,
 
   /* App items host their icon and an (initially hidden) window-title label in
    * a horizontal box. The label is shown only when `show-window-titles?` is on
-   * and the app has a running window (the taskbar era XP-style taskbar buttons). */
+   * and the app has a running window (Luna-style taskbar buttons). */
   GtkWidget *content = dock_item_begin_content(item, 6);
   GtkWidget *image = dock_item_load_icon(state, item->icon);
   dock_item_append_icon(content, image, dock_item_icon_size(state));

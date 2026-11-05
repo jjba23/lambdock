@@ -151,7 +151,7 @@ msgid "New Instance"
 msgstr "Nova instância"
 
 #: src/ui/popover_menu.c:945
-msgid "Close All Windows"
+msgid "Close All"
 msgstr "Fechar todas as janelas"
 
 #: src/ui/preferences.c:346

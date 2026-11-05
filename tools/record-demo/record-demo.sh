@@ -31,8 +31,8 @@ OUT_GIF="${OUT_GIF:-$SCRIPT_DIR/out/lambdock-demo.gif}"
 KEEP_TMP="${KEEP_TMP:-0}"
 # --width and --fps only affect the encode: the pointer coordinates are in the
 # nested *logical* space, so a smaller or faster GIF needs no recalibration.
-FPS="${FPS:-20}"
-WIDTH="${WIDTH:-1100}"
+FPS="${FPS:-18}"
+WIDTH="${WIDTH:-1080}"
 # The lossless intermediate is captured at this width; the GIF is scaled down
 # from it, which keeps text crisp after the palette reduction.
 CAPTURE_WIDTH="${CAPTURE_WIDTH:-1440}"
@@ -232,8 +232,12 @@ read -r OUTER_W OUTER_H OUTER_SCALE PHYS_W PHYS_H < <(
 
 NESTED_SCALE="${NESTED_SCALE:-}"
 if [[ -z "$NESTED_SCALE" ]]; then
+  # One logical pixel of dock costs one logical pixel of output: at scale 2 a
+  # 48 px icon fills 4.3% of the frame width, which reads as zoomed in.  Half
+  # way down (1.5) keeps the icons crisp after the capture is scaled and leaves
+  # room for the wallpaper, the windows and a 15-slot dock.
   if ((PHYS_W >= 2000)); then
-    NESTED_SCALE=2.0
+    NESTED_SCALE=1.5
   elif ((PHYS_W >= 1500)); then
     NESTED_SCALE=1.5
   else
@@ -336,15 +340,22 @@ cat >"$TMP/home/.config/lambdock/settings.scm" <<EOF
 (define dock-enable-repl? #t)
 (define dock-repl-socket-path "$REPL_SOCKET")
 (define dock-exclude-apps '("kitty" "lambdock" "org.jointhefreeworld.lambdock"))
+;; Fifteen slots.  The storyboard addresses items by coordinate and the row is
+;; centred, so the extra launchers go two at each end: equal counts either side
+;; leave the centre of the original eleven where it was, which is what keeps the
+;; ITEM_* constants in controller.py valid.  Four a side overflowed the 1128 px
+;; demo output, and a clipped capsule is worse than a smaller dock.
 (define dock-items
   (append
+   (preset-launchers-for 'firefox 'gnome-calendar)
    (preset-launchers-for 'alacritty 'google-chrome 'nautilus 'gnome-calculator)
    (list (separator-item))
    (list (preset-launcher 'emacs)
          (stack-item #:name "Wallpapers" #:icon "folder"
                      #:path "$TMP/shots" #:view-mode 'grid))
    (list (separator-item))
-   (preset-launchers-for 'ram 'cpu 'clock)))
+   (preset-launchers-for 'ram 'cpu 'clock)
+   (preset-launchers-for 'gimp 'vlc)))
 EOF
 
 cat >"$TMP/niri.kdl" <<EOF
@@ -439,7 +450,11 @@ exec dbus-run-session -- niri -c "$niri_cfg" -- python3 "$controller" \
 NESTED
 chmod +x "$TMP/run-nested.sh"
 
-env -u NIRI_SOCKET \
+# GDK_BACKEND is dropped on purpose: this demo is a Wayland demo, and a shell
+# that exports GDK_BACKEND=x11 (some setups do) would otherwise run lambdock,
+# kitty and alacritty through the nested XWayland, where the dock has no
+# layer-shell and cannot anchor to an edge at all.
+env -u NIRI_SOCKET -u GDK_BACKEND -u QT_QPA_PLATFORM \
     HOME="$TMP/home" \
     XDG_CONFIG_HOME="$TMP/home/.config" \
     XDG_DATA_HOME="$TMP/home/.local/share" \

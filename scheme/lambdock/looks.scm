@@ -411,7 +411,7 @@ KEY may be written with or without the `dock-' prefix."
     ;; capsule), every one draws 32px icons, and every one leaves the shelf at
     ;; its flat defaults -- no overhang, no front face, no keystone, no mirrors,
     ;; because a taskbar is a bar and not a shelf. What changes between
-    ;; them is the chrome of their era: labels are on where that the taskbar era showed
+    ;; them is the chrome of their era: labels are on where the taskbar showed
     ;; them (Luna and Aurora) and off where it did not (7, 10 and 11), and the gaps
     ;; follow the buttons -- Luna's task buttons touch, glass's glass tiles keep a
     ;; few pixels of air, and Island leaves the most room around a rounded

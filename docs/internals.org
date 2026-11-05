@@ -17,10 +17,10 @@ from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
 
 - *Single Window*: Left-clicking a running app launcher focuses and raises its
   existing window surface.
-- *Multiple the taskbar era*: Left-clicking or right-clicking an app launcher with
+- *Multiple windows*: Left-clicking or right-clicking an app launcher with
   multiple open instances opens a floating GTK Popover HUD.
 - *Popover Capabilities*: Select individual windows by title, close specific
-  window instances, open a new window, or execute a "Close All the taskbar era" command.
+  window instances, open a new window, or execute a "Close All" command.
 - *App-specific entries*: the popover also carries the actions that belong to
   the kind of application the item is. A browser gets *New Window* and *New
   Private Window* (Firefox's ~--private-window~, Chrome/Chromium/Brave/Vivaldi's

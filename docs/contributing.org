@@ -12,12 +12,9 @@
 :CUSTOM_ID: contributing
 :END:
 
-Contributing to free software (as in freedom) is a uniquely beautiful act,
-because it embodies principles of generosity, collaboration and empowerment.  We
-welcome everyone to feel invited to the ~lambdock~ project, and we encourage
-active contribution in all forms: improving it, reporting issues, brainstorming,
-making it more modular or more flexible, translating it, or simply sharing a
-screenshot of your desktop.
+A patch, a report that carries the exact settings file and REPL transcript, a
+translation, or a note that this manual and the code disagree are all useful.
+Read [[file:development.org#developing][Developing]] first if you intend to build it.
 
 ** Reporting a bug or an idea
 :PROPERTIES:

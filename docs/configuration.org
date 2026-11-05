@@ -12,8 +12,9 @@
 :CUSTOM_ID: configuring-lambdock
 :END:
 
-Configurations are written in GNU Guile Scheme, and user style overrides are
-written in CSS/GTK4.
+The configuration is a Scheme program.  The dock evaluates it at start and again
+whenever the file changes, and adopts the values it defines: a setting is a
+binding, and a reload is a re-evaluation.  Style overrides are GTK4 CSS.
 
 ~lambdock~ will scan your configuration directory -- the one the XDG base
 directory specification
@@ -95,7 +96,7 @@ upgrading to newer ~lambdock~ versions. You can do this with
 ;; Layout mode: 'dock (floating capsule) | 'taskbar (full-width bar)
 (define dock-mode 'dock)
 
-;; Show the focused window's title next to running app icons (the taskbar era XP-style)
+;; Show the focused window's title next to running app icons (taskbar-style)
 (define dock-show-window-titles? #f)
 
 ;; The dock's glass shelf is described by plain numbers. Everything below has

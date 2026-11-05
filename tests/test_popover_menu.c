@@ -154,7 +154,7 @@ static void test_popover_menu_multi_window(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, row, row, sep, Close All the taskbar era,
+  /* header, sep, row, row, sep, Close All,
    * sep, New Window, New Private Window */
   g_assert_cmpint(menu_child_count(item), ==, 9);
   GPtrArray *labels = menu_labels(item);
@@ -162,7 +162,7 @@ static void test_popover_menu_multi_window(void) {
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Tab 1");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "Tab 2");
-  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "Close All the taskbar era");
+  g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "Close All");
   g_assert_cmpstr(g_ptr_array_index(labels, 4), ==, "New Window");
   g_assert_cmpstr(g_ptr_array_index(labels, 5), ==, "New Private Window");
   g_ptr_array_unref(labels);
@@ -668,7 +668,7 @@ static void test_popover_menu_keyboard(void) {
   GtkWidget *popover = g_object_ref_sink(item->popover);
   gtk_widget_set_parent(item->popover, anchor);
 
-  /* Two windows: title, close, title, close, Close All the taskbar era, New Window,
+  /* Two windows: title, close, title, close, Close All, New Window,
    * New Private Window. */
   populate_popover_menu(item);
 

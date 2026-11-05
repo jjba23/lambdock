@@ -12,10 +12,9 @@
 :CUSTOM_ID: repl
 :END:
 
-For purposes of development, experimentation and live hackability, ~lambdock~
-features an embedded GNU Guile Scheme runtime. You can enable a background
-[[https://en.wikipedia.org/wiki/Unix_domain_socket][Unix domain socket]] REPL to
-query or dynamically alter the running dock's state in real time.
+The dock's brain is an embedded Guile image, and the socket REPL evaluates forms
+in that image: a getter reads the live value, a setter replaces it, and the next
+frame draws the result.  Nothing is serialised and restarted in between.
 
 In your =~/.config/lambdock/settings.scm= file, set ~dock-enable-repl?~ to ~#t~.
 You can optionally customize the socket path using ~dock-repl-socket-path~

@@ -17,8 +17,9 @@
 :CUSTOM_ID: styling-and-theming
 :END:
 
-~lambdock~ ships with pre-baked themes embedded via build defines, and every one
-of them is a CSS file you are free to read, copy and argue with.
+Themes are GTK4 stylesheets compiled into the binary.  Each is a file in
+=resources/css/= that you can read, copy and recompile against; the names are the
+material, not the desktop the material was traced from.
 
 - *Vanilla Glassmorphism* 🧊 (~'vanilla~): Modern translucent dark pill layout
   with soft backdrop reflections, glow indicators, and spring physics button
@@ -239,14 +240,14 @@ number reads, and deliberate: those capsules are lambdock's own design.
 
 *** The taskbar looks are one family
 
-The five the taskbar era recipes share everything that *can* be shared, so they behave
+The five taskbar recipes share everything that *can* be shared, so they behave
 identically where it matters and differ only where the era did:
 
 - every one is a ~'taskbar~ -- a full-width bar, not a floating capsule;
 - every one draws 32px icons and leaves the shelf at its flat defaults
   (24px of inner glass, no overhang, no front face, no keystone, no mirrors),
   because a taskbar is a bar and not a shelf;
-- window titles follow what that the taskbar era actually showed: *on* for Luna and Aurora
+- window titles follow what the taskbar it names actually showed: *on* for Luna and Aurora
   (whose task buttons carried labels), *off* for 7, 10 and 11 (7 made
   "always combine, hide labels" the default, and nothing since has shown them);
 - none of them magnifies: the fisheye under the pointer is an the shelf look mannerism, so
@@ -259,7 +260,7 @@ identically where it matters and differ only where the era did:
   The end padding runs the same way, from XP's tight ~4~ (Quick Launch hard
   against the Start button) to Island's ~12~.
 
-So a the taskbar era dock is one line, and the line says which era:
+So a taskbar dock is one line, and the line says which era:
 
 #+begin_src scheme
 (define dock-look 'luna)      ; or 'aurora, 'seven,
@@ -271,7 +272,7 @@ The short names work too: ~'xp~ and ~'luna~, ~'vista~ and ~'aero~, ~'seven~ and
 *End pad* column above, so the first icon sits 10px from the bar's edge in XP and
 22px in Island, which is where the Start button and the centred group left it.
 
-One number a the taskbar era look cannot pin down exactly is the *thickness* of the bar:
+One number a taskbar look cannot pin down exactly is the *thickness* of the bar:
 it is ~icon-size + dock-shelf-margin~ -- the flat capsule's 24px of inner glass --
 so a 32px look is 56px tall, where the real bars were 30-40px. Set
 ~(define dock-icon-size 16)~ next to the look for XP's own proportion (a 40px bar
@@ -284,7 +285,7 @@ The short names work, and so do the theme names, so writing the theme you
 already know gets you the dock it was designed for: ~mavericks~ and
 ~platinum~ both mean ~platinum~, ~frost-dark~ means
 ~frost-dark~, ~tahoe-dark~ and ~glass-dark~ mean
-~glass-dark~; on the taskbar era side ~luna~, ~xp~ and ~win-xp~ mean
+~glass-dark~; on the taskbar side ~luna~, ~xp~ and ~win-xp~ mean
 ~luna~, ~aero~, ~vista~ and ~win-vista~ mean ~aurora~, ~seven~,
 ~win7~ and ~win-7~ mean ~seven~, ~win10~ means ~tiles~ and ~win11~
 means ~island~; and ~taskbar~ means ~plain-taskbar~.
@@ -382,11 +383,11 @@ squared off, and icons are laid out from the start of the bar.
 #+end_src
 
 On top of that, ~dock-show-window-titles?~ renders the focused window's title next
-to each running app's icon, like the classic the taskbar era XP taskbar. Pinned apps that
+to each running app's icon, like the classic Luna taskbar. Pinned apps that
 are not running stay icon-only, and titles are ellipsized when they get long.
 
 #+begin_src scheme
-;; Show window titles on running app items (the taskbar era XP-style taskbar buttons)
+;; Show window titles on running app items (Luna-style taskbar buttons)
 (define dock-show-window-titles? #t)
 #+end_src
 

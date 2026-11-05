@@ -142,7 +142,7 @@ msgid "New Instance"
 msgstr ""
 
 #: src/ui/popover_menu.c:945
-msgid "Close All Windows"
+msgid "Close All"
 msgstr ""
 
 #: src/ui/preferences.c:346
