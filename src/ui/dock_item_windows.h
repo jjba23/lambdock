@@ -11,7 +11,7 @@
 /* =========================================================================
  * THE DOCK ITEM'S WINDOWS
  * =========================================================================
- * The window model behind a dock item: the AppWindows the compositor reported
+ * The window model behind a dock item: the Appthe taskbar era the compositor reported
  * for it, the running/focused/minimized styling that follows, and the lookup
  * from a reported app id to the item that owns it.
  *
@@ -22,7 +22,7 @@
 
 /**
  * clear_tracked_windows:
- * Drops all tracked AppWindows/handles and removes non-favorite (window-tracked)
+ * Drops all tracked Appthe taskbar era/handles and removes non-favorite (window-tracked)
  * items. Used when the Wayland foreign-toplevel manager is withdrawn.
  */
 void clear_tracked_windows(LambdockState *state);

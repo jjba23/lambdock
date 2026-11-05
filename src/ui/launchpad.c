@@ -849,7 +849,7 @@ static gboolean click_hits_content(GtkWidget *picked) {
 }
 
 /* Adapter: a click on the backdrop closes the launchpad, like clicking outside
- * Launchpad on macOS. */
+ * Launchpad on the shelf look. */
 static void on_backdrop_click(GtkGestureClick *gesture, int n_press, double x,
                               double y, gpointer user_data) {
   (void)gesture;

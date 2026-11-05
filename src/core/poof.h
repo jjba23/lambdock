@@ -12,8 +12,8 @@
  * =========================================================================
  * THE POOF, AS ARITHMETIC
  * =========================================================================
- * Dragging an icon out of the OS X dock made it burst into a puff of smoke.
- * Dock.app's `poof.png` is that animation: five 128x128 frames -- exactly the
+ * Dragging an icon out of the shelf look dock made it burst into a puff of smoke.
+ * the reference dock's `poof.png` is that animation: five 128x128 frames -- exactly the
  * size of the icon they replace -- whose measured alpha falls from 139 (mean
  * over the frame) to 11, while the visible cloud shrinks from the full frame to
  * about 76x86 as the outer smoke thins out first.

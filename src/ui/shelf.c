@@ -225,7 +225,7 @@ static void reflection_paint_ellipse(GtkSnapshot *snapshot, double cx, double cy
  * Soft dark pool where the icon meets the glass, so the icon reads as resting on
  * the shelf instead of floating above it.
  *
- * The shape is Dock.app's `wviconshadow.png`, the shadow the real dock puts under
+ * The shape is the reference dock's `wviconshadow.png`, the shadow the real dock puts under
  * an icon: a Gaussian pool that measures 0.40 alpha at the icon's centre, 0.28
  * at a third of an icon out, 0.06 at three quarters, and nothing past 0.61 icon.
  * Drawing it as a pool centred on the mirror axis -- rather than a linear band
@@ -278,7 +278,7 @@ static void reflection_paint_contact_shadow(const LambdockReflection *self,
 
 /**
  * reflection_paint_running_dot:
- * The small glowing dot the OS X dock showed for apps with open windows: a
+ * The small glowing dot the shelf look dock showed for apps with open windows: a
  * white bead sitting on a cyan glow.
  *
  * Two images describe it, and they are not the same shape rotated:
@@ -308,7 +308,7 @@ static void reflection_paint_contact_shadow(const LambdockReflection *self,
  *     sit right around the bead.
  *
  * The bead is white -- that is what the real one was on the 3D shelf -- but a
- * white bead disappears into a pale slab (the platinum Mavericks and Aqua Tiger
+ * white bead disappears into a pale slab (the platinum Platinum and gloss Brushed
  * shelves are exactly that), so it is drawn over that pool. On the light
  * material the pool reads as the shadow the icon casts on the glass and the
  * bead stays visible; on dark glass the pool blends into the shelf and only the
@@ -633,7 +633,7 @@ static void lambdock_reflection_init(LambdockReflection *self) {
  *   - the *flare*, a pure keystone that keeps the edge touching the screen at
  *     full width and pulls the inner edge in by a number of pixels per side.
  *
- * The flare is the one that makes the OS X dock's silhouette: its slab is wider
+ * The flare is the one that makes the shelf look dock's silhouette: its slab is wider
  * where it meets the screen than at the edge the icons overhang, which is what
  * reads as a 3D shelf.
  *
@@ -738,7 +738,7 @@ static void lambdock_shelf_frame_size_allocate(GtkWidget *widget, int width,
  * @pinned_at_end: TRUE when the edge on the screen is the bottom/right one.
  * @out: Destination matrix.
  *
- * Builds the keystone that gives the dock its OS X silhouette: the inner edge
+ * Builds the keystone that gives the dock its the shelf look silhouette: the inner edge
  * keeps the dock's width, and the edge lying on the screen is drawn @flare pixels
  * wider per side, as if the slab were a shelf seen slightly from above.
  *

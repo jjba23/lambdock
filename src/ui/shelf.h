@@ -172,7 +172,7 @@ void shelf_frame_set_tilt(GtkWidget *frame, GtkLayerShellEdge edge,
  * @perspective: Perspective distance in pixels (smaller = stronger 3D).
  * @flare_px: How much narrower the inner edge is than the edge touching the
  * screen, in pixels per side. 0 keeps the slab rectangular; a positive value
- * gives it the OS X dock's keystone silhouette.
+ * gives it the shelf look dock's keystone silhouette.
  *
  * Sets the whole shape of the shelf in one call. NULL and non-frame widgets are
  * ignored.

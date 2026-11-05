@@ -9,25 +9,25 @@
     <!-- Dock Themes -->
     <file>css/vanilla.css</file>
     <file>css/vanilla-light.css</file>
-    <file>css/snow-leopard.css</file>
-    <file>css/snow-leopard-dark.css</file>
+    <file>css/frost.css</file>
+    <file>css/frost-dark.css</file>
     <file>css/solarized-light.css</file>
-    <file>css/unity.css</file>
+    <file>css/ambiance.css</file>
     <file>css/nature.css</file>
-    <!-- macOS-inspired themes -->
-    <file>css/macos-tiger.css</file>
-    <file>css/macos-big-sur.css</file>
-    <file>css/macos-ventura.css</file>
-    <file>css/macos-tahoe.css</file>
-    <file>css/macos-tahoe-dark.css</file>
-    <file>css/macos-mavericks.css</file>
-    <file>css/macos-mavericks-dark.css</file>
-    <!-- Windows-inspired themes -->
-    <file>css/windows-xp.css</file>
-    <file>css/windows-vista.css</file>
-    <file>css/windows-7.css</file>
-    <file>css/windows-10.css</file>
-    <file>css/windows-11.css</file>
+    <!-- Shelf-era themes -->
+    <file>css/brushed.css</file>
+    <file>css/dune.css</file>
+    <file>css/stage.css</file>
+    <file>css/glass.css</file>
+    <file>css/glass-dark.css</file>
+    <file>css/platinum.css</file>
+    <file>css/platinum-dark.css</file>
+    <!-- Taskbar-era themes -->
+    <file>css/luna.css</file>
+    <file>css/aurora.css</file>
+    <file>css/seven.css</file>
+    <file>css/tiles.css</file>
+    <file>css/island.css</file>
     <!-- Taskbar / window-title mode modifier (always available) -->
     <file>css/taskbar.css</file>
     <!-- Glass shelf modifier (loaded when the shelf parameters are in use) -->

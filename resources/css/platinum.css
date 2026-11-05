@@ -5,9 +5,9 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - MAC OS X 10.9 MAVERICKS
+ * LAMBDOCK STYLESHEET - MAC the shelf look MAVERICKS
  * =========================================================================
- * The last of the OS X "3D" docks: a light, polished platinum slab with a
+ * The last of the shelf look "3D" docks: a light, polished platinum slab with a
  * bright specular line along its outer edge, a slightly darker band for the
  * slab's thickness, and icons mirrored onto the surface in front of them.
  *
@@ -20,7 +20,7 @@
  *   (define dock-shelf-front 18)
  *   (define dock-reflection 0.5)
  *
- * for the full Mavericks shelf.
+ * for the full Platinum shelf.
  */
 
 /* -------------------------------------------------------------------------
@@ -65,7 +65,7 @@ window {
 .lambdock-window.shelf-mode {
   border-radius: 8px 8px 16px 16px;
 
-  /* Measured off Dock.app's own artwork from the 10.9 install media, read as a
+  /* Measured off the reference dock's own artwork from the install media, read as a
    * white wash over whatever sits behind it.  `frontline.png` is the outer lip:
    * 1px of black at 0.30 (the outer border below) with 2px of white in front of
    * it, and that white runs from 0.56 at the dock's ends to 0.82 in the middle
@@ -255,7 +255,7 @@ button.flat:hover .dynamic-item-label {
  * With reflections on, the reflection widget draws the bead and its glow on the
  * slab itself; this is the flat variant.
  *
- * The reference is Dock.app's `indicator_medium.png` (54x12 against a 64px tile:
+ * The reference is the reference dock's `indicator_medium.png` (54x12 against a 64px tile:
  * a 12x3 white bead sitting on a 54x12 cyan glow, 139/207/255 peaking at 0.13
  * alpha). Scaled to this look's 48px icons that is a ~9x3 bead in a ~40x9 glow.
  *
@@ -336,7 +336,7 @@ separator {
 /* On the glass shelf the separator is part of the slab rather than a divider
  * standing in front of it: it starts at the icons' base line, runs down the face
  * the slab tilts towards the viewer, and fades out before the front lip, the way
- * the 10.9 dock's does. It only applies while the slab is actually projected
+ * the dock's does. It only applies while the slab is actually projected
  * (keystone or tilt), so a flat capsule keeps the divider above. */
 .shelf-projected separator {
   margin: 0;
@@ -411,13 +411,15 @@ popover button.flat:hover {
     rgba(250, 252, 255, 0.98) 45%,
     rgba(238, 243, 250, 0.97) 100%
   );
-  color: #ffffff;
+  /* The platinum gloss is nearly white, so the row's text has to be dark:
+   * white-on-white made a hovered row unreadable. */
+  color: #101a28;
 }
 
 /* -------------------------------------------------------------------------
  * STACK PANEL (a folder opened as a grid or a list)
  * -------------------------------------------------------------------------
- * Also Dock.app's artwork: `stackbackground-*.png` is the 9-slice the real dock
+ * Also the reference dock's artwork: `stackbackground-*.png` is the 9-slice the real dock
  * grew its folder panel from.  Read off those tiles, the panel is
  *   - a charcoal fill of rgb(33, 33, 33) at 0.85 alpha,
  *   - a 1px near-black outline (alpha 0.07) with a 2px band of rgb(200, 200, 200)

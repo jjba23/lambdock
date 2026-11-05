@@ -5,9 +5,9 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - MAC OS X 10.9 MAVERICKS, SMOKED GLASS
+ * LAMBDOCK STYLESHEET - MAC the shelf look MAVERICKS, SMOKED GLASS
  * =========================================================================
- * The same dock as `macos-mavericks', for a dark session: smoked graphite in
+ * The same dock as `platinum', for a dark session: smoked graphite in
  * place of the platinum slab, with the same structure -- a lip along the screen
  * edge, a specular line, and a body that is denser where it meets that edge and
  * thins out towards the icons.
@@ -245,7 +245,7 @@ button.flat:hover .dynamic-item-label {
  * With reflections on, the reflection widget draws the bead and its glow on the
  * glass itself; this is the flat variant.
  *
- * The geometry is Dock.app's `indicator_medium.png` (54x12 against a 64px tile:
+ * The geometry is the reference dock's `indicator_medium.png` (54x12 against a 64px tile:
  * a 12x3 white bead on a 54x12 cyan glow at 139/207/255), scaled to this look's
  * 48px icons. On smoked glass the bead and glow carry it on their own -- no
  * shadow pool is needed, which is what the real dark dock looked like. */
@@ -310,7 +310,7 @@ separator {
 /* On the glass shelf the separator is part of the slab rather than a divider
  * standing in front of it: it starts at the icons' base line, runs down the face
  * the slab tilts towards the viewer, and fades out before the front lip, the way
- * the 10.9 dock's does. It only applies while the slab is actually projected
+ * the dock's does. It only applies while the slab is actually projected
  * (keystone or tilt), so a flat capsule keeps the divider above. */
 .shelf-projected separator {
   margin: 0;
@@ -381,7 +381,7 @@ popover button.flat:hover {
 /* -------------------------------------------------------------------------
  * STACK PANEL (a folder opened as a grid or a list)
  * -------------------------------------------------------------------------
- * `stackbackground-*.png` from Dock.app is already a dark panel, so the smoked
+ * `stackbackground-*.png` from the reference dock is already a dark panel, so the smoked
  * theme takes it as it is: charcoal rgb(33, 33, 33) at 0.85, a 1px near-black
  * outline with a 2px rgb(200, 200, 200) band at 0.35 inside it on the top and
  * left edges only, and a nine-pixel rounding (the 40x40 corner tiles are mostly

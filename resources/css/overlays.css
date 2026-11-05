@@ -449,7 +449,7 @@ window box.stack-popover button.stack-row:focus-visible {
  * MINIMIZE TO DOCK
  * -------------------------------------------------------------------------
  * A minimized window is still running, so the icon keeps its running indicator
- * and only loses contrast, the way macOS dims a hidden app. The class is added
+ * and only loses contrast, the way the shelf look dims a hidden app. The class is added
  * to the button when every window the item tracks is minimized, and removed the
  * moment one comes back; see dock_item.c:apply_running_state().
  * ------------------------------------------------------------------------- */

@@ -37,7 +37,7 @@
  * (see LambdockState.capsule_padding). */
 #define CAPSULE_MAIN_AXIS_PADDING_PX 12
 #define CAPSULE_MAIN_AXIS_PADDING_MAX_PX 96
-/* Gap between dock items, in px. The default is the Mac OS X dock's: with its
+/* Gap between dock items, in px. The default is the Mac the shelf look dock's: with its
  * 50px icons and ~15px gaps the spacing is about 0.3x the icon size, and the
  * themes' own button padding/margins make up the rest. */
 #define DOCK_ITEM_SPACING_PX 4
@@ -242,7 +242,7 @@ struct LambdockState {
   guint hide_timer_id;
   gboolean is_hidden;
   char *theme;
-  char *active_theme_class; /* Tracked CSS theme class e.g. "theme-unity" */
+  char *active_theme_class; /* Tracked CSS theme class e.g. "theme-ambiance" */
   char *config_path; /* Absolute path to settings file for this dock instance */
   gboolean is_destroying; /* Re-entrancy guard flag */
 

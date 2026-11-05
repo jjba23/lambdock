@@ -10,7 +10,7 @@
  *
  * What the reference looks like, and why the rules below are these:
  *
- *  - The Aero taskbar is a *glass* bar: near-black at the bottom, almost
+ *  - The glass taskbar is a *glass* bar: near-black at the bottom, almost
  *    transparent at the top, with one very bright specular line along the very
  *    top edge and a soft inner glow under it. That bright line is what makes it
  *    read as glass instead of as a black box, so it is drawn as a 1px inset
@@ -19,7 +19,7 @@
  *    icon *and* the window title, which is why the Vista look turns
  *    `dock-show-window-titles?` on (see `(lambdock looks)`).
  *  - A task button is invisible until it means something. Hovering one raises a
- *    pale blue glass tile; the focused window's tile is the bright one (Aero
+ *    pale blue glass tile; the focused window's tile is the bright one (glass
  *    lights the active button rather than depressing it, unlike Luna), and a
  *    running-but-unfocused app keeps a quieter dark tile.
  *  - Vista's menus are translucent pale glass with a thin blue-grey edge and a
@@ -129,7 +129,7 @@ button.running-app:hover {
   border-color: rgba(206, 228, 252, 0.60);
 }
 
-/* ...and the focused window lights up. Aero brightens the active button rather
+/* ...and the focused window lights up. glass brightens the active button rather
  * than depressing it, so this rule comes last and wins over `running-app' and
  * over `:hover' (same specificity, later wins). The tile stays dark enough that
  * the white window title keeps its contrast. */
@@ -178,7 +178,7 @@ separator {
 }
 
 /* -------------------------------------------------------------------------
- * POPOVERS - an Aero menu: pale translucent glass, thin blue-grey edge
+ * POPOVERS - an glass menu: pale translucent glass, thin blue-grey edge
  * ------------------------------------------------------------------------- */
 
 popover > contents {
@@ -221,7 +221,7 @@ popover button.flat:hover {
   color: #10243c;
 }
 
-/* Aero's window face: light grey, one soft top highlight. */
+/* glass's window face: light grey, one soft top highlight. */
 window.about-dialog {
   background-image: linear-gradient(
     180deg,

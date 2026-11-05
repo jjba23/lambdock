@@ -12,7 +12,7 @@
  * THE POOF
  * =========================================================================
  * Dragging an icon out of the dock used to make it vanish. On the real 10.9
- * dock it burst into a puff of smoke, and Dock.app ships that animation as
+ * dock it burst into a puff of smoke, and the reference dock ships that animation as
  * `poof.png`: five 128x128 frames, one icon's worth of smoke.
  *
  * This is the widget side of it. The burst itself is arithmetic in

@@ -5,15 +5,15 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - macOS 26 TAHOE (LIQUID GLASS, LIGHT)
+ * LAMBDOCK STYLESHEET - the newest TAHOE (LIQUID GLASS, LIGHT)
  * =========================================================================
- * The pill of macOS 26: rounder than Big Sur ever was, much more transparent,
+ * The pill of the newest: rounder than Dune ever was, much more transparent,
  * with a bright specular rim on every edge and a soft inner wash that reads as
  * refracted wallpaper rather than as a painted gradient. There are no icon
- * mirrors in it -- the reflections left with Mavericks -- so the dock keeps the
+ * mirrors in it -- the reflections left with Platinum -- so the dock keeps the
  * default capsule geometry and this file is the whole look.
  *
- * The ready-made recipe is `(define dock-look 'osx-tahoe)`; everything here is
+ * The ready-made recipe is `(define dock-look 'glass)`; everything here is
  * the material only.
  */
 
@@ -25,7 +25,7 @@ window {
   background-color: transparent;
 }
 
-/* A floating pane of glass: the corners are the roundest of any macOS dock, the
+/* A floating pane of glass: the corners are the roundest of any shelf dock, the
  * body is a light wash, and the rim is a thin bright line all the way round. */
 .lambdock-window {
   border-radius: 28px;
@@ -103,7 +103,7 @@ button.flat:active {
   font-weight: 500;
 }
 
-/* macOS running indicator: a small dot under the icon. On light glass it is
+/* the shelf look running indicator: a small dot under the icon. On light glass it is
  * dark; the dark theme draws it white. */
 button.running-app {
   background-image: radial-gradient(
@@ -132,7 +132,7 @@ separator {
 }
 
 /* -------------------------------------------------------------------------
- * POPOVERS (light glass, dark text -- macOS 26 in light mode)
+ * POPOVERS (light glass, dark text -- the newest in light mode)
  * ------------------------------------------------------------------------- */
 
 popover > contents {

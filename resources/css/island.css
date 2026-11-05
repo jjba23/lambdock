@@ -5,39 +5,42 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - macOS VENTURA / SONOMA (13 / 14) STYLE
+ * LAMBDOCK STYLESHEET - WINDOWS 11 STYLE
  * ========================================================================= */
 
 window {
   background-color: transparent;
 }
 
-/* Darker, denser frosted capsule with a stronger outer shadow */
+/* Soft, translucent dark surface with a gentle top highlight */
 .lambdock-window {
-  border-radius: 24px;
-  padding: 8px 14px;
-  margin: 8px 0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  margin: 6px;
 
   background-image: linear-gradient(
     180deg,
-    rgba(44, 44, 46, 0.72) 0%,
-    rgba(28, 28, 30, 0.80) 100%
+    rgba(45, 45, 48, 0.86) 0%,
+    rgba(32, 32, 34, 0.90) 100%
   );
 
   border: 1px solid rgba(255, 255, 255, 0.10);
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.38),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    0 12px 30px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 .lambdock-window.taskbar {
   border-radius: 0;
   margin: 0;
   padding: 4px 10px;
-  background-color: rgba(24, 24, 26, 0.92);
-  background-image: none;
+  background-image: linear-gradient(
+    180deg,
+    rgba(40, 40, 42, 0.88) 0%,
+    rgba(28, 28, 30, 0.92) 100%
+  );
   border: none;
-  box-shadow: none;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* -------------------------------------------------------------------------
@@ -48,46 +51,64 @@ button.flat {
   background: transparent;
   border: none;
   box-shadow: none;
-  padding: 4px;
+  padding: 5px;
   margin: 2px 3px;
-  border-radius: 12px;
-  color: #f5f5f7;
+  border-radius: 6px;
+  color: #ffffff;
 
-  transition: transform 170ms cubic-bezier(0.22, 1.0, 0.36, 1.0),
-              background-color 140ms ease;
+  transition: background-color 130ms ease,
+              transform 160ms cubic-bezier(0.2, 1.0, 0.3, 1.0);
 }
 
 button.flat:hover {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: rgba(255, 255, 255, 0.10);
   color: #ffffff;
 }
 
 button.flat:active {
-  background-color: rgba(255, 255, 255, 0.20);
+  background-color: rgba(255, 255, 255, 0.16);
+  transform: scale(0.94);
 }
 
 .dynamic-item-label {
-  color: #ebebed;
+  color: #f3f3f3;
   font-weight: 500;
   font-size: 12px;
   padding: 0 2px;
 }
 
 .window-title-label {
-  color: #ebebed;
+  color: #f3f3f3;
   font-weight: 500;
 }
 
+/* Island running indicator: a small rounded accent pill. */
 button.running-app {
   background-image: radial-gradient(
-    circle at center,
-    rgba(255, 255, 255, 0.9) 0%,
-    rgba(255, 255, 255, 0.75) 40%,
-    transparent 72%
+    ellipse at center,
+    #6cb6ff 0%,
+    #4aa3ff 55%,
+    transparent 78%
   );
-  background-size: 5px 5px;
+  background-size: 14px 4px;
   background-position: center bottom;
   background-repeat: no-repeat;
+}
+
+button.running-app:hover {
+  background-size: 20px 4px;
+}
+
+/* The focused window's pill is the wide one, and it stays wide while hovered --
+ * the real taskbar widens the pill under the window you are in, and hovering it
+ * does not shrink it again. `:hover' needs the higher-specificity arm, or
+ * `button.running-app:hover' would win. */
+button.window-focused {
+  background-size: 22px 4px;
+}
+
+button.window-focused:hover {
+  background-size: 22px 4px;
 }
 
 /* -------------------------------------------------------------------------
@@ -95,7 +116,7 @@ button.running-app {
  * ------------------------------------------------------------------------- */
 
 separator {
-  margin: 8px 6px;
+  margin: 6px 6px;
   background-color: rgba(255, 255, 255, 0.14);
   min-width: 1px;
 }
@@ -105,33 +126,37 @@ separator {
  * ------------------------------------------------------------------------- */
 
 popover > contents {
-  background-color: rgba(30, 30, 32, 0.97);
-  color: #f5f5f7;
-  border-radius: 14px;
+  background-color: rgba(43, 43, 45, 0.98);
+  color: #ffffff;
+  border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.60);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
   padding: 6px;
 }
 
 label.title {
   font-weight: 600;
   font-size: 12px;
-  color: #c8c8cd;
+  color: #d6d6d6;
   padding: 4px 8px;
 }
 
 popover button.flat {
-  color: #f5f5f7;
-  border-radius: 8px;
+  color: #ffffff;
+  border-radius: 6px;
   padding: 6px 12px;
   margin: 1px 0;
 }
 
 popover button.flat:hover {
-  background-color: rgba(255, 255, 255, 0.14);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 window.about-dialog {
-  background-color: rgba(28, 28, 30, 0.98);
+  background-image: linear-gradient(
+    180deg,
+    rgba(48, 48, 50, 0.98) 0%,
+    rgba(32, 32, 34, 0.99) 100%
+  );
   color: #ffffff;
 }

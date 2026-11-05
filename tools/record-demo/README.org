@@ -226,8 +226,8 @@ the burnt-in text.
 | 29 s | Stack | the folder item opened as a thumbnail grid, browsed, dismissed |
 | 33 s | Launchpad | opened over the REPL, filtered with =launchpad-search!=, closed |
 | 40 s | REPL | a kitty terminal types real expressions: read the icon size, change it, then define a =swap!= helper |
-| 47 s | Themes | eleven themes through =swap!=, wallpaper switching to the light one halfway; the two macOS Mavericks materials switch the dock to its 3D shelf geometry |
-| 64 s | Taskbar | Windows XP taskbar mode |
+| 47 s | Themes | eleven themes through =swap!=, wallpaper switching to the light one halfway; the two Platinum materials switch the dock to its 3D shelf geometry |
+| 64 s | Taskbar | the taskbar era XP taskbar mode |
 | 72 s | Outro | windows closed, dock back to its default, closing title card |
 
 Two rules that keep the recording honest:

@@ -46,7 +46,7 @@
  * @state: Any dock state; its window provides the GtkApplication and monitor.
  *
  * Shows the launchpad: a full screen layer-shell overlay with a search field and
- * a grid of every installed application, macOS Launchpad style. The window is
+ * a grid of every installed application, the shelf look Launchpad style. The window is
  * created on first use and reused afterwards; the application list is rescanned
  * on every show so freshly installed apps appear. The tile size, column count
  * and frosted background are resolved from @state's dock settings on each show.

@@ -7,6 +7,7 @@
 
 #include <libguile.h> // Header file defining function declarations and LambdockState
 #include "core/config_values.h" // Pure, unit-tested range/name rules
+#include "dock_window.h"  // Re-deriving the layout from the finished row
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
 #include "ui/dock_item.h" // Functions to create visual dock items and separators
 #include "ui/launchpad.h"  // Launchpad defaults and limits
@@ -662,6 +663,14 @@ void populate_dock_items_for(LambdockState *state) {
     g_free(type_name);
     items = scm_cdr(items);
   }
+
+  /* The row exists only now, and the derived layout is measured from it: every
+   * item's shelf slot is created hidden and the band it reserves is part of the
+   * row's cross-axis size. Re-applying the layout here is the same pass a reload
+   * runs, and without it the first frame kept every reflection hidden -- so the
+   * icons sat one band lower (and unmirrored) until something reloaded the
+   * dock. */
+  update_dock_dimensions(state);
 }
 
 /* =================================================================================

@@ -94,7 +94,7 @@ If you read nothing else, read this.
    =guile_bridge.c= into ~LambdockState~.
 5. *Items path:* Scheme ~<dock-item>~ records → ~populate_dock_items_for~ →
    GTK buttons/dynamic labels/separators appended to ~state->box~.
-6. *Windows path:* the compositor's foreign-toplevel manager → =toplevel_tracker.c=
+6. *the taskbar era path:* the compositor's foreign-toplevel manager → =toplevel_tracker.c=
    → ~DockItem~ + ~AppWindow~ → running indicator and the window popover.
 7. *Reload path:* =GFileMonitor= on =~/.config/lambdock= → 150 ms debounce →
    ~sync_docks_with_disk~ → create/reload/destroy dock instances.
@@ -597,7 +597,7 @@ meson compile -C build
 
 It covers auto-hide, magnification, launching, the popover HUD, the dock's own
 menu and the Preferences window, folder stacks, the launchpad, live REPL
-mutation, the built-in themes (including the two macOS Mavericks materials with
+mutation, the built-in themes (including the two Platinum materials with
 their 3D shelf), and taskbar mode.  Features
 that change should usually update the storyboard in =controller.py= -- treat
 the recorder as part of the test surface for user-visible behaviour -- and the
@@ -1307,18 +1307,18 @@ extracts -- the conventional names are:
 (define dock-show-when-clear? #t)
 (define dock-position 'bottom)      ;; 'bottom | 'top | 'left | 'right
 (define dock-icon-size 48)
-(define dock-theme 'vanilla)        ;; 'vanilla | 'vanilla-light | 'snow-leopard
-                                    ;; | 'snow-leopard-dark | 'solarized-light
-                                    ;; | 'nature | 'unity | 'macos-tiger
-                                    ;; | 'macos-big-sur | 'macos-ventura
-                                    ;; | 'macos-tahoe | 'macos-tahoe-dark
-                                    ;; | 'macos-mavericks | 'macos-mavericks-dark
-                                    ;; | 'windows-xp | 'windows-vista
-                                    ;; | 'windows-7 | 'windows-10
-                                    ;; | 'windows-11 | 'none
+(define dock-theme 'vanilla)        ;; 'vanilla | 'vanilla-light | 'frost
+                                    ;; | 'frost-dark | 'solarized-light
+                                    ;; | 'nature | 'ambiance | 'brushed
+                                    ;; | 'dune | 'stage
+                                    ;; | 'glass | 'glass-dark
+                                    ;; | 'platinum | 'platinum-dark
+                                    ;; | 'luna | 'aurora
+                                    ;; | 'seven | 'tiles
+                                    ;; | 'island | 'none
 ;; Or a whole dock in one line: theme + sizes + spacing + mode + shelf geometry
 ;; (recipes live in scheme/lambdock/looks.scm, see README: Looks).
-;; (define dock-look 'osx-mavericks)
+;; (define dock-look 'platinum)
 (define dock-monitor 'all)          ;; 'all | 'default | "DP-1"
 (define dock-mode 'dock)            ;; 'dock | 'taskbar
 (define dock-launchpad-close-side 'left) ;; 'left | 'right
@@ -1392,7 +1392,7 @@ state changes (all applied by =dock_item.c:apply_running_state()=):
 | Class                | Means                                       | Typical use                                        |
 |----------------------+---------------------------------------------+----------------------------------------------------|
 | ~running-app~        | the application has at least one window     | indicator dot/pill, or a raised "task button"       |
-| ~window-focused~     | one of its windows holds the keyboard focus | the lit/long indicator, or the Aero-lit tile        |
+| ~window-focused~     | one of its windows holds the keyboard focus | the lit/long indicator, or the glass-lit tile        |
 | ~window-minimized~   | all of its windows are minimized            | dim the icon (overlays.css does)                    |
 | ~window-title-label~ | the label on the ~.window-title-label~ widget | the running window's title next to the icon      |
 
@@ -1400,17 +1400,17 @@ state changes (all applied by =dock_item.c:apply_running_state()=):
 ~state~ event, so they flip within a frame of the user switching windows. Which
 of the two a theme uses is a matter of fidelity to the desktop it imitates:
 
-- the *Windows* themes use all three. XP raises a running button and depresses
+- the *the taskbar era* themes use all three. XP raises a running button and depresses
   the focused one; Vista and 7 keep a quiet glass tile for running and light the
-  focused one (Aero brightens instead of pressing); 10 and 11 draw a short
+  focused one (glass brightens instead of pressing); 10 and 11 draw a short
   underline/pill for running and the long one for the focused window.
-- the *macOS* themes draw a dot for running apps and ignore ~window-focused~,
-  because OS X does not distinguish. The dot is dark on the light slabs (Tiger,
-  Snow Leopard, Mavericks) and white on the dark ones -- the same rule the C-side
+- the *the shelf look* themes draw a dot for running apps and ignore ~window-focused~,
+  because the shelf look does not distinguish. The dot is dark on the light slabs (Brushed,
+  Frost, Platinum) and white on the dark ones -- the same rule the C-side
   shelf dot follows: it paints a soft shadow under its white glow so the dot
-  survives on the platinum and Aqua shelves.
+  survives on the platinum and gloss shelves.
 - lambdock's own stock themes (vanilla, vanilla-light, solarized-light, nature,
-  unity) draw a glow pill for running and widen/brighten it while focused.
+  ambiance) draw a glow pill for running and widen/brighten it while focused.
 
 Only [[https://docs.gtk.org/gtk4/css-overview.html][GTK CSS]] applies here, not
 browser CSS; the properties are listed in
@@ -1508,7 +1508,7 @@ and 20 sub-pixel jitter frames (a trackpad) cost =0= layout steps and =0=
 geometry rebuilds: =FISHEYE_POINTER_STEP_PX= drops them before they touch a
 widget. A reflection repaint costs one clipped draw per fade band, and
 =lambdock_reflection_band_count()= is pure and tested: 14 draws at the 14 px band
-the macOS Mavericks shelf uses, 16 in the worst case.
+the Platinum shelf uses, 16 in the worst case.
 
 ** Where the time actually goes, and where it does not
 The counters say *what* happens per frame; the interesting question after that is

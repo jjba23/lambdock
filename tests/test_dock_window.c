@@ -286,7 +286,7 @@ static void test_update_dock_dimensions_shelf(void) {
   /* The mirrors live *inside* the front glass: the icons stop `front` pixels
    * from the screen edge and the reflection widget fills the band below them,
    * so the offset the layout has to apply is front - band. That is what puts the
-   * icons' centre on the slab's top edge, as in the OS X dock. */
+   * icons' centre on the slab's top edge, as in the shelf look dock. */
   int band = (int)round(48 * 0.25);
   g_assert_cmpint(gtk_widget_get_margin_bottom(state.box), ==, 24 - band);
 

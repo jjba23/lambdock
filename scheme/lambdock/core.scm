@@ -180,7 +180,7 @@ keeps its default (the plain flat dock)."
                          (apply-dock-preferences
                           (resolve-dock-configuration file-path)
                           file-path))
-                        ;; A whole-dock recipe: (define dock-look 'osx-mavericks)
+                        ;; A whole-dock recipe: (define dock-look 'platinum)
                         ;; brings a theme, an icon size and a whole shelf
                         ;; geometry in one line (see (lambdock looks)).
                         (look-request (or (assq-ref settings 'dock-look)

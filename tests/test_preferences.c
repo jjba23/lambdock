@@ -180,7 +180,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   pump_main_loop(400);
   g_assert_true(get_reduce_motion_config_for(config_path));
 
-  /* The theme dropdown carries a symbol. Pick macOS Mavericks by name, so
+  /* The theme dropdown carries a symbol. Pick Platinum by name, so
    * adding a theme to the form's list cannot silently break this test. */
   GtkWidget *theme = find_by_key(content, "dock-theme");
   g_assert_nonnull(theme);
@@ -189,7 +189,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   guint mavericks_index = G_MAXUINT;
   for (guint i = 0; i < g_list_model_get_n_items(theme_model); i++) {
     g_autoptr(GtkStringObject) item = g_list_model_get_item(theme_model, i);
-    if (g_strcmp0(gtk_string_object_get_string(item), "macOS Mavericks") == 0) {
+    if (g_strcmp0(gtk_string_object_get_string(item), "Platinum") == 0) {
       mavericks_index = i;
       break;
     }
@@ -198,7 +198,7 @@ static void inner_test_preferences(void *data, int argc, char **argv) {
   gtk_drop_down_set_selected(GTK_DROP_DOWN(theme), mavericks_index);
   pump_main_loop(400);
   char *applied_theme = get_theme_config_for(config_path);
-  g_assert_cmpstr(applied_theme, ==, "macos-mavericks");
+  g_assert_cmpstr(applied_theme, ==, "platinum");
   free(applied_theme);
 
   /* A floating-point control (the reflection band). */

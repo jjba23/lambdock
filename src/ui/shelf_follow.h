@@ -25,7 +25,7 @@
  * shape whose vertical lines lean away from the middle of the dock and stretch as
  * they come towards the viewer. A `GtkSeparator` drawn upright next to a
  * projected slab looks pasted on, because it keeps standing straight while the
- * surface behind it leans -- the real OS X dock's separators lean with the glass
+ * surface behind it leans -- the real the shelf look dock's separators lean with the glass
  * they sit on.
  *
  * This container paints its child through the *local* part of the shelf's

@@ -55,7 +55,7 @@
 ;; Record type definition with accessors for polling logic and animation flags.
 ;;
 ;; `path` and `view-mode` are only meaningful for stacks: a stack is a dock icon
-;; that shows the contents of a directory (like the macOS Downloads stack), and
+;; that shows the contents of a directory (like the desktop's Downloads stack), and
 ;; `view-mode` picks how those contents are laid out ('grid or 'list).
 ;; Every other item keeps them at "" / 'grid.
 ;;

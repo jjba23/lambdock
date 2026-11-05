@@ -66,7 +66,7 @@ DOCK_ROW = 708
 # last two rows do not move with the number of windows.
 POPOVER_CLOSE_ALL = 594
 
-# resources/css/macos-mavericks.css is *material*, not geometry: the 3D slab with
+# resources/css/platinum.css is *material*, not geometry: the 3D slab with
 # icons mirrored onto the glass in front of them only appears with the three dock
 # options the stylesheet documents (shelf margin -22, shelf front 18, reflection
 # 0.5).  Everything else in the montage wants the stock flat capsule back.
@@ -93,36 +93,36 @@ MONTAGE_ROW = 736
 
 THEME_LABELS = {
     "vanilla": "Vanilla Glassmorphism",
-    "macos-big-sur": "macOS Big Sur",
-    "macos-ventura": "macOS Ventura",
-    "macos-mavericks": "macOS Mavericks",
-    "macos-mavericks-dark": "macOS Mavericks Dark",
-    "unity": "Unity",
+    "dune": "Dune",
+    "stage": "Stage",
+    "platinum": "Platinum",
+    "platinum-dark": "Platinum Dark",
+    "ambiance": "Ambiance",
     "nature": "Nature",
-    "snow-leopard-dark": "Snow Leopard Dark",
-    "windows-10": "Windows 10",
-    "windows-11": "Windows 11",
+    "frost-dark": "Frost Dark",
+    "tiles": "Tiles",
+    "island": "Island",
     "vanilla-light": "Vanilla Light",
-    "snow-leopard": "Snow Leopard 3D Glass",
+    "frost": "Frost 3D Glass",
     "solarized-light": "Solarized Light",
-    "windows-xp": "Windows XP Luna",
+    "luna": "the taskbar era XP Luna",
     "none": "No theme (GTK default)",
 }
 
 DARK_THEMES = [
-    "macos-big-sur",
-    "macos-ventura",
-    "unity",
-    "snow-leopard-dark",
-    "windows-11",
-    "macos-mavericks-dark",
+    "dune",
+    "stage",
+    "ambiance",
+    "frost-dark",
+    "island",
+    "platinum-dark",
 ]
 LIGHT_THEMES = [
     "vanilla-light",
-    "snow-leopard",
+    "frost",
     "solarized-light",
-    "windows-xp",
-    "macos-mavericks",
+    "luna",
+    "platinum",
 ]
 
 
@@ -731,10 +731,10 @@ class Demo:
         self.caption_end()
 
     def montage_theme(self, theme: str) -> None:
-        """Swap one theme through the REPL, with the shelf for Mavericks."""
-        shelf = theme.startswith("macos-mavericks")
+        """Swap one theme through the REPL, with the shelf for Platinum."""
+        shelf = theme.startswith("platinum")
         call = f"(swap! '{theme} 'shelf)" if shelf else f"(swap! '{theme})"
-        # The Mavericks slab slides in and mirrors the icons onto its glass, so
+        # The Platinum slab slides in and mirrors the icons onto its glass, so
         # it needs a beat longer on screen than a straight colour change.
         self.repl(call, speed_ms=8, hold=1.5 if shelf else 0.4)
         self.theme(theme)
@@ -767,7 +767,7 @@ class Demo:
             self.montage_theme(theme)
         # The montage stops on a theme, so let the last one stand before its
         # label goes away: that frame is the only one showing the light
-        # Mavericks slab, and its mirrored icons are the whole point of it.
+        # Platinum slab, and its mirrored icons are the whole point of it.
         time.sleep(1.5)
         self.theme_end()
         self.caption_end()
@@ -791,7 +791,7 @@ class Demo:
         self.spawn_terminal("build", "fetch", 66, 118, 500, 330)
         self.spawn_terminal("logs", "files", 562, 118, 500, 330)
         time.sleep(0.6)
-        self.caption("Or a Windows XP-style taskbar")
+        self.caption("Or a the taskbar era XP-style taskbar")
         self.reveal_dock(self.X(ITEM_SEPARATOR))
         # Back off the bar before it can grow a tooltip under the pointer.
         self.move(self.out_w / 2, self.out_h * 0.45)
@@ -799,7 +799,7 @@ class Demo:
         # The mode change re-anchors the layer surface, which a layout reload
         # only picks up on the next pass: nudge it twice so the bar really is
         # full width.
-        self.dock_eval(f"(begin {SHELF_OFF} (set-dock-theme! 'windows-xp) (reload-dock!))")
+        self.dock_eval(f"(begin {SHELF_OFF} (set-dock-theme! 'luna) (reload-dock!))")
         time.sleep(0.6)
         self.dock_eval("(begin (set-dock-mode! 'taskbar) (reload-dock!))")
         time.sleep(1.0)

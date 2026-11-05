@@ -159,10 +159,13 @@ int dock_cross_axis_dim(const LambdockState *state) {
   int icon_px = dock_icon_size(state);
   LambdockShelfGeometry geometry = lambdock_shelf_geometry_for(state, icon_px);
 
-  int headroom_px =
-      (int)(icon_px * CROSS_DIM_SCALE_FACTOR) + CROSS_DIM_PADDING_PX;
-
-  return headroom_px + geometry.outer_px + geometry.overhang_px;
+  /* One formula, in the pure dimension maths: this is what the auto-hide margin
+   * is measured from, so it has to be the same number
+   * update_dock_dimensions() asks the surface for. The monitor size and the
+   * main-axis padding only feed fields this does not read. */
+  return lambdock_dock_dims_compute(icon_px, 0, geometry, 0, 0,
+                                    state && state->hover_animate)
+      .overlay_cross_px;
 }
 
 /**

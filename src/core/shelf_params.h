@@ -65,7 +65,7 @@
  * @tilt_deg: Shelf tilt away from the viewer, in degrees (0 = flat).
  * @perspective: Projection distance in pixels (smaller = stronger 3D).
  * @margin_px: Glass on the inner side of the icons (away from the screen edge).
- * Negative values let the icons overhang the shelf, like the OS X 3D dock.
+ * Negative values let the icons overhang the shelf, like the shelf look 3D dock.
  * @front_px: Glass on the outer side of the icons (the front face). The
  * reflection band lives here when it is taller than this.
  * @reflection_ratio: Reflection band height / icon size (0 = no reflections).
@@ -73,8 +73,8 @@
  * @reflection_blur_ratio: Gaussian blur radius / icon size.
  * @flare_px: How much wider the dock is at the screen edge than at the inner
  * edge, in pixels per side. 0 keeps the slab rectangular; a positive value
- * gives it the OS X dock's keystone silhouette (wider where it meets the
- * screen), which is what makes the Mavericks slab look like a 3D shelf.
+ * gives it the shelf look dock's keystone silhouette (wider where it meets the
+ * screen), which is what makes the Platinum slab look like a 3D shelf.
  */
 typedef struct LambdockShelfParams {
   double tilt_deg;

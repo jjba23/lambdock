@@ -49,9 +49,9 @@ window {
 /* -------------------------------------------------------------------------
  * THE 3D GLASS SHELF (dock-shelf-* in use)
  * -------------------------------------------------------------------------
- * The Snow Leopard shelf in smoked glass: same trapezoid, same specular line on
+ * The Frost shelf in smoked glass: same trapezoid, same specular line on
  * the screen edge, but the body is dark, so the mirrors and the running dot
- * carry the most light. `(define dock-look 'osx-snow-leopard-dark)` sets the
+ * carry the most light. `(define dock-look 'frost-dark)` sets the
  * geometry to match the light sibling; this is the material. */
 
 .lambdock-window.shelf-mode {
@@ -244,7 +244,7 @@ popover button.flat {
 }
 
 popover button.flat:hover {
-  background-image: linear-gradient(180deg, #5297f6 0%, #1a66d2 100%);
+  background-image: linear-gradient(180deg, #2a63c0 0%, #12386e 100%);
   color: #ffffff;
 }
 

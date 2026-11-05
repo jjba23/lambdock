@@ -58,10 +58,10 @@ static void scope_css_selector_list(GString *out, const char *selectors,
  * scope_css_selectors:
  * Transforms raw CSS rules to be scoped strictly under a target class wrapper.
  *
- * Examples with scope_class = "theme-unity":
- * - ".lambdock-window"  =>  ".theme-unity .lambdock-window"
- * - "window"            =>  "window.theme-unity"
- * - "window.background" =>  "window.theme-unity.background"
+ * Examples with scope_class = "theme-ambiance":
+ * - ".lambdock-window"  =>  ".theme-ambiance .lambdock-window"
+ * - "window"            =>  "window.theme-ambiance"
+ * - "window.background" =>  "window.theme-ambiance.background"
  *
  * A selector list may span lines (`button.window-focused,` then `:hover {`), so
  * the text before a `{` is accumulated until the block actually opens. Missing a

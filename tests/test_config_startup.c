@@ -18,10 +18,14 @@
 #include "../src/core/config_values.h"
 #include "../src/guile_bridge.h"
 #include "../src/lambdock.h"
+#include "../src/ui/dock_item.h"
+#include "../src/ui/shelf.h"
 
 #include <glib.h>
 #include <glib/gstdio.h>
+#include <gtk/gtk.h>
 #include <libguile.h>
+#include <math.h>
 #include <string.h>
 
 static char *test_root = NULL;
@@ -46,6 +50,8 @@ static void make_fixtures(void) {
              "(define dock-theme 'vanilla)\n"
              "(define dock-icon-size 48)\n"
              "(define dock-shelf-margin 24)\n"
+             "(define dock-shelf-front 14)\n"
+             "(define dock-reflection 0.3)\n"
              "(define dock-items\n"
              "  (list (app-item #:name \"Files\" #:icon \"system-file-manager\"\n"
              "                   #:exec \"nautilus\")\n"
@@ -57,7 +63,7 @@ static void make_fixtures(void) {
   /* What the Preferences window and drag and drop leave behind, named after the
    * settings file's stem exactly as the writers name them. */
   char *prefs = g_build_filename(state_dir, "preferences-settings.scm", NULL);
-  write_file(prefs, "((dock-theme . macos-mavericks-dark)\n"
+  write_file(prefs, "((dock-theme . platinum-dark)\n"
                     " (dock-shelf-margin . -18))\n");
 
   char *layout = g_build_filename(state_dir, "layout-settings.scm", NULL);
@@ -78,7 +84,7 @@ static void make_fixtures(void) {
 
 static void check_overrides_apply(void) {
   g_autofree char *theme = get_theme_config_for(config_path);
-  g_assert_cmpstr(theme, ==, "macos-mavericks-dark");
+  g_assert_cmpstr(theme, ==, "platinum-dark");
 
   LambdockShelfParams shelf = {0};
   get_shelf_config_for(config_path, &shelf);
@@ -100,6 +106,64 @@ static void check_overrides_apply(void) {
   }
 }
 
+/* The row is built after the widgets it goes into, so the pass that derives the
+ * layout from the row has to run once the row exists. Before it did, every
+ * reflection slot stayed hidden -- the shelf numbers were read correctly but
+ * only reached the row on the next reload -- and the icons sat a band lower
+ * than the shelf they were configured for. */
+static void check_row_layout_is_derived(void) {
+  if (!gtk_init_check()) {
+    g_print("Skipping the row layout check: no display server available\n");
+    return;
+  }
+
+  LambdockState state = {0};
+
+  state.config_path = config_path;
+  state.edge = GTK_LAYER_SHELL_EDGE_BOTTOM;
+  state.orientation = GTK_ORIENTATION_HORIZONTAL;
+  state.icon_size = 48;
+  state.capsule_padding = 8;
+  state.overlay =
+      g_object_ref_sink(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
+  state.bg_capsule =
+      g_object_ref_sink(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0));
+  state.scrolled_window = g_object_ref_sink(gtk_scrolled_window_new());
+  state.box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state.scrolled_window),
+                                state.box);
+
+  get_shelf_config_for(config_path, &state.shelf);
+
+  populate_dock_items_for(&state);
+  g_assert_cmpint(g_list_length(state.dock_items), >, 0);
+
+  int band = (int)lround(
+      (double)state.icon_size *
+      lambdock_shelf_params_effective(&state).reflection_ratio);
+  g_assert_cmpint(band, >, 0);
+
+  for (GList *l = state.dock_items; l != NULL; l = l->next) {
+    DockItem *item = l->data;
+
+    g_assert_nonnull(item->reflection);
+    g_assert_true(gtk_widget_get_visible(item->reflection));
+
+    int width = 0;
+    int height = 0;
+    gtk_widget_get_size_request(item->reflection, &width, &height);
+    g_assert_cmpint(width, ==, state.icon_size);
+    g_assert_cmpint(height, ==, band);
+  }
+
+  clear_favorite_dock_items(&state);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(state.scrolled_window),
+                                NULL);
+  g_object_unref(state.scrolled_window);
+  g_object_unref(state.bg_capsule);
+  g_object_unref(state.overlay);
+}
+
 static void load_and_check(void *data) {
   (void)data;
 
@@ -110,6 +174,7 @@ static void load_and_check(void *data) {
   load_dock_config_scm(config_path);
 
   check_overrides_apply();
+  check_row_layout_is_derived();
 }
 
 static void inner_main(void *data, int argc, char **argv) {

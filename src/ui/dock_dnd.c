@@ -469,7 +469,7 @@ static gboolean dock_add_file(LambdockState *state, GFile *file) {
   gboolean added = FALSE;
 
   if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
-    /* A folder becomes a stack, which is the dock's version of the macOS
+    /* A folder becomes a stack, which is the dock's version of the shelf look
      * Downloads stack. */
     char *name = g_path_get_basename(path);
     create_stack_dock_item(state, name, "folder", path, "grid", TRUE);

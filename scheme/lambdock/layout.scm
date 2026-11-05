@@ -64,28 +64,12 @@
 ;; State directory & file location
 ;; =============================================================================
 
-(define (dock-state-dir)
-  "Directory where lambdock keeps runtime state (the layout overrides)."
-  (let ((xdg (getenv "XDG_STATE_HOME"))
-        (home (getenv "HOME")))
-    (cond ((and xdg (not (string-null? xdg)))
-           (string-append xdg "/lambdock"))
-          (home (string-append home "/.local/state/lambdock"))
-          (else "/tmp/lambdock"))))
-
 (define (dock-layout-path config-path)
   "Path of the layout override file belonging to CONFIG-PATH.
 
 Each settings file gets its own override file, named after it, so several docks
 never share their layout."
-  (let* ((raw (cond ((string? config-path) config-path)
-                    ((symbol? config-path) (symbol->string config-path))
-                    (else "settings.scm")))
-         (base (basename raw))
-         (stem (if (string-suffix? ".scm" base)
-                   (substring base 0 (- (string-length base) 4))
-                   base)))
-    (string-append (dock-state-dir) "/layout-" stem ".scm")))
+  (dock-state-file config-path "layout-"))
 
 ;; =============================================================================
 ;; Reading & writing the override file
@@ -119,11 +103,6 @@ string."
         (cons 'removed '())
         (cons 'added '())
         (cons 'views '())))
-
-(define (ensure-directory dir)
-  (unless (or (string-null? dir) (file-exists? dir))
-    (ensure-directory (dirname dir))
-    (catch 'system-error (lambda () (mkdir dir)) (lambda _ #t))))
 
 (define (dock-layout-read config-path)
   "Reads the override file for CONFIG-PATH, returning an alist with the four

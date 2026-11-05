@@ -32,7 +32,7 @@ window {
     rgba(140, 155, 175, 0.92) 100%
   );
 
-  /* Snow Leopard signature glossy frosted edges */
+  /* Frost signature glossy frosted edges */
   border-top: 2px solid rgba(255, 255, 255, 1.0);
   border-left: 1px solid rgba(255, 255, 255, 0.70);
   border-right: 1px solid rgba(255, 255, 255, 0.70);
@@ -49,10 +49,10 @@ window {
 /* -------------------------------------------------------------------------
  * THE 3D GLASS SHELF (dock-shelf-* in use)
  * -------------------------------------------------------------------------
- * Snow Leopard's dock is the one that made the shelf famous: a trapezoid of
+ * Frost's dock is the one that made the shelf famous: a trapezoid of
  * frosted glass the icons hang over, with a bright specular line on the edge
  * that touches the screen and the mirrors fading over the glass in front of
- * them. `(define dock-look 'osx-snow-leopard)` sets the geometry; this is the
+ * them. `(define dock-look 'frost)` sets the geometry; this is the
  * cold, pale material to go with it. Without these rules the generic shelf.css
  * slab would be used, which is the same idea in a warmer platinum. */
 
@@ -140,7 +140,7 @@ button.flat {
   margin: 2px 4px;
   border-radius: 8px;
 
-  /* The 10.6 dock is pale glass, so its foreground is dark: this is the colour
+  /* The dock is pale glass, so its foreground is dark: this is the colour
    * a symbolic icon and a label take, and white on this slab would vanish. */
   color: #232830;
 
@@ -173,7 +173,7 @@ button.flat:hover .dynamic-item-label {
 }
 
 /* Running-window titles, in taskbar mode: dark on the pale slab, like the
- * labels above and like the Mavericks theme does. */
+ * labels above and like the Platinum theme does. */
 .window-title-label {
   color: #232830;
   font-weight: 600;
@@ -250,7 +250,7 @@ popover button.flat {
 }
 
 popover button.flat:hover {
-  background-image: linear-gradient(180deg, #5297f6 0%, #1a66d2 100%);
+  background-image: linear-gradient(180deg, #2a63c0 0%, #12386e 100%);
   color: #ffffff;
 }
 

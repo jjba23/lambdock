@@ -107,7 +107,7 @@
              'bottom (get-dock-position))
 (check-equal "fallback config icon size is 48"
              48 (get-dock-icon-size))
-(check-equal "fallback config item spacing is the Mavericks-like 4px"
+(check-equal "fallback config item spacing is the Platinum-like 4px"
              4 (get-dock-item-spacing))
 (check-equal "fallback config is not auto-hiding"
              #f (get-dock-auto-hide?))
@@ -147,7 +147,7 @@
 (write-file %settings-file
             "(define dock-position 'top)
 (define dock-icon-size 72)
-(define dock-theme 'unity)
+(define dock-theme 'ambiance)
 (define dock-auto-hide? #t)
 (define dock-monitor \"DP-1\")
 (define dock-mode 'taskbar)
@@ -165,8 +165,8 @@
              'top (assq-ref %extracted 'dock-position))
 (check-equal "extracted dock-icon-size is 72"
              72 (assq-ref %extracted 'dock-icon-size))
-(check-equal "extracted dock-theme is 'unity"
-             'unity (assq-ref %extracted 'dock-theme))
+(check-equal "extracted dock-theme is 'ambiance"
+             'ambiance (assq-ref %extracted 'dock-theme))
 (check-equal "extracted dock-auto-hide? is #t"
              #t (assq-ref %extracted 'dock-auto-hide?))
 (check-equal "extracted dock-monitor is DP-1"
@@ -189,7 +189,7 @@
                  #:position 'left
                  #:icon-size 64
                  #:item-spacing 12
-                 #:theme 'snow-leopard
+                 #:theme 'frost
                  #:monitor 'HDMI-1
                  #:items (list (app-item #:name "A" #:icon "a" #:exec "a"))
                  #:auto-hide? #t
@@ -216,7 +216,7 @@
 (check-equal "item-spacing getter"
              12 (get-dock-item-spacing %cfg-path))
 (check-equal "theme getter returns the configured symbol"
-             'snow-leopard (get-dock-theme %cfg-path))
+             'frost (get-dock-theme %cfg-path))
 (check-equal "monitor getter returns the configured value"
              'HDMI-1 (get-dock-monitor %cfg-path))
 (check-equal "auto-hide? getter"
@@ -477,7 +477,7 @@
 (write-file %core-cfg
             "(define dock-position 'left)
 (define dock-icon-size 40)
-(define dock-theme 'unity)
+(define dock-theme 'ambiance)
 (define dock-items (list (app-item #:name \"Core\"
                                    #:icon \"core\"
                                    #:exec \"core\")))
@@ -1002,9 +1002,9 @@
              64 (get-dock-icon-size %prefs-cfg))
 
 (set-dock-preference! 'dock-auto-hide? #t %prefs-cfg)
-(set-dock-preference! 'dock-theme 'macos-mavericks %prefs-cfg)
+(set-dock-preference! 'dock-theme 'platinum %prefs-cfg)
 (check-equal "booleans are remembered" #t (get-dock-auto-hide? %prefs-cfg))
-(check-equal "symbols are remembered" 'macos-mavericks
+(check-equal "symbols are remembered" 'platinum
              (get-dock-theme %prefs-cfg))
 
 (set-dock-preference! 'dock-launchpad-icon-size 112 %prefs-cfg)
@@ -1055,40 +1055,40 @@
 ;; =============================================================================
 
 (check "preset-look resolves a shipped look"
-       (pair? (preset-look 'osx-tiger)))
+       (pair? (preset-look 'brushed)))
 (check-equal "look-settings is the same accessor"
-             (preset-look 'osx-tiger) (look-settings 'osx-tiger))
-(check "look? knows a shipped look" (look? 'osx-mavericks-dark))
-(check-not "look? rejects a made-up look" (look? 'osx-dock-of-theseus))
+             (preset-look 'brushed) (look-settings 'brushed))
+(check "look? knows a shipped look" (look? 'platinum-dark))
+(check-not "look? rejects a made-up look" (look? 'brushed-dock-of-theseus))
 (check-not "preset-look returns #f for an unknown look"
            (preset-look 'no-such-look))
 (check-not "preset-look returns #f for a non-symbol"
            (preset-look 42))
 
-(check-equal "look-name resolves a short alias"
-             'osx-mavericks (look-name 'mavericks))
+(check-equal "look-name resolves the taskbar alias"
+             'plain-taskbar (look-name 'taskbar))
 (check-equal "look-name resolves a theme name to its look"
-             'osx-snow-leopard (look-name 'snow-leopard))
+             'frost (look-name 'frost))
 (check-equal "look-name accepts a string"
-             'osx-tahoe-dark (look-name "tahoe-dark"))
+             'glass-dark (look-name "glass-dark"))
 (check-not "look-name returns #f for an unknown name"
            (look-name 'nonsense))
 
 (check-equal "look-setting reads a recipe value"
-             52 (look-setting 'osx-tahoe 'icon-size))
+             52 (look-setting 'glass 'icon-size))
 (check-equal "look-setting accepts the prefixed spelling"
-             52 (look-setting 'osx-tahoe 'dock-icon-size))
+             52 (look-setting 'glass 'dock-icon-size))
 (check-equal "look-setting reads the theme"
-             'macos-mavericks (look-setting 'osx-mavericks 'theme))
+             'platinum (look-setting 'platinum 'theme))
 (check-not "look-setting returns #f for a missing key"
-           (look-setting 'osx-mavericks 'no-such-setting))
+           (look-setting 'platinum 'no-such-setting))
 
 (check-equal "the tiger recipe wears the tiger theme"
-             'macos-tiger (look-setting 'osx-tiger 'theme))
+             'brushed (look-setting 'brushed 'theme))
 (check-equal "the tiger strip is glass above the icons"
-             14 (look-setting 'osx-tiger 'shelf-margin))
+             14 (look-setting 'brushed 'shelf-margin))
 (check-equal "the tiger strip has a front lip"
-             6 (look-setting 'osx-tiger 'shelf-front))
+             6 (look-setting 'brushed 'shelf-front))
 
 ;; Every recipe has to be a complete dock description: switching looks live
 ;; must never inherit a number from the look that was there before.
@@ -1156,10 +1156,10 @@
 ;; Every shipped theme should have a look that was designed for it, so a user
 ;; can name a theme and get the dock it belongs to.
 (define %shipped-themes
-  '(vanilla vanilla-light snow-leopard snow-leopard-dark solarized-light
-    unity nature macos-tiger macos-big-sur macos-ventura macos-tahoe
-    macos-tahoe-dark macos-mavericks macos-mavericks-dark windows-xp
-    windows-vista windows-7 windows-10 windows-11))
+  '(vanilla vanilla-light frost frost-dark solarized-light
+    ambiance nature brushed dune stage glass
+    glass-dark platinum platinum-dark luna
+    aurora seven tiles island))
 
 (check-equal "every shipped theme has a look that wears it"
              '()
@@ -1169,18 +1169,18 @@
                                  dock-looks)))
                      %shipped-themes))
 
-;; The five Windows looks are one family: they must all be bars (taskbar mode,
+;; The five taskbar looks are one family: they must all be bars (taskbar mode,
 ;; 32px icons, no shelf geometry) and only differ in their chrome -- the labels
-;; are on where that Windows showed them (XP, Vista) and off where it did not
-;; (7, 10, 11).
-(define %windows-looks
-  '((windows-xp . #t)
-    (windows-vista . #t)
-    (windows-7 . #f)
-    (windows-10 . #f)
-    (windows-11 . #f)))
+;; are on where that era showed them (Luna, Aurora) and off where it did not
+;; (Seven, Tiles, Island).
+(define %taskbar-looks
+  '((luna . #t)
+    (aurora . #t)
+    (seven . #f)
+    (tiles . #f)
+    (island . #f)))
 
-(check-equal "every Windows look is a taskbar of 32px icons with no shelf"
+(check-equal "every taskbar look is a bar of 32px icons with no shelf"
              '()
              (filter-map
               (lambda (entry)
@@ -1194,44 +1194,42 @@
                            (not (equal? (assq-ref look 'shelf-flare) 0))
                            (not (equal? (assq-ref look 'shelf-tilt) 0))
                            (not (equal? (assq-ref look 'reflection) 0.0))
-                           (not (string-prefix? "windows-" (symbol->string theme))))
+                           (not (memq theme '(luna aurora seven tiles island))))
                        (cons name theme))))
-              %windows-looks))
+              %taskbar-looks))
 
-(check-equal "window titles follow what each Windows actually showed"
+(check-equal "window titles follow what each taskbar era showed"
              '()
              (filter-map (lambda (entry)
                            (let ((shown (assq-ref (preset-look (car entry))
                                                   'show-window-titles?)))
                              (and (not (eq? shown (cdr entry))) (car entry))))
-                         %windows-looks))
+                         %taskbar-looks))
 
-(check-equal "the Windows looks get airier from XP to 11"
+(check-equal "the taskbar looks get airier from Luna to Island"
              '(0 4 6 4 8)
              (map (lambda (name) (look-setting name 'item-spacing))
-                  (map car %windows-looks)))
+                  (map car %taskbar-looks)))
 
-(check-equal "the vista alias is spelled aero too"
-             'windows-vista (look-name 'aero))
-(check-equal "the seven alias resolves to windows-7"
-             'windows-7 (look-name 'seven))
-(check-equal "the aero look wears the vista theme"
-             'windows-vista (look-setting 'windows-vista 'theme))
-(check-equal "the seven look wears the windows 7 theme"
-             'windows-7 (look-setting 'windows-7 'theme))
+(check-equal "the luna look wears the luna theme"
+             'luna (look-setting 'luna 'theme))
+(check-equal "the seven look wears the seven theme"
+             'seven (look-setting 'seven 'theme))
+(check-equal "the island look wears the island theme"
+             'island (look-setting 'island 'theme))
 
 ;; --- the loader resolves a look ---------------------------------------------
 
 (define %look-cfg (tmp-path "look-settings.scm"))
 (write-file %look-cfg
-            "(define dock-look 'osx-mavericks)
+            "(define dock-look 'platinum)
 (define dock-items (list (app-item #:name \"Look\"
                                    #:icon \"look\"
                                    #:exec \"look\")))
 ")
 (load-dock-config! %look-cfg)
 (check-equal "dock-look brings the recipe's theme"
-             'macos-mavericks (get-dock-theme %look-cfg))
+             'platinum (get-dock-theme %look-cfg))
 (check-equal "dock-look brings the recipe's icon size"
              48 (get-dock-icon-size %look-cfg))
 (check-equal "dock-look brings the recipe's spacing"
@@ -1249,48 +1247,48 @@
 
 ;; The dark sibling: only the theme moves.
 (define %look-dark-cfg (tmp-path "look-dark.scm"))
-(write-file %look-dark-cfg "(define dock-look 'mavericks-dark)\n")
+(write-file %look-dark-cfg "(define dock-look 'platinum-dark)\n")
 (load-dock-config! %look-dark-cfg)
-(check-equal "an alias brings the dark theme"
-             'macos-mavericks-dark (get-dock-theme %look-dark-cfg))
-(check-equal "an alias keeps the geometry"
+(check-equal "the dark sibling brings the dark theme"
+             'platinum-dark (get-dock-theme %look-dark-cfg))
+(check-equal "the dark sibling keeps the geometry"
              -18 (get-dock-shelf-margin %look-dark-cfg))
 
 ;; A string works too, and a taskbar look switches the mode.
 (define %look-taskbar-cfg (tmp-path "look-taskbar.scm"))
-(write-file %look-taskbar-cfg "(define dock-look \"xp\")\n")
+(write-file %look-taskbar-cfg "(define dock-look \"luna\")\n")
 (load-dock-config! %look-taskbar-cfg)
 (check-equal "a look given as a string is resolved"
-             'windows-xp (get-dock-theme %look-taskbar-cfg))
-(check-equal "the xp look is a taskbar"
+             'luna (get-dock-theme %look-taskbar-cfg))
+(check-equal "the luna look is a taskbar"
              'taskbar (get-dock-mode %look-taskbar-cfg))
-(check-equal "the xp look shows window titles"
+(check-equal "the luna look shows window titles"
              #t (get-dock-show-window-titles? %look-taskbar-cfg))
 
 ;; The next era along: the same kind of bar, with labels off.
 (define %look-win7-cfg (tmp-path "look-win7.scm"))
 (write-file %look-win7-cfg "(define dock-look 'seven)\n")
 (load-dock-config! %look-win7-cfg)
-(check-equal "the seven alias brings the windows 7 theme"
-             'windows-7 (get-dock-theme %look-win7-cfg))
-(check-equal "the windows 7 look is a taskbar"
+(check-equal "the seven look brings the seven theme"
+             'seven (get-dock-theme %look-win7-cfg))
+(check-equal "the seven look is a taskbar"
              'taskbar (get-dock-mode %look-win7-cfg))
-(check-equal "the windows 7 look hides window titles"
+(check-equal "the seven look hides window titles"
              #f (get-dock-show-window-titles? %look-win7-cfg))
-(check-equal "the windows 7 look spaces its icons"
+(check-equal "the seven look spaces its icons"
              6 (get-dock-item-spacing %look-win7-cfg))
-(check-equal "the windows 7 look pads the bar's ends"
+(check-equal "the seven look pads the bar's ends"
              8 (get-dock-capsule-padding %look-win7-cfg))
 
-;; A look carries the dock's manners too: the OS X docks magnified the icons
-;; under the pointer, no Windows taskbar ever did.
-(check-equal "the macOS looks magnify"
-             #t (look-setting 'osx-mavericks 'hover-animate?))
-(check-equal "the Windows looks do not magnify"
+;; A look carries the dock's manners too: the shelf look docks magnified the icons
+;; under the pointer, no taskbar ever did.
+(check-equal "the shelf looks magnify"
+             #t (look-setting 'platinum 'hover-animate?))
+(check-equal "the taskbar looks do not magnify"
              '()
              (filter (lambda (entry)
                        (assq-ref (preset-look (car entry)) 'hover-animate?))
-                     %windows-looks))
+                     %taskbar-looks))
 (check-not "the plain taskbar does not magnify either"
            (look-setting 'plain-taskbar 'hover-animate?))
 
@@ -1298,17 +1296,17 @@
 (define %look-magnify-cfg (tmp-path "look-magnify.scm"))
 (write-file %look-magnify-cfg "(define dock-hover-animate? #t)\n")
 (load-dock-config! %look-magnify-cfg)
-(apply-look! 'windows-11 %look-magnify-cfg)
-(check-equal "a Windows look turns the fisheye off"
+(apply-look! 'island %look-magnify-cfg)
+(check-equal "a taskbar look turns the fisheye off"
              #f (get-dock-hover-animate? %look-magnify-cfg))
-(apply-look! 'osx-tahoe %look-magnify-cfg)
-(check-equal "a macOS look turns the fisheye back on"
+(apply-look! 'glass %look-magnify-cfg)
+(check-equal "a the shelf look look turns the fisheye back on"
              #t (get-dock-hover-animate? %look-magnify-cfg))
 
 ;; What the file says itself beats the recipe.
 (define %look-override-cfg (tmp-path "look-override.scm"))
 (write-file %look-override-cfg
-            "(define dock-look 'osx-tahoe)
+            "(define dock-look 'glass)
 (define dock-icon-size 40)
 (define dock-theme 'vanilla)
 (define dock-shelf-margin 30)
@@ -1345,16 +1343,16 @@
 (load-dock-config! %apply-look-cfg)
 
 (check "apply-look! reports success"
-       (apply-look! 'osx-tahoe-dark %apply-look-cfg))
+       (apply-look! 'glass-dark %apply-look-cfg))
 (check-equal "apply-look! switches the theme"
-             'macos-tahoe-dark (get-dock-theme %apply-look-cfg))
+             'glass-dark (get-dock-theme %apply-look-cfg))
 (check-equal "apply-look! switches the icon size"
              52 (get-dock-icon-size %apply-look-cfg))
 (check-equal "apply-look! switches the end padding"
              16 (get-dock-capsule-padding %apply-look-cfg))
 
 ;; A shelf look writes the whole geometry...
-(apply-look! 'snow-leopard %apply-look-cfg)
+(apply-look! 'frost %apply-look-cfg)
 (check-equal "apply-look! sets the overhang"
              -20 (get-dock-shelf-margin %apply-look-cfg))
 (check-equal "apply-look! sets the front glass"
@@ -1365,7 +1363,7 @@
              0.42 (get-dock-reflection %apply-look-cfg))
 
 ;; ...and a flat look takes it all back again, instead of inheriting it.
-(apply-look! 'osx-tahoe %apply-look-cfg)
+(apply-look! 'glass %apply-look-cfg)
 (check-equal "a flat look resets the overhang"
              24 (get-dock-shelf-margin %apply-look-cfg))
 (check-equal "a flat look resets the front glass"
@@ -1386,9 +1384,9 @@
 
 ;; apply-look! also takes a config key, like the setters do.
 (configure-dock! #:config-path 'look-repl-dock #:theme 'vanilla)
-(apply-look! 'unity 'look-repl-dock)
+(apply-look! 'ambiance 'look-repl-dock)
 (check-equal "apply-look! targets one dock when given its key"
-             'unity (get-dock-theme 'look-repl-dock))
+             'ambiance (get-dock-theme 'look-repl-dock))
 
 ;; =============================================================================
 ;; Summary

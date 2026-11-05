@@ -308,7 +308,7 @@ static void test_hover_sweep_is_monotone_per_item(void) {
 
 static void test_reflection_draw_budget(void) {
   /* One reflection repaint costs one clipped draw per fade band, so the band
-   * count *is* the repaint budget. A 14 px band (the macOS Mavericks shelf at
+   * count *is* the repaint budget. A 14 px band (the Platinum shelf at
    * 48 px icons) is 14 draws; the floor keeps a hairline band from banding
    * visibly, and the ceiling is the widget's worst case. */
   g_assert_cmpint(lambdock_reflection_band_count(14), ==, 14);

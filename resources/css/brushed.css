@@ -5,16 +5,16 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - MAC OS X 10.4 TIGER (AQUA)
+ * LAMBDOCK STYLESHEET - MAC the shelf look TIGER (AQUA)
  * =========================================================================
- * The dock before the 3D shelf: a flat, frosted Aqua strip that the icons sit
+ * The dock before the 3D shelf: a flat, frosted gloss strip that the icons sit
  * *inside*, with a bright bevel along the inner edge and a thin, cool grey lip
- * where it meets the screen. No mirrors -- reflections arrived with Leopard --
+ * where it meets the screen. No mirrors -- reflections arrived with the 3D shelf --
  * so the shape is the `dock-shelf-margin` / `dock-shelf-front` pair and
  * `dock-reflection` stays at 0.
  *
- * The material is deliberately paler and bluer than the Mavericks platinum
- * slab: Aqua glass is a wash of white over the wallpaper with a blue cast in the
+ * The material is deliberately paler and bluer than the Platinum platinum
+ * slab: glazed glass is a wash of white over the wallpaper with a blue cast in the
  * shadows, not a metal. Everything here is the material only; the geometry comes
  * from the dock options. Use it flat (the default capsule) or with
  *
@@ -23,7 +23,7 @@
  *   (define dock-reflection 0)
  *
  * for the strip the icons live in. The ready-made recipe is
- * `(define dock-look 'osx-tiger)`.
+ * `(define dock-look 'brushed)`.
  */
 
 /* -------------------------------------------------------------------------
@@ -34,7 +34,7 @@ window {
   background-color: transparent;
 }
 
-/* Flat Aqua strip: a pale wash, brightest along the icons' edge, with a cool
+/* Flat gloss strip: a pale wash, brightest along the icons' edge, with a cool
  * grey lip on the screen side. The alphas are deliberately low -- 10.4's dock
  * was glass you could read the wallpaper through, not a white bar -- but they
  * stay dense enough for the dark labels to hold their contrast. */
@@ -67,7 +67,7 @@ window {
 /* -------------------------------------------------------------------------
  * THE AQUA STRIP (dock-shelf-* in use)
  * -------------------------------------------------------------------------
- * Tiger's dock is glass the icons sit in, so the slab is brighter where the
+ * Brushed's dock is glass the icons sit in, so the slab is brighter where the
  * icons are and gains a lip (the "front") on the screen side. Same stops as the
  * flat strip, read from the screen edge inwards.
  */
@@ -176,7 +176,7 @@ button.flat:active {
   box-shadow: none;
 }
 
-/* Dynamic Item Labels: Aqua read dark on glass. */
+/* Dynamic Item Labels: labels read dark on glass. */
 .dynamic-item-label {
   color: #1b2530;
   font-weight: 600;
@@ -197,10 +197,10 @@ button.flat:hover .dynamic-item-label {
 /* -------------------------------------------------------------------------
  * RUNNING APP INDICATOR
  * -------------------------------------------------------------------------
- * Tiger's dock marked running applications with a small glyph under the icon.
+ * Brushed's dock marked running applications with a small glyph under the icon.
  * GTK CSS cannot clip a triangle out of a rectangle, so the marker is a tiny
- * lozenge -- and since the Aqua strip is pale, its core is a saturated blue
- * rather than white, which is also how the 10.4 marker read. With reflections
+ * lozenge -- and since the strip is pale, its core is a saturated blue
+ * rather than white, which is also how the marker read. With reflections
  * on, the reflection widget draws the dot on the glass instead and this one
  * stays quiet (see shelf.css). */
 
@@ -303,7 +303,7 @@ popover button.flat:hover {
     rgba(150, 196, 246, 0.95) 0%,
     rgba(72, 132, 208, 0.95) 100%
   );
-  color: #ffffff;
+  color: #0a1622;
 }
 
 window.about-dialog {

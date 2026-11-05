@@ -53,7 +53,7 @@ static const char *FAKE_MODULES =
     "        ((equal? (arg-or a) \"zero\") 0)\n"
     "        ((equal? (arg-or a) \"junk\") \"not-a-number\")\n"
     "        (else 48)))\n"
-    "(define (get-dock-theme . a) (if (equal? (arg-or a) \"sym\") 'unity "
+    "(define (get-dock-theme . a) (if (equal? (arg-or a) \"sym\") 'ambiance "
     "\"vanilla\"))\n"
     "(define (get-dock-monitor . a) (if (equal? (arg-or a) \"hdmi\") 'HDMI-1 "
     "\"default\"))\n"
@@ -210,7 +210,7 @@ static void test_string_getters(void) {
 
   /* A Scheme symbol is converted to its string form. */
   theme = get_theme_config_for("sym");
-  g_assert_cmpstr(theme, ==, "unity");
+  g_assert_cmpstr(theme, ==, "ambiance");
   free(theme);
 
   char *monitor = get_monitor_config_for("x");

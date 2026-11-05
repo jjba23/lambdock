@@ -632,7 +632,7 @@ close button sits on."
                       (set-dock-config-reduce-motion?! cfg val)) args))
 
 ;; =============================================================================
-;; Whole-dock recipes: (apply-look! 'osx-mavericks)
+;; Whole-dock recipes: (apply-look! 'platinum)
 ;; =============================================================================
 
 (define (apply-look-setting! cfg key value)
@@ -672,8 +672,8 @@ dock and redraws it once.
 With no further argument every dock is restyled; pass a settings path or a
 config key to restyle just that one:
 
-  (apply-look! 'osx-mavericks)
-  (apply-look! 'osx-tahoe-dark \"/home/me/.config/lambdock/settings-2.scm\")
+  (apply-look! 'platinum)
+  (apply-look! 'glass-dark \"/home/me/.config/lambdock/settings-2.scm\")
 
 The recipe writes the theme, the icon size and spacing, the capsule padding plus
 every shelf and reflection number -- including the ones the look leaves at their

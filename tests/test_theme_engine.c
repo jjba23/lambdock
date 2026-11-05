@@ -29,11 +29,11 @@ static void test_theme_request_normalises(void) {
       lambdock_theme_request("", FALSE, FALSE, FALSE, FALSE);
   g_assert_cmpstr(empty.theme_name, ==, "vanilla");
 
-  g_auto(LambdockThemeRequest) unity =
-      lambdock_theme_request("unity", FALSE, FALSE, FALSE, FALSE);
-  g_assert_cmpstr(unity.theme_name, ==, "unity");
-  g_assert_cmpstr(unity.theme_class, ==, "theme-unity");
-  g_assert_false(unity.disabled);
+  g_auto(LambdockThemeRequest) ambiance =
+      lambdock_theme_request("ambiance", FALSE, FALSE, FALSE, FALSE);
+  g_assert_cmpstr(ambiance.theme_name, ==, "ambiance");
+  g_assert_cmpstr(ambiance.theme_class, ==, "theme-ambiance");
+  g_assert_false(ambiance.disabled);
 }
 
 static void test_theme_request_none_disables(void) {
@@ -87,7 +87,7 @@ static void test_theme_request_modifiers(void) {
  * out even for a request whose strings were already released. */
 static void test_theme_request_clear_is_idempotent(void) {
   LambdockThemeRequest request =
-      lambdock_theme_request("unity", FALSE, FALSE, FALSE, FALSE);
+      lambdock_theme_request("ambiance", FALSE, FALSE, FALSE, FALSE);
 
   lambdock_theme_request_clear(&request);
   g_assert_null(request.theme_name);
@@ -277,11 +277,11 @@ static void test_load_custom_css_switching(void) {
 
   /* Switching themes must drop the previous class and provider. */
   g_free(state.theme);
-  state.theme = g_strdup("snow-leopard");
+  state.theme = g_strdup("frost");
   load_custom_css(&state);
 
-  g_assert_cmpstr(state.active_theme_class, ==, "theme-snow-leopard");
-  g_assert_true(gtk_widget_has_css_class(state.window, "theme-snow-leopard"));
+  g_assert_cmpstr(state.active_theme_class, ==, "theme-frost");
+  g_assert_true(gtk_widget_has_css_class(state.window, "theme-frost"));
   g_assert_false(gtk_widget_has_css_class(state.window, "theme-vanilla"));
   g_assert_true(state.base_css_provider != first);
 
@@ -484,7 +484,7 @@ static void test_shelf_indicator_is_painted_once(void) {
   state.window = window;
   state.box = box;
   state.config_path = g_strdup("test_settings.scm");
-  state.theme = g_strdup("macos-mavericks");
+  state.theme = g_strdup("platinum");
   state.icon_size = 48;
   state.shelf = lambdock_shelf_params_default();
   state.shelf.margin_px = -18;

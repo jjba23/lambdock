@@ -8,7 +8,7 @@
  * LAMBDOCK STYLESHEET - WINDOWS 7 (AERO / SUPERBAR) STYLE
  * =========================================================================
  *
- * Vista's glass, one generation later and a shade cooler:
+ * Aurora's glass, one generation later and a shade cooler:
  *
  *  - The superbar is a taller, darker, bluer pane of glass than Vista's: the
  *    bright specular line at the top is thinner (1px, 0.30 alpha instead of
@@ -16,14 +16,14 @@
  *    screen with no outer shadow.
  *  - Superbar buttons have square shoulders and rounded feet -- the tile is
  *    clipped at the top by the edge of the bar, so only its bottom corners
- *    curve. That shape is the one detail that tells Windows 7 apart from Vista,
+ *    curve. That shape is the one detail that tells Seven apart from Vista,
  *    and it is `border-radius: 0 0 3px 3px` here.
- *  - Windows 7 hides its labels by default ("Always combine, hide labels"), so
- *    the Windows 7 look leaves `dock-show-window-titles?` off, where Vista turns
+ *  - Seven hides its labels by default ("Always combine, hide labels"), so
+ *    the Seven look leaves `dock-show-window-titles?` off, where Vista turns
  *    it on.
  *  - A running app sits on a faint glass tile; hovering fills it with white;
  *    the focused window's tile is the blue-lit one, with a soft outer glow that
- *    Aero draws around the active button.
+ *    glass draws around the active button.
  *
  * Motion: gradients cannot be animated by GTK's CSS, so hover/press feedback is
  * carried by border-colour and box-shadow over 120ms, and nothing shifts.
@@ -121,7 +121,7 @@ button.running-app:hover {
   border-color: rgba(255, 255, 255, 0.34);
 }
 
-/* The focused window: the blue-lit tile, with Aero's glow around it. */
+/* The focused window: the blue-lit tile, with glass's glow around it. */
 button.window-focused,
 button.window-focused:hover {
   background-image: linear-gradient(
@@ -167,7 +167,7 @@ separator {
 }
 
 /* -------------------------------------------------------------------------
- * POPOVERS - Aero menu glass: whiter than Vista's, thinner edge
+ * POPOVERS - glass menu glass: whiter than Vista's, thinner edge
  * ------------------------------------------------------------------------- */
 
 popover > contents {

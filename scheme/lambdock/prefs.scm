@@ -33,6 +33,7 @@
   #:declarative? #f
   #:use-module (ice-9 format)
   #:use-module (srfi srfi-1)
+  #:use-module (lambdock loader)
   #:use-module (lambdock logger)
   #:use-module (lambdock state)
   #:export (dock-preferences-path
@@ -46,36 +47,12 @@
 ;; State directory & file location
 ;; =============================================================================
 
-;; Mirrors `(lambdock layout)': runtime state that must not be confused with the
-;; user's configuration lives under XDG_STATE_HOME.
-(define (dock-state-dir)
-  (let ((xdg (getenv "XDG_STATE_HOME"))
-        (home (getenv "HOME")))
-    (cond ((and xdg (not (string-null? xdg)))
-           (string-append xdg "/lambdock"))
-          (home (string-append home "/.local/state/lambdock"))
-          (else "/tmp/lambdock"))))
-
 (define (dock-preferences-path config-path)
   "Path of the GUI preference overrides belonging to CONFIG-PATH.
 
 Each settings file gets its own override file, named after it, so several docks
 never share their GUI choices."
-  (let* ((raw (cond ((string? config-path) config-path)
-                    ((symbol? config-path) (symbol->string config-path))
-                    (else "settings.scm")))
-         (base (basename raw))
-         (stem (if (string-suffix? ".scm" base)
-                   (substring base 0 (- (string-length base) 4))
-                   base)))
-    (string-append (dock-state-dir) "/preferences-" stem ".scm")))
-
-;; Create the state directory (recursively) the first time a preference is
-;; written.
-(define (ensure-directory dir)
-  (unless (or (string-null? dir) (file-exists? dir))
-    (ensure-directory (dirname dir))
-    (catch 'system-error (lambda () (mkdir dir)) (lambda _ #t))))
+  (dock-state-file config-path "preferences-"))
 
 ;; =============================================================================
 ;; Reading & writing the override file

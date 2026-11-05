@@ -8,7 +8,10 @@
   #:use-module (srfi srfi-1)
   #:use-module (lambdock logger)
   #:use-module (lambdock looks)
-  #:export (get-config-path resolve-dock-configuration))
+  #:export (get-config-path
+            resolve-dock-configuration
+            dock-state-file
+            ensure-directory))
 
 ;; =============================================================================
 ;; Config File Resolution & Isolated Module Inspection
@@ -74,3 +77,44 @@
        (string-append xdg-config "/lambdock/settings.scm"))
       (home (string-append home "/.config/lambdock/settings.scm"))
       (else #f))))
+
+;; =============================================================================
+;; Runtime state files
+;; =============================================================================
+;; The drag-and-drop layout and the GUI preferences are runtime state, not
+;; configuration: both live under XDG_STATE_HOME, one file per settings file.
+;; They ask here for their path and for the directory to be created, so the two
+;; can never disagree about where their files belong.
+
+(define (dock-state-dir)
+  "Directory where lambdock keeps runtime state."
+  (let ((xdg (getenv "XDG_STATE_HOME"))
+        (home (getenv "HOME")))
+    (cond ((and xdg (not (string-null? xdg)))
+           (string-append xdg "/lambdock"))
+          (home (string-append home "/.local/state/lambdock"))
+          (else "/tmp/lambdock"))))
+
+(define (dock-settings-stem config-path)
+  "CONFIG-PATH's file name without its .scm suffix."
+  (let* ((raw (cond ((string? config-path) config-path)
+                    ((symbol? config-path) (symbol->string config-path))
+                    (else "settings.scm")))
+         (base (basename raw)))
+    (if (string-suffix? ".scm" base)
+        (substring base 0 (- (string-length base) 4))
+        base)))
+
+(define (dock-state-file config-path prefix)
+  "Path of the runtime state file PREFIX<settings-stem>.scm for CONFIG-PATH.
+
+Each settings file gets its own file, named after it, so several docks never
+share their layout or their GUI choices."
+  (string-append (dock-state-dir) "/" prefix (dock-settings-stem config-path)
+                 ".scm"))
+
+;; Create the state directory (recursively) the first time a file is written.
+(define (ensure-directory dir)
+  (unless (or (string-null? dir) (file-exists? dir))
+    (ensure-directory (dirname dir))
+    (catch 'system-error (lambda () (mkdir dir)) (lambda _ #t))))

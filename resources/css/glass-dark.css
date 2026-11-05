@@ -5,13 +5,13 @@
  */
 
 /* =========================================================================
- * LAMBDOCK STYLESHEET - macOS 26 TAHOE (LIQUID GLASS, DARK)
+ * LAMBDOCK STYLESHEET - the newest TAHOE (LIQUID GLASS, DARK)
  * =========================================================================
- * The same pane of glass as the light Tahoe theme, smoked: a rounder, more
- * transparent pill than Ventura's, with a bright rim that is the only strong
+ * The same pane of glass as the light Glass theme, smoked: a rounder, more
+ * transparent pill than Stage's, with a bright rim that is the only strong
  * contrast in the whole material, and a white running dot.
  *
- * The ready-made recipe is `(define dock-look 'osx-tahoe-dark)`.
+ * The ready-made recipe is `(define dock-look 'glass-dark)`.
  */
 
 /* -------------------------------------------------------------------------

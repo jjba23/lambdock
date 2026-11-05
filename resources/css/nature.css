@@ -173,7 +173,7 @@ popover button.flat {
 }
 
 popover button.flat:hover {
-  background-image: linear-gradient(180deg, #40916c 0%, #1b4332 100%);
+  background-image: linear-gradient(180deg, #2c7553 0%, #123528 100%);
   color: #ffffff;
   transform: none;
   box-shadow: none;
