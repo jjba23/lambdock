@@ -8,6 +8,7 @@
 #include <glib.h>
 #include <gtk/gtk.h>
 #include <libguile.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* ============================================================================
@@ -332,12 +333,72 @@ static void test_search_focus(void) {
   spin_until_mapped(GTK_WIDGET(root), TRUE);
   g_assert_true(focus_is_within(search));
 
-  /* A second open reuses the window and must focus the field again. */
+  /* A second open rebuilds the window and must focus the field again. */
   lambdock_launchpad_hide();
-  spin_until_mapped(GTK_WIDGET(root), FALSE);
   lambdock_launchpad_show(&state);
-  spin_until_mapped(GTK_WIDGET(root), TRUE);
+  search = lambdock_launchpad_search_entry();
+  g_assert_nonnull(search);
+  spin_until_mapped(GTK_WIDGET(gtk_widget_get_root(search)), TRUE);
   g_assert_true(focus_is_within(search));
+
+  lambdock_launchpad_shutdown();
+  gtk_window_destroy(GTK_WINDOW(state.window));
+  g_object_unref(app);
+}
+
+/* ============================================================================
+ * MEMORY
+ * ============================================================================
+ * A full-screen layer surface keeps its buffers while it is hidden. The
+ * launchpad is a once-in-a-while overlay, so it is rebuilt on every open
+ * instead of parked off screen: opening it repeatedly must not grow the
+ * process.
+ */
+
+/* Resident set in kB. Linux-only, which is the platform the dock targets. */
+static long vm_rss_kb(void) {
+  char *status = NULL;
+  g_assert_true(g_file_get_contents("/proc/self/status", &status, NULL, NULL));
+
+  const char *field = strstr(status, "VmRSS:");
+  g_assert_nonnull(field);
+  long kb = strtol(field + strlen("VmRSS:"), NULL, 10);
+  g_free(status);
+  return kb;
+}
+
+static void open_launchpad(LambdockState *state) {
+  lambdock_launchpad_show(state);
+
+  GtkWidget *search = lambdock_launchpad_search_entry();
+  g_assert_nonnull(search);
+  spin_until_mapped(GTK_WIDGET(gtk_widget_get_root(search)), TRUE);
+}
+
+static void test_repeated_opens_are_bounded(void) {
+  GtkApplication *app = gtk_application_new("dev.lambdock.test.launchpad.leak",
+                                            G_APPLICATION_NON_UNIQUE);
+  g_assert_nonnull(app);
+  g_assert_true(g_application_register(G_APPLICATION(app), NULL, NULL));
+
+  LambdockState state = {0};
+  state.window = gtk_application_window_new(app);
+
+  /* Warm-up: the first use pays for the font and icon caches once. */
+  open_launchpad(&state);
+  lambdock_launchpad_hide();
+  g_assert_null(lambdock_launchpad_search_entry());
+
+  long before = vm_rss_kb();
+  for (int i = 0; i < 4; i++) {
+    open_launchpad(&state);
+    lambdock_launchpad_hide();
+  }
+  long after = vm_rss_kb();
+
+  g_test_message("RSS after four launchpad opens: %ld -> %ld kB", before,
+                 after);
+  g_assert_cmpint(after - before, <, 12 * 1024);
 
   lambdock_launchpad_shutdown();
   gtk_window_destroy(GTK_WINDOW(state.window));
@@ -460,6 +521,8 @@ static void inner_test_launchpad(void *data, int argc, char **argv) {
   g_test_add_data_func("/launchpad/tile_copies", data_dir,
                        (GTestDataFunc)test_tile_copies);
   g_test_add_func("/launchpad/search_focus", test_search_focus);
+  g_test_add_func("/launchpad/repeated_opens",
+                  test_repeated_opens_are_bounded);
 
   g_test_run();
 

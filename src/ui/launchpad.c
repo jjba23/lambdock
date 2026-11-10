@@ -1196,18 +1196,34 @@ void lambdock_launchpad_show(LambdockState *state) {
   }
 }
 
-void lambdock_launchpad_hide(void) {
-  LambdockLaunchpad *launchpad = launchpad_instance();
-
-  /* The copy menu belongs to a tile of this window. */
+/**
+ * launchpad_release_window:
+ * Drops the launchpad's window and the pointers into it.
+ *
+ * A hidden full-screen layer surface keeps its buffers: parking the window off
+ * screen cost about 9 MB every time the launchpad was opened. The window is
+ * rebuilt on the next show, which rescans the applications anyway, so nothing
+ * is lost by destroying it here. The grid is cleared first because the tiles
+ * own popovers, which have to be unparented before GTK finalizes them.
+ */
+static void launchpad_release_window(LambdockLaunchpad *launchpad) {
   launchpad_copy_menu_close(launchpad);
+  launchpad_clear_grid(launchpad);
 
   if (launchpad->window) {
-    /* Hiding during the fade would otherwise leave the surface transparent for
-     * the next open, which starts a fresh fade anyway. */
-    gtk_widget_remove_css_class(launchpad->window, "launchpad-fading-in");
-    gtk_widget_set_visible(launchpad->window, FALSE);
+    gtk_window_destroy(GTK_WINDOW(launchpad->window));
+    launchpad->window = NULL;
   }
+
+  launchpad->grid = NULL;
+  launchpad->search = NULL;
+  launchpad->header = NULL;
+  launchpad->close = NULL;
+  launchpad->open_copy_menu = NULL;
+}
+
+void lambdock_launchpad_hide(void) {
+  launchpad_release_window(launchpad_instance());
 }
 
 gboolean lambdock_launchpad_is_open(void) {
@@ -1234,19 +1250,7 @@ void lambdock_launchpad_set_query(const char *query) {
 void lambdock_launchpad_shutdown(void) {
   LambdockLaunchpad *launchpad = launchpad_instance();
 
-  /* The tiles go with the window, so they have to let go of their copy menus
-   * first. */
-  launchpad_clear_grid(launchpad);
-
-  if (launchpad->window) {
-    gtk_window_destroy(GTK_WINDOW(launchpad->window));
-    launchpad->window = NULL;
-  }
-
-  launchpad->grid = NULL;
-  launchpad->search = NULL;
-  launchpad->header = NULL;
-  launchpad->close = NULL;
+  launchpad_release_window(launchpad);
 
   LaunchpadAppearance defaults = {
       .icon_size = LAUNCHPAD_ICON_SIZE,

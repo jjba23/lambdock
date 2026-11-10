@@ -47,9 +47,10 @@
  *
  * Shows the launchpad: a full screen layer-shell overlay with a search field and
  * a grid of every installed application, the shelf look Launchpad style. The window is
- * created on first use and reused afterwards; the application list is rescanned
- * on every show so freshly installed apps appear. The tile size, column count
- * and frosted background are resolved from @state's dock settings on each show.
+ * built on every show and released on hide, so its full-screen buffers do not
+ * accumulate; the application list is rescanned on every show so freshly
+ * installed apps appear. The tile size, column count and frosted background are
+ * resolved from @state's dock settings on each show.
  *
  * Escape, the close button and a click on the backdrop all hide it.
  */
@@ -57,7 +58,7 @@ void lambdock_launchpad_show(LambdockState *state);
 
 /**
  * lambdock_launchpad_hide:
- * Hides the launchpad overlay if it is currently shown.
+ * Hides the launchpad overlay and releases its window; the next show rebuilds it.
  */
 void lambdock_launchpad_hide(void);
 
@@ -70,8 +71,8 @@ gboolean lambdock_launchpad_is_open(void);
 /**
  * lambdock_launchpad_search_entry:
  * Returns: (transfer none) (nullable): the launchpad's search field, or NULL
- * before the launchpad has ever been opened. Borrowed, like every widget in
- * this API: it belongs to the launchpad window.
+ * while the launchpad is closed. Borrowed, like every widget in this API: it
+ * belongs to the launchpad window.
  *
  * Read-only handle, exposed so tests (and the REPL) can assert that opening the
  * launchpad hands the keyboard to the search field.
