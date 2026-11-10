@@ -15,6 +15,12 @@ Nothing yet.
 
 *[Released]*
 
+** v1.2.6 (2026-11-10)
+- *The funding file moves to a custom URL.*  =.github/FUNDING.yml= now carries a
+  =custom= funding URL that points at
+  [[https://buymeacoffee.com/jjbigorra][Buy Me a Coffee]], so GitHub shows a
+  Sponsor button on the repository.
+
 ** v1.2.5 (2026-11-10)
 - *The repository carries a Sponsor button.*  =.github/FUNDING.yml= points at
   [[https://buymeacoffee.com/jjbigorra][Buy Me a Coffee]], so GitHub shows a
