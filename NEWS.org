@@ -15,6 +15,15 @@ Nothing yet.
 
 *[Released]*
 
+** v1.2.4 (2026-11-10)
+- *Opening the launchpad no longer leaves memory behind.*  The overlay's window
+  was hidden and reused, and a hidden full-screen layer surface kept its
+  buffers: each open grew the process by roughly 8--9 MB, and three opens cost
+  about 23 MB.  Hiding now destroys the window, and the next open rebuilds it
+  from the scan it already performs.  =tests/test_launchpad.c= opens it four
+  times, asserts the window is gone after a hide, and keeps RSS growth under
+  the measured bound.
+
 ** v1.2.1 (2026-11-05)
 - *The test suites no longer resolve icons through the icon theme of whoever
   runs them.*  =create_dock_item= looks its icon up in the desktop theme and logs
