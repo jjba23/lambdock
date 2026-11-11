@@ -12,9 +12,11 @@
 #+attr_html: :width 160 :alt lambdock logo
 [[file:logo.svg]]
 
-/An ordinary dock is a compiled artefact with a settings dialog in front of it.
+#+begin_quote
+An ordinary dock is a compiled artefact with a settings dialog in front of it.
 lambdock is a small C renderer driven by a Guile image: the dock on screen is the
-fixed point of a Scheme program you can rewrite while it runs./
+fixed point of a Scheme program you can rewrite while it runs.
+#+end_quote
 
 ~lambdock~ puts a strip of launchers on an edge of a GNU/Linux desktop, shows
 which applications are running, and brings their windows back when you click
@@ -26,16 +28,16 @@ file is evaluated into that image at start and again on every save; a socket
 *[[https://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop][REPL]]* evaluates forms in the same image, so inspecting the dock and mutating
 it are the same operation.
 
+#+name: lambdock-showcase
+#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1080 px): auto-hide at the screen edge, the fish-eye under the pointer, launching applications with running indicators, the multi-window popover, the dock's own menu and the Preferences window, a folder stack opened as a grid, the launchpad filtered from the REPL, a live Guile REPL changing the icon size and every theme, and the full-width Luna taskbar.
+[[file:resources/img/lambdock-demo.gif]]
+
 That arrangement is the whole design argument.  A dock is small enough to hold in
 one head, and its state is a value; when the configuration language is Lisp, the
 value can be computed, composed and replaced at run time instead of serialised
 into a file and read back by a parser.  The rest of this manual is the
 consequence: nineteen themes as CSS, a theme per look in one line, settings that
 take effect on the next frame.
-
-#+name: lambdock-showcase
-#+caption: Recorded from a scripted nested niri session by =tools/record-demo/record-demo.sh= (1080 px): auto-hide at the screen edge, the fish-eye under the pointer, launching applications with running indicators, the multi-window popover, the dock's own menu and the Preferences window, a folder stack opened as a grid, the launchpad filtered from the REPL, a live Guile REPL changing the icon size and every theme, and the full-width Luna taskbar.
-[[file:resources/img/lambdock-demo.gif]]
 
 - 🐑 *Read the source (and send PR/issue/patches):* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 📦 *Install it:* [[https://build.opensuse.org/package/show/home:jjba23/lambdock][openSUSE Build Service]], [[https://search.nixos.org/packages?query=lambdock][NixPkgs]], Guix, Docker Hub, and the packaged tarballs
