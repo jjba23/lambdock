@@ -109,21 +109,27 @@ THEME_LABELS = {
     "none": "No theme (GTK default)",
 }
 
-DARK_THEMES = [
+# The montage opens on the material this project is known for and then walks
+# the rest family by family, dark before light, so the wallpaper only changes
+# when its temperature does: the two Platinum slabs (warm dusk), the dark
+# themes (galaxy), the light ones (mountain haze), Luna last (ocean).
+THEME_MONTAGE = (
+    "platinum",
+    "platinum-dark",
     "dune",
     "stage",
     "ambiance",
     "frost-dark",
     "island",
-    "platinum-dark",
-]
-LIGHT_THEMES = [
     "vanilla-light",
     "frost",
     "solarized-light",
     "luna",
-    "platinum",
-]
+)
+# The light themes, for the backdrop of a theme THEME_WALLPAPERS does not name.
+LIGHT_THEMES = frozenset(
+    {"vanilla-light", "frost", "solarized-light", "luna", "platinum"}
+)
 
 # Each theme family gets a backdrop of the same temperature, so the theme being
 # demonstrated is the only thing that changes colour.  Themes not named here sit
@@ -463,6 +469,7 @@ class Demo:
             old_pid = 0
         self.wallpaper_pid_file.unlink(missing_ok=True)
         self.start_swaybg(image_name)
+        self.wallpaper = image_name
         if old_pid:
             try:
                 os.kill(old_pid, signal.SIGTERM)
@@ -779,11 +786,10 @@ class Demo:
         )
         if wallpaper != self.wallpaper:
             self.switch_wallpaper(wallpaper)
-            self.wallpaper = wallpaper
         call = f"(swap! '{theme} 'shelf)" if shelf else f"(swap! '{theme})"
         # The Platinum slab slides in and mirrors the icons onto its glass, so
         # it needs a beat longer on screen than a straight colour change.
-        self.repl(call, speed_ms=8, hold=1.5 if shelf else 0.4)
+        self.repl(call, speed_ms=8, hold=1.0 if shelf else 0.4)
         self.theme(theme)
 
     def phase_repl(self) -> None:
@@ -811,23 +817,23 @@ class Demo:
         self.caption_end()
 
         self.caption("Built-in themes, swapped live")
-        for theme in DARK_THEMES:
-            self.montage_theme(theme)
-        for theme in LIGHT_THEMES:
+        for theme in THEME_MONTAGE:
             self.montage_theme(theme)
         # The montage stops on a theme, so let the last one stand before its
-        # label goes away: that frame is the only one showing the light
-        # Platinum slab, and its mirrored icons are the whole point of it.
-        time.sleep(1.5)
+        # label goes away.
+        time.sleep(1.0)
         self.theme_end()
         self.caption_end()
         # The montage ends where this machine actually lives: the settings file
         # in ~/.config/lambdock plus the Preferences override in
-        # ~/.local/state/lambdock, applied as one form in one evaluation.
+        # ~/.local/state/lambdock, applied as one form in one evaluation.  That
+        # form brings the slab back, so the warm dusk it sits on comes back too.
         self.caption("The settings I run: Platinum, shelf at -17, 48 px icons")
-        self.repl(YOUR_SETTINGS, speed_ms=4, hold=2.4)
+        if self.wallpaper != "dusk.png":
+            self.switch_wallpaper("dusk.png")
+        self.repl(YOUR_SETTINGS, speed_ms=4, hold=1.8)
         self.theme("platinum")
-        time.sleep(1.2)
+        time.sleep(1.0)
         self.theme_end()
         self.caption_end()
         # Leave the frozen fish-eye behind; the taskbar scene drops the shelf.

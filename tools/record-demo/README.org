@@ -24,7 +24,7 @@ The result shows every headline feature and every built-in theme:
 - a folder stack browsed as a thumbnail grid,
 - the launchpad filtered from the REPL,
 - live mutation through the Guile socket REPL (icon size, then themes),
-- hot-swapping the built-in dark and light themes,
+- hot-swapping every built-in theme, opening on Platinum,
 - taskbar mode, and a closing title card.
 
 * Contents
@@ -125,8 +125,10 @@ Only the top is cropped.  The dock lives on the bottom edge and a taskbar spans
 the full width, so cutting the sides would clip the clock in taskbar mode; the
 top margin is where the pointer rests before the storyboard starts, so the
 cursor cannot enter the recording from there either.  The capture is 1440 px
-wide and the GIF screen is 1100, so text is downsampled once, by the encoder,
-rather than twice.
+wide and the GIF screen is 1080, so text is downsampled once, by the encoder,
+rather than twice.  The screen sits one margin (=1080/42=, 25 px) in from every
+edge of the canvas the encoder writes, which is where =make_overlay.py= painted
+its shadow and hairline border.
 
 ** Pointer control
 
@@ -222,16 +224,16 @@ the burnt-in text.
 | 0 s  | Title | wordmark and one-line summary over the dimmed desktop |
 | 3 s  | Auto-hide | pointer to the bottom edge reveals the dock, leaving hides it; the settings file is then edited (=dock-auto-hide? #f=) and the dock returns and stays |
 | 8 s  | Magnification | one slow pass across the row, icons growing under the pointer |
-| 11 s | Launch | two clicks on the terminal launcher, two windows, running indicators |
+| 12 s | Launch | two clicks on the terminal launcher, two windows, running indicators |
 | 15 s | Popover | right-click the running app, glide the window rows, *Close All* |
 | 20 s | Menu + Preferences | right-click a separator, *Preferences...*, the dialog applied to the running dock |
-| 29 s | Stack | the folder item opened as a thumbnail grid, browsed, dismissed |
-| 33 s | Launchpad | opened over the REPL, filtered with =launchpad-search!=, closed |
-| 40 s | REPL | a kitty terminal types real expressions: read the icon size, change it, then define a =swap!= helper |
-| 47 s | Themes | the dark and light themes through =swap!=, each family on its own wallpaper (galaxy, mountain haze, warm dusk, blue ocean); the two Platinum materials switch the dock to its 3D shelf geometry |
+| 30 s | Stack | the folder item opened as a thumbnail grid, browsed, dismissed |
+| 35 s | Launchpad | opened over the REPL, filtered with =launchpad-search!=, closed |
+| 41 s | REPL | a kitty terminal types real expressions: read the icon size, change it, then define a =swap!= helper |
+| 50 s | Themes | every built-in theme through =swap!=, opening on the two Platinum slabs (warm dusk), then the dark themes (galaxy), the light ones (mountain haze) and Luna (ocean); the Platinum materials switch the dock to its 3D shelf geometry |
 | 64 s | Your settings | one form over the REPL applies what this machine runs: Platinum, shelf at -17, front 14, reflection 0.3, 48 px icons 5 px apart, capsule padding 8 |
-| 70 s | Taskbar | a full-width Luna taskbar with window titles |
-| 78 s | Outro | windows closed, dock back to its default, closing title card |
+| 72 s | Taskbar | a full-width Luna taskbar with window titles |
+| 81 s | Outro | windows closed, dock back to its default, closing title card |
 
 Two rules that keep the recording honest:
 

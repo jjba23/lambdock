@@ -29,7 +29,7 @@ MAX_MIB="${MAX_MIB:-12}"
 # noise was 20 MiB of GIF at any lossy setting, and ordered dithering costs a
 # little banding for half the file.
 DITHER="${DITHER:-bayer}"
-SPEED="${SPEED:-1.25}"
+SPEED="${SPEED:-1.4}"
 CAPTIONS=1
 KEEP=0
 
@@ -119,7 +119,10 @@ FILTER="[0:v]fps=${FPS},scale=${SW}:${SH}:flags=lanczos,setsar=1,format=rgba[rec
 FILTER+=";[2:v]scale=${SW}:${SH}:flags=lanczos,format=gray[mask]"
 FILTER+=";[rec][mask]alphamerge[screen]"
 FILTER+=";[1:v]format=rgba[frame]"
-FILTER+=";[frame][screen]overlay=0:0:format=auto:shortest=1[stage]"
+# The screen goes where make_overlay.py drew its shadow and border: one margin
+# in from every edge.  Overlaying at 0:0 leaves the whole frame on the right and
+# the bottom and buries the hairline border under the recording.
+FILTER+=";[frame][screen]overlay=${MARGIN}:${MARGIN}:format=auto:shortest=1[stage]"
 if ((CAPTIONS)); then
   FILTER+=";[stage]subtitles=f=captions.ass:fontsdir=/usr/share/fonts[tk]"
 else
