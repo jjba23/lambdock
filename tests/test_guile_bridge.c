@@ -514,6 +514,7 @@ static void test_poll_fn_bridge(void) {
   g_assert_cmpint(reading.kind, ==, LAMBDOCK_READING_TEXT);
   g_assert_cmpstr(reading.text, ==, "CPU 42%");
   g_free(reading.text);
+  reading.text = NULL;
 
   SCM error_fn = scm_c_eval_string("(lambda () (error \"boom\"))");
   void *broken = lambdock_poll_fn_protect((void *)error_fn);
