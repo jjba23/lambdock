@@ -76,6 +76,7 @@ tests are the ones that match the checked out sources."
 (define c-packages
   (make-parameter (string-join (map symbol->string
                                     '(gtk4 guile-3.0 gtk4-layer-shell-0
+                                           libx11
                                            wlr-protocols)) " ")))
 
 (define (add-libs)
@@ -104,6 +105,7 @@ tests are the ones that match the checked out sources."
                                          libgtk4-layer-shell-dev
                                          guile-3.0-dev
                                          libwayland-dev
+                                         libx11-dev
                                          libglib2.0-dev-bin
                                          wayland-protocols))))
 
@@ -155,7 +157,8 @@ tests are the ones that match the checked out sources."
                                    gtk4-devel
                                    gtk4-layer-shell-devel
                                    guile30-devel
-                                   libwayland-client-devel))))
+                                   libwayland-client-devel
+                                   libX11-devel))))
 
 (define (rpm-build)
   "Build RPM package for openSUSE and Fedora/RHEL"
