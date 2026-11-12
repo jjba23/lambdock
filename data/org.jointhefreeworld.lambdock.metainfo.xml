@@ -10,7 +10,7 @@
   <project_license>MIT</project_license>
 
   <name>Lambdock</name>
-  <summary>Customizable Wayland desktop dock</summary>
+  <summary>Customizable desktop dock</summary>
 
   <developer id="org.jointhefreeworld">
     <name>Josep Bigorra</name>
@@ -18,14 +18,15 @@
 
   <description>
     <p>
-      Lambdock is a Wayland-native desktop dock for GNU/Linux, in the spirit of
-      Cairo-Dock, Plank and the reference dock. It is built with GTK4 and
-      gtk4-layer-shell, and can be themed, extended and reconfigured live with
-      GNU Guile Scheme.
+      Lambdock is a desktop dock for GNU/Linux, in the spirit of Cairo-Dock,
+      Plank and the reference dock. It is built with GTK4 and, on Wayland,
+      gtk4-layer-shell; on X11 it docks itself through EWMH. It can be themed,
+      extended and reconfigured live with GNU Guile Scheme.
     </p>
     <p>Features include:</p>
     <ul>
-      <li>Dynamic window tracking via the Wayland foreign-toplevel protocol</li>
+      <li>Dynamic window tracking: the Wayland foreign-toplevel protocol, or
+        EWMH on X11</li>
       <li>Multi-monitor support and multiple dock instances</li>
       <li>Auto-hide with fluid slide-out animations</li>
       <li>GTK CSS themes and configurable application launchers</li>
@@ -77,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="1.3.0" date="2026-11-12">
+      <description>
+        <p>An X11 session gets a dock now, not an ordinary window in the corner. The dock speaks EWMH on a connection of its own: the window list, titles, application ids and window state come from the standard root and per-window properties, and focus, close and minimize are the standard requests. Its own window declares itself a dock, sits on the configured edge and publishes a strut, so maximized windows stop at the dock instead of covering it. Auto-hide needs a surface a compositor can push off screen, so it stays off on X11 and the dock says so once. GNOME on Wayland implements neither protocol; it now names what is missing. X11 support is optional at build time: a GTK built without the X11 backend still builds a Wayland-only dock.</p>
+      </description>
+    </release>
     <release version="1.2.1" date="2026-11-05">
       <description>
         <p>The unit tests no longer resolve icons through the icon theme of the desktop running them. They used whatever theme was configured, so on a desktop whose theme lacks utilities-terminal the dock logged its icon fallback and GLib's fatal-warning policy aborted the accessibility and dock-item suites. The build now pins the test icon theme to Adwaita through a fixture XDG_CONFIG_HOME; no assertion changed, and the suite is green on a machine that ships neither Adwaita's application icons nor utilities-terminal.</p>

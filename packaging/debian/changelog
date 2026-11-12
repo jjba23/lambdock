@@ -1,3 +1,12 @@
+lambdock (1.3.0-1) unstable; urgency=medium
+
+  * New upstream release: the dock runs on X11 desktops as well as Wayland.
+    On X11 it claims its edge and reserves it with _NET_WM_STRUT_PARTIAL, and
+    tracks windows through EWMH; auto-hide needs a layer surface and stays off.
+  * Build-Depends: libx11-dev, for the optional X11 backend.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Thu, 12 Nov 2026 19:30:00 +0000
+
 lambdock (1.2.8-1) unstable; urgency=medium
 
   * Build against the jointhefreeworld collection at v1.0.4.

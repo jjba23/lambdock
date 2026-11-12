@@ -15,6 +15,38 @@ Nothing yet.
 
 *[Released]*
 
+** v1.3.0 (2026-11-12)
+
+- *The dock runs on X11 desktops, not just Wayland ones.* An X11 session used to
+  get an ordinary window in the corner and no window tracking at all. It now gets
+  a dock: `src/x11_tracker.c` speaks EWMH on a connection of its own -- the
+  window list from `_NET_CLIENT_LIST`, titles from `_NET_WM_NAME`, app ids from
+  `_GTK_APPLICATION_ID`/`WM_CLASS`, state from `_NET_WM_STATE`, and focus, close
+  and minimize as the EWMH/ICCCM requests -- and the dock's own window is typed
+  `_NET_WM_WINDOW_TYPE_DOCK`, placed on its edge and given a
+  `_NET_WM_STRUT_PARTIAL`, so maximized windows stop at the dock instead of
+  covering it.  What is given up there is the slide: auto-hide needs a surface a
+  compositor can push off screen, and the dock says so once instead of pretending.
+- *Which windows a dock lists, and where it goes, is now decided in one tested
+  place.* `src/core/x11_rules.c` holds the rules -- the window types the desktop
+  owns, the two flags a click reads, the placement and the strut array -- and
+  `tests/test_x11_rules.c` checks them without an X server, while
+  `tests/test_x11_dock.c` presents a real dock on the test display and reads the
+  properties back off the X server.
+- *One window model, two backends.* The Wayland foreign-toplevel proxy used to be
+  the handle every module passed around; it is `LambdockToplevel` now (a proxy on
+  Wayland, a window id on X11), and the docks, the popover, the click policy and
+  the item wording are written once against it.  A session with neither protocol
+  reports which half it is missing rather than failing.
+- *GNOME says what it cannot do.* Mutter implements neither layer shell nor the
+  foreign-toplevel protocol, so on GNOME Wayland the dock is an ordinary window;
+  the log now names the missing protocol and what follows from it, and GNOME on
+  Xorg is covered by the X11 backend above.
+- *X11 support is optional at build time.* `meson.build` looks for `gtk4-x11`,
+  which is what a GTK built with the X11 backend ships; without it the tree still
+  builds and `x11_tracker.c` compiles to its no-op half, so a Wayland-only image
+  or a kiosk build loses nothing.
+
 ** v1.2.8 (2026-11-12)
 
 - Builds against the channels this project builds against: the jointhefreeworld collection at v1.0.4, and Guix master `3b4e873`.

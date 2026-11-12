@@ -5,7 +5,7 @@
 
 # Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 pkgname=lambdock
-pkgver=0.22.2
+pkgver=1.3.0
 pkgrel=1
 pkgdesc="GTK4 desktop dock customizable in Guile Scheme"
 arch=('x86_64' 'aarch64')
