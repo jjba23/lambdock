@@ -94,8 +94,10 @@
  * the dock can tell its own drags apart from text and file drops. */
 #define DOCK_DND_ITEM_PREFIX "lambdock-item:"
 
-/* Forward declaration of low-level Wayland foreign toplevel handle struct */
-struct zwlr_foreign_toplevel_handle_v1;
+/* Forward declaration of one tracked window; see toplevel_tracker.h. It is a
+ * foreign-toplevel proxy on Wayland and an X11 window id on X11, and no module
+ * outside the trackers looks inside it. */
+typedef struct LambdockToplevel LambdockToplevel;
 
 /* Forward declaration of central application state structure */
 typedef struct LambdockState LambdockState;
@@ -124,18 +126,17 @@ typedef enum {
 
 /**
  * AppWindow:
- * @handle: Low-level Wayland protocol handle managing this specific window
- * instance.
+ * @handle: the tracked window this record mirrors (see toplevel_tracker.h).
  * @title: Dynamically updated window title string (e.g., "Mozilla Firefox").
- * @minimized: whether the compositor last reported this window as minimized.
+ * @minimized: whether the session last reported this window as minimized.
  * @activated: whether it last reported this window as focused.
  *
- * The two state flags are a mirror of the compositor's `state` event (see
+ * The two state flags are a mirror of what the tracker reported (see
  * toplevel_tracker.c). A dock click reads them to decide between minimizing and
  * restoring, which is what makes "minimize to dock" work.
  */
 typedef struct AppWindow {
-  struct zwlr_foreign_toplevel_handle_v1 *handle;
+  LambdockToplevel *handle;
   char *title;
   gboolean minimized;
   gboolean activated;
@@ -309,6 +310,20 @@ struct LambdockState {
    * (and so the region path can tell "not laid out yet" from "laid out"). */
   int last_surface_width;
   int last_surface_height;
+
+  /* X11 docking. GDK's surface id is not stable across a reload, and a move
+   * generates the configure event that would re-enter the placement path, so
+   * the window we placed and the rectangle we asked for are remembered here.
+   * Wayland keeps the same information in the layer surface itself. */
+  gulong x11_window;
+  gboolean x11_placed;
+  /* Borrowed: the surface the dock's size hook is connected to, so the hook can
+   * be dropped when the dock goes away (that surface outlives the state). */
+  GdkSurface *x11_surface;
+  int x11_rect_x;
+  int x11_rect_y;
+  int x11_rect_width;
+  int x11_rect_height;
 
   /* Unified Dock Items & Window Trackers */
   GList *dock_items;

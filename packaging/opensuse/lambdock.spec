@@ -33,6 +33,7 @@ BuildRequires:  pkgconfig(gtk4-layer-shell-0)
 BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-protocols)
+BuildRequires:  pkgconfig(x11)
 Requires:       gtk4
 Requires:       guile
 Requires:       hicolor-icon-theme

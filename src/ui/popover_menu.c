@@ -25,7 +25,7 @@
 /**
  * WindowActionData:
  * @item: Pointer to the associated DockItem (icon) on the dock bar.
- * @handle: Pointer to the specific Wayland top-level window handle.
+ * @handle: Pointer to the specific tracked window.
  *
  * Helper struct used to pass context into signal callback handlers when a
  * button inside a specific window row (Focus or Close) is clicked in the
@@ -33,7 +33,7 @@
  */
 typedef struct {
   DockItem *item;
-  struct zwlr_foreign_toplevel_handle_v1 *handle;
+  LambdockToplevel *handle;
 } WindowActionData;
 
 /* ============================================================================
@@ -393,7 +393,7 @@ static void on_popover_close_all_windows(GtkButton *btn, gpointer user_data) {
   // Iterate over handle copy list and send close requests for every window
   // instance
   for (GList *l = handles; l != NULL; l = l->next) {
-    close_toplevel_window((struct zwlr_foreign_toplevel_handle_v1 *)l->data);
+    close_toplevel_window((LambdockToplevel *)l->data);
   }
   g_list_free(handles); // Clean up temporary handle list pointer memory
 

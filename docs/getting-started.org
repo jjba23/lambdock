@@ -125,31 +125,50 @@ one line away.  Skim it now, or come back when a word bites.
 | *Want to hack on it?*            | Read [[file:../HACKING.org][HACKING.org]], then [[file:development.org#developing][Developing lambdock]].                        |
 |----------------------------------+-----------------------------------------------------------------------|
 
-** Which compositors are supported
+** Which desktops are supported
 :PROPERTIES:
 :CUSTOM_ID: which-compositors-are-supported
 :END:
 
-~lambdock~ is a GNU/Linux first utility.  It uses ~gtk4-layer-shell~ to render,
-position itself, and behave like a dock.  That means it works well in Wayland
-compositors that implement the ~wlr-layer-shell-unstable-v1~ protocol, including:
+~lambdock~ is a GNU/Linux first utility.  It needs three things from a desktop:
+a surface it can put on an edge, a list of the windows that are open, and a way
+to reserve screen space.  Wayland and X11 spell all three differently, so the
+dock has two backends and picks one at start:
 
-- *Smithay-based compositors*: Niri, [[https://system76.com/cosmic][COSMIC Desktop]]
-- *wlroots-based compositors*: [[https://gitlab.freedesktop.org/wlroots/wlroots][wlroots]]
-  powers Sway, Hyprland, River, [[https://wayfire.org/][Wayfire]]
-- *KDE Plasma* (Wayland session)
-- *[[https://mir-server.io/][Mir]]-based compositors*
+|----------------------------------+---------------------------+--------------------------------|
+| *What the dock needs*            | *On Wayland*               | *On X11*                        |
+|----------------------------------+---------------------------+--------------------------------|
+| Putting itself on an edge        | ~wlr-layer-shell~          | the dock window type and        |
+|                                  |                            | ~_NET_WM_STRUT_PARTIAL~         |
+| Knowing which windows are open   | ~wlr-foreign-toplevel~     | ~_NET_CLIENT_LIST~ and the      |
+|                                  |                            | per-window EWMH properties      |
+| Focusing, minimizing, closing    | ~zwlr_foreign_toplevel~    | ~_NET_ACTIVE_WINDOW~ and        |
+|                                  | requests                   | ~_NET_CLOSE_WINDOW~ messages,   |
+|                                  |                            | iconify for minimize            |
+| Auto-hide (sliding off screen)   | yes                        | no: an X11 dock stays out       |
+|----------------------------------+---------------------------+--------------------------------|
 
-Note: [[https://en.wikipedia.org/wiki/Mutter_(software)][GNOME (Mutter)]] is
-currently not supported, because it does not implement the protocol.
+What that means per desktop:
 
-What happens on a compositor *without* layer shell (GNOME, or an X11 session) is
-defined, not undefined: ~lambdock~ says so once in the log and then runs as an
-ordinary window -- no screen-edge docking, no auto-hide and no exclusive zone,
-because those are layer-shell features.  Window tracking is independent of it:
-where the compositor implements ~wlr-foreign-toplevel~ (Niri, Sway, Hyprland,
-Plasma, ...) running applications and their window menus work; where it does not
-(GNOME), the log says that too and the dock keeps its pinned items.
+- *Wayland compositors with layer shell* -- Niri, [[https://system76.com/cosmic][COSMIC Desktop]],
+  Sway, Hyprland, River, [[https://wayfire.org/][Wayfire]], KDE Plasma (Wayland session),
+  [[https://mir-server.io/][Mir]]-based compositors: everything the dock has, including
+  auto-hide and the exclusive zone.
+- *X11 desktops* -- Xfce, MATE, Cinnamon, KDE Plasma (X11 session), GNOME on
+  Xorg, and the tiling window managers: the dock is an X11 dock. It reserves its
+  edge, so maximized windows stop at it, and running applications, titles,
+  minimize, focus, close and the multi-window popover all work through EWMH.
+  What it does not have is the slide: auto-hiding needs a surface the compositor
+  can push off screen, and X11 has no such thing.
+- *GNOME on Wayland (Mutter)*: neither protocol, so the dock is an ordinary
+  window.  It launches what is pinned, and it says once in the log what is
+  missing instead of pretending.  GNOME on Xorg is the X11 row above and works.
+- *A compositor with neither* (a plain X server with no window manager, a
+  Wayland compositor that implements neither protocol): the dock shows its
+  pinned items and logs which of the two it could not find.
+
+Nothing here is a crash or a silent failure: every degraded path logs one line
+saying what this session cannot do, and the dock stays usable for what it can.
 
 ** Why it exists (a note from the author)
 :PROPERTIES:
@@ -294,6 +313,9 @@ The project requires the following C and Scheme dependencies:
 - *GNU Guile 3.0* (~guile-3.0~)
 - *Wayland development files* (~libwayland-dev~, ~wayland-protocols~,
   ~wlr-protocols~)
+- *X11 support* (~gtk4-x11~ and ~libx11-dev~, optional): with them the dock
+  also runs on X11 desktops, where it needs no layer shell at all.  Without
+  them the build is a Wayland-only dock, and the X11 backend compiles out.
 - [[https://mesonbuild.com/][Meson]] & [[https://ninja-build.org/][Ninja]], and
   [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]]
 - [[https://www.gnu.org/software/gettext/][GNU gettext]] (for building the

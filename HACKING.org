@@ -123,6 +123,7 @@ If you read nothing else, read this.
 | Change the window popover                  | =src/ui/popover_menu.c=                                        |
 | Change the stack panel (browsing, header)  | =src/ui/stack.c=                                               |
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
+| Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.c=                       |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
 | Change CSS scoping or theming              | =src/ui/theme_engine.c=                                        |
 | Change the glass shelf / reflections       | =src/ui/shelf.c= + =resources/css/shelf.css=                    |
@@ -294,7 +295,8 @@ lambdock/
 │   ├── dock_registry.c        # The only owner of the active-dock list (snapshot + typed foreach)
 │   ├── app_window.c           # AppWindow ownership: new/set-title/matches/free
 │   ├── guile_bridge.c         # C→Scheme readers: config getters + table-driven item builders
-│   ├── toplevel_tracker.c     # Wayland manager/handle listeners; owns the proxies; one visitor per event
+│   ├── toplevel_tracker.c     # Window records + broadcasts; the Wayland backend (manager/handle listeners)
+│   ├── x11_tracker.c          # The X11/EWMH backend: window list, requests, the dock's own X11 surface
 │   ├── accessibility.c        # Reduce-motion setting + accessible label text
 │   ├── lambdock.h             # THE central header: LambdockState, DockItem, AppWindow, constants
 │   ├── dock_window.h          # Public window API (plus guile_bridge.h, toplevel_tracker.h, ...)
@@ -305,7 +307,8 @@ lambdock/
 │   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
 │   │   ├── dock_motion.c/.h   # Easing + slide/fisheye arithmetic, GTK-free
 │   │   ├── item_text.c/.h     # All item wording: labels, tooltips, gauges, plurals, GTK-free
-│   │   └── tracker_rules.c/.h # Window-tracking decisions, GTK-free
+│   │   ├── tracker_rules.c/.h # Window-tracking decisions, GTK-free
+│   │   └── x11_rules.c/.h     # EWMH decisions: which windows to list, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
@@ -368,8 +371,13 @@ Documentation files: [[file:README.org][README.org]] (users), this file (develop
 :CUSTOM_ID: toolchain
 :END:
 
-lambdock targets GNU/Linux and Wayland only (GNOME/Mutter is unsupported because
-it lacks ~wlr-layer-shell~).
+lambdock targets GNU/Linux. Wayland is the richest target: on a compositor that
+implements ~wlr-layer-shell~ and ~wlr-foreign-toplevel~ (Niri, Sway, Hyprland,
+Plasma, COSMIC, Wayfire, River) it gets the edge, the exclusive zone, auto-hide
+and the window list. X11 desktops are a first-class second target through EWMH:
+the dock claims its edge, reserves it with a strut, and tracks windows, but has
+no slide. GNOME on Wayland implements neither protocol, so the dock becomes an
+ordinary window there and says so once; GNOME on Xorg is the X11 case.
 
 The canonical, hermetic environment is [[https://guix.gnu.org/][GNU Guix]]; [[https://nixos.org/][Nix]] and
 native distro toolchains are also supported.
@@ -378,6 +386,12 @@ Required: ~gtk4~, ~gtk4-layer-shell~, ~guile-3.0~, ~wayland-client~,
 ~wayland-scanner~, plus [[https://mesonbuild.com/][Meson]],
 [[https://ninja-build.org/][Ninja]] and
 [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]].
+
+Optional: ~gtk4-x11~ (and the ~x11~ headers it pulls in). ~meson.build~ looks
+for it and defines ~HAVE_X11~ when it is there; without it the tree still builds,
+~x11_tracker.c~ compiles to the no-op half, and the dock is Wayland-only. Do not
+add ~#ifdef~s on ~HAVE_X11~ outside ~x11_tracker.c~: the rest of the tree calls
+~lambdock_x11_session()~ and friends, which exist either way.
 
 ** Guix (preferred)
 :PROPERTIES:
@@ -455,8 +469,9 @@ display to be tested.
   =test_item_text= (all wording and plurals), =test_tracker_rules= (window-tracking
   decisions), =test_dock_registry= (the dock list, snapshot and ~foreach~).
 - *Pure logic, GTK-linked* -- =test_config_values= (clamps, name→enum rules),
-  =test_dock_dims= (capsule/overlay/margin arithmetic); their headers pull in
-  =lambdock.h= for the shelf structs, so the binaries link GTK.
+  =test_dock_dims= (capsule/overlay/margin arithmetic), =test_x11_rules= (which
+  X11 windows a dock lists, and the placement/strut arithmetic); their headers
+  pull in =lambdock.h= or GDK's edge enum, so the binaries link GTK.
 - *One module, no dock* -- =test_icon_resolver=, =test_icon_zoom=,
   =test_theme_engine=, =test_shelf=, =test_meter=, =test_desktop_entry=,
   =test_app_actions=, =test_trash=, =test_accessibility=.
@@ -466,6 +481,12 @@ display to be tested.
   auto-hide, teardown), =test_popover_menu= (menu layouts per window count),
   =test_stack=, =test_launchpad=, =test_preferences=, =test_dock_dnd=,
   =test_config_startup=.
+- =test_x11_dock= reads the properties back off the X server: it presents a
+  dock on the test display (Xvfb, in ~maak test~) and asserts that the window
+  carries =_NET_WM_WINDOW_TYPE_DOCK=, the state flags and a
+  =_NET_WM_STRUT_PARTIAL= matching =core/x11_rules.c=. It skips (77) on a
+  Wayland session or a build without X11, and it is the only test that checks
+  what the *window manager* would see rather than what the dock computed.
 - =test_config_startup= is the one to know about: =test_guile_bridge= swaps in a
   *mock* ~(lambdock core)~, so nothing there proves that a real settings file plus
   the two override files in =$XDG_STATE_HOME= produce the values the dock reads.
@@ -1955,6 +1976,15 @@ They are kept here as guard-rails because each is easy to reintroduce.
   callbacks first.
 - *Re-entrancy.* Destroying a window emits ~"destroy"~; ~destroy_dock_instance~
   guards with ~is_destroying~. If you add a new destroy path, honor the guard.
+- *A signal handler's signature is the signal's, not GLib's.*
+  ~GdkSurface::layout~ passes ~(surface, width, height)~ while ~notify::width~
+  passes ~(object, pspec)~; connecting one callback to both hands it the height
+  where it expects a state pointer, and the dock crashed on the first layout of
+  an X11 session. One handler per signature.
+- *The surface outlives the dock state.* ~state->window~'s ~GdkSurface~ emits
+  ~layout~ and size notifications during teardown, after ~destroy_dock_instance~
+  has run: the X11 size hook is disconnected in ~detach_window_handlers~ for that
+  reason.
 - *~GtkSeparator~ is not a ~GtkButton~.* Helpers like ~get_item_image_widget~
   rely on ~GTK_IS_BUTTON~ checks to skip separators. Keep those checks.
 - *Monitor objects are refcounted.* ~create_dock_instance~ refs, ~destroy~

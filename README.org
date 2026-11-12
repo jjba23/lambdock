@@ -21,7 +21,7 @@ fixed point of a Scheme program you can rewrite while it runs.
 ~lambdock~ puts a strip of launchers on an edge of a GNU/Linux desktop, shows
 which applications are running, and brings their windows back when you click
 them.  The rendering core -- GTK4 widgets, ~gtk4-layer-shell~ anchoring, the
-foreign-toplevel listener, the frame clock -- is C.  The policy layer -- which
+window-list listeners, the frame clock -- is C.  The policy layer -- which
 items exist, which theme is in force, where the glass shelf sits, what a meter
 reads -- is a set of bindings in an embedded *[[https://www.gnu.org/software/guile/][GNU Guile]]* image.  The settings
 file is evaluated into that image at start and again on every save; a socket
@@ -86,13 +86,18 @@ This page keeps the feature list, the licence and the project links.
 - *A live image.* A Unix-socket REPL evaluates forms in the running process:
   read state, replace it, and the next frame draws the result; see
   [[file:docs/repl.org#repl][the REPL section]].
-- *Wayland native.* Built on GTK4 and ~gtk4-layer-shell~ for edge anchoring,
-  cubic-eased slide animation and compositor integration.
-- *Foreign-toplevel tracking.* Uses
-  ~zwlr_foreign_toplevel_manager_v1~, the Wayland
-  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]],
-  for running indicators, window titles and a popover that focuses, closes or
-  opens individual instances; see [[file:docs/internals.org#toplevel-tracking][Wayland toplevel tracking]].
+- *Wayland native, X11 welcome.* Built on GTK4 and ~gtk4-layer-shell~ for edge
+  anchoring, cubic-eased slide animation and compositor integration on Wayland;
+  on an X11 desktop the dock is an X11 dock instead -- it claims its edge
+  through EWMH, reserves it with a strut so maximized windows stop at it, and
+  gives up only the slide; see
+  [[file:docs/getting-started.org#which-compositors-are-supported][which desktops are supported]].
+- *Window tracking, two ways.* On Wayland it uses
+  ~zwlr_foreign_toplevel_manager_v1~, the
+  [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]];
+  on X11 it reads the EWMH window list and the per-window properties.  Both give
+  running indicators, window titles and a popover that focuses, closes or opens
+  individual instances; see [[file:docs/internals.org#toplevel-tracking][window tracking]].
 - *Multi-monitor.* Span the dock across all outputs (~#:monitor 'all~) or bind
   it to one connector (=~\"DP-1\"~); see
   [[file:docs/configuration.org#configuration-options][the options reference]].

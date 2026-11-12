@@ -116,6 +116,38 @@ on -- and a leave only counts once the pointer has actually moved since it
 arrived. That is what used to make it bounce in and out for as long as the pointer
 stayed put.
 
+** What your desktop gives you
+:PROPERTIES:
+:CUSTOM_ID: what-your-desktop-gives-you
+:END:
+
+The dock adapts to the session it starts in, and says in the log which of these
+it got:
+
+|-----------------------------------+------------------------------------------|
+| *Session*                         | *What the dock does*                     |
+|-----------------------------------+------------------------------------------|
+| Wayland with layer shell           | all of it: edge, exclusive zone,         |
+| (Niri, Sway, Hyprland, Plasma,     | auto-hide, running applications, titles, |
+| COSMIC, Wayfire, River, Mir)       | the popover                              |
+| X11 (Xfce, MATE, Cinnamon, KDE,    | a real X11 dock: it claims its edge,     |
+| GNOME on Xorg, i3, ...)            | reserves it with a strut, tracks windows |
+|                                   | and their titles; no auto-hide slide     |
+| GNOME on Wayland                   | an ordinary window: pinned items work,   |
+|                                   | running applications do not appear       |
+|-----------------------------------+------------------------------------------|
+
+On X11 the dock is placed by itself: it sits on the edge you configured, spans
+the monitor in ~dock-mode 'taskbar~ mode, and publishes a strut so that maximized
+windows stop at it instead of covering it.  Two consequences worth knowing:
+
+- *Auto-hide needs a layer surface.* On X11 the dock stays out, and keeps its
+  reserved space, because there is no protocol to slide a window off an edge.
+- *The window manager decides.* A window manager that ignores
+  ~_NET_WM_STRUT_PARTIAL~ leaves maximized windows overlapping the dock; the
+  dock itself is still placed correctly, and ~xprop -root~ shows what the window
+  manager was told.
+
 ** Stacks: a folder on the dock 📁
 :PROPERTIES:
 :CUSTOM_ID: stacks

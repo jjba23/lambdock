@@ -25,8 +25,7 @@
  *
  * Returns: (transfer full): the new record.
  */
-AppWindow *app_window_new(struct zwlr_foreign_toplevel_handle_v1 *handle,
-                          const char *title);
+AppWindow *app_window_new(LambdockToplevel *handle, const char *title);
 
 /**
  * app_window_set_title:
@@ -53,7 +52,7 @@ void app_window_set_state(AppWindow *win, gboolean minimized,
  * Returns: TRUE when @win is non-NULL and tracks @handle.
  */
 gboolean app_window_matches(const AppWindow *win,
-                            const struct zwlr_foreign_toplevel_handle_v1 *handle);
+                            const LambdockToplevel *handle);
 
 /**
  * app_window_free:

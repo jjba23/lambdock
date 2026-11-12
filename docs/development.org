@@ -110,9 +110,14 @@ ninja -C build test
   ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
   ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The pure
   halves of the C side have their own display-free tests: ~test_config_values~
-  (range rules, clamping, NaN handling, edge and mode names) and ~test_dock_dims~
-  (the capsule/overlay/margin arithmetic), plus ~test_dock_registry~ for the
-  active-dock list.  The trash
+  (range rules, clamping, NaN handling, edge and mode names), ~test_dock_dims~
+  (the capsule/overlay/margin arithmetic) and ~test_x11_rules~ (which X11
+  windows a dock lists, and the X11 placement and strut arithmetic), plus
+  ~test_dock_registry~ for the active-dock list.  ~test_x11_dock~ goes the other
+  way: it presents a real dock window on the test display and reads the X11
+  properties back off the server, so it asserts what a window manager would see
+  (the dock window type, the state flags, the strut) rather than a computed
+  value, and it skips itself on a Wayland session or a build without X11.  The trash
   tests build throwaway trash directories and cover the freedesktop.org layout,
   the count, emptying (including read-only directories and orphans), moving
   dropped files and folders in with GIO (including name collisions) and the

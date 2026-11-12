@@ -188,16 +188,16 @@ static void test_app_item_labels(void) {
 
   /* The running state is announced, and counts windows. */
   AppWindow *first =
-      dock_item_add_window(item, (struct zwlr_foreign_toplevel_handle_v1 *)0x1);
+      dock_item_add_window(item, (LambdockToplevel *)0x1);
   g_assert_nonnull(first);
   assert_accessible_description(item->button, "Running, 1 window");
 
-  dock_item_add_window(item, (struct zwlr_foreign_toplevel_handle_v1 *)0x2);
+  dock_item_add_window(item, (LambdockToplevel *)0x2);
   assert_accessible_description(item->button, "Running, 2 windows");
 
   /* Closing the windows goes back to the idle wording. */
-  dock_item_remove_window(item, (struct zwlr_foreign_toplevel_handle_v1 *)0x1);
-  dock_item_remove_window(item, (struct zwlr_foreign_toplevel_handle_v1 *)0x2);
+  dock_item_remove_window(item, (LambdockToplevel *)0x1);
+  dock_item_remove_window(item, (LambdockToplevel *)0x2);
   g_assert_null(item->windows);
   assert_accessible_description(item->button, "Not running");
 

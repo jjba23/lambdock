@@ -29,28 +29,26 @@ void clear_tracked_windows(LambdockState *state);
 
 /**
  * dock_item_add_window / dock_item_remove_window:
- * Manages active Wayland window handle attachments on a DockItem.
+ * Manages active window attachments on a DockItem.
  */
-AppWindow *dock_item_add_window(DockItem *item,
-                                struct zwlr_foreign_toplevel_handle_v1 *handle);
+AppWindow *dock_item_add_window(DockItem *item, LambdockToplevel *handle);
 void dock_item_remove_window(DockItem *item,
-                             struct zwlr_foreign_toplevel_handle_v1 *handle);
+                             const LambdockToplevel *handle);
 
 /**
  * dock_item_has_window:
  * @item: (nullable): the item to ask.
- * @handle: (nullable): a Wayland toplevel handle captured earlier.
+ * @handle: (nullable): a window captured earlier.
  *
  * Returns: TRUE when @item still tracks @handle.
  *
- * The tracker owns and frees the proxies, so a handle stored elsewhere -- a
+ * The tracker owns and frees the records, so a handle stored elsewhere -- a
  * popover row's action data, built when the menu opened -- can be freed while
  * that menu is still on screen. Callers that act on a captured handle must ask
- * this first, or they would call a Wayland request on a destroyed proxy.
+ * this first, or they would send a request for a window that is gone.
  */
-gboolean dock_item_has_window(
-    const DockItem *item,
-    const struct zwlr_foreign_toplevel_handle_v1 *handle);
+gboolean dock_item_has_window(const DockItem *item,
+                              const LambdockToplevel *handle);
 
 /**
  * update_dock_item_status:

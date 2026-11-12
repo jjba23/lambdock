@@ -40,6 +40,7 @@
 #include "ui/shelf.h"
 #include "ui/theme_engine.h"
 #include "ui/widget_utils.h"
+#include "x11_tracker.h"
 #include <glib/gi18n.h>
 #include <math.h>
 
@@ -1204,10 +1205,30 @@ void setup_layer_shell_window(LambdockState *state) {
   GtkWindow *window = GTK_WINDOW(state->window);
 
   if (!lambdock_layer_shell_available()) {
-    LOG_C_WARN("Dock",
-               "This compositor has no wlr-layer-shell support: showing the "
-               "dock as an ordinary window (no screen-edge docking, no "
-               "auto-hide).");
+    /* Two different reasons with two different consequences, so they get two
+     * different messages: on X11 the dock still claims its edge through EWMH
+     * (see x11_tracker.c) and only loses the slide; on a Wayland compositor
+     * without the protocol there is nothing to claim it with. */
+    if (lambdock_x11_session())
+      LOG_C_INFO("Dock",
+                 "X11 session: docking through EWMH instead of layer shell. "
+                 "The dock reserves its edge and tracks windows; auto-hide "
+                 "needs a layer surface and stays off.");
+    else
+      LOG_C_WARN("Dock",
+                 "This compositor has no wlr-layer-shell support (GNOME on "
+                 "Wayland is the common one): showing the dock as an ordinary "
+                 "window. It launches and lists nothing running; place it, or "
+                 "use a compositor that implements the protocol.");
+
+    /* An X11 dock has to say what it is *before* the window manager sees the
+     * window: by the time the window is mapped it has already been managed, and
+     * a window managed as an application is decorated, tiled and listed in
+     * taskbars. Layer shell has the same requirement in the other direction --
+     * `gtk_layer_init_for_window` must come before the surface exists -- which
+     * is why this only happens on the branch that is not using it. */
+    gtk_widget_realize(state->window);
+    lambdock_x11_dock_apply(state);
     return;
   }
 
@@ -1253,13 +1274,66 @@ void refresh_dock_mode(LambdockState *state) {
   }
 
   apply_dock_mode_classes(state);
+  /* Dimension updates end by re-placing the X11 window, which is where a mode
+   * switch (dock <-> taskbar) changes the dock's size. */
   update_dock_dimensions(state);
+}
+
+/**
+ * on_surface_resized:
+ * GTK decides its toplevels' sizes by itself, on the first frames of a window
+ * and whenever a size request changes -- and X11 has no protocol where the
+ * dock's placement wins. So the placement is re-run whenever the surface's size
+ * changes: it is idempotent and reads the window back, so a dock that is
+ * already where it belongs costs two round trips and no move.
+ */
+static void on_surface_resized(GObject *surface, GParamSpec *pspec,
+                               gpointer user_data) {
+  (void)surface;
+  (void)pspec;
+
+  lambdock_x11_dock_apply((LambdockState *)user_data);
+}
+
+/** The same, for `GdkSurface::layout`, which passes the new size rather than a
+ * property. Connecting it to the handler above would hand it the height as a
+ * state pointer. */
+static void on_surface_layout(GdkSurface *surface, int width, int height,
+                              gpointer user_data) {
+  (void)surface;
+  (void)width;
+  (void)height;
+
+  lambdock_x11_dock_apply((LambdockState *)user_data);
 }
 
 /** Applies the input region whenever the dock window (re)appears. */
 static void on_window_map(GtkWidget *widget, gpointer user_data) {
   (void)widget;
-  dock_schedule_input_region((LambdockState *)user_data);
+
+  LambdockState *state = (LambdockState *)user_data;
+  dock_schedule_input_region(state);
+
+  /* The window id only exists once the surface is realised, so this is the
+   * first moment an X11 dock can be typed, moved and given its strut. On
+   * Wayland it is a no-op. */
+  if (!state->x11_surface) {
+    GtkNative *native = gtk_widget_get_native(state->window);
+    GdkSurface *surface = native ? gtk_native_get_surface(native) : NULL;
+
+    if (surface) {
+      /* `layout` is the surface telling us it was laid out; the size
+       * notifications cover a resize that arrives without a layout. */
+      g_signal_connect(surface, "layout", G_CALLBACK(on_surface_layout), state);
+      g_signal_connect(surface, "notify::width",
+                       G_CALLBACK(on_surface_resized), state);
+      g_signal_connect(surface, "notify::height",
+                       G_CALLBACK(on_surface_resized), state);
+      state->x11_surface = surface;
+    }
+  }
+
+  lambdock_x11_dock_apply(state);
 }
 
 /**
@@ -1821,6 +1895,10 @@ void update_dock_dimensions(LambdockState *state) {
   /* The surface may be bigger than the dock now: keep the input region on the
    * dock itself. */
   dock_schedule_input_region(state);
+
+  /* An X11 dock is moved and resized by hand, so a size change is also a
+   * placement change. Idempotent: an unchanged rectangle is not re-applied. */
+  lambdock_x11_dock_apply(state);
 }
 
 /* =========================================================================
@@ -1998,6 +2076,15 @@ static void destroy_timers(LambdockState *state) {
 static void detach_window_handlers(LambdockState *state) {
   if (state->window && GTK_IS_WIDGET(state->window))
     g_signal_handlers_disconnect_by_data(state->window, state);
+
+  /* The surface outlives this state: it is GTK's, it is destroyed after the
+   * last signal has been emitted for it, and a `layout` or a resize during that
+   * teardown reaches the handler below with a dangling state. Dropping the
+   * handlers here is why the X11 placement does not need a liveness check. */
+  if (state->x11_surface) {
+    g_signal_handlers_disconnect_by_data(state->x11_surface, state);
+    state->x11_surface = NULL;
+  }
 }
 
 /** Unparents the background context menu without letting its handlers run. */
@@ -2106,5 +2193,10 @@ void destroy_dock_instance(LambdockState *state) {
 
   g_clear_pointer(&state->config_path, g_free);
   g_clear_pointer(&state->theme, g_free);
+
+  /* The window id and the rectangle it had are the X11 placement's memory: a
+   * dock that is rebuilt gets a new window, and it has to be placed again. */
+  lambdock_x11_dock_forget(state);
+
   g_free(state);
 }

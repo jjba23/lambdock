@@ -24,6 +24,7 @@
   wayland,
   wayland-protocols,
   wlr-protocols,
+  libx11,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
@@ -52,6 +53,9 @@ stdenv.mkDerivation (finalAttrs: {
     wayland
     wayland-protocols
     wlr-protocols
+    # The optional X11 backend: `gtk4-x11.pc' resolves it, and meson turns the
+    # backend on when it finds it.
+    libx11
   ];
 
   doCheck = true;

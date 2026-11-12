@@ -11,6 +11,7 @@ Build-Depends: debhelper-compat (= 13),
                libgtk4-layer-shell-dev,
                guile-3.0-dev,
                libwayland-dev,
+               libx11-dev,
                libglib2.0-dev-bin,
                wayland-protocols,
                wayland-scanner++ | libwayland-bin
@@ -20,6 +21,8 @@ Homepage: https://github.com/jjba23/lambdock
 Package: lambdock
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, guile-3.0
-Description: Wayland-native GTK4 dock extensible in Guile Scheme
- Lambdock is a lightweight, Wayland-native desktop dock built with a C core,
- GTK4 layer-shell, and dynamic configuration powered by GNU Guile Scheme.
+Description: GTK4 desktop dock extensible in Guile Scheme
+ Lambdock is a lightweight desktop dock built with a C core, GTK4, and dynamic
+ configuration powered by GNU Guile Scheme.  On Wayland it uses gtk4-layer-shell
+ for edge anchoring and the foreign-toplevel protocol for window tracking; on
+ X11 it docks itself and tracks windows through EWMH.

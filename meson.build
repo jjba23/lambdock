@@ -74,6 +74,14 @@ guile_dep = dependency('guile-3.0', include_type: 'system')         # GNU Guile 
 layer_shell_dep = dependency('gtk4-layer-shell-0', include_type: 'system') # GTK4 Wayland desktop layer integration
 wayland_client_dep = dependency('wayland-client', include_type: 'system')   # Core Wayland client C API
 
+# X11 support is optional, and `gtk4-x11' is exactly the question "was this GTK
+# built with the X11 backend?": it ships GDK's X11 headers and pulls libX11. A
+# GTK built for Wayland alone (a kiosk image, a small container) still builds
+# lambdock; the dock then simply cannot track windows or reserve space on an X11
+# session, and says so at startup.
+gtk_x11_dep = dependency('gtk4-x11', include_type: 'system', required: false)
+have_x11 = gtk_x11_dep.found()
+
 # libm: the dock uses round(), cos() and fabs() for the fisheye and the shelf
 # geometry. Some toolchains resolve those through another library's dependencies
 # and some do not, so link it explicitly instead of relying on luck.
@@ -87,6 +95,13 @@ lambdock_deps = [
     wayland_client_dep,
     libm_dep,
 ]
+
+if have_x11
+  lambdock_deps += gtk_x11_dep
+  add_project_arguments('-DHAVE_X11=1', language: 'c')
+else
+  message('gtk4-x11 not found: building without X11 window tracking')
+endif
 
 # ------------------------------------------------------------------------------
 # Wayland Code Generation (XML Protocol Scanner)
@@ -246,10 +261,12 @@ sources = files(
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
+  'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
+  'src/x11_tracker.c',
   'src/ui/theme_engine.c',
   'src/ui/widget_utils.c',
   'src/ui/icon_resolver.c',
@@ -316,10 +333,12 @@ full_app_sources = files(
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
+  'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
+  'src/x11_tracker.c',
   'src/ui/theme_engine.c',
   'src/ui/widget_utils.c',
   'src/ui/icon_resolver.c',
@@ -407,6 +426,15 @@ unit_tests = [
     'id': 'dock_click',
     'extra_sources': ['src/core/dock_click.c'],
     'deps': [dependency('glib-2.0')],
+  },
+  {
+    # What an X11 window means and where the dock puts itself on an X11 screen:
+    # property values and rectangles in, decisions out. No Xlib here -- reading
+    # the properties is src/x11_tracker.c's job, and the edge enum is what pulls
+    # GTK's headers in.
+    'id': 'x11_rules',
+    'extra_sources': ['src/core/x11_rules.c'],
+    'deps': [gtk_dep, layer_shell_dep, libm_dep],
   },
   {
     # The poof's cloud is arithmetic too: puffs in, puffs out. The widget only
@@ -498,6 +526,15 @@ unit_tests = [
     'id': 'app_actions',
     'extra_sources': ['src/ui/app_actions.c', 'src/ui/desktop_entry.c'],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+  },
+  {
+    # The dock as the X server sees it: the window type that makes a window
+    # manager treat it as a panel, and the strut that keeps maximized windows
+    # off it. Reads the properties back off the server, so it fails if the dock
+    # stops publishing them. Skips where there is no X11 (it is a Wayland-only
+    # build, or a Wayland session).
+    'id': 'x11_dock',
+    'extra_sources': full_test_sources,
   },
 ]
 

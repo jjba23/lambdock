@@ -7,13 +7,17 @@
 
 [[file:../README.org][← lambdock]]
 
-* Wayland Toplevel Tracking & Popovers
+* Window Tracking & Popovers
 :PROPERTIES:
 :CUSTOM_ID: toplevel-tracking
 :END:
 
 ~lambdock~ listens to ~zwlr_foreign_toplevel_manager_v1~ protocol events directly
-from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.):
+from your Wayland compositor (Sway, Hyprland, Wayfire, River, etc.).
+On an X11 desktop it reads the EWMH window list instead; see
+[[#x11-window-tracking][the X11 backend]] below.  Everything the two backends produce is the same value
+(one record per window, with a title, an app id and two state flags), so the
+behaviour below is identical on both.
 
 - *Single Window*: Left-clicking a running app launcher focuses and raises its
   existing window surface.
@@ -40,6 +44,52 @@ it is running or not.
 Window tracking can be switched off entirely with ~dock-track-windows?~ for a
 dock that is purely a launcher, and specific applications can be kept out of the
 dock with ~dock-exclude-apps~.
+
+** The X11 backend (EWMH)
+:PROPERTIES:
+:CUSTOM_ID: x11-window-tracking
+:END:
+
+Wayland has protocols for "list the windows" and "give me this edge"; X11 has
+*conventions* -- the Extended Window Manager Hints, which every desktop there
+implements, from Xfce and MATE to GNOME on Xorg and the tiling window managers.
+=src/x11_tracker.c= speaks them, on a connection of its own:
+
+- *The window list* is the =_NET_CLIENT_LIST= property on the root window. A
+  window is dropped from it when it closes, added when it opens, and the dock
+  diffs its table against it rather than rebuilding: =PropertyNotify= on that
+  property is what triggers the diff, so there is no polling.
+- *One window's identity* is spread over its own properties: =_GTK_APPLICATION_ID~
+  (when the toolkit publishes one), then =WM_CLASS=, for the app id;
+  =_NET_WM_NAME= with =WM_NAME= as the fallback, for the title; =_NET_WM_STATE=
+  for minimized (=_NET_WM_STATE_HIDDEN=) and skip-taskbar; =_NET_WM_WINDOW_TYPE=
+  for the windows a dock must never list (panels, desktops, menus, splashes);
+  and =_NET_WM_PID= to recognise the dock's own windows.
+- *The dock's own surface* is typed as =_NET_WM_WINDOW_TYPE_DOCK=, marked
+  above/sticky/skip-taskbar/skip-pager/on-all-desktops, moved to its edge with
+  the rectangle =core/x11_rules.c= computes, and it publishes
+  =_NET_WM_STRUT_PARTIAL= so the window manager shrinks the work area of the
+  monitor it is on. Without that strut a maximized window would cover the dock.
+- *Focus, minimize and close* are the same three operations as on Wayland, sent
+  as root client messages (=_NET_ACTIVE_WINDOW=, =_NET_CLOSE_WINDOW=) or as the
+  ICCCM iconify request.
+
+Why a second X connection: GDK reads the events of its own connection and hands
+none of them out, and this backend is built on =PropertyNotify= for windows it
+does not own. One extra socket watched like any other file descriptor keeps the
+tracker out of GDK's event path entirely -- the two only meet at a window id.
+
+Two rules that are decisions, not plumbing, live in =core/x11_rules.h= where they
+are unit tested without an X server: which windows a dock lists
+(=lambdock_x11_shows_window=, =lambdock_x11_type_is_desktop_chrome=) and where the
+dock's window goes plus what it reserves (=lambdock_x11_placement_compute=, whose
+result is the =_NET_WM_STRUT_PARTIAL= array verbatim).
+
+X11 has no way to slide a window off the screen edge and back without moving the
+window itself on every frame, so *auto-hide is off on X11*: the dock says so once
+and reserves its space for as long as it runs. Everything else -- the click
+policy, running indicators, titles, the popover, the launchpad, the shelf -- is
+the same code, because it works off the window records, not off the protocol.
 
 ** Application Identity: App Ids, Desktop Entries and Names
 :PROPERTIES:

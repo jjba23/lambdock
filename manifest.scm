@@ -46,6 +46,7 @@
                           ccls
                           gtk
                           gtk4-layer-shell
+                          libx11
                           texinfo
                           watchexec
                           guile-documenta

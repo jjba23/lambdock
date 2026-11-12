@@ -5,8 +5,7 @@
 
 #include "app_window.h"
 
-AppWindow *app_window_new(struct zwlr_foreign_toplevel_handle_v1 *handle,
-                          const char *title) {
+AppWindow *app_window_new(LambdockToplevel *handle, const char *title) {
   AppWindow *win = g_new0(AppWindow, 1);
 
   win->handle = handle;
@@ -39,7 +38,7 @@ void app_window_set_state(AppWindow *win, gboolean minimized,
 }
 
 gboolean app_window_matches(const AppWindow *win,
-                            const struct zwlr_foreign_toplevel_handle_v1 *handle) {
+                            const LambdockToplevel *handle) {
   return win && win->handle == handle;
 }
 

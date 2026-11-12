@@ -7,7 +7,7 @@
 pkgname=lambdock
 pkgver=0.22.2
 pkgrel=1
-pkgdesc="Wayland-native GTK4 dock customizable in Guile Scheme"
+pkgdesc="GTK4 desktop dock customizable in Guile Scheme"
 arch=('x86_64' 'aarch64')
 url="https://github.com/jjba23/lambdock"
 license=('MIT')
@@ -17,6 +17,7 @@ depends=(
   'gtk4'
   'gtk4-layer-shell'
   'guile'
+  'libx11'
   'wayland'
 )
 

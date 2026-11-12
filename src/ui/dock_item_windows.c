@@ -79,9 +79,7 @@ void clear_tracked_windows(LambdockState *state) {
  * ============================================================================
  */
 
-AppWindow *
-dock_item_add_window(DockItem *item,
-                     struct zwlr_foreign_toplevel_handle_v1 *handle) {
+AppWindow *dock_item_add_window(DockItem *item, LambdockToplevel *handle) {
   if (!item || !handle)
     return NULL;
 
@@ -104,7 +102,7 @@ dock_item_add_window(DockItem *item,
 }
 
 void dock_item_remove_window(DockItem *item,
-                             struct zwlr_foreign_toplevel_handle_v1 *handle) {
+                             const LambdockToplevel *handle) {
   if (!item || !handle)
     return;
 
@@ -120,9 +118,8 @@ void dock_item_remove_window(DockItem *item,
   update_dock_item_status(item);
 }
 
-gboolean dock_item_has_window(
-    const DockItem *item,
-    const struct zwlr_foreign_toplevel_handle_v1 *handle) {
+gboolean dock_item_has_window(const DockItem *item,
+                             const LambdockToplevel *handle) {
   if (!item || !handle)
     return FALSE;
 
