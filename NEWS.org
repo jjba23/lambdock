@@ -15,6 +15,10 @@ Nothing yet.
 
 *[Released]*
 
+** v1.2.8 (2026-11-12)
+
+- Builds against the channels this project builds against: the jointhefreeworld collection at v1.0.4, and Guix master `3b4e873`.
+
 ** v1.2.7 (2026-11-11)
 - *The showcase frame is centred again.*  The encoder overlaid the recording on
   the canvas' top-left corner, so the frame margin piled up on the right and the
