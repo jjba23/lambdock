@@ -9,7 +9,7 @@
 # Defines the project name and primary language ('c').
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
-  version: '1.3.0',
+  version: '1.4.0',
   meson_version: '>= 0.62.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
@@ -258,6 +258,7 @@ sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/poll_budget.c',
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
@@ -330,6 +331,7 @@ full_app_sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
+  'src/core/poll_budget.c',
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
@@ -449,6 +451,14 @@ unit_tests = [
     'id': 'dock_motion',
     'extra_sources': ['src/core/dock_motion.c'],
     'deps': [dependency('glib-2.0'), libm_dep],
+  },
+  {
+    # The poller budget: intervals in, polls per second out. The Scheme thunks
+    # themselves are the bridge's business; how often a dock may call them is
+    # this file's, and it needs no display to decide.
+    'id': 'poll_budget',
+    'extra_sources': ['src/core/poll_budget.c'],
+    'deps': [dependency('glib-2.0')],
   },
   {
     # Same deal for the item wording: strings in, strings out, no widgets.

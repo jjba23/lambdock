@@ -15,6 +15,39 @@ Nothing yet.
 
 *[Released]*
 
+** v1.4.0 (2026-11-15)
+
+- *Per-app menu entries come from the application.* An item that resolves to a
+  desktop entry now offers that entry's own ~Actions=~ launchers in its popover
+  -- a browser's *New Private Window*, a terminal's *New Tab* -- with field codes
+  stripped and groups without an ~Exec=~ dropped.  The hardcoded browser and
+  music rows stay for items the dock cannot resolve.
+- *A dock can mirror another dock.* ~dock-mirror-of~ names a settings file (a
+  file name or a full path), ~dock-mirror-exclude~ drops item keys and
+  ~dock-mirror-kinds~ keeps only some item kinds.  The mirror reads the source's
+  resolved items every time they are asked for, so layout order and
+  drag-and-drop overrides are shared rather than copied.
+- *"Why is this item here?"* A row in the item popover expands in place to show
+  the launcher line that created the item, the desktop entry it resolved, the
+  icon name and whether the theme had it, and the poller that drives it.
+- *A compositor restart is a pause, not a reset.* The dock keeps every item and
+  its order, shows a *Reconnecting…* label while the foreign-toplevel manager is
+  gone, and takes the new window list when it comes back.
+- *The launchpad reaches the stacks and the trash.* A row under the search field
+  opens the dock's stack and trash items; launchers are already in the grid.
+- *Dynamic pollers have a budget.* ~core/poll_budget.c~ totals the declared poll
+  intervals and logs a warning when they exceed
+  ~LAMBDOCK_POLL_BUDGET_PER_SECOND~, so a configuration that polls every frame is
+  reported instead of merely documented.
+- *The dock can be captured as text.* *Save settings.scm…* in the dock's own
+  menu writes the resolved dock -- settings, Preferences overrides and layout
+  order -- to ~exported-<settings-stem>.scm~ under the state directory and opens
+  it.  Scheme callers get ~dock-settings-scm~ and ~export-dock-settings!~.
+
+---------
+
+*[Released]*
+
 ** v1.3.0 (2026-11-12)
 
 - *The dock runs on X11 desktops, not just Wayland ones.* An X11 session used to

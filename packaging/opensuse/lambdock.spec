@@ -16,7 +16,7 @@
 #
 
 Name:           lambdock
-Version:        1.3.0
+Version:        1.4.0
 Release:        0
 Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        MIT

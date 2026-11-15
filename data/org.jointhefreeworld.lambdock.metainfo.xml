@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="1.4.0" date="2026-11-15">
+      <description>
+        <p>The dock explains itself and shares itself. An item's popover now offers the application's own extra launchers, read from its desktop entry's Actions= list, and a row that expands to show the launcher line that created the item, the desktop entry it resolved, the icon name and whether the theme had it, and the poller that drives it. A dock can mirror another dock by file name or path, optionally filtering by kind or excluding item keys, instead of listing items of its own. A compositor restart pauses window tracking instead of resetting it: the items and their order stay, and a Reconnecting label says why nothing is tracked. The launchpad reaches the dock's stacks and trash from a row under its search field. Dynamic pollers now share a budget, and a configuration that exceeds it is reported. Finally, Save settings.scm writes the resolved dock -- settings, Preferences overrides and layout order -- to the state directory and opens it, which is the inverse of the loader and a reproducible bug report.</p>
+      </description>
+    </release>
     <release version="1.3.0" date="2026-11-12">
       <description>
         <p>An X11 session gets a dock now, not an ordinary window in the corner. The dock speaks EWMH on a connection of its own: the window list, titles, application ids and window state come from the standard root and per-window properties, and focus, close and minimize are the standard requests. Its own window declares itself a dock, sits on the configured edge and publishes a strut, so maximized windows stop at the dock instead of covering it. Auto-hide needs a surface a compositor can push off screen, so it stays off on X11 and the dock says so once. GNOME on Wayland implements neither protocol; it now names what is missing. X11 support is optional at build time: a GTK built without the X11 backend still builds a Wayland-only dock.</p>

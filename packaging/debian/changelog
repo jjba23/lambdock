@@ -1,3 +1,21 @@
+lambdock (1.4.0-1) unstable; urgency=medium
+
+  * New upstream release: the dock explains itself and shares itself.
+  * An item's popover offers the application's own extra launchers, read from
+    its desktop entry's Actions= list, and expands in place to show the
+    launcher, the resolved desktop entry, the icon and the poller behind it.
+  * A dock can mirror another dock, filtered by item kind or by item key,
+    instead of listing items of its own.
+  * A compositor restart pauses window tracking instead of resetting the dock:
+    items and their order stay, and a reconnecting label says so.
+  * The launchpad reaches the dock's stacks and trash.
+  * Dynamic pollers share a budget, and a configuration that exceeds it is
+    reported.
+  * Save settings.scm writes the resolved dock to the state directory, which is
+    the inverse of the loader and makes a bug report reproducible.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Sun, 15 Nov 2026 12:00:00 +0000
+
 lambdock (1.3.0-1) unstable; urgency=medium
 
   * New upstream release: the dock runs on X11 desktops as well as Wayland.
