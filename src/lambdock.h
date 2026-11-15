@@ -209,6 +209,9 @@ typedef struct DockItem {
   char *meter_unit;     /* Reading suffix: "%" or "°C" */
   double meter_max;     /* Reading that fills the gauge */
   char *desktop_id;     /* Desktop entry this item resolves to (canonical id) */
+  char *poll_name;      /* Name of the Scheme poller (NULL when not dynamic) */
+  guint poll_interval;  /* Poll period of a dynamic item, in ms */
+  gboolean show_inspector; /* Menu expanded with the item's provenance */
   GtkWidget *icon_image; /* The item's GtkImage, owned by the widget tree */
   guint trash_timer_id;  /* Refresh timer of a trash item */
   guint trash_count;     /* Items in the trash at the last refresh */
@@ -228,6 +231,8 @@ struct LambdockState {
   GtkWidget *scrolled_window; /* Scroll viewport container for dock items */
   GtkWidget *box;             /* Icon container box */
   GtkWidget *popover;
+  GtkWidget *reconnect_label; /* "Reconnecting…" while tracking is down */
+  gboolean tracker_connected; /* window list being tracked right now */
   GtkSizeGroup *size_group;
   gboolean auto_hide;
   gboolean show_when_clear;

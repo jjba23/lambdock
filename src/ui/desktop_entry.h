@@ -22,6 +22,23 @@
 #define DESKTOP_CACHE_TTL_MS 60000
 
 /**
+ * LambdockDesktopAction:
+ * @id: the action's key in the entry's Actions= list ("new-private-window").
+ * @name: localized Name= of its [Desktop Action <id>] group.
+ * @exec: the group's Exec=, with the freedesktop field codes removed.
+ *
+ * One extra launcher an application declares in its own desktop file. Chrome,
+ * Firefox, Nautilus and many others list things like "New Private Window" or
+ * "Open a New Tab" there; the dock offers them in the item's right-click menu
+ * instead of knowing each application by name.
+ */
+typedef struct LambdockDesktopAction {
+  char *id;
+  char *name;
+  char *exec;
+} LambdockDesktopAction;
+
+/**
  * LambdockDesktopEntry:
  * @id: Desktop file name, e.g. "org.gnome.Terminal.desktop".
  * @stem: @id without the ".desktop" suffix -- what Wayland compositors usually
@@ -38,6 +55,9 @@
  * @hidden: Hidden=true (the user or the distribution removed it).
  * @path: Absolute path of the desktop file the entry was read from, or NULL
  * when it was parsed from memory. Tells a Flatpak export from a distro package.
+ * @actions: (element-type LambdockDesktopAction) (nullable): the entry's own
+ * extra launchers (Actions=), in the order the file lists them. Owned by the
+ * entry.
  * @alternates: (element-type LambdockDesktopEntry) (nullable): the other
  * desktop files that describe the same application. Owned by the entry, and
  * filled in by lambdock_desktop_entries_scan() for the copies it does not list
@@ -59,6 +79,7 @@ typedef struct LambdockDesktopEntry {
   gboolean no_display;
   gboolean hidden;
   char *path;
+  GPtrArray *actions;
   GPtrArray *alternates;
 } LambdockDesktopEntry;
 

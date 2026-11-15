@@ -5,6 +5,8 @@
 
 #include "tracker_rules.h"
 
+#include <glib/gi18n.h>
+
 /* Ways the compositor spells "this is the dock itself". */
 static const char *const OWN_APP_IDS[] = {"lambdock",
                                           "org.jointhefreeworld.lambdock"};
@@ -35,4 +37,11 @@ gboolean lambdock_tracker_should_hide(gboolean auto_hide,
 gboolean lambdock_tracker_should_reveal(gboolean show_when_clear,
                                         gboolean has_tracked_windows) {
   return show_when_clear && !has_tracked_windows;
+}
+
+/* The dock shows this while the compositor's window list is gone. NULL means
+ * "connected: show nothing", so the caller can use the return value directly as
+ * "is there something to say?". */
+const char *lambdock_tracker_status_text(gboolean connected) {
+  return connected ? NULL : _("Reconnecting…");
 }

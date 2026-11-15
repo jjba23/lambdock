@@ -1270,6 +1270,8 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
 
   dock_item_mount(item);
 
+  item->poll_interval = interval_ms;
+
   /* Paint the first reading now instead of after the first interval. */
   if (dynamic_item_has_poller(item))
     refresh_dynamic_item(item);
@@ -1465,6 +1467,15 @@ static void free_item_strings(DockItem *item) {
   g_free(item->stack_view);
   g_free(item->meter_unit);
   g_free(item->desktop_id);
+  g_free(item->poll_name);
+}
+
+void dock_item_set_poll_name(DockItem *item, const char *name) {
+  if (!item)
+    return;
+
+  g_free(item->poll_name);
+  item->poll_name = g_strdup(name);
 }
 
 void free_dock_item(DockItem *item) {

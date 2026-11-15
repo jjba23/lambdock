@@ -57,6 +57,18 @@ void reveal_dock(LambdockState *state);
 void hide_dock(LambdockState *state);
 
 /**
+ * dock_window_set_tracker_connected:
+ * @state: the dock.
+ * @connected: whether the compositor's window list is being tracked.
+ *
+ * Shows or hides the dock's "Reconnecting…" label and its dimmed state class.
+ * The item list and its order are untouched: a compositor restart only loses
+ * the window proxies, never the configuration.
+ */
+void dock_window_set_tracker_connected(LambdockState *state,
+                                       gboolean connected);
+
+/**
  * schedule_initial_autohide:
  * @state: Pointer to global application state structure.
  *

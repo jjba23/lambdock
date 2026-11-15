@@ -87,6 +87,10 @@ struct ToplevelTracker {
    * be reported as a fact instead of a guess. */
   guint globals_seen;
   gboolean warned_no_seat; /* one diagnostic, not one per click */
+  /* Whether a manager is bound right now. A compositor restart withdraws the
+   * global and the tracker tears down; the docks show a reconnecting state
+   * until the new global is announced. */
+  gboolean connected;
   GList *toplevels;        /* LambdockToplevel*, owned here */
 };
 
@@ -268,6 +272,17 @@ static void dock_forget_all_windows(LambdockState *state, gpointer data) {
   clear_tracked_windows(state);
 }
 
+/** Tells one dock whether the compositor's window list is being tracked. */
+static void dock_tracker_state(LambdockState *state, gpointer data) {
+  dock_window_set_tracker_connected(state, GPOINTER_TO_INT(data));
+}
+
+/** The same answer for every dock: connected is a session fact, not a per-dock
+ * one. Called on bind and on teardown. */
+static void notify_docks_of_tracker(gboolean connected) {
+  dock_registry_foreach(dock_tracker_state, GINT_TO_POINTER(connected));
+}
+
 /**
  * create_item_for_app_id:
  * Builds the dock item for an application that is running but not pinned.
@@ -438,7 +453,16 @@ static void tracker_teardown(ToplevelTracker *tracker) {
   }
   tracker->manager_global = 0;
 
+  /* Items are configuration and stay exactly where they are; only the window
+   * proxies (and the running indicators built from them) go away. */
   dock_registry_foreach(dock_forget_all_windows, NULL);
+
+  if (tracker->connected) {
+    tracker->connected = FALSE;
+    notify_docks_of_tracker(FALSE);
+    LOG_C_INFO("Tracker",
+               "Window tracking paused; docks show the reconnecting state");
+  }
 }
 
 /* ---- handle events: one adapter per session event ---- */
@@ -624,6 +648,14 @@ static void tracker_bind_manager(ToplevelTracker *tracker,
   zwlr_foreign_toplevel_manager_v1_add_listener(tracker->manager,
                                                 &manager_listener, tracker);
   LOG_C_INFO("Tracker", "Bound foreign toplevel manager successfully.");
+
+  /* Re-binding after a compositor restart: the docks come out of their
+   * reconnecting state and the new manager's events rebuild the window list.
+   * The dock's items were never touched. */
+  if (!tracker->connected) {
+    tracker->connected = TRUE;
+    notify_docks_of_tracker(TRUE);
+  }
 }
 
 /** Binds the seat used to activate windows. */
@@ -744,6 +776,20 @@ static gboolean wayland_tracker_start(GError **error) {
  * PUBLIC API
  * =========================================================================
  */
+
+gboolean lambdock_tracker_connected(void) {
+  switch (g_backend) {
+  case TRACKER_WAYLAND:
+    return g_tracker.connected;
+  case TRACKER_X11:
+    /* The EWMH window list is a connection of the dock's own, not a
+     * compositor-announced global: it has no reconnecting state. */
+    return TRUE;
+  case TRACKER_NONE:
+    return FALSE;
+  }
+  return FALSE;
+}
 
 gboolean init_toplevel_tracker(GError **error) {
   if (g_backend != TRACKER_NONE)

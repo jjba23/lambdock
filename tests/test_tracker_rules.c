@@ -61,6 +61,17 @@ static void test_should_reveal(void) {
   g_assert_false(lambdock_tracker_should_reveal(FALSE, FALSE));
 }
 
+static void test_status_text(void) {
+  /* Nothing to say while the window list is being tracked... */
+  g_assert_null(lambdock_tracker_status_text(TRUE));
+
+  /* ...and one sentence while the compositor restarts and the tracker has not
+   * re-bound its foreign-toplevel manager yet. */
+  const char *text = lambdock_tracker_status_text(FALSE);
+  g_assert_nonnull(text);
+  g_assert_cmpstr(text, ==, "Reconnecting…");
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -69,6 +80,7 @@ int main(int argc, char **argv) {
                   test_item_should_be_dropped);
   g_test_add_func("/core/tracker_rules/should_hide", test_should_hide);
   g_test_add_func("/core/tracker_rules/should_reveal", test_should_reveal);
+  g_test_add_func("/core/tracker_rules/status_text", test_status_text);
 
   return g_test_run();
 }

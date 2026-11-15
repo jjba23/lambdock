@@ -33,6 +33,8 @@ static GPtrArray *menu_labels(DockItem *item) {
 
 /* Defined with the other finders below; the stack test uses it too. */
 static GtkWidget *find_menu_button(GtkWidget *widget, const char *text);
+static gboolean has_label(GtkWidget *widget, const char *text);
+static gboolean labels_start_with(GPtrArray *labels, const char *prefix);
 
 /* Every button of the menu, in top-to-bottom order. */
 static void collect_buttons(GtkWidget *widget, GPtrArray *out) {
@@ -100,14 +102,16 @@ static void test_popover_menu_no_windows_with_exec(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, Open, sep, New Window, New Private Window */
-  g_assert_cmpint(menu_child_count(item), ==, 6);
+  /* header, sep, Open, sep, New Window, New Private Window, sep, inspector */
+  g_assert_cmpint(menu_child_count(item), ==, 8);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 4);
+  g_assert_cmpint(labels->len, ==, 5);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Open");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Window");
   g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Private Window");
+  g_assert_cmpstr(g_ptr_array_index(labels, 4), ==,
+                  "Why is this item here?");
   g_ptr_array_unref(labels);
 
   free_item(item);
@@ -118,11 +122,14 @@ static void test_popover_menu_no_windows_no_exec(void) {
 
   populate_popover_menu(item);
 
-  /* Header + separator only: no launch option without an exec command. */
-  g_assert_cmpint(menu_child_count(item), ==, 2);
+  /* Header + separator, then the inspector: no launch option without an exec
+   * command. */
+  g_assert_cmpint(menu_child_count(item), ==, 4);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 1);
+  g_assert_cmpint(labels->len, ==, 2);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
+  g_assert_cmpstr(g_ptr_array_index(labels, 1), ==,
+                  "Why is this item here?");
   g_ptr_array_unref(labels);
 
   free_item(item);
@@ -134,11 +141,11 @@ static void test_popover_menu_single_window(void) {
 
   populate_popover_menu(item);
 
-  /* header, sep, row, sep, New Window, Private Window. A browser's own
-   * "New Window" stands in for the generic "New Instance". */
-  g_assert_cmpint(menu_child_count(item), ==, 7);
+  /* header, sep, row, sep, New Window, Private Window, sep, inspector. A
+   * browser's own "New Window" stands in for the generic "New Instance". */
+  g_assert_cmpint(menu_child_count(item), ==, 9);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 4);
+  g_assert_cmpint(labels->len, ==, 5);
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Mozilla Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "New Window");
   g_assert_cmpstr(g_ptr_array_index(labels, 3), ==, "New Private Window");
@@ -155,10 +162,10 @@ static void test_popover_menu_multi_window(void) {
   populate_popover_menu(item);
 
   /* header, sep, row, row, sep, Close All,
-   * sep, New Window, New Private Window */
-  g_assert_cmpint(menu_child_count(item), ==, 9);
+   * sep, New Window, New Private Window, sep, inspector */
+  g_assert_cmpint(menu_child_count(item), ==, 11);
   GPtrArray *labels = menu_labels(item);
-  g_assert_cmpint(labels->len, ==, 6);
+  g_assert_cmpint(labels->len, ==, 7);
   g_assert_cmpstr(g_ptr_array_index(labels, 0), ==, "Firefox");
   g_assert_cmpstr(g_ptr_array_index(labels, 1), ==, "Tab 1");
   g_assert_cmpstr(g_ptr_array_index(labels, 2), ==, "Tab 2");
@@ -240,13 +247,13 @@ static void test_popover_menu_rebuild(void) {
   add_window(item, "Only");
 
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 7);
+  g_assert_cmpint(menu_child_count(item), ==, 9);
 
   /* Rebuilding with more windows must fully replace the previous layout, not
    * append to it. */
   add_window(item, "Second");
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 9);
+  g_assert_cmpint(menu_child_count(item), ==, 11);
 
   /* Rebuilding again with no windows shrinks back down. */
   for (GList *l = item->windows; l != NULL; l = l->next)
@@ -255,12 +262,65 @@ static void test_popover_menu_rebuild(void) {
   item->windows = NULL;
 
   populate_popover_menu(item);
-  g_assert_cmpint(menu_child_count(item), ==, 6);
+  g_assert_cmpint(menu_child_count(item), ==, 8);
 
   free_item(item);
 }
 
+/* The inspector is one row that expands the same menu in place: the four
+ * answers (launcher, desktop entry, icon, poller) are the chain an item
+ * resolves through, and they belong next to the item they explain. */
+static void test_popover_menu_inspector(void) {
+  DockItem *item = new_item("Firefox", "firefox", "firefox %u");
+  item->state = g_new0(LambdockState, 1);
+  item->state->config_path = g_strdup("/home/me/.config/lambdock/settings.scm");
+  item->icon = g_strdup("firefox");
 
+  populate_popover_menu(item);
+
+  GtkWidget *content = gtk_popover_get_child(GTK_POPOVER(item->popover));
+  GtkWidget *toggle = find_menu_button(content, "Why is this item here?");
+  g_assert_nonnull(toggle);
+  g_assert_false(item->show_inspector);
+
+  guint collapsed = menu_child_count(item);
+  g_signal_emit_by_name(toggle, "clicked");
+  g_assert_true(item->show_inspector);
+
+  /* A separator, then one title+value label per answer. */
+  content = gtk_popover_get_child(GTK_POPOVER(item->popover));
+  g_assert_cmpint(menu_child_count(item), ==, collapsed + 5);
+  g_assert_true(labels_start_with(
+      menu_labels(item),
+      "Launcher\napp:Firefox, from /home/me/.config/lambdock/settings.scm"));
+  g_assert_true(labels_start_with(menu_labels(item), "Desktop entry\n"));
+  g_assert_true(labels_start_with(menu_labels(item), "Icon\n"));
+  g_assert_true(labels_start_with(menu_labels(item),
+                                  "Poller\nnone: this item does not poll"));
+
+  /* Clicking again collapses it back to the menu it was. */
+  toggle = find_menu_button(content, "Why is this item here?");
+  g_signal_emit_by_name(toggle, "clicked");
+  g_assert_false(item->show_inspector);
+  g_assert_cmpint(menu_child_count(item), ==, collapsed);
+
+  g_free(item->icon);
+  item->icon = NULL;
+  g_free(item->state->config_path);
+  g_free(item->state);
+  item->state = NULL;
+  free_item(item);
+}
+
+
+
+static gboolean labels_start_with(GPtrArray *labels, const char *prefix) {
+  for (guint i = 0; i < labels->len; i++) {
+    if (g_str_has_prefix(g_ptr_array_index(labels, i), prefix))
+      return TRUE;
+  }
+  return FALSE;
+}
 
 static gboolean labels_contain(GPtrArray *labels, const char *needle) {
   for (guint i = 0; i < labels->len; i++) {
@@ -669,7 +729,7 @@ static void test_popover_menu_keyboard(void) {
   gtk_widget_set_parent(item->popover, anchor);
 
   /* Two windows: title, close, title, close, Close All, New Window,
-   * New Private Window. */
+   * New Private Window, and the inspector row. */
   populate_popover_menu(item);
 
   GtkWidget *content = gtk_popover_get_child(GTK_POPOVER(item->popover));
@@ -677,7 +737,7 @@ static void test_popover_menu_keyboard(void) {
 
   GPtrArray *rows = g_ptr_array_new();
   collect_buttons(content, rows);
-  g_assert_cmpuint(rows->len, ==, 7);
+  g_assert_cmpuint(rows->len, ==, 8);
 
   lambdock_popover_menu_focus_first(item->popover);
   g_assert_true(gtk_window_get_focus(GTK_WINDOW(window)) ==
@@ -689,11 +749,11 @@ static void test_popover_menu_keyboard(void) {
 
   g_assert_true(send_key(item->popover, GDK_KEY_End));
   g_assert_true(gtk_window_get_focus(GTK_WINDOW(window)) ==
-                g_ptr_array_index(rows, 6));
+                g_ptr_array_index(rows, 7));
 
   g_assert_true(send_key(item->popover, GDK_KEY_Up));
   g_assert_true(gtk_window_get_focus(GTK_WINDOW(window)) ==
-                g_ptr_array_index(rows, 5));
+                g_ptr_array_index(rows, 6));
 
   g_assert_true(send_key(item->popover, GDK_KEY_Home));
   g_assert_true(gtk_window_get_focus(GTK_WINDOW(window)) ==
@@ -748,6 +808,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/popover_menu/header_fallback",
                   test_popover_menu_header_fallback);
   g_test_add_func("/ui/popover_menu/rebuild", test_popover_menu_rebuild);
+  g_test_add_func("/ui/popover_menu/inspector", test_popover_menu_inspector);
   g_test_add_func("/ui/popover_menu/stack", test_popover_menu_stack);
   g_test_add_func("/ui/popover_menu/launchpad", test_popover_menu_launchpad);
   g_test_add_func("/ui/popover_menu/trash", test_popover_menu_trash);

@@ -157,6 +157,20 @@ GtkWidget *lambdock_launchpad_tile_new(const LambdockDesktopEntry *entry,
                                        int icon_size);
 
 /**
+ * lambdock_launchpad_shelf_new:
+ * @state: (nullable): the dock whose stacks and trash the shelf should list.
+ *
+ * The launchpad's shelf: one button per folder stack and one for the trash, so
+ * the two item kinds that produce content -- rather than launch an application
+ * -- are reachable from the application grid too. Clicking one hides the
+ * launchpad and opens that stack's panel (or the trash) from its dock item.
+ *
+ * Returns: (transfer none) (nullable): the shelf row, or NULL when @state has
+ *   neither a stack nor a trash item.
+ */
+GtkWidget *lambdock_launchpad_shelf_new(LambdockState *state);
+
+/**
  * lambdock_launchpad_header_new:
  * @out_close: (out) (optional) (transfer none): the close button, borrowed.
  *

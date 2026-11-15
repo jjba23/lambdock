@@ -24,6 +24,7 @@
                         dock-item-unit
                         dock-item-max
                         dock-item-key
+                        dock-item-poll-name
 
                         ;; Generic Constructors
                         app-item
@@ -140,6 +141,24 @@
 ordering, removals and additions across restarts. It matches the key the C side
 computes, so both halves of the dock agree on the identity of an item."
   (format #f "~a:~a" (dock-item-type item) (dock-item-name item)))
+
+(define (dock-item-poll-name item)
+  "The name of the procedure that polls ITEM, or \"\" when it does not poll.
+
+The \"why is this item here\" inspector shows this: a dynamic item's behaviour is
+the thunk it carries, and a thunk in a settings file has no name to read back
+unless it was defined with `define'."
+  (let ((fn (%dock-item-poll-fn item)))
+    (if (procedure? fn)
+        (let ((name (catch #t
+                           (lambda ()
+                             (procedure-name fn))
+                           (lambda _
+                             #f))))
+          (cond ((symbol? name) (symbol->string name))
+                ((string? name) name)
+                (else "anonymous procedure")))
+        "")))
 
 ;; Generic constructor for custom app launchers
 (define* (app-item #:key (name "Unknown")

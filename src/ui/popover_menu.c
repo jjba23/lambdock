@@ -5,6 +5,7 @@
 
 #include "popover_menu.h"
 #include "../accessibility.h"
+#include "../core/item_text.h"
 #include "../logger.h"
 #include "../toplevel_tracker.h"
 #include "app_actions.h"
@@ -738,6 +739,164 @@ static void append_action_buttons(GtkWidget *vbox, DockItem *item,
   }
 }
 
+/*
+ * DESKTOP-FILE ACTIONS
+ * -------------------------------------------------------------------------
+ * An application's own .desktop file can declare extra launchers next to its
+ * Exec= (Chrome's "New Window"/"New Private Window", Nautilus' "New Tab").
+ * They are shown with the entry's own names, so a new browser or file manager
+ * gets useful, correct menu rows without the dock learning it by name.
+ */
+
+/** The desktop entry the dock attached to this item, or NULL for a Scheme-only
+ * launcher (which has no desktop file to ask for actions). */
+static const LambdockDesktopEntry *item_desktop_entry(const DockItem *item) {
+  if (!item->desktop_id || *item->desktop_id == '\0')
+    return NULL;
+
+  return lambdock_desktop_entry_lookup(item->desktop_id);
+}
+
+typedef struct {
+  DockItem *item;
+  char *command;
+} CommandActionData;
+
+static void free_command_action(gpointer data, GClosure *closure) {
+  (void)closure;
+  CommandActionData *action = (CommandActionData *)data;
+  g_free(action->command);
+  g_free(action);
+}
+
+static void on_popover_run_command(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  CommandActionData *action = (CommandActionData *)user_data;
+  if (!action || !action->command)
+    return;
+
+  GError *error = NULL;
+  if (!g_spawn_command_line_async(action->command, &error)) {
+    LOG_C_WARN("UI", "Failed to launch '%s': %s", action->command,
+               error->message);
+    g_clear_error(&error);
+  }
+
+  if (action->item && action->item->popover)
+    gtk_popover_popdown(GTK_POPOVER(action->item->popover));
+}
+
+/** The entry's own actions, under the browser/player section. */
+static void menu_append_desktop_actions(GtkWidget *vbox, DockItem *item) {
+  const LambdockDesktopEntry *entry = item_desktop_entry(item);
+  if (!entry || !entry->actions || entry->actions->len == 0)
+    return;
+
+  gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  for (guint i = 0; i < entry->actions->len; i++) {
+    const LambdockDesktopAction *action =
+        g_ptr_array_index(entry->actions, i);
+
+    GtkWidget *button =
+        menu_row_new("system-run-symbolic", action->name);
+    CommandActionData *data = g_new0(CommandActionData, 1);
+    data->item = item;
+    data->command = g_strdup(action->exec);
+    g_signal_connect_data(button, "clicked",
+                          G_CALLBACK(on_popover_run_command), data,
+                          free_command_action, 0);
+    gtk_box_append(GTK_BOX(vbox), button);
+  }
+}
+
+/*
+ * THE INSPECTOR
+ * -------------------------------------------------------------------------
+ * "Why is this item here?" wanted a way to see the chain an item resolves
+ * through -- launcher, desktop entry, icon, poller -- without a REPL or a log
+ * hunt. It is one menu row that expands the menu in place, because the answer
+ * belongs next to the item it explains.
+ */
+
+static void menu_append_detail_row(GtkWidget *vbox, const char *title,
+                                   const char *value) {
+  GtkWidget *label = gtk_label_new(NULL);
+  g_autofree char *markup = g_markup_printf_escaped("<b>%s</b>\n%s", title,
+                                                    value ? value : "");
+  gtk_label_set_markup(GTK_LABEL(label), markup);
+  gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+  gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
+  gtk_label_set_max_width_chars(GTK_LABEL(label), POPOVER_TITLE_MAX_CHARS);
+  gtk_label_set_selectable(GTK_LABEL(label), TRUE);
+  gtk_widget_add_css_class(label, "dim-label");
+  gtk_box_append(GTK_BOX(vbox), label);
+}
+
+/** Whether the icon theme (or, for a path, the file system) can resolve @icon. */
+static gboolean item_icon_is_known(const DockItem *item) {
+  const char *icon = item->icon;
+  if (!icon || *icon == '\0')
+    return FALSE;
+
+  if (g_path_is_absolute(icon))
+    return g_file_test(icon, G_FILE_TEST_EXISTS);
+
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+  return theme && gtk_icon_theme_has_icon(theme, icon);
+}
+
+static void menu_append_inspector_section(GtkWidget *vbox, DockItem *item) {
+  gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  g_autofree char *key = dock_item_key(item);
+  g_autofree char *launcher = lambdock_inspector_launcher_text(
+      item->state ? item->state->config_path : NULL, key);
+  menu_append_detail_row(vbox, _("Launcher"), launcher);
+
+  const LambdockDesktopEntry *entry = item_desktop_entry(item);
+  g_autofree char *entry_text = NULL;
+  if (entry)
+    entry_text = g_strdup_printf("%s\n%s", entry->id ? entry->id : "",
+                                 entry->path ? entry->path : "");
+  else
+    entry_text = g_strdup(_("none: the item does not resolve to a desktop "
+                            "entry"));
+  menu_append_detail_row(vbox, _("Desktop entry"), entry_text);
+
+  g_autofree char *icon_text =
+      lambdock_inspector_icon_text(item->icon, item_icon_is_known(item));
+  menu_append_detail_row(vbox, _("Icon"), icon_text);
+
+  g_autofree char *poller_text =
+      lambdock_inspector_poller_text(item->poll_name, item->poll_interval);
+  menu_append_detail_row(vbox, _("Poller"), poller_text);
+}
+
+static void on_popover_toggle_inspector(GtkButton *btn, gpointer user_data) {
+  (void)btn;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  item->show_inspector = !item->show_inspector;
+  populate_popover_menu(item);
+}
+
+static void append_inspector_entry(GtkWidget *vbox, DockItem *item) {
+  gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
+
+  GtkWidget *button =
+      menu_row_new("help-about-symbolic", _("Why is this item here?"));
+  g_signal_connect(button, "clicked",
+                   G_CALLBACK(on_popover_toggle_inspector), item);
+  gtk_box_append(GTK_BOX(vbox), button);
+
+  if (item->show_inspector)
+    menu_append_inspector_section(vbox, item);
+}
+
 static void on_popover_remove_item(GtkButton *btn, gpointer user_data) {
   (void)btn;
   DockItem *item = (DockItem *)user_data;
@@ -991,6 +1150,7 @@ static void menu_append_app_actions(GtkWidget *vbox, DockItem *item,
 
 /** Installs @vbox as the popover's child. */
 static void menu_finish(DockItem *item, GtkWidget *vbox) {
+  append_inspector_entry(vbox, item);
   append_remove_entry(vbox, item);
   /* The same popover carries the stack panel; a menu is not one, so the class
    * that lets the themes style the panel goes away here (see stack.c). */
@@ -1048,6 +1208,7 @@ void populate_popover_menu(DockItem *item) {
 
   menu_append_window_section(vbox, item, app_kind);
   menu_append_app_actions(vbox, item, app_actions, music_bus);
+  menu_append_desktop_actions(vbox, item);
 
   g_clear_pointer(&app_actions, g_array_unref);
   g_free(music_bus);

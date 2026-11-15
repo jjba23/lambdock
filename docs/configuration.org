@@ -465,6 +465,24 @@ across different screen edges or monitors.
 - *Monitor Hotplug*: Docks survive monitors coming and going; layer-shell is
   unbound from an output before it is disconnected rather than after.
 
+A dock can also *mirror* another instead of listing items of its own -- the
+shortest way to the "one shelf of apps, one shelf of downloads" layout:
+
+#+begin_src scheme
+;; settings-shelf.scm
+(define dock-mirror-of "settings.scm")      ; a file name or a full path
+(define dock-mirror-exclude '("trash:Trash")) ; optional: drop item keys
+(define dock-mirror-kinds '(app stack))     ; optional: keep only these kinds
+#+end_src
+
+The mirror reads the source's *resolved* items every time they are asked for --
+its DSL, its presets, its layout order and its drag-and-drop overrides -- so the
+two docks cannot drift apart.  ~dock-mirror-exclude~ takes item keys exactly as
+the layout file spells them; ~dock-mirror-kinds~ takes ~'app~, ~'stack~,
+~'trash~, ~'launchpad~, ~'dynamic~, ~'separator~ or ~'window~.  A source that is
+not loaded shows nothing and says so in the log, and so does a mirror that names
+itself.
+
 Also, here is a small demo of hot-reload:
 
 ** Changing settings from the GUI (Preferences) 🎛️
@@ -507,6 +525,20 @@ override file, next to the dock's drag-and-drop layout overrides:
 #+begin_src sh
 ${XDG_STATE_HOME:-~/.local/state}/lambdock/preferences-<settings-stem>.scm
 #+end_src
+
+*Save settings.scm…*, in the dock's own context menu, is the inverse: it writes
+the dock as it is running -- the settings file, that override, the layout order
+and whatever the Preferences window changed -- to
+
+#+begin_src sh
+${XDG_STATE_HOME:-~/.local/state}/lambdock/exported-<settings-stem>.scm
+#+end_src
+
+and opens the file.  Loaded as ~settings.scm~ it produces the dock you are
+looking at, which is what makes a bug report reproducible.  From Scheme the same
+text is ~(dock-settings-scm "/path/to/settings.scm")~, and
+~(export-dock-settings! "/path/to/settings.scm" #:target "out.scm")~ writes it
+to a path of your choosing.
 
 The loader layers that file on top of ~settings.scm~, which is what lets a
 generated settings file (an OS image, a dotfiles generator) be regenerated

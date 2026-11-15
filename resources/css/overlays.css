@@ -457,3 +457,50 @@ window box.stack-popover button.stack-row:focus-visible {
 button.dock-item.window-minimized image {
   opacity: 0.55;
 }
+
+/* -------------------------------------------------------------------------
+ * RECONNECTING
+ * -------------------------------------------------------------------------
+ * Window tracking is a listener; while the compositor restarts and the
+ * tracker has not re-bound, the dock says so instead of looking empty. The
+ * label sits inside the capsule and does not take pointer input.
+ * ------------------------------------------------------------------------- */
+
+.dock-reconnecting {
+  margin: 8px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.85em;
+  background-color: alpha(currentColor, 0.08);
+  opacity: 0.75;
+}
+
+.tracker-disconnected {
+  /* Room for themes to dim the row while nothing is tracked; the label is the
+   * visible part, this class just lets a theme react. */
+}
+
+/* -------------------------------------------------------------------------
+ * THE LAUNCHPAD SHELF
+ * -------------------------------------------------------------------------
+ * The row of stacks and the trash inside the launchpad: content, not
+ * applications, so it is visually quieter than the app grid it sits above.
+ * ------------------------------------------------------------------------- */
+
+.launchpad-shelf {
+  margin-top: 4px;
+}
+
+.launchpad-shelf-item {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background-color: alpha(currentColor, 0.06);
+}
+
+.launchpad-shelf-item:hover {
+  background-color: alpha(currentColor, 0.12);
+}
+
+.launchpad-shelf-item label {
+  font-size: 0.9em;
+}

@@ -158,3 +158,35 @@ const char *lambdock_window_title_text(gboolean show_titles,
 
   return name ? name : (app_id ? app_id : "");
 }
+
+/* ============================================================================
+ * THE "WHY IS THIS ITEM HERE" INSPECTOR
+ * ============================================================================ */
+
+char *lambdock_inspector_launcher_text(const char *config_path,
+                                       const char *item_key) {
+  const char *key = (item_key && *item_key != '\0') ? item_key : "?";
+
+  if (!config_path || *config_path == '\0')
+    return g_strdup_printf(_("%s (no settings file: the fallback dock)"), key);
+
+  return g_strdup_printf(_("%s, from %s"), key, config_path);
+}
+
+char *lambdock_inspector_icon_text(const char *icon, gboolean found_in_theme) {
+  if (!icon || *icon == '\0')
+    return g_strdup(_("no icon configured; the generic executable is drawn"));
+
+  return g_strdup_printf(
+      found_in_theme ? _("%s (found in the icon theme)")
+                     : _("%s (not in the icon theme; a fallback is drawn)"),
+      icon);
+}
+
+char *lambdock_inspector_poller_text(const char *poll_name,
+                                     guint interval_ms) {
+  if (!poll_name || *poll_name == '\0')
+    return g_strdup(_("none: this item does not poll"));
+
+  return g_strdup_printf(_("%s, every %u ms"), poll_name, interval_ms);
+}

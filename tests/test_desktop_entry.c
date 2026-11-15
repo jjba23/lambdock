@@ -74,6 +74,54 @@ static void test_parse_valid(void) {
   lambdock_desktop_entry_free(NULL);
 }
 
+/* The entry's own extra launchers: the Actions= list plus one group per entry.
+ * This is what gives a browser its "New Private Window" row without the dock
+ * knowing which browser it is. */
+static void test_parse_actions(void) {
+  const char *data = "[Desktop Entry]\n"
+                     "Type=Application\n"
+                     "Name=Web Browser\n"
+                     "Exec=firefox %u\n"
+                     "Actions=new-window;new-private-window;broken;\n"
+                     "\n"
+                     "[Desktop Action new-window]\n"
+                     "Name=New Window\n"
+                     "Exec=firefox --new-window %u\n"
+                     "\n"
+                     "[Desktop Action new-private-window]\n"
+                     "Name=New Private Window\n"
+                     "Exec=firefox --private-window %u\n"
+                     "\n"
+                     "[Desktop Action broken]\n"
+                     "Name=Broken\n";
+
+  LambdockDesktopEntry *entry =
+      lambdock_desktop_entry_new_from_data(data, "firefox.desktop");
+  g_assert_nonnull(entry);
+  g_assert_nonnull(entry->actions);
+
+  /* The group with no Exec= is dropped instead of becoming a blank row. */
+  g_assert_cmpuint(entry->actions->len, ==, 2);
+
+  const LambdockDesktopAction *first = g_ptr_array_index(entry->actions, 0);
+  g_assert_cmpstr(first->id, ==, "new-window");
+  g_assert_cmpstr(first->name, ==, "New Window");
+  g_assert_cmpstr(first->exec, ==, "firefox --new-window");
+
+  const LambdockDesktopAction *second = g_ptr_array_index(entry->actions, 1);
+  g_assert_cmpstr(second->id, ==, "new-private-window");
+  g_assert_cmpstr(second->name, ==, "New Private Window");
+  g_assert_cmpstr(second->exec, ==, "firefox --private-window");
+
+  lambdock_desktop_entry_free(entry);
+
+  /* An entry without Actions= has no list at all, not an empty one. */
+  entry = lambdock_desktop_entry_new_from_data(VALID_ENTRY, "plain.desktop");
+  g_assert_nonnull(entry);
+  g_assert_null(entry->actions);
+  lambdock_desktop_entry_free(entry);
+}
+
 static void test_parse_rejects(void) {
   /* Not a key file at all. */
   g_assert_null(lambdock_desktop_entry_new_from_data("this is not a desktop",
@@ -714,6 +762,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/desktop_entry/strip_field_codes", test_strip_field_codes);
   g_test_add_func("/desktop_entry/parse_valid", test_parse_valid);
   g_test_add_func("/desktop_entry/parse_rejects", test_parse_rejects);
+  g_test_add_func("/desktop_entry/actions", test_parse_actions);
   g_test_add_func("/desktop_entry/parse_flags",
                   test_parse_flags_and_icon_default);
   g_test_add_func("/desktop_entry/parse_localized", test_parse_localized_name);

@@ -8,7 +8,10 @@
 #include "../dock_window.h"
 #include "../guile_bridge.h"
 #include "../logger.h"
+#include "stack.h"
+#include "trash.h"
 #include "desktop_entry.h"
+#include "dock_item.h"
 #include "icon_resolver.h"
 #include "popover_menu.h"
 #include <glib/gi18n.h>
@@ -74,6 +77,7 @@ typedef struct {
   GtkWidget *open_copy_menu;
 
   char *query;           /* owned, "" when nothing is typed */
+  LambdockState *state;  /* borrowed: the dock whose shelf is shown */
   GPtrArray *entries;    /* owned, rescanned on every show */
   LaunchpadAppearance appearance;
   guint applied_columns; /* tiles per row the grid last laid out */
@@ -1039,6 +1043,115 @@ static GtkWidget *make_grid_viewport(void) {
   return scrolled;
 }
 
+/* ============================================================================
+ * THE SHELF
+ * ============================================================================
+ * Stacks and the trash produce content instead of launching an application, and
+ * they were only reachable from the dock itself. The launchpad -- the screen
+ * that already shows "everything I can open" -- carries them in one row, so the
+ * two modes meet without adding a second kind of dock item.
+ */
+
+typedef struct {
+  GtkWidget *button; /* referenced: a reload may replace the item meanwhile */
+} ShelfJob;
+
+static void free_shelf_job(gpointer data) {
+  ShelfJob *job = data;
+  g_clear_object(&job->button);
+  g_free(job);
+}
+
+/* The launchpad is hidden from an idle: its window owns the button whose signal
+ * is running, so it cannot be destroyed from inside that handler. */
+static gboolean open_shelf_item_idle(gpointer data) {
+  ShelfJob *job = data;
+  DockItem *item = dock_item_from_widget(job->button);
+
+  lambdock_launchpad_hide();
+
+  if (item) {
+    if (item->kind == LAMBDOCK_ITEM_TRASH) {
+      if (!lambdock_trash_open())
+        LOG_C_WARN("UI", "Could not open the trash");
+    } else {
+      lambdock_stack_show(item);
+    }
+  }
+
+  free_shelf_job(job);
+  return G_SOURCE_REMOVE;
+}
+
+static void on_shelf_item_clicked(GtkButton *button, gpointer user_data) {
+  (void)button;
+  DockItem *item = (DockItem *)user_data;
+  if (!item)
+    return;
+
+  ShelfJob *job = g_new0(ShelfJob, 1);
+  job->button = item->button ? g_object_ref(item->button) : NULL;
+  g_idle_add(open_shelf_item_idle, job);
+}
+
+/** One shelf button: the item's icon and name. */
+static GtkWidget *shelf_button_new(DockItem *item) {
+  GtkWidget *button = gtk_button_new();
+  gtk_widget_add_css_class(button, "flat");
+  gtk_widget_add_css_class(button, "launchpad-shelf-item");
+
+  GtkWidget *content = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  GtkIconTheme *theme =
+      gtk_icon_theme_get_for_display(gdk_display_get_default());
+  GtkWidget *image = theme ? create_image_for_icon(theme, item->icon, 22)
+                           : gtk_image_new_from_icon_name(item->icon);
+  gtk_box_append(GTK_BOX(content), image);
+
+  const char *title = lambdock_item_title(item, _("Item"));
+  GtkWidget *label = gtk_label_new(title);
+  gtk_box_append(GTK_BOX(content), label);
+  gtk_button_set_child(GTK_BUTTON(button), content);
+
+  gtk_widget_set_tooltip_text(button, title);
+  lambdock_accessible_update(
+      button, title,
+      item->kind == LAMBDOCK_ITEM_TRASH
+          ? _("Opens the trash.")
+          : _("Opens this folder as a stack."));
+
+  g_signal_connect(button, "clicked", G_CALLBACK(on_shelf_item_clicked),
+                   item);
+  return button;
+}
+
+GtkWidget *lambdock_launchpad_shelf_new(LambdockState *state) {
+  if (!state)
+    return NULL;
+
+  gboolean any = FALSE;
+  for (GList *l = state->dock_items; l != NULL && !any; l = l->next) {
+    DockItem *item = l->data;
+    any = item && (item->kind == LAMBDOCK_ITEM_STACK ||
+                   item->kind == LAMBDOCK_ITEM_TRASH);
+  }
+
+  if (!any)
+    return NULL;
+
+  GtkWidget *shelf = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_add_css_class(shelf, "launchpad-shelf");
+  gtk_widget_set_halign(shelf, GTK_ALIGN_CENTER);
+
+  for (GList *l = state->dock_items; l != NULL; l = l->next) {
+    DockItem *item = l->data;
+    if (item && (item->kind == LAMBDOCK_ITEM_STACK ||
+                 item->kind == LAMBDOCK_ITEM_TRASH))
+      gtk_box_append(GTK_BOX(shelf), shelf_button_new(item));
+  }
+
+  return shelf;
+}
+
 /** Header, search field and grid, stacked with the launchpad's margins. */
 static GtkWidget *make_window_body(LambdockLaunchpad *launchpad) {
   GtkWidget *vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 20);
@@ -1051,6 +1164,11 @@ static GtkWidget *make_window_body(LambdockLaunchpad *launchpad) {
 
   gtk_box_append(GTK_BOX(vbox), make_window_header(launchpad));
   gtk_box_append(GTK_BOX(vbox), make_search_entry(launchpad));
+
+  GtkWidget *shelf = lambdock_launchpad_shelf_new(launchpad->state);
+  if (shelf)
+    gtk_box_append(GTK_BOX(vbox), shelf);
+
   gtk_box_append(GTK_BOX(vbox), make_grid_viewport());
 
   return vbox;
@@ -1156,6 +1274,9 @@ static gboolean clear_fade_in_idle(gpointer user_data) {
 void lambdock_launchpad_show(LambdockState *state) {
   LambdockLaunchpad *launchpad = launchpad_instance();
   LaunchpadAppearance appearance = appearance_for(state);
+
+  /* Borrowed for the window's life: the shelf reads this dock's items. */
+  launchpad->state = state;
 
   if (!launchpad->window) {
     launchpad->window = make_window_new(launchpad, state);

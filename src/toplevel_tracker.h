@@ -63,6 +63,17 @@ struct LambdockToplevel {
 gboolean init_toplevel_tracker(GError **error);
 
 /**
+ * lambdock_tracker_connected:
+ *
+ * Whether the compositor's window list is being tracked right now. On Wayland
+ * this goes FALSE while a restarted compositor has not re-announced its
+ * foreign-toplevel manager; the docks show a reconnecting label until it does.
+ *
+ * Returns: TRUE while windows are being tracked.
+ */
+gboolean lambdock_tracker_connected(void);
+
+/**
  * activate_toplevel_window:
  * @window: the window to bring forward.
  *

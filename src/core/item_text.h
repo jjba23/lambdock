@@ -147,4 +147,42 @@ const char *lambdock_window_title_text(gboolean show_titles, gboolean has_window
                                        const char *window_title,
                                        const char *name, const char *app_id);
 
+/*
+ * The "why is this item here" inspector answers four questions per item: which
+ * launcher created it, which desktop entry it resolved, which icon it found and
+ * which poller drives it. The wording is here, as values, so the answers can be
+ * tested without opening a menu.
+ */
+
+/**
+ * lambdock_inspector_launcher_text:
+ * @config_path: (nullable): the settings file that created the item.
+ * @item_key: (nullable): the item's stable key ("app:Firefox").
+ *
+ * Returns: (transfer full): "key, from path" -- or "key (no settings file: the
+ *   fallback dock)" for a dock created without one.
+ */
+char *lambdock_inspector_launcher_text(const char *config_path,
+                                       const char *item_key);
+
+/**
+ * lambdock_inspector_icon_text:
+ * @icon: (nullable): the icon name or path the item asked for.
+ * @found_in_theme: whether the icon theme (or the file system, for a path)
+ *   resolved it.
+ *
+ * Returns: (transfer full): the icon name and where it was found.
+ */
+char *lambdock_inspector_icon_text(const char *icon, gboolean found_in_theme);
+
+/**
+ * lambdock_inspector_poller_text:
+ * @poll_name: (nullable): the Scheme procedure that drives the item.
+ * @interval_ms: how often that procedure is called.
+ *
+ * Returns: (transfer full): the poller and its interval, or a sentence saying
+ *   the item does not poll.
+ */
+char *lambdock_inspector_poller_text(const char *poll_name, guint interval_ms);
+
 #endif // LAMBDOCK_CORE_ITEM_TEXT_H

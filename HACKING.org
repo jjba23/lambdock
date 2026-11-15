@@ -1679,6 +1679,11 @@ own hand, so the log is the only way to see the sequence.
 - The dynamic-item and trash poll timers skip their work while the dock is off
   screen (=dock_is_off_screen()=), and =dock_items_refresh_polls()= catches every
   item up on reveal, so the first visible frame shows current values.
+- The declared poll intervals have a budget: =core/poll_budget.c= totals them and
+  =populate_dock_items_for= logs a warning above
+  =LAMBDOCK_POLL_BUDGET_PER_SECOND= (12/s).  Every dynamic item is a Scheme thunk
+  on the main thread, so a configuration that asks for more is an error worth
+  reporting, not a taste.
 - =gtk-enable-animations= is cached and refreshed by its notify handler instead of
   being a =g_object_get= per frame.
 

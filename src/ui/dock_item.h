@@ -71,6 +71,17 @@ void dock_item_enable_meter(DockItem *item, const char *unit, double max_value);
 void dock_item_enable_clock(DockItem *item);
 
 /**
+ * dock_item_set_poll_name:
+ * @item: a dynamic dock item.
+ * @name: (nullable): the Scheme procedure that drives its polling.
+ *
+ * Records the poller's name for the "why is this item here" inspector. The
+ * bridge reads it from `dock-item-poll-name`, which is why no SCM value has to
+ * travel through the UI layer.
+ */
+void dock_item_set_poll_name(DockItem *item, const char *name);
+
+/**
  * free_dock_item:
  * Unparents widgets, cleans child window trackers, cancels timers,
  * unprotects Scheme procedure objects, and deallocates DockItem memory.

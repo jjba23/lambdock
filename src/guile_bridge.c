@@ -7,6 +7,7 @@
 
 #include <libguile.h> // Header file defining function declarations and LambdockState
 #include "core/config_values.h" // Pure, unit-tested range/name rules
+#include "core/poll_budget.h"     // The per-dock poller budget
 #include "dock_window.h"  // Re-deriving the layout from the finished row
 #include "logger.h"       // Custom logging macros (e.g., LOG_C_INFO)
 #include "ui/dock_item.h" // Functions to create visual dock items and separators
@@ -304,6 +305,27 @@ GtkLayerShellEdge get_position_config_for(const char *config_path) {
 }
 
 /**
+ * export_dock_settings_to_file:
+ * @config_path: (nullable): the dock whose resolved configuration to capture.
+ *
+ * Asks Scheme for `export-dock-settings!`, which writes the dock's current
+ * values and items as settings.scm text under the state directory.
+ *
+ * Returns: (transfer full) (nullable): the path written, or NULL.
+ */
+char *export_dock_settings_to_file(const char *config_path) {
+  SCM fn = scm_c_public_ref("lambdock core", "export-dock-settings!");
+  if (!scm_is_true(scm_procedure_p(fn)))
+    return NULL;
+
+  SCM result = (config_path && *config_path != '\0')
+                   ? scm_call_1(fn, scm_from_utf8_string(config_path))
+                   : scm_call_0(fn);
+
+  return scm_is_string(result) ? scm_to_locale_string(result) : NULL;
+}
+
+/**
  * load_dock_config_scm:
  * Invokes Scheme procedure `(load-dock-config! file_path)` to load a specific
  * file.
@@ -426,6 +448,7 @@ typedef struct {
   SCM clock;
   SCM unit;
   SCM max;
+  SCM poll_name;
 } DockItemAccessors;
 
 typedef struct {
@@ -434,6 +457,8 @@ typedef struct {
   gboolean hover_animate;
   GtkOrientation separator_orientation;
   const DockItemAccessors *accessors;
+  /* Poll periods of the dynamic items built this pass, for the budget check. */
+  GArray *poll_intervals;
 } DockItemBuildContext;
 
 typedef void (*DockItemBuildFunc)(const DockItemBuildContext *context);
@@ -481,6 +506,16 @@ static void build_dynamic_item(const DockItemBuildContext *context) {
   DockItem *dynamic = create_dynamic_dock_item(context->state, name, icon, exec,
                                                (void *)poll_fn, interval_ms,
                                                context->hover_animate);
+
+  if (dynamic) {
+    char *poll_name =
+        scm_to_c_string_or_null(scm_call_1(acc->poll_name, context->item));
+    dock_item_set_poll_name(dynamic, poll_name);
+    g_free(poll_name);
+
+    if (context->poll_intervals)
+      g_array_append_val(context->poll_intervals, interval_ms);
+  }
 
   /* Meter items draw a gauge instead of text: the poll function returns a
    * number, which fills the ring up to `max' and is shown with `unit'. */
@@ -600,6 +635,8 @@ static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
   accessors->clock = scm_c_public_ref("lambdock core", "dock-item-clock?");
   accessors->unit = scm_c_public_ref("lambdock core", "dock-item-unit");
   accessors->max = scm_c_public_ref("lambdock core", "dock-item-max");
+  accessors->poll_name =
+      scm_c_public_ref("lambdock core", "dock-item-poll-name");
 
   /* Check *every* accessor, not a sample: the item builders call all of them,
    * and applying a #f that scm_c_public_ref() could not resolve raises "wrong
@@ -611,6 +648,7 @@ static gboolean resolve_item_accessors(DockItemAccessors *accessors) {
       &accessors->poll,      &accessors->hover_animate, &accessors->path,
       &accessors->view,      &accessors->meter,    &accessors->clock,
       &accessors->unit,      &accessors->max,      &accessors->poll_interval,
+      &accessors->poll_name,
   };
 
   for (gsize i = 0; i < G_N_ELEMENTS(procedures); i++) {
@@ -639,6 +677,9 @@ void populate_dock_items_for(LambdockState *state) {
           ? GTK_ORIENTATION_VERTICAL
           : GTK_ORIENTATION_HORIZONTAL;
 
+  g_autoptr(GArray) poll_intervals =
+      g_array_new(FALSE, FALSE, sizeof(guint));
+
   SCM items = call_core_proc_with_path("get-dock-items", state->config_path);
   while (scm_is_pair(items)) {
     SCM item = scm_car(items);
@@ -653,6 +694,7 @@ void populate_dock_items_for(LambdockState *state) {
           .hover_animate = scm_is_true(scm_call_1(accessors.hover_animate, item)),
           .separator_orientation = separator_orientation,
           .accessors = &accessors,
+          .poll_intervals = poll_intervals,
       };
       build(&context);
     } else if (type_name) {
@@ -662,6 +704,24 @@ void populate_dock_items_for(LambdockState *state) {
 
     g_free(type_name);
     items = scm_cdr(items);
+  }
+
+  /* A configuration can schedule more polling work than one dock should: this
+   * is the rule the developer guide used to only warn about. Nothing is
+   * disabled -- the dock says what it is doing and lets the user decide. */
+  if (poll_intervals->len > 0) {
+    double rate = lambdock_polls_per_second(
+        (const guint *)poll_intervals->data, poll_intervals->len);
+    if (lambdock_poll_budget_exceeded((const guint *)poll_intervals->data,
+                                      poll_intervals->len,
+                                      LAMBDOCK_POLL_BUDGET_PER_SECOND)) {
+      LOG_C_WARN("Poller",
+                 "%u polling item(s) in [%s] schedule %.1f polls/second "
+                 "(budget %.0f): raise a poll interval or drop a widget",
+                 poll_intervals->len,
+                 state->config_path ? state->config_path : "default", rate,
+                 LAMBDOCK_POLL_BUDGET_PER_SECOND);
+    }
   }
 
   /* The row exists only now, and the derived layout is measured from it: every

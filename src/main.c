@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+#include "core/tracker_rules.h"
 #include "dock_window.h"
 #include "accessibility.h"
 #include "dock_registry.h"
@@ -878,6 +879,17 @@ static void dock_widgets_build(LambdockState *state) {
   gtk_overlay_set_child(GTK_OVERLAY(state->overlay), state->bg_shelf);
   gtk_overlay_add_overlay(GTK_OVERLAY(state->overlay), scrolled_window);
 
+  /* The compositor restarting drops the foreign-toplevel proxies; this says so
+   * while the tracker re-binds, and is hidden the rest of the time. */
+  state->reconnect_label =
+      gtk_label_new(lambdock_tracker_status_text(FALSE));
+  gtk_widget_add_css_class(state->reconnect_label, "dock-reconnecting");
+  gtk_widget_set_halign(state->reconnect_label, GTK_ALIGN_CENTER);
+  gtk_widget_set_valign(state->reconnect_label, GTK_ALIGN_START);
+  gtk_widget_set_can_target(state->reconnect_label, FALSE);
+  gtk_widget_set_visible(state->reconnect_label, FALSE);
+  gtk_overlay_add_overlay(GTK_OVERLAY(state->overlay), state->reconnect_label);
+
   gtk_widget_set_overflow(state->box, GTK_OVERFLOW_VISIBLE);
   gtk_widget_set_overflow(state->window, GTK_OVERFLOW_VISIBLE);
 }
@@ -895,6 +907,15 @@ static void dock_menu_popover_build(LambdockState *state) {
                                                        : "");
   g_menu_append_item(menu_model, prefs_item);
   g_object_unref(prefs_item);
+
+  /* Capture what this dock resolves to, GUI and drag-and-drop edits included,
+   * as a settings file. A bug report can carry it; a user can read it. */
+  GMenuItem *export_item = g_menu_item_new(_("Save settings.scm…"), NULL);
+  g_menu_item_set_action_and_target(export_item, "app.export-settings", "s",
+                                    state->config_path ? state->config_path
+                                                       : "");
+  g_menu_append_item(menu_model, export_item);
+  g_object_unref(export_item);
 
   g_menu_append(menu_model, _("About Lambdock"), "app.about");
   g_menu_append(menu_model, _("Quit"), "app.quit");
@@ -945,9 +966,14 @@ static void dock_present(LambdockState *state) {
   /* Window tracking is a bonus, not a requirement: report why it is unavailable
    * and carry on with the pinned items. */
   g_autoptr(GError) tracker_error = NULL;
-  if (!init_toplevel_tracker(&tracker_error))
+  if (init_toplevel_tracker(&tracker_error)) {
+    /* A dock created during a compositor restart starts reconnecting, without
+     * waiting for the next tracker event to tell it. */
+    dock_window_set_tracker_connected(state, lambdock_tracker_connected());
+  } else {
     LOG_C_WARN("Tracker", "window tracking unavailable: %s",
                tracker_error->message);
+  }
 
   sync_window_trackers(state);
 
@@ -1004,6 +1030,34 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
 static void apply_motion_visitor(LambdockState *state, gpointer user_data) {
   (void)user_data;
   dock_apply_motion_preference(state);
+}
+
+/**
+ * on_export_settings_action:
+ * @parameter: the dock's settings path, "" for the fallback dock.
+ *
+ * Writes the dock's resolved configuration as settings.scm text (see
+ * `export-dock-settings!`) and opens it in the user's editor, so "what is my
+ * dock actually doing" is answerable without a REPL.
+ */
+static void on_export_settings_action(GSimpleAction *action,
+                                      GVariant *parameter,
+                                      gpointer user_data) {
+  (void)action;
+  (void)user_data;
+
+  const char *config_path =
+      parameter ? g_variant_get_string(parameter, NULL) : NULL;
+  char *written = export_dock_settings_to_file(config_path);
+  if (!written) {
+    LOG_C_WARN("Main", "Could not capture the dock's settings");
+    return;
+  }
+
+  LOG_C_INFO("Main", "Captured the running dock in %s", written);
+  if (!lambdock_open_path(written))
+    LOG_C_WARN("Main", "Could not open %s", written);
+  g_free(written);
 }
 
 static void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
@@ -1079,6 +1133,14 @@ static void activate(GtkApplication *app, gpointer user_data) {
                    app);
   g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(prefs_action));
   g_object_unref(prefs_action); /* the action map holds its own reference */
+
+  /* Same shape: the dock menu passes the settings path it belongs to. */
+  GSimpleAction *export_action =
+      g_simple_action_new("export-settings", G_VARIANT_TYPE_STRING);
+  g_signal_connect(export_action, "activate",
+                   G_CALLBACK(on_export_settings_action), app);
+  g_action_map_add_action(G_ACTION_MAP(app), G_ACTION(export_action));
+  g_object_unref(export_action);
 
   // Reconcile disk state to spawn docks for all matching settings*.scm files,
   // or fallback if none

@@ -67,4 +67,17 @@ gboolean lambdock_tracker_should_hide(gboolean auto_hide,
 gboolean lambdock_tracker_should_reveal(gboolean show_when_clear,
                                         gboolean has_tracked_windows);
 
+/**
+ * lambdock_tracker_status_text:
+ * @connected: whether a foreign-toplevel manager is bound right now.
+ *
+ * The sentence the dock shows while the compositor's window list is gone (a
+ * restart drops every proxy; the tracker binds the new manager when it is
+ * announced).
+ *
+ * Returns: (transfer none) (nullable): the translated status, or NULL when
+ *   there is nothing to announce.
+ */
+const char *lambdock_tracker_status_text(gboolean connected);
+
 #endif // LAMBDOCK_TRACKER_RULES_H

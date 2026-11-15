@@ -2200,3 +2200,31 @@ void destroy_dock_instance(LambdockState *state) {
 
   g_free(state);
 }
+
+/* ============================================================================
+ * THE RECONNECTING STATE
+ * ============================================================================
+ * Window tracking is a listener: when the compositor restarts, its
+ * foreign-toplevel proxies disappear with it and the tracker binds the new
+ * manager when it is announced. The dock's items are configuration, not
+ * tracking state, so they are left exactly where they are; the label is the
+ * only visible difference, and it says why nothing is being tracked right now.
+ */
+
+void dock_window_set_tracker_connected(LambdockState *state,
+                                       gboolean connected) {
+  if (!state)
+    return;
+
+  state->tracker_connected = connected;
+
+  if (state->reconnect_label)
+    gtk_widget_set_visible(state->reconnect_label, !connected);
+
+  if (state->window && GTK_IS_WINDOW(state->window)) {
+    if (connected)
+      gtk_widget_remove_css_class(state->window, "tracker-disconnected");
+    else
+      gtk_widget_add_css_class(state->window, "tracker-disconnected");
+  }
+}

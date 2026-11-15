@@ -33,6 +33,7 @@
                dock-item-unit
                dock-item-max
                dock-item-key
+               dock-item-poll-name
                app-item
                separator-item
                dynamic-item
@@ -88,6 +89,9 @@
                get-dock-launchpad-blur?
                get-dock-launchpad-close-side
                get-dock-reduce-motion?
+               get-dock-mirror-of
+               get-dock-mirror-exclude
+               get-dock-mirror-kinds
 
                ;; Setters
                set-dock-position!
@@ -136,6 +140,10 @@
                look-setting
                look?
                apply-look!
+
+               ;; Capturing the resolved dock as settings.scm
+               dock-settings-scm
+               export-dock-settings!
 
                ;; Dock layout overrides (written by drag and drop)
                dock-layout-path
@@ -283,7 +291,15 @@ keeps its default (the plain flat dock)."
                                          'launchpad-close-side 'left)
                                     #:reduce-motion?
                                     (cfg 'dock-reduce-motion?
-                                         'reduce-motion? #f))))
+                                         'reduce-motion? #f)
+                                    #:mirror-of (cfg 'dock-mirror-of
+                                                     'mirror-of #f)
+                                    #:mirror-exclude
+                                    (cfg 'dock-mirror-exclude
+                                         'mirror-exclude '())
+                                    #:mirror-kinds
+                                    (cfg 'dock-mirror-kinds
+                                         'mirror-kinds '()))))
                (lambda (key . args)
                  (log-error "Core"
                   "EXCEPTION while loading config [~a]: ~a | Details: ~s"

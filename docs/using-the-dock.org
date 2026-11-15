@@ -58,7 +58,16 @@ compositor told it:
 - *New Instance*, to start another instance of the application, when the item has
   an exec command;
 - *Close All*, shown only when more than one window is open;
-- *Launch Application*, when an app is in the dock but nothing is running yet.
+- *Launch Application*, when an app is in the dock but nothing is running yet;
+- *the application's own extra launchers*, read from its ~.desktop~ file's
+  ~Actions=~ list -- *New Private Window* for a browser, *New Tab* for a
+  terminal -- and shown only when the item resolves to a desktop entry;
+- *Why is this item here?*, which answers the question the dock is usually asked:
+  the launcher line that created the item, the desktop entry it resolved, the
+  icon name and whether the icon theme had it, and the poller that drives it.
+  Nothing is hidden behind a dialog: the answers open in the menu, where the item
+  they explain is still on screen, and a label can be selected to paste into a
+  bug report.
 
 Every entry carries a symbolic icon -- a window for a new instance, an eye with
 a slash for a private window, a play triangle or a skip arrow for the playback
@@ -147,6 +156,11 @@ windows stop at it instead of covering it.  Two consequences worth knowing:
   ~_NET_WM_STRUT_PARTIAL~ leaves maximized windows overlapping the dock; the
   dock itself is still placed correctly, and ~xprop -root~ shows what the window
   manager was told.
+
+A compositor restart is a pause, not a reset: the foreign-toplevel proxies are
+gone, the dock keeps its items and their order, and a small *Reconnecting…* label
+appears while it waits for the new window list.  Nothing is rebuilt and nothing
+is reordered, so a niri or sway restart leaves the dock as it was.
 
 ** Stacks: a folder on the dock 📁
 :PROPERTIES:
@@ -258,6 +272,12 @@ Its appearance follows the settings of the dock that opened it:
 (define dock-launchpad-blur? #t)
 (define dock-launchpad-close-side 'right)   ; default is 'left
 #+end_src
+
+What the dock itself carries as content -- its stacks and the trash -- is a row
+of buttons under the search field, so the launchpad can reach the download shelf
+and the bin without leaving the screen it covers.  Launchers are not repeated
+there: they are already tiles in the grid.  A dock with neither a stack nor a
+trash shows no row.
 
 A real blur of what is *behind* the launchpad is the compositor's job, and
 almost every Wayland compositor can do it for translucent layer surfaces.  KWin

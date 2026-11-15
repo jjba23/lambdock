@@ -464,6 +464,58 @@ static void test_header(void) {
 }
 
 /* ============================================================================
+ * THE SHELF
+ * ============================================================================
+ * The row of stacks and the trash inside the launchpad. No window needs to be
+ * shown: the shelf is a widget built from the dock's item list.
+ */
+
+static guint shelf_child_count(GtkWidget *shelf) {
+  guint count = 0;
+  for (GtkWidget *child = gtk_widget_get_first_child(shelf); child != NULL;
+       child = gtk_widget_get_next_sibling(child))
+    count++;
+  return count;
+}
+
+static void test_shelf(void) {
+  g_assert_null(lambdock_launchpad_shelf_new(NULL));
+
+  LambdockState state = {0};
+  g_assert_null(lambdock_launchpad_shelf_new(&state));
+
+  DockItem stack = {0};
+  stack.kind = LAMBDOCK_ITEM_STACK;
+  stack.name = g_strdup("Downloads");
+  stack.icon = g_strdup("folder");
+  state.dock_items = g_list_append(state.dock_items, &stack);
+
+  GtkWidget *shelf = lambdock_launchpad_shelf_new(&state);
+  g_assert_nonnull(shelf);
+  g_assert_cmpuint(shelf_child_count(shelf), ==, 1);
+  g_object_ref_sink(shelf);
+  g_object_unref(shelf);
+
+  DockItem trash = {0};
+  trash.kind = LAMBDOCK_ITEM_TRASH;
+  trash.name = g_strdup("Trash");
+  trash.icon = g_strdup("user-trash");
+  state.dock_items = g_list_append(state.dock_items, &trash);
+
+  shelf = lambdock_launchpad_shelf_new(&state);
+  g_assert_nonnull(shelf);
+  g_assert_cmpuint(shelf_child_count(shelf), ==, 2);
+  g_object_ref_sink(shelf);
+  g_object_unref(shelf);
+
+  g_list_free(state.dock_items);
+  g_free(stack.name);
+  g_free(stack.icon);
+  g_free(trash.name);
+  g_free(trash.icon);
+}
+
+/* ============================================================================
  * RUNNER
  * ============================================================================
  */
@@ -518,6 +570,7 @@ static void inner_test_launchpad(void *data, int argc, char **argv) {
    * header would otherwise be the one widget test that ran without one and
    * took the whole suite down with a SIGSEGV. */
   g_test_add_func("/launchpad/header", test_header);
+  g_test_add_func("/launchpad/shelf", test_shelf);
   g_test_add_data_func("/launchpad/tile_copies", data_dir,
                        (GTestDataFunc)test_tile_copies);
   g_test_add_func("/launchpad/search_focus", test_search_focus);

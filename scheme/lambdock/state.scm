@@ -8,8 +8,10 @@
   #:use-module (srfi srfi-9)
   #:use-module (ice-9 format)
   #:use-module (lambdock logger)
+  #:use-module (lambdock loader)
   #:use-module (lambdock layout)
   #:use-module (lambdock looks)
+  #:use-module (lambdock items)
   #:export ( ;Configuration Entry Point
              configure-dock!
             <dock-config>
@@ -49,6 +51,9 @@
             get-dock-launchpad-blur?
             get-dock-launchpad-close-side
             get-dock-reduce-motion?
+            get-dock-mirror-of
+            get-dock-mirror-exclude
+            get-dock-mirror-kinds
 
             ;; Setters
             set-dock-position!
@@ -75,7 +80,11 @@
             set-dock-launchpad-columns!
             set-dock-launchpad-blur!
             set-dock-launchpad-close-side!
-            set-dock-reduce-motion!))
+            set-dock-reduce-motion!
+
+            ;; Capturing the resolved configuration as settings.scm
+            dock-settings-scm
+            export-dock-settings!))
 
 ;; =============================================================================
 ;; Dock Configuration Record
@@ -110,7 +119,10 @@
                     launchpad-columns
                     launchpad-blur?
                     launchpad-close-side
-                    reduce-motion?)
+                    reduce-motion?
+                    mirror-of
+                    mirror-exclude
+                    mirror-kinds)
   dock-config?
   (position dock-config-position set-dock-config-position!)
   (icon-size dock-config-icon-size set-dock-config-icon-size!)
@@ -152,7 +164,12 @@
   (launchpad-close-side dock-config-launchpad-close-side
                         set-dock-config-launchpad-close-side!)
   (reduce-motion? dock-config-reduce-motion?
-                  set-dock-config-reduce-motion?!))
+                  set-dock-config-reduce-motion?!)
+  ;; A mirror dock shows another dock's items, filtered: the same value read
+  ;; twice, so one settings file stays the single source of the shelf.
+  (mirror-of dock-config-mirror-of set-dock-config-mirror-of!)
+  (mirror-exclude dock-config-mirror-exclude set-dock-config-mirror-exclude!)
+  (mirror-kinds dock-config-mirror-kinds set-dock-config-mirror-kinds!))
 
 ;; Global hashtable storing isolated <dock-config> records keyed by config path / symbol
 (define *dock-configs*
@@ -188,7 +205,10 @@
                     0       ; launchpad-columns (0 = fit the screen)
                     #f      ; launchpad-blur? (frosted backdrop)
                     'left   ; launchpad-close-side (the launchpad's X)
-                    #f))    ; reduce-motion? (disable animations)
+                    #f      ; reduce-motion? (disable animations)
+                    #f      ; mirror-of (no source: an ordinary dock)
+                    '()     ; mirror-exclude (item keys to drop)
+                    '()))   ; mirror-kinds (item types to keep)
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -230,7 +250,10 @@ anything else (an old symbol, a typo, a string) is the documented default."
                           (launchpad-columns 0)
                           (launchpad-blur? #f)
                           (launchpad-close-side 'left)
-                          (reduce-motion? #f))
+                          (reduce-motion? #f)
+                          (mirror-of #f)
+                          (mirror-exclude '())
+                          (mirror-kinds '()))
   "Sets and registers configuration parameters for a specific dock instance key or file path."
   (let ((cfg (make-dock-config position
                                icon-size
@@ -261,7 +284,10 @@ anything else (an old symbol, a typo, a string) is the documented default."
                                launchpad-blur?
                                (normalize-launchpad-close-side
                                 launchpad-close-side)
-                               reduce-motion?)))
+                               reduce-motion?
+                               mirror-of
+                               mirror-exclude
+                               mirror-kinds)))
     ;; Store under exact file path / symbol key
     (hash-set! *dock-configs* config-path cfg)
 
@@ -303,15 +329,75 @@ anything else (an old symbol, a typo, a string) is the documented default."
 ;; Getters
 ;; =============================================================================
 
+;; --- Mirrors ----------------------------------------------------------------
+;; A mirror dock is a second dock that shows another dock's item list, filtered.
+;; It is deliberately not a copy: the source is read whenever the items are
+;; asked for, so a change in one settings file shows on both docks.
+
+(define (dock-name-stem value)
+  "The settings-file stem a mirror source names: a path, a file name or a symbol."
+  (let* ((raw (cond ((string? value) value)
+                    ((symbol? value) (symbol->string value))
+                    (else #f)))
+         (base (and raw (basename raw))))
+    (and base
+         (if (string-suffix? ".scm" base)
+             (substring base 0 (- (string-length base) 4))
+             base))))
+
+(define (dock-key-for-name name)
+  "The *dock-configs* key NAME refers to, or #f.
+
+A mirror can name its source with the full path the source was loaded from, or
+with just its file name (\"settings-games.scm\") -- the latter is what a
+settings file that something else generates can know without hardcoding a home
+directory."
+  (let ((stem (dock-name-stem name)))
+    (and stem
+         (or (and (hash-ref *dock-configs* name #f) name)
+             (hash-fold (lambda (key _ found)
+                          (or found
+                              (and (equal? stem (dock-name-stem key)) key)))
+                        #f *dock-configs*)))))
+
+(define (%mirror-keeps? item exclude kinds)
+  "Whether a mirror keeps ITEM: not excluded by key and of a wanted kind."
+  (and (not (member (dock-item-key item) exclude))
+       (or (null? kinds) (memq (dock-item-type item) kinds))))
+
+(define (%mirror-items source own-key exclude kinds)
+  (let ((source-key (dock-key-for-name source)))
+    (cond
+      ((not source-key)
+       (log-warn "State"
+                 "Mirror dock [~a] names unknown source ~s: it shows no items"
+                 own-key source)
+       '())
+      ((equal? source-key own-key)
+       (log-warn "State"
+                 "Mirror dock [~a] names itself as its source: it shows no items"
+                 own-key)
+       '())
+      (else
+       (filter (lambda (item)
+                 (%mirror-keeps? item exclude kinds))
+               (get-dock-items source-key))))))
+
 (define (get-dock-items . args)
   (let* ((key (if (null? args)
                   'default
                   (car args)))
-         (cfg (get-dock-config key)))
-    ;; Drag and drop edits (order, additions, removals, stack view modes) are
-    ;; replayed on top of the configured items, so the settings file stays the
-    ;; source of truth while the running dock remains freely rearrangeable.
-    (apply-dock-overrides (dock-config-items cfg) key)))
+         (cfg (get-dock-config key))
+         (mirror-of (dock-config-mirror-of cfg)))
+    (if mirror-of
+        (%mirror-items mirror-of key
+                       (dock-config-mirror-exclude cfg)
+                       (dock-config-mirror-kinds cfg))
+        ;; Drag and drop edits (order, additions, removals, stack view modes) are
+        ;; replayed on top of the configured items, so the settings file stays
+        ;; the source of truth while the running dock remains freely
+        ;; rearrangeable.
+        (apply-dock-overrides (dock-config-items cfg) key))))
 
 (define (get-dock-position . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -494,6 +580,23 @@ close button sits on."
                                   'default
                                   (car args)))))
     (dock-config-reduce-motion? cfg)))
+
+;; --- Mirrors ---------------------------------------------------------------
+
+(define (get-dock-mirror-of . args)
+  (dock-config-mirror-of (get-dock-config (if (null? args)
+                                              'default
+                                              (car args)))))
+
+(define (get-dock-mirror-exclude . args)
+  (dock-config-mirror-exclude (get-dock-config (if (null? args)
+                                                  'default
+                                                  (car args)))))
+
+(define (get-dock-mirror-kinds . args)
+  (dock-config-mirror-kinds (get-dock-config (if (null? args)
+                                                'default
+                                                (car args)))))
 
 ;; =============================================================================
 ;; Setters
@@ -696,3 +799,227 @@ Only the running dock changes; write the look into settings.scm to keep it."
                     (if (null? args) "every dock" (car args))
                     (length settings))
           #t))))
+
+;; =============================================================================
+;; Capturing the resolved dock as settings.scm
+;; =============================================================================
+;; The dock on screen is the fixed point of three inputs: the settings file, the
+;; GUI preferences and the drag-and-drop layout. This is the inverse of that
+;; loader: a settings file that would produce the dock running now. It makes a
+;; bug report reproducible and answers "what is my dock actually doing" without
+;; a REPL or a log hunt.
+
+(define (settings-value value)
+  "VALUE written as a settings-file expression."
+  (cond ((string? value) (format #f "~s" value))
+        ((symbol? value) (format #f "'~a" value))
+        ((boolean? value) (if value "#t" "#f"))
+        ((null? value) "'()")
+        ((or (number? value) (pair? value)) (format #f "'~s" value))
+        (else (format #f "~s" value))))
+
+(define (settings-hover item)
+  "The #:hover-animate? argument of ITEM, or \"\" when it is the default #t."
+  (if (dock-item-hover-animate? item)
+      ""
+      " #:hover-animate? #f"))
+
+;; A preset is recognised by rebuilding it from the item's own fields and
+;; comparing the two values: that way a changed field falls back to the generic
+;; dynamic item instead of silently exporting the preset's default.
+(define (settings-same-item? a b)
+  (and (eq? (dock-item-type a) (dock-item-type b))
+       (equal? (dock-item-name a) (dock-item-name b))
+       (equal? (dock-item-icon a) (dock-item-icon b))
+       (equal? (dock-item-exec a) (dock-item-exec b))
+       (eq? (dock-item-poll-fn a) (dock-item-poll-fn b))
+       (= (dock-item-poll-interval a) (dock-item-poll-interval b))
+       (eq? (dock-item-hover-animate? a) (dock-item-hover-animate? b))
+       (eq? (dock-item-meter? a) (dock-item-meter? b))
+       (eq? (dock-item-clock? a) (dock-item-clock? b))
+       (equal? (dock-item-unit a) (dock-item-unit b))
+       (= (dock-item-max a) (dock-item-max b))))
+
+(define (settings-preset-text item)
+  "The preset constructor that rebuilds ITEM, or #f for a custom poller."
+  (let ((hover (dock-item-hover-animate? item))
+        (meter? (dock-item-meter? item))
+        (interval (dock-item-poll-interval item)))
+    (cond
+      ((settings-same-item? item (clock-item #:hover-animate? hover))
+       (format #f "(clock-item~a)" (settings-hover item)))
+      ((settings-same-item? item (ram-item #:poll-interval interval
+                                           #:hover-animate? hover
+                                           #:meter? meter?))
+       (format #f "(ram-item #:poll-interval ~a~a~a)"
+               interval (settings-hover item)
+               (if meter? "" " #:meter? #f")))
+      ((settings-same-item? item (cpu-item #:hover-animate? hover
+                                           #:meter? meter?))
+       (format #f "(cpu-item~a~a)"
+               (settings-hover item)
+               (if meter? "" " #:meter? #f")))
+      ((settings-same-item? item (cpu-temp-item #:hover-animate? hover
+                                                #:meter? meter?))
+       (format #f "(cpu-temp-item~a~a)"
+               (settings-hover item)
+               (if meter? "" " #:meter? #f")))
+      ((settings-same-item? item (battery-item #:hover-animate? hover))
+       (format #f "(battery-item~a)" (settings-hover item)))
+      (else #f))))
+
+(define (settings-dynamic-text item)
+  "A dynamic item as an expression, with its poller named in a comment."
+  (or (settings-preset-text item)
+      (format #f
+              ";; poll-fn: ~a -- a Scheme procedure cannot be written out; redefine it here.
+  (dynamic-item #:name ~s #:icon ~s #:exec ~s #:poll-interval ~a~a~a~a~a)"
+              (dock-item-poll-name item)
+              (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
+              (dock-item-poll-interval item)
+              (settings-hover item)
+              (if (dock-item-clock? item) " #:clock? #t" "")
+              (if (dock-item-meter? item) " #:meter? #t" "")
+              (if (dock-item-meter? item)
+                  (format #f " #:unit ~s #:max ~a"
+                          (dock-item-unit item) (dock-item-max item))
+                  ""))))
+
+(define (settings-item-text item)
+  "ITEM as the settings-file expression that builds it."
+  (case (dock-item-type item)
+    ((app)
+     (format #f "(app-item #:name ~s #:icon ~s #:exec ~s~a)"
+             (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
+             (settings-hover item)))
+    ((separator) "(separator-item)")
+    ((stack)
+     (format #f "(stack-item #:name ~s #:icon ~s #:path ~s #:view-mode '~a~a)"
+             (dock-item-name item) (dock-item-icon item) (dock-item-path item)
+             (dock-item-view-mode item) (settings-hover item)))
+    ((launchpad)
+     (format #f "(launchpad-item #:name ~s #:icon ~s~a)"
+             (dock-item-name item) (dock-item-icon item)
+             (settings-hover item)))
+    ((trash)
+     (format #f "(trash-item #:name ~s #:icon ~s~a)"
+             (dock-item-name item) (dock-item-icon item)
+             (settings-hover item)))
+    ((dynamic) (settings-dynamic-text item))
+    (else (format #f ";; unknown item ~s" (dock-item-key item)))))
+
+(define (dock-settings-scm config-path)
+  "The resolved configuration of CONFIG-PATH, as settings.scm text.
+
+The text is what the loader would read back into the dock that is running now:
+the settings file, the GUI preferences layered on top of it and the layout
+overrides are already baked in, and a mirror dock exports its mirror setting
+rather than the resolved copies of another dock's items."
+  (let* ((cfg (get-dock-config config-path))
+         (mirror (dock-config-mirror-of cfg)))
+    (with-output-to-string
+      (lambda ()
+        (format #t
+                ";; lambdock settings, exported from the running dock~%")
+        (format #t ";; Source dock: ~a~%" config-path)
+        (format #t
+                ";; Resolved configuration: the settings file, the GUI preferences~%")
+        (format #t
+                ";; and the drag-and-drop layout, as values.  Save it as settings.scm~%")
+        (format #t ";; to make the dock on screen the dock it starts from.~%~%")
+        (format #t "(define dock-position ~a)~%"
+                (settings-value (dock-config-position cfg)))
+        (format #t "(define dock-theme ~a)~%"
+                (settings-value (dock-config-theme cfg)))
+        (format #t "(define dock-icon-size ~a)~%"
+                (dock-config-icon-size cfg))
+        (format #t "(define dock-item-spacing ~a)~%"
+                (dock-config-item-spacing cfg))
+        (format #t "(define dock-capsule-padding ~a)~%"
+                (dock-config-capsule-padding cfg))
+        (format #t "(define dock-monitor ~a)~%"
+                (settings-value (dock-config-monitor cfg)))
+        (format #t "(define dock-mode ~a)~%"
+                (settings-value (dock-config-mode cfg)))
+        (format #t "(define dock-auto-hide? ~a)~%"
+                (if (dock-config-auto-hide? cfg) "#t" "#f"))
+        (format #t "(define dock-show-when-clear? ~a)~%"
+                (if (dock-config-show-when-clear? cfg) "#t" "#f"))
+        (format #t "(define dock-hover-animate? ~a)~%"
+                (if (dock-config-hover-animate? cfg) "#t" "#f"))
+        (format #t "(define dock-track-windows? ~a)~%"
+                (if (dock-config-track-windows? cfg) "#t" "#f"))
+        (format #t "(define dock-show-window-titles? ~a)~%"
+                (if (dock-config-show-window-titles? cfg) "#t" "#f"))
+        (format #t "(define dock-exclude-apps ~a)~%"
+                (settings-value (dock-config-exclude-apps cfg)))
+        (format #t "(define dock-enable-repl? ~a)~%"
+                (if (dock-config-enable-repl? cfg) "#t" "#f"))
+        (format #t "(define dock-repl-socket-path ~a)~%"
+                (settings-value (dock-config-repl-socket-path cfg)))
+        (format #t "(define dock-reduce-motion? ~a)~%"
+                (if (dock-config-reduce-motion? cfg) "#t" "#f"))
+        (format #t "(define dock-shelf-tilt ~a)~%"
+                (dock-config-shelf-tilt cfg))
+        (format #t "(define dock-shelf-perspective ~a)~%"
+                (dock-config-shelf-perspective cfg))
+        (format #t "(define dock-shelf-margin ~a)~%"
+                (dock-config-shelf-margin cfg))
+        (format #t "(define dock-shelf-front ~a)~%"
+                (dock-config-shelf-front cfg))
+        (format #t "(define dock-shelf-flare ~a)~%"
+                (dock-config-shelf-flare cfg))
+        (format #t "(define dock-reflection ~a)~%"
+                (dock-config-reflection cfg))
+        (format #t "(define dock-reflection-intensity ~a)~%"
+                (dock-config-reflection-intensity cfg))
+        (format #t "(define dock-reflection-blur ~a)~%"
+                (dock-config-reflection-blur cfg))
+        (format #t "(define dock-launchpad-icon-size ~a)~%"
+                (dock-config-launchpad-icon-size cfg))
+        (format #t "(define dock-launchpad-columns ~a)~%"
+                (dock-config-launchpad-columns cfg))
+        (format #t "(define dock-launchpad-blur? ~a)~%"
+                (if (dock-config-launchpad-blur? cfg) "#t" "#f"))
+        (format #t "(define dock-launchpad-close-side ~a)~%"
+                (settings-value (dock-config-launchpad-close-side cfg)))
+
+        (if mirror
+            (begin
+              (format #t "~%;; A mirror: the item list is read from this dock.~%")
+              (format #t "(define dock-mirror-of ~a)~%"
+                      (settings-value mirror))
+              (format #t "(define dock-mirror-exclude ~a)~%"
+                      (settings-value (dock-config-mirror-exclude cfg)))
+              (format #t "(define dock-mirror-kinds ~a)~%"
+                      (settings-value (dock-config-mirror-kinds cfg))))
+            (begin
+              (format #t "~%(define dock-items (list~%")
+              (for-each (lambda (item)
+                          (format #t "  ~a~%" (settings-item-text item)))
+                        (get-dock-items config-path))
+              (format #t "))~%")))))))
+
+(define* (export-dock-settings! config-path #:key target)
+  "Writes the resolved dock of CONFIG-PATH as settings.scm text.
+
+The file goes to TARGET, or to
+${XDG_STATE_HOME:-~/.local/state}/lambdock/exported-<settings-stem>.scm -- a name
+the dock's own settings*.scm scan does not pick up, so exporting cannot spawn a
+second dock on the next start.  Returns the path written, or #f.
+
+The exported file is meant to be read, diffed and copied into place: it is what
+the running dock resolves, not what its settings file happens to spell."
+  (let ((path (or target (dock-state-file config-path "exported-"))))
+    (catch #t
+           (lambda ()
+             (ensure-directory (dirname path))
+             (call-with-output-file path
+               (lambda (port)
+                 (display (dock-settings-scm config-path) port)))
+             (log-info "State" "Exported the resolved dock to ~a" path)
+             path)
+           (lambda (key . args)
+             (log-error "State" "Could not export the dock to ~a (~a ~s)" path
+                        key args)
+             #f))))

@@ -219,6 +219,49 @@ static void test_window_title_text(void) {
                   "");
 }
 
+/* ============================================================================
+ * THE INSPECTOR
+ * ============================================================================ */
+
+static void test_inspector_text(void) {
+  char *text = lambdock_inspector_launcher_text(
+      "/home/me/.config/lambdock/settings.scm", "app:Firefox");
+  g_assert_cmpstr(text, ==,
+                  "app:Firefox, from /home/me/.config/lambdock/settings.scm");
+  g_free(text);
+
+  text = lambdock_inspector_launcher_text(NULL, "trash:Trash");
+  g_assert_cmpstr(text, ==,
+                  "trash:Trash (no settings file: the fallback dock)");
+  g_free(text);
+
+  text = lambdock_inspector_launcher_text(NULL, NULL);
+  g_assert_cmpstr(text, ==, "? (no settings file: the fallback dock)");
+  g_free(text);
+
+  text = lambdock_inspector_icon_text("firefox", TRUE);
+  g_assert_cmpstr(text, ==, "firefox (found in the icon theme)");
+  g_free(text);
+
+  text = lambdock_inspector_icon_text("no-such-icon", FALSE);
+  g_assert_cmpstr(text, ==,
+                  "no-such-icon (not in the icon theme; a fallback is drawn)");
+  g_free(text);
+
+  text = lambdock_inspector_icon_text("", FALSE);
+  g_assert_cmpstr(text, ==,
+                  "no icon configured; the generic executable is drawn");
+  g_free(text);
+
+  text = lambdock_inspector_poller_text("get-cpu-value", 2000);
+  g_assert_cmpstr(text, ==, "get-cpu-value, every 2000 ms");
+  g_free(text);
+
+  text = lambdock_inspector_poller_text("", 0);
+  g_assert_cmpstr(text, ==, "none: this item does not poll");
+  g_free(text);
+}
+
 int main(int argc, char **argv) {
   g_test_init(&argc, &argv, NULL);
 
@@ -233,6 +276,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/core/item_text/meter_reading_text",
                   test_meter_reading_text);
   g_test_add_func("/core/item_text/window_title_text", test_window_title_text);
+  g_test_add_func("/core/item_text/inspector", test_inspector_text);
 
   return g_test_run();
 }

@@ -106,6 +106,61 @@ static char *desktop_entry_stem(const char *id) {
  * ============================================================================
  */
 
+static void desktop_action_free(gpointer data) {
+  LambdockDesktopAction *action = data;
+  g_free(action->id);
+  g_free(action->name);
+  g_free(action->exec);
+  g_free(action);
+}
+
+/* Parses the entry's own Actions= list. Each name in it points at a
+ * [Desktop Action <name>] group with a Name= and an Exec=; a group that is
+ * missing either is not a launcher and is dropped instead of showing a blank
+ * menu row. */
+static GPtrArray *parse_actions(GKeyFile *kf) {
+  char *list = g_key_file_get_string(kf, DESKTOP_GROUP, "Actions", NULL);
+  if (!list)
+    return NULL;
+
+  GPtrArray *actions =
+      g_ptr_array_new_with_free_func(desktop_action_free);
+  char **ids = g_strsplit(list, ";", -1);
+  for (int i = 0; ids[i] != NULL; i++) {
+    if (*ids[i] == '\0')
+      continue;
+
+    char *group = g_strdup_printf("Desktop Action %s", ids[i]);
+    if (g_key_file_has_group(kf, group)) {
+      char *name =
+          g_key_file_get_locale_string(kf, group, "Name", NULL, NULL);
+      char *raw_exec = g_key_file_get_string(kf, group, "Exec", NULL);
+      char *exec = lambdock_exec_strip_field_codes(raw_exec);
+
+      if (name && *name != '\0' && exec && *exec != '\0') {
+        LambdockDesktopAction *action = g_new0(LambdockDesktopAction, 1);
+        action->id = g_strdup(ids[i]);
+        action->name = name;
+        action->exec = exec;
+        g_ptr_array_add(actions, action);
+      } else {
+        g_free(name);
+        g_free(exec);
+      }
+      g_free(raw_exec);
+    }
+    g_free(group);
+  }
+
+  g_strfreev(ids);
+  g_free(list);
+
+  if (actions->len == 0)
+    g_clear_pointer(&actions, g_ptr_array_unref);
+
+  return actions;
+}
+
 static gboolean key_file_flag(GKeyFile *kf, const char *key) {
   GError *error = NULL;
   gboolean value = g_key_file_get_boolean(kf, DESKTOP_GROUP, key, &error);
@@ -200,6 +255,7 @@ LambdockDesktopEntry *lambdock_desktop_entry_new_from_data(const char *data,
   }
   entry->wm_class = wm_class;
   entry->categories = categories;
+  entry->actions = parse_actions(kf);
   entry->no_display = key_file_flag(kf, "NoDisplay");
   entry->hidden = key_file_flag(kf, "Hidden");
 
@@ -241,6 +297,7 @@ void lambdock_desktop_entry_free(LambdockDesktopEntry *entry) {
   g_free(entry->wm_class);
   g_free(entry->categories);
   g_free(entry->path);
+  g_clear_pointer(&entry->actions, g_ptr_array_unref);
   g_clear_pointer(&entry->alternates, g_ptr_array_unref);
   g_free(entry);
 }

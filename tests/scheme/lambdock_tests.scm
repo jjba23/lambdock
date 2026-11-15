@@ -1389,6 +1389,148 @@
              'ambiance (get-dock-theme 'look-repl-dock))
 
 ;; =============================================================================
+;; Mirror docks: the same item list, read twice
+;; =============================================================================
+
+(define %mirror-source (tmp-path "mirror/settings-games.scm"))
+(define %mirror-dock (tmp-path "mirror/settings-shelf.scm"))
+
+(configure-dock! #:config-path %mirror-source
+                 #:items (list (app-item #:name "Steam" #:icon "steam"
+                                         #:exec "steam")
+                               (stack-item #:name "Downloads" #:path "/tmp")
+                               (trash-item)))
+(configure-dock! #:config-path %mirror-dock
+                 #:mirror-of "settings-games.scm")
+
+(check-equal "a mirror shows the source dock's items"
+             '("app:Steam" "stack:Downloads" "trash:Trash")
+             (map dock-item-key (get-dock-items %mirror-dock)))
+(check-equal "a mirror records the source it was configured with"
+             "settings-games.scm" (get-dock-mirror-of %mirror-dock))
+
+;; A mirror is a filter, not a copy: it can keep only some kinds.
+(configure-dock! #:config-path %mirror-dock
+                 #:mirror-of %mirror-source
+                 #:mirror-kinds '(stack trash))
+(check-equal "mirror-kinds keeps only the requested kinds"
+             '("stack:Downloads" "trash:Trash")
+             (map dock-item-key (get-dock-items %mirror-dock)))
+
+;; ...and drop individual items by the key the rest of the dock uses.
+(configure-dock! #:config-path %mirror-dock
+                 #:mirror-of %mirror-source
+                 #:mirror-exclude '("trash:Trash"))
+(check-equal "mirror-exclude drops one item key"
+             '("app:Steam" "stack:Downloads")
+             (map dock-item-key (get-dock-items %mirror-dock)))
+
+;; The source's own drag-and-drop order is what the mirror reads: it is the same
+;; value, so there is nothing to keep in sync.
+(configure-dock! #:config-path %mirror-dock #:mirror-of %mirror-source)
+(dock-layout-set-order! %mirror-source '("trash:Trash" "app:Steam"))
+(check-equal "a mirror sees the source's layout order"
+             '("trash:Trash" "app:Steam" "stack:Downloads")
+             (map dock-item-key (get-dock-items %mirror-dock)))
+(dock-layout-reset! %mirror-source)
+
+;; A source that is not loaded (a typo, or a dock not created yet) is an empty
+;; shelf, not a crash or a recursive read.
+(configure-dock! #:config-path %mirror-dock
+                 #:mirror-of "settings-no-such-dock.scm")
+(check-equal "an unknown mirror source shows no items"
+             '() (get-dock-items %mirror-dock))
+
+(configure-dock! #:config-path %mirror-dock #:mirror-of %mirror-dock)
+(check-equal "a mirror that names itself shows no items"
+             '() (get-dock-items %mirror-dock))
+
+;; Restore a well-formed mirror for the export test below.
+(configure-dock! #:config-path %mirror-dock
+                 #:mirror-of "settings-games.scm")
+
+;; =============================================================================
+;; Capturing the resolved dock as settings.scm
+;; =============================================================================
+
+(define %export-cfg (tmp-path "export/settings.scm"))
+(configure-dock! #:config-path %export-cfg
+                 #:position 'right
+                 #:theme 'frost
+                 #:icon-size 64
+                 #:item-spacing 6
+                 #:auto-hide? #t
+                 #:items (list (app-item #:name "Terminal"
+                                         #:icon "Alacritty"
+                                         #:exec "alacritty")
+                               (ram-item)
+                               (stack-item #:name "Downloads"
+                                           #:path "/tmp/dl"
+                                           #:view-mode 'list)))
+
+(define %export-text (dock-settings-scm %export-cfg))
+(check-string "the export is non-empty text" %export-text)
+(check-matches "the export writes the position"
+               "\\(define dock-position 'right\\)" %export-text)
+(check-matches "the export writes the theme"
+               "\\(define dock-theme 'frost\\)" %export-text)
+(check-matches "the export writes the sizes"
+               "\\(define dock-icon-size 64\\)" %export-text)
+(check-matches "the export writes an app launcher"
+               "\\(app-item #:name \"Terminal\" #:icon \"Alacritty\" #:exec \"alacritty\"\\)"
+               %export-text)
+(check-matches "the export rebuilds a preset by name"
+               "\\(ram-item" %export-text)
+(check-matches "the export writes a stack's folder and view"
+               "#:path \"/tmp/dl\" #:view-mode 'list" %export-text)
+
+;; The real proof: the loader reads the exported text back into the same dock.
+(define %export-file (tmp-path "export/reload.scm"))
+(ensure-directory (dirname %export-file))
+(write-file %export-file %export-text)
+(load-dock-config! %export-file)
+(check-equal "the exported text loads back to the same item keys"
+             (map dock-item-key (get-dock-items %export-cfg))
+             (map dock-item-key (get-dock-items %export-file)))
+(check-equal "the exported text loads back to the same theme"
+             'frost (get-dock-theme %export-file))
+(check-equal "the exported text loads back to the same icon size"
+             64 (get-dock-icon-size %export-file))
+(check-equal "the exported text loads back to the same edge"
+             'right (get-dock-position %export-file))
+(check-equal "the exported text loads back to the same auto-hide"
+             #t (get-dock-auto-hide? %export-file))
+
+;; Writing it out: an explicit target, then the state directory by default.
+(define %export-target (tmp-path "export/captured.scm"))
+(check-equal "export-dock-settings! returns the path it wrote"
+             %export-target
+             (export-dock-settings! %export-cfg #:target %export-target))
+(check "the exported settings file exists"
+       (file-exists? %export-target))
+(check "the exported file carries the text"
+       (> (stat:size (stat %export-target)) 0))
+(check-matches "the default export lands under the state directory"
+               "exported-settings\\.scm$" (export-dock-settings! %export-cfg))
+
+;; A mirror exports the source setting rather than copying the source's items.
+(check-matches "a mirror exports dock-mirror-of"
+               "\\(define dock-mirror-of \"settings-games.scm\"\\)"
+               (dock-settings-scm %mirror-dock))
+
+;; =============================================================================
+;; Poller names (for the "why is this item here" inspector)
+;; =============================================================================
+
+(check-equal "a defined poller reports its name"
+             "get-clock-text" (dock-item-poll-name (clock-item)))
+(check-equal "an anonymous poller says so"
+             "anonymous procedure"
+             (dock-item-poll-name (dynamic-item #:poll-fn (lambda () "x"))))
+(check-equal "an item that does not poll has no poller name"
+             "" (dock-item-poll-name (app-item #:name "A")))
+
+;; =============================================================================
 ;; Summary
 ;; =============================================================================
 

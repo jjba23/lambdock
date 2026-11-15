@@ -89,6 +89,18 @@ char *get_config_path_c(void);
 void load_dock_config_scm(const char *file_path);
 
 /**
+ * export_dock_settings_to_file:
+ * @config_path: (nullable): the dock whose resolved configuration to capture.
+ *
+ * Writes the dock as settings.scm text under the state directory (see
+ * `export-dock-settings!` in `(lambdock core)`) and returns the path, so the
+ * dock's own menu can capture what it is running without a REPL.
+ *
+ * Returns: (transfer full) (nullable): the file written, or NULL.
+ */
+char *export_dock_settings_to_file(const char *config_path);
+
+/**
  * reload_guile_config:
  *
  * Re-invokes Guile Scheme procedure 'init-dock!' to re-parse primary settings.
