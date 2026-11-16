@@ -171,111 +171,12 @@ void lambdock_dock_item_show_menu(DockItem *item) {
  * value, so it is written once and read by every applier.
  */
 
-/**
- * dock_item_icon_size:
- * The icon size in use, with the default for partly built states.
+/* Alignment is rust/src/dock_item.rs now: `dock_item_alignment_for_edge` is a value
+ * (centred along the dock, anchored to its edge), the cell request is one icon
+ * across the dock, and the appliers are three widget calls. The C tests read the
+ * result back through `apply_dock_item_alignment` and the header's declarations, so
+ * the seam is the same as it was.
  */
-static int dock_item_icon_size(const LambdockState *state) {
-  return (state && state->icon_size > 0) ? state->icon_size : DEFAULT_ICON_SIZE;
-}
-
-/** How an item's widgets align themselves on a dock attached to an edge. */
-typedef struct DockItemAlignment {
-  GtkAlign halign;
-  GtkAlign valign;
-} DockItemAlignment;
-
-static DockItemAlignment dock_item_alignment_for_edge(GtkLayerShellEdge edge) {
-  switch (edge) {
-  case GTK_LAYER_SHELL_EDGE_BOTTOM:
-    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_END};
-  case GTK_LAYER_SHELL_EDGE_TOP:
-    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_START};
-  case GTK_LAYER_SHELL_EDGE_LEFT:
-    return (DockItemAlignment){GTK_ALIGN_START, GTK_ALIGN_CENTER};
-  case GTK_LAYER_SHELL_EDGE_RIGHT:
-    return (DockItemAlignment){GTK_ALIGN_END, GTK_ALIGN_CENTER};
-  default:
-    return (DockItemAlignment){GTK_ALIGN_CENTER, GTK_ALIGN_CENTER};
-  }
-}
-
-/** Every item's content asks for one icon-sized cell across the dock.
- *
- * The theme's button padding sits outside that cell, so an icon, a label
- * ("Thu Oct 29") and a gauge all end up exactly as tall as each other. Sizing
- * the button instead leaves the theme's padding out of the sum, and the shorter
- * items then hang at the bottom of the row. */
-static void apply_dock_item_size_request(DockItem *item) {
-  int icon_size = dock_item_icon_size(item->state);
-  gboolean horizontal = item->state->orientation == GTK_ORIENTATION_HORIZONTAL;
-  GtkWidget *target = item->cell ? item->cell : item->button;
-
-  if (horizontal)
-    gtk_widget_set_size_request(target, -1, icon_size);
-  else
-    gtk_widget_set_size_request(target, icon_size, -1);
-}
-
-static void apply_alignment(GtkWidget *widget, DockItemAlignment alignment) {
-  gtk_widget_set_halign(widget, alignment.halign);
-  gtk_widget_set_valign(widget, alignment.valign);
-}
-
-/** The content of the button (icon, label) rides centred inside it. */
-static void centre_button_content(GtkWidget *button) {
-  if (!GTK_IS_BUTTON(button))
-    return;
-
-  GtkWidget *child = gtk_button_get_child(GTK_BUTTON(button));
-  if (!child)
-    return;
-
-  gtk_widget_set_halign(child, GTK_ALIGN_CENTER);
-  gtk_widget_set_valign(child, GTK_ALIGN_CENTER);
-
-  if (!GTK_IS_BOX(child))
-    return;
-
-  for (GtkWidget *w = gtk_widget_get_first_child(child); w != NULL;
-       w = gtk_widget_get_next_sibling(w)) {
-    gtk_widget_set_valign(w, GTK_ALIGN_CENTER);
-  }
-}
-
-/**
- * apply_dock_item_alignment:
- * Applies edge-anchored alignment rules (valign/halign) to DockItem widgets,
- * ensuring non-animated items and separators remain anchored to the dock edge.
- */
-void apply_dock_item_alignment(DockItem *item) {
-  if (!item || !item->button || !item->state)
-    return;
-
-  apply_dock_item_size_request(item);
-
-  DockItemAlignment alignment = dock_item_alignment_for_edge(item->state->edge);
-  apply_alignment(item->button, alignment);
-
-  /* A separator's line fills the cell it sits in -- the cell is what follows the
-   * dock edge, and the line is all that is inside it -- so it spans the icons'
-   * height instead of collapsing to the one-pixel separator default. */
-  if (item->kind == LAMBDOCK_ITEM_SEPARATOR) {
-    gboolean horizontal =
-        item->state->orientation == GTK_ORIENTATION_HORIZONTAL;
-    gtk_widget_set_valign(item->button,
-                          horizontal ? GTK_ALIGN_FILL : GTK_ALIGN_CENTER);
-    gtk_widget_set_halign(item->button,
-                          horizontal ? GTK_ALIGN_CENTER : GTK_ALIGN_FILL);
-  }
-
-  /* The per-item container holds the button plus (when reflections are on)
-   * its glass shelf reflection, so it hugs the same dock edge as the button. */
-  if (item->container)
-    apply_alignment(item->container, alignment);
-
-  centre_button_content(item->button);
-}
 
 /* ============================================================================
  * EVENT CALLBACK HANDLERS (MOUSE CLICKS & INTERACTIONS)

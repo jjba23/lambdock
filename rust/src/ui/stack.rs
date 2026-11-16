@@ -17,6 +17,7 @@
 //! only where inside that folder you are.
 
 use crate::cstr::{non_empty_text, text, translated};
+use crate::ui::DEFAULT_ICON_SIZE;
 use crate::dock_item::DockItem;
 use crate::glib::{g_malloc0, strdup_string};
 use crate::log_debug;
@@ -38,9 +39,6 @@ use std::rc::Rc;
 /// `LambdockStackView`.
 pub const VIEW_GRID: c_int = 0;
 pub const VIEW_LIST: c_int = 1;
-
-/// `DEFAULT_ICON_SIZE` in `lambdock.h`.
-const DEFAULT_ICON_SIZE: i32 = 48;
 
 /// `POPOVER_VBOX_MARGIN` in `lambdock.h`.
 const POPOVER_VBOX_MARGIN: i32 = 8;

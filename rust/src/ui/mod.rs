@@ -11,6 +11,10 @@
 
 use gtk4::glib::translate::Borrowed;
 
+/// `DEFAULT_ICON_SIZE` in `lambdock.h`: the icon size a dock lays out at when its
+/// settings do not say otherwise, and the answer for a dock that is halfway built.
+pub(crate) const DEFAULT_ICON_SIZE: i32 = 48;
+
 pub mod app_actions;
 pub mod clock;
 pub mod desktop_entry;

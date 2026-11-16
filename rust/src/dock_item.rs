@@ -19,12 +19,14 @@
 
 use crate::app_window::{AppWindow, GList, LambdockToplevel};
 use crate::core::dock_click::{lambdock_click_action_for, ClickAction};
+use crate::core::config_values::{EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP};
 use crate::core::item_text::{
     lambdock_item_text_app, lambdock_item_text_clear, lambdock_item_text_dynamic,
     lambdock_item_text_launchpad, lambdock_item_text_stack, lambdock_item_text_trash, ItemText,
 };
 use crate::log_warn;
 use crate::state::LambdockState;
+use crate::ui::DEFAULT_ICON_SIZE;
 use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::{FromGlib, IntoGlib};
@@ -1615,6 +1617,263 @@ mod poll_tests {
 
         // The one answer that means "refresh it".
         assert!(!off_screen(false, false, true));
+    }
+}
+
+
+// ============================================================================
+// ALIGNMENT
+// ============================================================================
+//
+// Alignment is a decision (which edge is the dock on?) followed by three widget
+// calls (a size request, an alignment, centring the content). The decision is a
+// value, so it is written once and read by every applier.
+
+/// How an item's widgets align themselves on a dock attached to an edge.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+struct Alignment {
+    halign: gtk4::Align,
+    valign: gtk4::Align,
+}
+
+/// The alignment a dock's edge asks for: centred along the dock, anchored to the
+/// edge it sits on. Any other edge centres both ways, rather than pinning an item
+/// to an edge the dock is not on.
+fn alignment_for_edge(edge: c_int) -> Alignment {
+    let (halign, valign) = match edge {
+        EDGE_BOTTOM => (gtk4::Align::Center, gtk4::Align::End),
+        EDGE_TOP => (gtk4::Align::Center, gtk4::Align::Start),
+        EDGE_LEFT => (gtk4::Align::Start, gtk4::Align::Center),
+        EDGE_RIGHT => (gtk4::Align::End, gtk4::Align::Center),
+        _ => (gtk4::Align::Center, gtk4::Align::Center),
+    };
+
+    Alignment { halign, valign }
+}
+
+/// The cell request for one item: one icon across the dock, free along it.
+///
+/// The theme's button padding sits outside that cell, so an icon, a date label
+/// ("Thu Oct 29") and a gauge all end up exactly as tall as each other. Sizing the
+/// *button* instead leaves the theme's padding out of the sum, and the shorter
+/// items then hang at the bottom of the row.
+fn size_request(icon_size: i32, horizontal: bool) -> (i32, i32) {
+    if horizontal {
+        (-1, icon_size)
+    } else {
+        (icon_size, -1)
+    }
+}
+
+/// The icon size a dock lays out at, with the default for partly built states.
+fn icon_size(state: Option<&LambdockState>) -> i32 {
+    match state.map(|state| state.icon_size) {
+        Some(size) if size > 0 => size,
+        _ => DEFAULT_ICON_SIZE,
+    }
+}
+
+/// The icon size a dock lays out at.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_icon_size(state: *const LambdockState) -> c_int {
+    icon_size(state.as_ref())
+}
+
+/// Whether a dock runs along the top or bottom of the screen.
+fn is_horizontal(state: &LambdockState) -> bool {
+    state.orientation != gtk4::Orientation::Vertical.into_glib()
+}
+
+/// Asks for the item's cell: one icon across the dock, free along it.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem` with a state.
+unsafe fn apply_size_request(item: &DockItem) {
+    let Some(state) = item.state.as_ref() else {
+        return;
+    };
+
+    let cell = if item.cell.is_null() {
+        item.button
+    } else {
+        item.cell
+    };
+    let Some(cell) = widget_of(cell) else {
+        return;
+    };
+
+    let (width, height) = size_request(icon_size(Some(state)), is_horizontal(state));
+    cell.set_size_request(width, height);
+}
+
+/// Points `widget` at the dock's edge.
+fn apply_alignment(widget: &gtk4::Widget, alignment: Alignment) {
+    widget.set_halign(alignment.halign);
+    widget.set_valign(alignment.valign);
+}
+
+/// Centres the button's content inside it, and everything in that content on the
+/// button's cross axis.
+///
+/// # Safety
+///
+/// `button` must be a live `GtkWidget`.
+unsafe fn centre_button_content(button: &gtk4::Widget) {
+    let Some(button) = button.downcast_ref::<gtk4::Button>() else {
+        return;
+    };
+    let Some(child) = button.child() else {
+        return;
+    };
+
+    child.set_halign(gtk4::Align::Center);
+    child.set_valign(gtk4::Align::Center);
+
+    if !child.is::<gtk4::Box>() {
+        return;
+    }
+
+    let mut widget = child.first_child();
+    while let Some(each) = widget {
+        each.set_valign(gtk4::Align::Center);
+        widget = each.next_sibling();
+    }
+}
+
+/// Applies the dock's edge rules to one item: its cell, how it leans, and how its
+/// content sits inside it.
+///
+/// A separator is the exception: its line fills the cell it is given -- the cell is
+/// what follows the dock edge and the line is all that is inside it -- so it spans
+/// the icons' height instead of collapsing to the one-pixel separator default.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn apply_dock_item_alignment(item: *mut DockItem) {
+    let Some(item_ref) = item.as_ref() else {
+        return;
+    };
+    if item_ref.button.is_null() {
+        return;
+    }
+    let Some(state) = item_ref.state.as_ref() else {
+        return;
+    };
+
+    apply_size_request(item_ref);
+
+    let alignment = alignment_for_edge(state.edge);
+    if let Some(button) = widget_of(item_ref.button) {
+        apply_alignment(&button, alignment);
+
+        if item_ref.kind == ITEM_SEPARATOR {
+            let horizontal = is_horizontal(state);
+            button.set_valign(if horizontal {
+                gtk4::Align::Fill
+            } else {
+                gtk4::Align::Center
+            });
+            button.set_halign(if horizontal {
+                gtk4::Align::Center
+            } else {
+                gtk4::Align::Fill
+            });
+        }
+    }
+
+    // The container holds the button plus (when reflections are on) its glass
+    // shelf reflection, so it hugs the same dock edge as the button.
+    if let Some(container) = widget_of(item_ref.container) {
+        apply_alignment(&container, alignment);
+    }
+
+    if let Some(button) = widget_of(item_ref.button) {
+        centre_button_content(&button);
+    }
+}
+
+#[cfg(test)]
+mod align_tests {
+    use super::*;
+
+    /// A dock on an edge anchors its items to that edge and centres them along
+    /// it, which is what makes a row of different heights look like one row.
+    #[test]
+    fn the_edge_decides_which_way_an_item_lears() {
+        assert_eq!(
+            alignment_for_edge(EDGE_BOTTOM),
+            Alignment {
+                halign: gtk4::Align::Center,
+                valign: gtk4::Align::End
+            }
+        );
+        assert_eq!(
+            alignment_for_edge(EDGE_TOP),
+            Alignment {
+                halign: gtk4::Align::Center,
+                valign: gtk4::Align::Start
+            }
+        );
+        assert_eq!(
+            alignment_for_edge(EDGE_LEFT),
+            Alignment {
+                halign: gtk4::Align::Start,
+                valign: gtk4::Align::Center
+            }
+        );
+        assert_eq!(
+            alignment_for_edge(EDGE_RIGHT),
+            Alignment {
+                halign: gtk4::Align::End,
+                valign: gtk4::Align::Center
+            }
+        );
+
+        // An edge nobody set is a dock that centres both ways rather than an
+        // item pinned to an edge it is not on.
+        for edge in [-1, 4, 99] {
+            assert_eq!(
+                alignment_for_edge(edge),
+                Alignment {
+                    halign: gtk4::Align::Center,
+                    valign: gtk4::Align::Center
+                }
+            );
+        }
+    }
+
+    /// The cell is one icon across the dock and free along it: the theme's button
+    /// padding sits outside that cell, so an icon, a date label and a gauge all
+    /// end up exactly as tall as each other.
+    #[test]
+    fn the_cell_is_one_icon_across_the_dock() {
+        // A horizontal dock: the height is fixed, the width is not.
+        assert_eq!(size_request(48, true), (-1, 48));
+        // A vertical one: the same request, turned over.
+        assert_eq!(size_request(48, false), (48, -1));
+    }
+
+    /// A dock that has not been configured yet still lays its items out at the
+    /// default icon size, not at zero.
+    #[test]
+    fn the_icon_size_falls_back_to_the_default() {
+        let dock = |icon_size| {
+            let mut state = unsafe { std::mem::zeroed::<LambdockState>() };
+            state.icon_size = icon_size;
+            state
+        };
+
+        assert_eq!(icon_size(None), DEFAULT_ICON_SIZE);
+        assert_eq!(icon_size(Some(&dock(0))), DEFAULT_ICON_SIZE);
+        assert_eq!(icon_size(Some(&dock(-4))), DEFAULT_ICON_SIZE);
+        assert_eq!(icon_size(Some(&dock(32))), 32);
     }
 }
 

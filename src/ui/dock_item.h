@@ -134,6 +134,15 @@ void dock_item_refresh_readings(DockItem *item);
 gboolean dock_item_off_screen(const DockItem *item);
 
 /**
+ * dock_item_icon_size:
+ * @state: (nullable): a dock's state.
+ *
+ * The icon size the dock is laying out at, and the default (`DEFAULT_ICON_SIZE`)
+ * for a dock that is halfway built or has no settings yet.
+ */
+int dock_item_icon_size(const LambdockState *state);
+
+/**
  * lambdock_dock_item_poll:
  * @user_data: a `DockItem`.
  *
