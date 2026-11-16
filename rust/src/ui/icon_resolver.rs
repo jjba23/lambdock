@@ -13,8 +13,17 @@
 //! built from explicit inputs and checked without a display.
 
 use crate::glib::{g_malloc0, g_strdup};
+use crate::log_debug;
+use crate::log_error;
+use crate::log_info;
+use crate::log_warn;
+use gtk4::gdk;
+use gtk4::gio;
+use gtk4::glib::translate::{from_glib_borrow, Borrowed, ToGlibPtr};
+use gtk4::prelude::*;
+use gtk4::{ffi, IconTheme, Settings};
 use std::ffi::{CStr, CString};
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int};
 use std::path::Path;
 
 /// Joins a base directory and a relative path the way `g_build_filename` did,
@@ -96,6 +105,253 @@ pub unsafe extern "C" fn lambdock_icon_search_paths_new() -> *mut *mut c_char {
     lambdock_icon_search_paths_build(
         crate::glib::g_get_system_data_dirs(),
         crate::glib::g_get_home_dir(),
+    )
+}
+
+// ===========================================================================
+// The fallback pipeline
+// ===========================================================================
+
+/// Sets the pixel size on a freshly created image.
+///
+/// The constructors are called through the C API rather than through
+/// `gtk4::Image`, because of the reference: `gtk_image_new_*` hands back a
+/// *floating* reference, and the C callers sink it by appending the widget to a
+/// box. `gtk4::Image` sinks on construction, so returning one would leave the
+/// caller's `g_object_ref_sink` taking a second reference -- one leaked widget
+/// per icon.
+unsafe fn sized(image: *mut ffi::GtkWidget, icon_size: c_int) -> *mut ffi::GtkWidget {
+    if !image.is_null() {
+        ffi::gtk_image_set_pixel_size(image.cast(), icon_size);
+    }
+
+    image
+}
+
+/// The icon theme name from GNOME's settings, for a desktop whose GTK settings
+/// carry none.
+fn gsettings_icon_theme() -> Option<String> {
+    let Some(source) = gio::SettingsSchemaSource::default() else {
+        log_warn!(
+            "UI",
+            "GSettingsSchemaSource default source is NULL. Cannot read gsettings."
+        );
+        return None;
+    };
+
+    if source
+        .lookup("org.gnome.desktop.interface", true)
+        .is_none()
+    {
+        log_warn!(
+            "UI",
+            "GSettings schema 'org.gnome.desktop.interface' not found on system."
+        );
+        return None;
+    }
+
+    let settings = gio::Settings::new("org.gnome.desktop.interface");
+    let theme = settings.string("icon-theme").to_string();
+
+    if theme.is_empty() {
+        None
+    } else {
+        Some(theme)
+    }
+}
+
+/// Registers the search paths and resolves the icon theme name for the display.
+#[no_mangle]
+pub extern "C" fn setup_icon_theme() {
+    crate::ui::ensure_gtk_initialized();
+
+    let Some(display) = gdk::Display::default() else {
+        log_error!("UI", "setup_icon_theme: No default GdkDisplay detected!");
+        return;
+    };
+
+    let icon_theme = IconTheme::for_display(&display);
+    log_info!(
+        "UI",
+        "Initializing Icon Theme system for display context {display:?}..."
+    );
+
+    // Steps 1 and 2: the search paths, built as a value and then applied.
+    let paths = unsafe { lambdock_icon_search_paths_new() };
+    if !paths.is_null() {
+        let mut index = 0;
+
+        loop {
+            let path = unsafe { *paths.add(index) };
+            if path.is_null() {
+                break;
+            }
+
+            let path = unsafe { CStr::from_ptr(path) }
+                .to_string_lossy()
+                .into_owned();
+            log_debug!("UI", "Adding icon search path: {path}");
+            icon_theme.add_search_path(&path);
+            index += 1;
+        }
+
+        unsafe { crate::glib::g_strfreev(paths) };
+    }
+
+    // Step 3: the theme name. GTK's own setting first, GSettings second.
+    let settings = Settings::for_display(&display);
+    let current = settings
+        .gtk_icon_theme_name()
+        .map(|name| name.to_string())
+        .filter(|name| !name.is_empty());
+
+    if let Some(name) = current {
+        log_info!("UI", "GTK already has an active icon theme set: '{name}'");
+        return;
+    }
+
+    log_info!(
+        "UI",
+        "No active GTK icon theme name detected. Falling back to GSettings / dconf..."
+    );
+
+    match gsettings_icon_theme() {
+        Some(theme) => {
+            log_info!(
+                "UI",
+                "Found GSettings icon theme: '{theme}'. Applying to GtkSettings..."
+            );
+            settings.set_gtk_icon_theme_name(Some(&theme));
+        }
+        None => log_warn!(
+            "UI",
+            "Fallback GSettings lookup failed or returned an empty string!"
+        ),
+    }
+}
+
+/// The six-stage icon fallback: GResource, file, icon theme, XDG pixmaps, the
+/// symbolic variant, then the generic icon.
+///
+/// # Safety
+///
+/// `theme` must be a valid `GtkIconTheme`; `icon` must be null or a C string.
+/// The result is a new floating widget reference, exactly like
+/// `gtk_image_new_*`, or null for a missing icon name.
+#[no_mangle]
+pub unsafe extern "C" fn create_image_for_icon(
+    theme: *mut ffi::GtkIconTheme,
+    icon: *const c_char,
+    icon_size: c_int,
+) -> *mut ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    if icon.is_null() || *icon == 0 {
+        log_debug!("UI", "create_image_for_icon: Passed NULL or empty icon name.");
+        return std::ptr::null_mut();
+    }
+
+    let icon = CStr::from_ptr(icon).to_string_lossy().into_owned();
+    log_debug!("UI", "Resolving icon: '{icon}' (target size: {icon_size}px)");
+
+    // Step 1: the GResource bundle.
+    if let Some(resource) = icon.strip_prefix("resource://") {
+        log_debug!("UI", "Attempting load from resource scheme: {icon}");
+        return sized(
+            ffi::gtk_image_new_from_resource(resource.to_glib_none().0),
+            icon_size,
+        );
+    }
+
+    if icon.starts_with("/org/jointhefreeworld/lambdock/")
+        && gio::resources_get_info(&icon, gio::ResourceLookupFlags::NONE).is_ok()
+    {
+        log_debug!("UI", "Found embedded internal resource: {icon}");
+        return sized(
+            ffi::gtk_image_new_from_resource(icon.to_glib_none().0),
+            icon_size,
+        );
+    }
+
+    // Step 2: an absolute path on disk.
+    if std::path::Path::new(&icon).exists() {
+        log_debug!("UI", "Found direct file path on disk: {icon}");
+        return sized(
+            ffi::gtk_image_new_from_file(icon.to_glib_none().0),
+            icon_size,
+        );
+    }
+
+    let theme: Borrowed<IconTheme> = from_glib_borrow(theme);
+
+    // Step 3: the icon theme.
+    let has_icon = theme.has_icon(&icon);
+    log_debug!(
+        "UI",
+        "gtk_icon_theme_has_icon(theme, '{icon}'): {}",
+        if has_icon { "YES" } else { "NO" }
+    );
+
+    if has_icon {
+        log_debug!("UI", "Resolved '{icon}' successfully via GTK Icon Theme!");
+        return sized(
+            ffi::gtk_image_new_from_icon_name(icon.to_glib_none().0),
+            icon_size,
+        );
+    }
+
+    // Step 4: the XDG pixmap directories.
+    let directories = crate::glib::g_get_system_data_dirs();
+
+    if !directories.is_null() {
+        let mut index = 0;
+
+        loop {
+            let directory = *directories.add(index);
+            if directory.is_null() {
+                break;
+            }
+
+            let directory = CStr::from_ptr(directory).to_string_lossy();
+            let pixmap = format!("{directory}/pixmaps/{icon}.png");
+
+            if std::path::Path::new(&pixmap).exists() {
+                log_debug!("UI", "Resolved '{icon}' in pixmaps folder: {pixmap}");
+                return sized(
+                    ffi::gtk_image_new_from_file(pixmap.to_glib_none().0),
+                    icon_size,
+                );
+            }
+
+            index += 1;
+        }
+    }
+
+    // Step 5: the symbolic variant of the same name.
+    let symbolic = format!("{icon}-symbolic");
+    let has_symbolic = theme.has_icon(&symbolic);
+    log_debug!(
+        "UI",
+        "gtk_icon_theme_has_icon(theme, '{symbolic}'): {}",
+        if has_symbolic { "YES" } else { "NO" }
+    );
+
+    if has_symbolic {
+        log_debug!("UI", "Resolved '{icon}' using symbolic fallback: {symbolic}");
+        return sized(
+            ffi::gtk_image_new_from_icon_name(symbolic.to_glib_none().0),
+            icon_size,
+        );
+    }
+
+    // Step 6: the generic executable icon, so an item is never iconless.
+    log_warn!(
+        "UI",
+        "Failed to resolve icon '{icon}'. Falling back to 'application-x-executable'"
+    );
+    sized(
+        ffi::gtk_image_new_from_icon_name(c"application-x-executable".as_ptr()),
+        icon_size,
     )
 }
 

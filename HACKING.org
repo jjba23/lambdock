@@ -336,8 +336,10 @@ lambdock/
 │       ├── bridge.rs          # The C→Scheme config readers
 │       ├── glib.rs            # The one place the crate names GLib and gettext
 │       ├── guile.rs           # The libguile surface, and what it costs
+│       ├── logging.rs         # src/logger.h, tagged [R:SUB]
 │       ├── ui/                # Layers 3-4, the Rust home of src/ui/
-│       │   ├── mod.rs
+│       │   ├── mod.rs         # + ensure_gtk_initialized()
+│       │   ├── icon_resolver.rs # Icon search paths + the six-stage pipeline
 │       │   └── widget_utils.rs # CSS-class toggles
 │       ├── dock_registry.rs   # The only owner of the active-dock list
 │       └── core/              # Layer 1, the Rust home of the decisions above
@@ -461,12 +463,25 @@ bridge, the dock registry, and the first widget module. =core/poll_budget.c=,
 =rust/src/core/*.rs=, and =src/core/= keeps their headers as the C-side
 contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
 =src/guile_bridge.c= keeps the item builders, the layout writes and the poll
-procedures. =rust/src/dock_registry.rs= owns the live-dock list, and
-=src/ui/widget_utils.c= is =rust/src/ui/widget_utils.rs=, the first module
-written against =gtk4-rs=. The icon search paths (=lambdock_icon_search_paths_*=)
-are =rust/src/ui/icon_resolver.rs=; the pipeline that builds a =GtkImage= from
-them is still C, because it needs the display's icon theme, a GSettings lookup
-and the colourised =LOG_C_*= diagnostics, none of which has a Rust home yet.
+procedures. =rust/src/dock_registry.rs= owns the live-dock list, and the whole of
+=src/ui/icon_resolver.c= -- the icon search paths and the six-stage pipeline that
+turns a name into a =GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with
+=src/ui/widget_utils.c= alongside it as =rust/src/ui/widget_utils.rs=. The
+diagnostics those modules write come from =rust/src/logging.rs=, which mirrors
+=src/logger.h= but tags its lines =[R:SUB]= instead of =[C:SUB]=, so a log says
+which side of the port emitted it.
+
+Two things about gtk4-rs that the seam has to remember:
+
+- *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
+  leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
+  ~assert_initialized_main_thread!~ aborts with "GTK has not been initialized".
+  ~ui::ensure_gtk_initialized()~ calls ~gtk4::init()~ at each entry point: it
+  adopts the GTK that is already up and is a cheap check afterwards.
+- *A widget returned to C keeps its floating reference.* ~gtk_image_new_*~ hands
+  back a floating reference and the C callers sink it by appending the widget to a
+  box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
+  through the C constructors and only borrows the wrapper type on the way in.
 
 ** GTK from Rust, and why the crates are vendored
 :PROPERTIES:

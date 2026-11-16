@@ -11,3 +11,16 @@
 
 pub mod icon_resolver;
 pub mod widget_utils;
+
+/// Makes GTK initialized *as far as gtk4-rs is concerned*.
+///
+/// gtk-rs keeps its own flag and sets it only when it runs `gtk_init` itself;
+/// `main.c` initializes GTK through C, so the first Rust call that reaches an API
+/// carrying `assert_initialized_main_thread!` would abort with "GTK has not been
+/// initialized". `gtk4::init()` notices GTK is already up, adopts it, and is a
+/// cheap check afterwards, so it is safe to call at every entry point.
+///
+/// Main thread only, like everything else that touches a widget.
+pub(crate) fn ensure_gtk_initialized() {
+    let _ = gtk4::init();
+}

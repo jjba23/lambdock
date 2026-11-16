@@ -15,7 +15,7 @@
 //!   cannot express.
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_ulong, c_void};
+use std::os::raw::{c_char, c_int, c_ulong, c_void};
 
 extern "C" {
     fn gettext(msgid: *const c_char) -> *mut c_char;
@@ -29,6 +29,13 @@ extern "C" {
     /// The XDG data directories, which the icon search path is built from.
     pub fn g_get_system_data_dirs() -> *const *const c_char;
     pub fn g_get_home_dir() -> *const c_char;
+    pub fn g_strfreev(strings: *mut *mut c_char);
+
+    /// The `g_print`/`g_log` the C logger macros use, so the Rust half writes the
+    /// same lines through the same doors. `g_warning` and `g_critical` are
+    /// macros over `g_log`, so the level is passed explicitly.
+    pub fn g_print(format: *const c_char, ...);
+    pub fn g_log(domain: *const c_char, level: c_int, format: *const c_char, ...);
 }
 
 /// Translate `msgid`, whose literal stays at the call site.
