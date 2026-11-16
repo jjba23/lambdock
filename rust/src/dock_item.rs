@@ -725,7 +725,7 @@ fn stepped_index(focus: Focus, delta: i32, count: usize) -> Option<usize> {
 unsafe fn dock_items(state: *const LambdockState) -> *mut GList {
     state
         .as_ref()
-        .map_or(std::ptr::null_mut(), |state| state.dock_items.cast::<GList>())
+        .map_or(std::ptr::null_mut(), |state| state.dock_items)
 }
 
 /// Whether the keyboard can reach `item`: it has a button, and is not a separator
@@ -991,7 +991,7 @@ unsafe fn reorder_dock_widgets(state: &LambdockState) {
     };
 
     let mut previous: Option<gtk4::Widget> = None;
-    let mut link = state.dock_items.cast::<GList>();
+    let mut link = state.dock_items;
 
     while let Some(entry) = link.as_ref() {
         let item = entry.data.cast::<DockItem>();
@@ -1100,7 +1100,7 @@ pub unsafe extern "C" fn lambdock_dock_items_close_popovers(state: *mut Lambdock
     };
 
     let mut closed = false;
-    let mut link = state_ref.dock_items.cast::<GList>();
+    let mut link = state_ref.dock_items;
 
     while let Some(entry) = link.as_ref() {
         link = entry.next;
@@ -1569,7 +1569,7 @@ pub unsafe extern "C" fn dock_items_refresh_polls(state: *mut LambdockState) {
         return;
     };
 
-    let mut link = state_ref.dock_items.cast::<GList>();
+    let mut link = state_ref.dock_items;
     while let Some(entry) = link.as_ref() {
         link = entry.next;
 
@@ -3314,7 +3314,7 @@ pub unsafe extern "C" fn clear_favorite_dock_items(state: *mut LambdockState) {
 
     clear_window_tracker_dock_references(state);
 
-    let mut list = state_ref.dock_items.cast::<GList>();
+    let mut list = state_ref.dock_items;
     let mut link = list;
 
     while let Some(entry) = link.as_ref() {
@@ -3499,7 +3499,7 @@ unsafe fn reload_items(state: *mut LambdockState) {
     // Re-sync Wayland foreign window handles back to the new launchers.
     sync_window_trackers(state);
 
-    let mut link = (*state).dock_items.cast::<GList>();
+    let mut link = (*state).dock_items;
     while let Some(entry) = link.as_ref() {
         link = entry.next;
 

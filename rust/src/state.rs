@@ -89,8 +89,11 @@ pub struct LambdockState {
     pub x11_rect_y: c_int,
     pub x11_rect_width: c_int,
     pub x11_rect_height: c_int,
-    pub dock_items: *mut c_void,
-    pub window_trackers: *mut c_void,
+    /// The row's items: a `GList` of `DockItem *`, owned by the dock.
+    pub dock_items: *mut crate::app_window::GList,
+    /// The windows this dock is tracking: a `GList` of borrowed
+    /// `LambdockToplevel *`, owned by the tracker.
+    pub window_trackers: *mut crate::app_window::GList,
     pub base_css_provider: *mut c_void,
     pub taskbar_css_provider: *mut c_void,
     pub shelf_css_provider: *mut c_void,
