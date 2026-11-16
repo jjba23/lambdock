@@ -209,6 +209,20 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   teardown moved with it, so a dock's whole life -- from its window to the last
   `g_free` -- is Rust now, with the About dialog's version still coming from
   meson so there is one version string in the project.
+- *The application's decisions and dock construction are Rust.* ~main.c~ is the
+  last file, and what is left in it is wiring: what a settings file is called,
+  how the wheel moves the row, the monitor lookup by connector, the settings and
+  state directories with the scan that reads them, one dock's construction
+  (viewport, capsule, shelf frame, overlay, menu, input, presentation), the
+  desktop-motion and export handlers and the layer-shell unbind when a dock's
+  monitor goes away are all ~rust/src/main_app.rs~ now.
+- *A dock's construction states its ownership rule once.* A widget is either
+  parented inside the step that built it -- the tree then holds the only
+  reference that matters -- or handed to the state floating, so the step that
+  adopts it later sinks that reference; a `GObject` that is not a widget is handed
+  over owning its reference, which is what the teardown unrefs.  Writing that down
+  found two bugs the C had carried: the overlay was being built twice, and the
+  menu's per-dock action targets came from a hand-built `GMenuItem`.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same
