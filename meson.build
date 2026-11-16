@@ -267,6 +267,7 @@ rust_sources = files(
   'rust/src/ui/mod.rs',
   'rust/src/ui/icon_resolver.rs',
   'rust/src/ui/icon_zoom.rs',
+  'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
@@ -354,7 +355,6 @@ sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/meter.c',
   'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
@@ -409,7 +409,6 @@ full_app_sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/meter.c',
   'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
@@ -564,7 +563,9 @@ unit_tests = [
   },
   {
     'id': 'meter',
-    'extra_sources': [test_stubs, 'src/ui/meter.c', lambdock_resources],
+    # The gauge is Rust now; this binary is what proves the C ABI in
+    # `src/ui/meter.h` still links and behaves.
+    'extra_sources': [test_stubs, lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {

@@ -41,7 +41,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   ~ui/icon_zoom.c~ followed it to ~rust/src/ui/icon_zoom.rs~: the fish-eye is the
   first Rust widget to override measure, size allocation and snapshot at once, so
   the size it reports still spreads the row and the magnified icon is still a
-  transform over a raster rather than a re-resolved icon.  A test binary that
+  transform over a raster rather than a re-resolved icon.  ~ui/meter.c~ is
+  ~rust/src/ui/meter.rs~ now, gauge and all: its geometry and colour thresholds
+  are plain functions the snapshot only paints, and the C test reads them back
+  through the header as before.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the

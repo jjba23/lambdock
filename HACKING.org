@@ -216,7 +216,7 @@ Files are ordered the same way, so a reader always knows where to look:
 =dock_window.c=, =toplevel_tracker.c=, =ui/launchpad.c= and =ui/preferences.c=
 all follow it and say so in their header comment; when a file needs a sixth
 section, it is usually two modules. Functions stay under ~40~ lines: the largest
-one left (=lambdock_meter_snapshot= in =ui/meter.c=) is the next thing to split.
+one left (=snapshot= in =rust/src/ui/meter.rs=) is the next thing to split.
 
 ** The tables (one row or visitor per case)
 :PROPERTIES:
@@ -312,7 +312,7 @@ lambdock/
 │       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
 │       ├── shelf_follow.c/.h  # Separators following the shelf's projection
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
-│       ├── meter.c/.h         # Circular gauge widget for meter items
+│       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
 │       ├── dock_item_windows.c/.h # An item's windows: tracking, styling, lookup
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
@@ -474,10 +474,12 @@ animate and pushes accessible labels, and the whole of =src/ui/icon_resolver.c= 
 the icon search paths and the six-stage pipeline that turns a name into a
 =GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c=
 alongside it as =rust/src/ui/widget_utils.rs=. The widget layer has started too:
-=src/ui/poof.c= is =rust/src/ui/poof.rs=, and =src/ui/icon_zoom.c= is
+=src/ui/poof.c= is =rust/src/ui/poof.rs=, =src/ui/icon_zoom.c= is
 =rust/src/ui/icon_zoom.rs= -- the first Rust widget that overrides measure, size
 allocation and snapshot at once, and the first to hand a floating reference back
-to C (see the floating-reference trap below).
+to C (see the floating-reference trap below) -- and =src/ui/meter.c= is
+=rust/src/ui/meter.rs=, the first one whose *drawing* is a value: the geometry and
+the colour thresholds are plain functions the gauge only paints.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1403,7 +1405,7 @@ pointer dies:
 | 4     | =ui/shelf.c=           | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections   |
 | 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
-| 4     | =ui/meter.c=           | Circular gauge for meter items (GtkWidget subclass, snapshot drawing)            |
+| 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
 | 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
 | 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
 | 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
