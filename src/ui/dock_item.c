@@ -1005,81 +1005,9 @@ DockItem *create_launchpad_dock_item(LambdockState *state, const char *name,
  * ============================================================================
  */
 
-/* `user-trash` and `user-trash-full` are the Icon Naming Specification's names
- * for the empty and full trash, so every icon theme carries them. A theme set up
- * for symbolic icons gets the symbolic full icon instead. */
-static const char *trash_full_icon_for(const char *icon) {
-  return (icon && g_str_has_suffix(icon, "-symbolic"))
-             ? "user-trash-full-symbolic"
-             : "user-trash-full";
-}
-
-static const char *trash_icon_for(const DockItem *item, gboolean full) {
-  if (full)
-    return trash_full_icon_for(item->icon);
-  return (item->icon && *item->icon != '\0') ? item->icon : "user-trash";
-}
-
-/* Whether the item's artwork can be swapped between the two themed trash icons.
- * A configured file, resource or unknown icon is not touched: replacing it would
- * lose the artwork the user chose (and an icon name is not a path). */
-static gboolean trash_artwork_is_swappable(const DockItem *item) {
-  if (!item->icon_image || !GTK_IS_IMAGE(item->icon_image))
-    return FALSE;
-  if (gtk_image_get_storage_type(GTK_IMAGE(item->icon_image)) !=
-      GTK_IMAGE_ICON_NAME)
-    return FALSE;
-  if (!item->icon || *item->icon == '\0')
-    return TRUE;
-
-  GtkIconTheme *theme =
-      gtk_icon_theme_get_for_display(gdk_display_get_default());
-  return theme && gtk_icon_theme_has_icon(theme, item->icon);
-}
-
-void dock_item_refresh_trash(DockItem *item) {
-  if (!item || item->kind != LAMBDOCK_ITEM_TRASH)
-    return;
-
-  guint count = lambdock_trash_count();
-  gboolean full = (count > 0);
-
-  if (count == item->trash_count && full == item->trash_full)
-    return;
-
-  item->trash_count = count;
-  item->trash_full = full;
-
-  if (trash_artwork_is_swappable(item)) {
-    const char *icon = trash_icon_for(item, full);
-    const char *current = gtk_image_get_icon_name(GTK_IMAGE(item->icon_image));
-    if (g_strcmp0(current, icon) != 0)
-      gtk_image_set_from_icon_name(GTK_IMAGE(item->icon_image), icon);
-  }
-
-  /* The wording (and its plural form) is in rust/src/core/item_text.rs, the same
-   * place the screen-reader description comes from. */
-  g_autofree char *tooltip = lambdock_item_trash_tooltip(item->name, count);
-
-  if (item->button)
-    gtk_widget_set_tooltip_text(item->button, tooltip);
-
-  dock_item_update_accessible(item);
-}
-
-static gboolean on_trash_refresh(gpointer user_data) {
-  DockItem *item = (DockItem *)user_data;
-  if (!item)
-    return G_SOURCE_REMOVE;
-
-  /* Same rule as the poll timer: do not scan the trash directories for a dock
-   * nobody can see. */
-  if (dock_item_off_screen(item))
-    return G_SOURCE_CONTINUE;
-
-  dock_item_refresh_trash(item);
-  return G_SOURCE_CONTINUE;
-}
+/* Which artwork a trash count calls for, whether the artwork may be swapped at
+ * all, the re-count itself and its timer are rust/src/dock_item.rs now -- the count
+ * itself is ui/trash.rs's. What stays here is the item's construction. */
 
 DockItem *create_trash_dock_item(LambdockState *state, const char *name,
                                  const char *icon, gboolean hover_animate) {
@@ -1090,7 +1018,8 @@ DockItem *create_trash_dock_item(LambdockState *state, const char *name,
   /* The trash is changed by every other program on the desktop, so the item
    * counts it again on a timer instead of waiting for a signal nobody sends. */
   item->trash_timer_id =
-      g_timeout_add(TRASH_REFRESH_INTERVAL_MS, on_trash_refresh, item);
+      g_timeout_add(TRASH_REFRESH_INTERVAL_MS, (GSourceFunc)lambdock_dock_item_trash_poll,
+                    item);
   dock_item_refresh_trash(item);
 
   LOG_C_INFO("UI", "Created trash item: %s", item->name ? item->name : "");

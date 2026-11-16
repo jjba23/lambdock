@@ -143,6 +143,17 @@ gboolean dock_item_off_screen(const DockItem *item);
 int dock_item_icon_size(const LambdockState *state);
 
 /**
+ * lambdock_dock_item_trash_poll:
+ * @user_data: a `DockItem`.
+ *
+ * The `GSourceFunc` behind a trash item's timer: re-counts the trash unless the
+ * dock is off screen.
+ *
+ * Returns: `G_SOURCE_CONTINUE`, or `G_SOURCE_REMOVE` for an item that is gone.
+ */
+gboolean lambdock_dock_item_trash_poll(gpointer user_data);
+
+/**
  * lambdock_dock_item_poll:
  * @user_data: a `DockItem`.
  *

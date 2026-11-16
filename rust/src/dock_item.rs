@@ -1358,9 +1358,6 @@ extern "C" {
     /// `guile_bridge.h`: calls the procedure once, turning a Scheme error into
     /// `LAMBDOCK_READING_NONE`.
     fn lambdock_poll_fn_call(poll_fn: *mut c_void, out: *mut Reading) -> c_int;
-
-    /// `src/ui/dock_item.c`: re-counts the trash and swaps its artwork.
-    fn dock_item_refresh_trash(item: *mut DockItem);
 }
 
 /// Whether `item` still has a callable Scheme poller.
@@ -1874,6 +1871,190 @@ mod align_tests {
         assert_eq!(icon_size(Some(&dock(0))), DEFAULT_ICON_SIZE);
         assert_eq!(icon_size(Some(&dock(-4))), DEFAULT_ICON_SIZE);
         assert_eq!(icon_size(Some(&dock(32))), 32);
+    }
+}
+
+
+// ============================================================================
+// THE TRASH
+// ============================================================================
+//
+// The trash is the one item the rest of the desktop changes under it, so it is
+// re-counted on a timer rather than on a signal nobody sends. Everything except
+// the counting itself (which is `ui/trash.rs`) lives here: which artwork a count
+// calls for, and when the artwork may be swapped at all.
+
+/// The full-trash name in the same family as `icon`: the plain and symbolic
+/// spellings both come from the Icon Naming Specification, and a theme set up for
+/// symbolic icons carries the symbolic one.
+fn trash_full_icon_for(icon: Option<&str>) -> &'static str {
+    match icon {
+        Some(icon) if icon.ends_with("-symbolic") => "user-trash-full-symbolic",
+        _ => "user-trash-full",
+    }
+}
+
+/// The artwork an item shows when the trash holds `count` items.
+///
+/// Empty is what the item was configured with -- or the theme's own trash when it
+/// was given nothing. Full is always the family's full icon, because the
+/// configured one *is* the empty artwork.
+fn trash_icon_for(icon: Option<&str>, full: bool) -> &str {
+    if full {
+        return trash_full_icon_for(icon);
+    }
+
+    icon.filter(|icon| !icon.is_empty()).unwrap_or("user-trash")
+}
+
+/// Whether the item's artwork can be swapped between the two themed trash icons.
+///
+/// A configured file, resource or unknown icon is left alone: replacing it would
+/// lose the artwork the user chose, and an icon name is not a path.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn trash_artwork_is_swappable(item: &DockItem) -> bool {
+    let Some(image) = widget_of(item.icon_image) else {
+        return false;
+    };
+    let Some(image) = image.as_ref().downcast_ref::<gtk4::Image>() else {
+        return false;
+    };
+    if image.storage_type() != gtk4::ImageType::IconName {
+        return false;
+    }
+
+    let icon = crate::cstr::text_or_empty(item.icon);
+    if icon.is_empty() {
+        return true;
+    }
+
+    gdk::Display::default()
+        .map(|display| gtk4::IconTheme::for_display(&display))
+        .is_some_and(|theme| theme.has_icon(&icon))
+}
+
+/// Re-counts the trash and, when the count changed, swaps the artwork and the
+/// tooltip.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_refresh_trash(item: *mut DockItem) {
+    let Some(item_ref) = item.as_mut() else {
+        return;
+    };
+    if item_ref.kind != ITEM_TRASH {
+        return;
+    }
+
+    let count = crate::ui::trash::lambdock_trash_count();
+    let full = count > 0;
+
+    if count == item_ref.trash_count && full == (item_ref.trash_full != 0) {
+        return;
+    }
+
+    item_ref.trash_count = count;
+    item_ref.trash_full = c_int::from(full);
+
+    if trash_artwork_is_swappable(item_ref) {
+        let configured = crate::cstr::text(item_ref.icon);
+        let icon = trash_icon_for(configured.as_deref(), full);
+
+        if let Some(image) = widget_of(item_ref.icon_image) {
+            if let Some(image) = image.as_ref().downcast_ref::<gtk4::Image>() {
+                if image.icon_name().as_deref() != Some(icon) {
+                    image.set_icon_name(Some(icon));
+                }
+            }
+        }
+    }
+
+    // The wording (and its plural form) is `core/item_text.rs`'s, the same place
+    // the screen-reader description comes from.
+    let tooltip_pointer =
+        crate::core::item_text::lambdock_item_trash_tooltip(item_ref.name, count);
+    let tooltip = crate::cstr::text_or_empty(tooltip_pointer);
+    if !tooltip_pointer.is_null() {
+        // `(transfer full)`: the tooltip is GLib's once it has been read.
+        crate::glib::g_free(tooltip_pointer.cast());
+    }
+
+    if let Some(button) = widget_of(item_ref.button) {
+        button.set_tooltip_text(Some(&tooltip));
+    }
+
+    dock_item_update_accessible(item);
+}
+
+/// The timer behind a trash item.
+///
+/// # Safety
+///
+/// `user_data` must be null or a live `DockItem` that outlives the source.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_trash_poll(user_data: *mut c_void) -> c_int {
+    let item = user_data.cast::<DockItem>();
+    if item.as_ref().is_none() {
+        return SOURCE_REMOVE;
+    }
+
+    // Same rule as the poll timer: do not scan the trash directories for a dock
+    // nobody can see.
+    if dock_item_off_screen(item) != 0 {
+        return SOURCE_CONTINUE;
+    }
+
+    dock_item_refresh_trash(item);
+
+    SOURCE_CONTINUE
+}
+
+#[cfg(test)]
+mod trash_tests {
+    use super::*;
+
+    /// The Icon Naming Specification has a name for the empty trash and one for
+    /// the full trash, in both the plain and the symbolic spelling -- so the full
+    /// icon is the one from the same family as the icon the item was given.
+    #[test]
+    fn the_full_trash_icon_stays_in_its_family() {
+        assert_eq!(trash_full_icon_for(Some("user-trash")), "user-trash-full");
+        assert_eq!(
+            trash_full_icon_for(Some("user-trash-symbolic")),
+            "user-trash-full-symbolic"
+        );
+
+        // Nothing configured is still a family: the theme's own trash.
+        assert_eq!(trash_full_icon_for(None), "user-trash-full");
+        assert_eq!(trash_full_icon_for(Some("")), "user-trash-full");
+    }
+
+    /// An empty trash shows what the item was configured with, and the theme's
+    /// trash when it was given nothing; a full one never shows the configured
+    /// icon, because the configured icon is the *empty* artwork.
+    #[test]
+    fn the_empty_trash_shows_the_configured_icon() {
+        assert_eq!(
+            trash_icon_for(Some("user-trash-symbolic"), false),
+            "user-trash-symbolic"
+        );
+        assert_eq!(trash_icon_for(None, false), "user-trash");
+        assert_eq!(trash_icon_for(Some(""), false), "user-trash");
+
+        assert_eq!(
+            trash_icon_for(Some("user-trash-symbolic"), true),
+            "user-trash-full-symbolic"
+        );
+        // A custom icon has no full sibling: the theme's full trash stands in.
+        assert_eq!(
+            trash_icon_for(Some("my-custom-trash"), true),
+            "user-trash-full"
+        );
     }
 }
 
