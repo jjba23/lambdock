@@ -110,7 +110,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the target size, the largest square cut out of the middle, the pixbuf's own bytes
   handed to GDK in the format GdkPixbuf stores them in, the content-type icon a name
   earns, and the queue that decodes a folder's previews one at a time on a worker
-  thread and paints each into its cell from the main loop.  The two views followed,
+  thread and paints each into its cell from the main loop.  The item itself
+  followed: what a kind of dock item is (its name, its CSS class, the key a layout
+  override remembers it by, the text a screen reader gets) and what a click or a
+  key means -- launch, focus, minimize or list; walk, reorder, jump to either end;
+  open or close the menu -- are Rust, and ~ui/dock_item.c~ keeps the widget.  The two views followed,
   and so did the panel above them: ~ui/stack.c~ is gone, and a stack -- grid or
   list, the header that walks back out, the view toggle and the popover that stays
   where it is looking -- is ~rust/src/ui/stack.rs~.  A

@@ -227,7 +227,7 @@ Repeated cases are data, not switches. If you add a case, add a row:
 
 | Table                                | File                | One row is...                            |
 |--------------------------------------+---------------------+------------------------------------------|
-| =ITEM_KIND_OPS=                      | =ui/dock_item.c=    | one kind of dock item (app, stack, …)     |
+| =ITEM_KIND_OPS=                      | =rust/src/dock_item.rs= | one kind of dock item (app, stack, …) |
 | =DOCK_ITEM_BUILDERS=                 | =guile_bridge.c=    | one Scheme item type                     |
 | =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
 | =k_*_actions=                        | =ui/preferences.c=  | one "do something" row (e.g. add a widget) |
@@ -646,8 +646,15 @@ the panel header and the popover that walks folders are all =rust/src/ui/stack.r
 and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
 builder still call.
 
+=ui/dock_item.c= is the file being taken apart: what an item *is* (its kind's
+name and CSS class, the key a layout override remembers, the title a menu shows,
+the text a screen reader gets) and what a click or a key *means* (identity,
+activation, the arrow-key walk, the reorder) are =rust/src/dock_item.rs=; what is
+left in C is the widget -- the button, the icon, the reflection, the popover, the
+poller and the timers.
+
 Not yet ported, in the order the rest of the port intends to take them:
-=ui/dock_item.c= (the item widget everything else is built around), then
+the rest of =ui/dock_item.c=, then
 =ui/launchpad.c= and =ui/preferences.c= (leaf panels, and the last two widget
 files that are still whole), then the two trackers (=toplevel_tracker.c= over
 =zwlr_foreign_toplevel_v1= and =x11_tracker.c= over Xlib, both of which need an
