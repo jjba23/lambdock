@@ -740,9 +740,17 @@ window that tells an echo apart from a real crossing, and the reduced-motion
 shortcut), the row-at-rest reset, auto-hide with reveal, the mode CSS classes and
 the shelf's shape, the layer-shell surface itself (the two branches, the keyboard
 mode, the monitor, the anchors and the exclusive zone), the mode refresh, the
-first hide, and the backdrop menu. What is left in C is the fisheye, the about
-dialog, the teardown, and =main.c= -- which comes last, since it owns everything
-else.
+first hide, the backdrop menu, and the fisheye (the cached item centres, the
+per-frame sizes, the reflection that grows with its icon). What is left in C is
+the four motion callbacks that hand the pointer to it, the about dialog, the
+teardown, and =main.c= -- which comes last, since it owns everything else.
+
+The hover path keeps the C's two measurements, which is what
+=test_render_budget= asserts: a pointer that moves less than
+=FISHEYE_POINTER_STEP_PX= is dropped before it touches a widget, and the
+magnified layout sizes are coarsened to =FISHEYE_LAYOUT_STEP_PX= so the row
+re-measures about half as often as the pointer moves -- while the icon itself
+follows the pointer continuously, because it is painted through a transform.
 
 The surface-signal wiring (=on_window_map= and the two =GdkSurface= handlers)
 deliberately stays in C: they connect handlers with `state` as their signal data,

@@ -26,6 +26,16 @@ pub const REFLECTION_DRAWS: c_int = 6;
 pub const SURFACE_RESIZES: c_int = 7;
 pub const INPUT_REGION_SETS: c_int = 8;
 
+/// The hover path's own counters: frames applied, frames dropped for a
+/// sub-pixel move, item size requests, and rebuilds of the item geometry cache.
+pub const HOVER_FRAMES: c_int = 0;
+pub const HOVER_SKIPS: c_int = 1;
+pub const LAYOUT_STEPS: c_int = 2;
+pub const GEOMETRY_REFRESHES: c_int = 3;
+
+/// Microseconds spent inside the dock's own hover path.
+pub const HOVER_US: c_int = 9;
+
 /// The counter the header calls `LAMBDOCK_STAT_COUNT`: the C enum is the
 /// contract, and the order below is that enum's order.
 const STAT_COUNT: usize = 10;

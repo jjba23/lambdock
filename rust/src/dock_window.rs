@@ -23,18 +23,27 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use crate::app_window::GList;
-use crate::core::dock_dims::{lambdock_dock_dims_compute, DockDims};
+use crate::core::dock_dims::{
+    lambdock_dock_dims_compute, DockDims, FISHEYE_MAX_SCALE, FISHEYE_RADIUS_PX,
+};
 use crate::core::dock_motion::{
-    lambdock_dock_needs_full_input, lambdock_hide_margin, lambdock_settling, lambdock_slide_position,
+    lambdock_dock_needs_full_input, lambdock_fisheye_scale, lambdock_hide_margin,
+    lambdock_scaled_size, lambdock_settling, lambdock_size_step, lambdock_slide_position,
     lambdock_slide_progress,
 };
-use crate::core::render_stats::{lambdock_stats_bump, INPUT_REGION_SETS, SURFACE_RESIZES};
+use crate::core::render_stats::{
+    lambdock_stats_add, lambdock_stats_bump, GEOMETRY_REFRESHES, HOVER_FRAMES, HOVER_SKIPS, HOVER_US,
+    INPUT_REGION_SETS, LAYOUT_STEPS, SURFACE_RESIZES,
+};
 use crate::dock_item::{dock_items_refresh_polls, DockItem};
 use crate::state::LambdockState;
-use crate::ui::icon_zoom::{lambdock_icon_zoom_is_zoom, lambdock_icon_zoom_set_scale};
+use crate::ui::icon_zoom::{
+    lambdock_icon_zoom_is_zoom, lambdock_icon_zoom_set_scale, lambdock_icon_zoom_target_size,
+};
 use crate::ui::layer_shell::{self, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, KEYBOARD_MODE_ON_DEMAND, LAYER_TOP};
 use crate::ui::shelf::{
-    apply_shelf_layout, lambdock_shelf_active, lambdock_shelf_geometry_for, shelf_reflection_set_icon_size,
+    apply_shelf_layout, lambdock_shelf_active, lambdock_shelf_geometry_for,
+    lambdock_shelf_params_effective, shelf_reflection_set_extent, shelf_reflection_set_icon_size,
 };
 use crate::ui::DEFAULT_ICON_SIZE;
 use crate::x11_tracker::lambdock_x11_dock_apply;
@@ -1829,6 +1838,310 @@ pub unsafe extern "C" fn on_popover_closed(
     if dock.auto_hide != 0 && dock.active_popovers == 0 {
         schedule_hide_timer(user_data.cast(), AUTOHIDE_POPOVER_DELAY_MS);
     }
+}
+
+// ===========================================================================
+// FISHEYE HOVER MAGNIFICATION
+// ===========================================================================
+//
+// The bell curve itself is in `core::dock_motion`; this half reads widget bounds
+// and pushes the resulting sizes into the row.
+
+/// `FISHEYE_POINTER_STEP_PX` in `lambdock.h`: how far the pointer has to move
+/// along the dock before a hover frame is worth applying.
+const FISHEYE_POINTER_STEP_PX: f64 = 0.5;
+
+/// `FISHEYE_LAYOUT_STEP_PX` in `lambdock.h`: the magnified sizes are coarsened
+/// to this, so the row re-measures about half as often; the resting size stays
+/// exact.
+const FISHEYE_LAYOUT_STEP_PX: c_int = 2;
+
+/// The cached item centres, as a slice the frame reads.
+///
+/// # Safety
+///
+/// `array` must be null or a `GArray` of `gint` this module created.
+unsafe fn centres_of(array: *mut c_void) -> (*const c_int, usize) {
+    if array.is_null() {
+        return (std::ptr::null(), 0);
+    }
+
+    let array = array.cast::<glib::ffi::GArray>();
+
+    ((*array).data as *const c_int, (*array).len as usize)
+}
+
+/// What one hover frame needs, computed once per pointer position.
+///
+/// It holds the values it reads rather than the state, so the row walk can take
+/// the state mutably at the end of the frame.
+struct FisheyeFrame {
+    /// The pointer along the dock's main axis, relative to the row.
+    pointer_axis: f64,
+    base_size_px: c_int,
+    radius_px: f64,
+    max_scale: f64,
+    centres: *const c_int,
+    len: usize,
+    /// Position in the row, which is also the position in `centres`.
+    index: usize,
+    horizontal: bool,
+    shelf_active: bool,
+    /// The reflection band, as a fraction of the icon size.
+    band_ratio: f64,
+    /// Set when a size request moved an item, which is what makes the cached
+    /// centres stale.
+    geometry_changed: bool,
+}
+
+impl FisheyeFrame {
+    /// Grows the glass reflection with a magnified icon, keeping the band fixed.
+    ///
+    /// # Safety
+    ///
+    /// `item` must be a live item.
+    unsafe fn apply_reflection_extent(&self, item: &DockItem, icon_px: c_int) {
+        if item.reflection.is_null() || !self.shelf_active {
+            return;
+        }
+
+        let band_px = (f64::from(self.base_size_px) * self.band_ratio).round() as c_int;
+        if band_px > 0 {
+            shelf_reflection_set_extent(item.reflection.cast(), icon_px, band_px);
+        }
+    }
+
+    /// Sizes one dock item for this frame.
+    ///
+    /// # Safety
+    ///
+    /// `item` must be a live item whose widgets are built.
+    unsafe fn apply(&mut self, item: &DockItem) {
+        // Separators and meters do not magnify, and a tile without a zoom
+        // container has nothing to scale.
+        if item.hover_animate == 0 || item.button.is_null() {
+            return;
+        }
+        let Some(button) = widget_of(item.button) else {
+            return;
+        };
+        if !button.is::<gtk4::Button>() {
+            return;
+        }
+
+        let zoom = item_zoom_widget(item);
+        if zoom.is_null() || self.index >= self.len {
+            return;
+        }
+
+        let centre = f64::from(*self.centres.add(self.index));
+        let scale = lambdock_fisheye_scale(self.pointer_axis - centre, self.radius_px, self.max_scale);
+        let target_px = lambdock_scaled_size(self.base_size_px, scale);
+
+        // The paint follows the pointer continuously (below); only the layout
+        // steps. Coarsening the magnified sizes cuts the row's re-measures by
+        // about half, and the resting size stays exact.
+        let layout_px = if target_px > self.base_size_px {
+            lambdock_size_step(target_px, FISHEYE_LAYOUT_STEP_PX)
+        } else {
+            target_px
+        };
+
+        if lambdock_icon_zoom_target_size(zoom) != layout_px {
+            lambdock_stats_bump(LAYOUT_STEPS);
+
+            // Expand along the dock axis; preserve the base size across it.
+            if self.horizontal {
+                button.set_size_request(layout_px, self.base_size_px);
+            } else {
+                button.set_size_request(self.base_size_px, layout_px);
+            }
+
+            // Mirror the magnified icon in its reflection: the copy grows along
+            // the dock axis but keeps the band thickness, so the row of icons
+            // does not shift while hovering.
+            self.apply_reflection_extent(item, layout_px);
+
+            self.geometry_changed = true;
+        }
+
+        // The layout steps in whole pixels, the icon does not: the zoom paints
+        // the artwork through a transform, so magnification follows the pointer
+        // continuously and costs no rasterisation at all.
+        lambdock_icon_zoom_set_scale(zoom, scale);
+    }
+}
+
+/// Rebuilds the cache of item centres along the dock's main axis.
+///
+/// One walk of the row (a bounds query per item) instead of one per pointer
+/// frame: the fisheye needs to know where each item *is*, and that only changes
+/// when something resizes the row -- an icon size, the item list, a mode change,
+/// or the magnification itself stepping to a new size.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn refresh_item_centres(dock: &mut LambdockState) {
+    if dock.item_centres.is_null() {
+        dock.item_centres = glib::ffi::g_array_new(0, 0, std::mem::size_of::<c_int>() as u32).cast();
+    }
+
+    let horizontal = is_horizontal(dock);
+
+    // The row is the reference, not the window: it is the frame the items live
+    // in, and measuring against it is a shorter walk than measuring against the
+    // surface. The pointer arrives in window coordinates, so the row's own
+    // origin is what has to be subtracted from it.
+    let reference_pointer = if dock.box_.is_null() {
+        dock.window
+    } else {
+        dock.box_
+    };
+    let reference = widget_of(reference_pointer);
+
+    dock.box_origin_px = 0.0;
+    if let (Some(window), Some(reference)) = (widget_of(dock.window), reference.as_ref()) {
+        if reference.as_ptr() != window.as_ptr() {
+            if let Some(origin) = reference.compute_bounds(&*window) {
+                dock.box_origin_px = if horizontal {
+                    f64::from(origin.x())
+                } else {
+                    f64::from(origin.y())
+                };
+            }
+        }
+    }
+
+    let mut centres: Vec<c_int> = Vec::new();
+    let mut node = dock.dock_items;
+
+    while !node.is_null() {
+        let item = (*node).data.cast::<DockItem>();
+        let mut centre: c_int = 0;
+
+        if let (Some(item), Some(reference)) = (item.as_ref(), reference.as_ref()) {
+            if let Some(button) = widget_of(item.button) {
+                if let Some(bounds) = button.compute_bounds(&**reference) {
+                    centre = if horizontal {
+                        (f64::from(bounds.x()) + f64::from(bounds.width()) / 2.0).round() as c_int
+                    } else {
+                        (f64::from(bounds.y()) + f64::from(bounds.height()) / 2.0).round() as c_int
+                    };
+                }
+            }
+        }
+
+        centres.push(centre);
+        node = (*node).next;
+    }
+
+    let array = dock.item_centres.cast::<glib::ffi::GArray>();
+    glib::ffi::g_array_set_size(array, 0);
+    glib::ffi::g_array_append_vals(array, centres.as_ptr().cast(), centres.len() as u32);
+
+    dock.centres_dirty = 0;
+    lambdock_stats_bump(GEOMETRY_REFRESHES);
+}
+
+/// Applies the fisheye for a pointer at (`x`, `y`) in window coordinates.
+///
+/// This is the whole hover path: a pointer frame costs one cached geometry
+/// lookup and some arithmetic per item, plus -- only when an item's layout step
+/// actually changed -- one size request. The magnification itself is painted
+/// through a transform, so the row does not relayout to look magnified.
+///
+/// It only applies to a settled, visible dock: while it slides (or is hidden) the
+/// widget bounds are stale and the pointer position is not the user's.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    if dock.dock_items.is_null()
+        || dock.hover_animate == 0
+        || crate::accessibility::lambdock_animations_enabled(state) == 0
+        || dock.is_hidden != 0
+        || dock.tick_cb_id != 0
+        || dock.current_margin != 0
+    {
+        return;
+    }
+
+    lambdock_stats_bump(HOVER_FRAMES);
+
+    let horizontal = is_horizontal(dock);
+    let axis = if horizontal { x } else { y };
+
+    // A trackpad reports sub-pixel movement continuously, and half a pixel
+    // changes nothing anyone can see: the icons would be repainted at the same
+    // layout step and a magnification nobody can perceive. The frame is dropped
+    // before it touches a widget.
+    if dock.hover_axis_valid != 0 && (axis - dock.applied_hover_axis).abs() < FISHEYE_POINTER_STEP_PX
+    {
+        lambdock_stats_bump(HOVER_SKIPS);
+        return;
+    }
+
+    dock.hover_axis_valid = 1;
+    dock.applied_hover_axis = axis;
+
+    // What one hover frame costs *us*, as opposed to what GTK spends laying the
+    // row out and painting it afterwards: the two are worth telling apart before
+    // optimising either.
+    let started_us = glib::ffi::g_get_monotonic_time();
+
+    if dock.centres_dirty != 0 || dock.item_centres.is_null() {
+        refresh_item_centres(dock);
+    }
+
+    let shelf_active = lambdock_shelf_active(state) != 0;
+    let band_ratio = if shelf_active {
+        lambdock_shelf_params_effective(state).reflection_ratio
+    } else {
+        0.0
+    };
+    let (centres, len) = centres_of(dock.item_centres);
+
+    let mut frame = FisheyeFrame {
+        // The centres are relative to the row, the pointer to the window.
+        pointer_axis: axis - dock.box_origin_px,
+        base_size_px: dock_icon_size(state),
+        radius_px: FISHEYE_RADIUS_PX,
+        max_scale: FISHEYE_MAX_SCALE,
+        centres,
+        len,
+        index: 0,
+        horizontal,
+        shelf_active,
+        band_ratio,
+        geometry_changed: false,
+    };
+
+    let items = dock.dock_items;
+    for_each_item(items, |item| {
+        frame.apply(item);
+        frame.index += 1;
+    });
+
+    if frame.geometry_changed {
+        dock.centres_dirty = 1;
+    }
+
+    // The capsule grows under the pointer, so the clickable region has to follow
+    // it; the tick that sizes the surface is the same one that cuts it out.
+    dock.fisheye_active = 1;
+    dock_schedule_input_region(state);
+
+    lambdock_stats_add(
+        HOVER_US,
+        (glib::ffi::g_get_monotonic_time() - started_us) as u64,
+    );
 }
 
 #[cfg(test)]
