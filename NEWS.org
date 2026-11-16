@@ -248,7 +248,21 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
-** v2.0.2 (2026-11-16)
+** v2.0.3 (2026-11-16)
+
+- *The recipes are verified against a staged install.* =make install
+  DESTDIR=…= (and therefore =cargo xtask install --destdir=) was run into an
+  empty root and inspected: the binary, the desktop entry, the AppStream
+  metainfo, the logo, all nine Scheme modules and the seven catalogues land where
+  the recipes expect them, and the *installed* binary -- pointed at the staged
+  module directory -- boots and builds the dock's 25 items with no criticals.
+  =package.nix= parses, and the recipes that kept =make= are shims over the same
+  cargo commands.
+- *One task, one function.* =cargo xtask install= used to re-enter =i18n= by
+  rebuilding its argument list, so the translation step parsed flags twice; both
+  now call =compile_catalogues(prefix, destdir)=.
+
+
 
 - *The build is a cargo workspace, and the Makefile is a five-line shim.* The
   tree is one workspace: the dock in =rust/= and =xtask/=, a dependency-free

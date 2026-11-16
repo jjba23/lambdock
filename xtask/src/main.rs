@@ -127,20 +127,21 @@ fn install(arguments: &[String]) {
     }
 
     // The catalogues go with them, into the same prefix.
-    i18n(&[
-        "--prefix".to_owned(),
-        prefix.display().to_string(),
-        "--destdir".to_owned(),
-        destdir.display().to_string(),
-    ]);
+    compile_catalogues(&prefix, &destdir);
 }
 
-/// Compiles every `po/*.po` into `<lang>/LC_MESSAGES/lambdock.mo`, and refreshes
-/// the template so the catalogues stay in step with the sources.
+/// `cargo xtask i18n`: compile the catalogues under the prefix.
 fn i18n(arguments: &[String]) {
-    let prefix = PathBuf::from(flag(arguments, "--prefix", "/usr/local"));
-    let destdir = PathBuf::from(flag(arguments, "--destdir", ""));
-    let target = destdir.join(prefix.strip_prefix("/").unwrap_or(&prefix));
+    compile_catalogues(
+        &PathBuf::from(flag(arguments, "--prefix", "/usr/local")),
+        &PathBuf::from(flag(arguments, "--destdir", "")),
+    );
+}
+
+/// Compiles every `po/*.po` into `<lang>/LC_MESSAGES/lambdock.mo` under the
+/// prefix, which is what both `install` and `i18n` mean by translating.
+fn compile_catalogues(prefix: &Path, destdir: &Path) {
+    let target = destdir.join(prefix.strip_prefix("/").unwrap_or(prefix));
     let locale = target.join("share/locale");
     let po = root().join("po");
 
