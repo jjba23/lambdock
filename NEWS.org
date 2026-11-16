@@ -248,6 +248,20 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.5 (2026-11-16)
+
+- *The vendored crates ship their fixtures in the source archive again.* A global
+  =*.tar.gz= in =.gitignore= also matched two archives inside
+  =rust/vendor/system-deps=, and Guix's source selection only takes tracked
+  files -- so =cargo test= failed its own checksum there with =failed to
+  calculate checksum of ... system-deps/src/tests/test.tar.gz=.  Both are
+  committed, and =!rust/vendor/**= now keeps a future =cargo vendor= from
+  reintroducing the hole.
+- *The last meson and shell leftovers are gone*: =po/meson.build= and
+  =tests/run_scheme_tests.sh= (superseded by =cargo xtask i18n= and
+  =rust/tests/scheme.rs=), with the docs, the manifest and the HACKING tree
+  updated to say what actually runs.
+
 ** v2.0.4 (2026-11-16)
 
 - *The Makefile is gone.* The build is cargo, in full: =cargo build --release=,

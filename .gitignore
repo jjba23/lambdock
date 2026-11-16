@@ -35,6 +35,9 @@ compile_commands.json
 *.changes
 *.dsc
 *.tar.gz
+# ... but the vendored crates ship fixtures of their own, and a
+# source archive that drops them cannot checksum itself.
+!rust/vendor/**
 *.tar.xz
 
 # Temporary Debian staging directories & stamps

@@ -77,6 +77,6 @@
                           ;; resolvable: without it the dock item tests treat the
                           ;; icon fallback warning as a failure.
                           adwaita-icon-theme
-                          ;; `tests/run_scheme_tests.sh' and `xvfb-run' use
+                          ;; `cargo test' uses
                           ;; dirname/mktemp; do not depend on the host PATH.
                           coreutils))

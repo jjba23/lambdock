@@ -126,7 +126,7 @@ ninja -C build test
   and drop tests cover the drop-position arithmetic, the list reordering and the
   item identity that the layout overrides are built on.
 - *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by
-  [[file:../tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]): the pure-Guile configuration engine -- state,
+  `cargo test`): the pure-Guile configuration engine -- state,
   items, presets, loader, layout overrides and core -- with no display server and
   no C runtime needed, so they are fast and easy to run in a loop.
 - *Rust unit tests* (~rust/src/core/*.rs~, run by ~cargo test~ through

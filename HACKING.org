@@ -377,7 +377,6 @@ lambdock/
 ├── tests/                   # C unit tests, Scheme test suite + shared stubs
 │   ├── test_*.c             # One binary per unit (see Tests)
 │   ├── test_stubs.c         # unregister_dock_state double (the registry itself is linked)
-│   ├── run_scheme_tests.sh  # Guile driver (exit 77 = skipped)
 │   └── scheme/lambdock_tests.scm
 ├── po/                      # gettext translations (.pot, *.po, LINGUAS)
 ├── packaging/               # arch / debian / opensuse / flatpak
@@ -889,7 +888,7 @@ meson test -C build rust_unit_tests
 # or the Rust tests alone, from the crate directory
 cd rust && cargo test
 # or the Scheme suite standalone
-./tests/run_scheme_tests.sh
+cargo test   # the Rust tests and, through rust/tests/scheme.rs, the Scheme suite
 #+end_src
 
 C unit binaries (in ~tests/~), each built from ~tests/test_<unit>.c~. The pure ones
