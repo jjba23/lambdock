@@ -28,13 +28,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   sandbox, so a Guix or Nix build needs no extra inputs.  That is 58 MB of
   checkout (9.5 MiB in git) for a graph whose Windows-only half is dead weight on
   Linux; ~maak vendor~ regenerates it after changing ~rust/Cargo.toml~.
-- *Rust owns a share of the widget layer now.* ~ui/widget_utils.c~ and the whole
-  of ~ui/icon_resolver.c~ (search paths and the six-stage icon pipeline) moved to
-  ~rust/src/ui/~, with ~rust/src/logging.rs~ providing the ~LOG_C_*~ diagnostics
-  for the Rust half -- same format, tagged ~[R:SUB]~.  The release profile builds
-  one codegen unit per module, so a C test that only calls a decision function
-  still links nothing but GLib instead of dragging GTK and Guile into its link
-  line.
+- *Rust owns a share of the widget layer now.* ~ui/widget_utils.c~, the whole of
+  ~ui/icon_resolver.c~ (search paths and the six-stage icon pipeline) and
+  ~app_window.c~ moved to ~rust/src/ui/~ and ~rust/src/app_window.rs~, with
+  ~rust/src/logging.rs~ providing the ~LOG_C_*~ diagnostics for the Rust half:
+  same format, tagged ~[R:SUB]~.  The release profile builds one codegen unit per
+  module, so a C test that only calls a decision function still links nothing but
+  GLib instead of dragging GTK and Guile into its link line.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from

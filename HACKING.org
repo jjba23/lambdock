@@ -341,6 +341,7 @@ lambdock/
 │       │   ├── mod.rs         # + ensure_gtk_initialized()
 │       │   ├── icon_resolver.rs # Icon search paths + the six-stage pipeline
 │       │   └── widget_utils.rs # CSS-class toggles
+│       ├── app_window.rs      # The window records and their ownership rules
 │       ├── dock_registry.rs   # The only owner of the active-dock list
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
@@ -463,10 +464,11 @@ bridge, the dock registry, and the first widget module. =core/poll_budget.c=,
 =rust/src/core/*.rs=, and =src/core/= keeps their headers as the C-side
 contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
 =src/guile_bridge.c= keeps the item builders, the layout writes and the poll
-procedures. =rust/src/dock_registry.rs= owns the live-dock list, and the whole of
-=src/ui/icon_resolver.c= -- the icon search paths and the six-stage pipeline that
-turns a name into a =GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with
-=src/ui/widget_utils.c= alongside it as =rust/src/ui/widget_utils.rs=. The
+procedures. =rust/src/dock_registry.rs= owns the live-dock list, =rust/src/app_window.rs=
+owns the window records, and the whole of =src/ui/icon_resolver.c= -- the icon
+search paths and the six-stage pipeline that turns a name into a =GtkImage= -- is
+=rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c= alongside it as
+=rust/src/ui/widget_utils.rs=. The
 diagnostics those modules write come from =rust/src/logging.rs=, which mirrors
 =src/logger.h= but tags its lines =[R:SUB]= instead of =[C:SUB]=, so a log says
 which side of the port emitted it.
