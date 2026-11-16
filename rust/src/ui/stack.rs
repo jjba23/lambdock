@@ -434,6 +434,79 @@ pub unsafe extern "C" fn lambdock_stack_list_directory(
     lambdock_stack_list_directory_limited(path, MAX_ENTRIES, std::ptr::null_mut())
 }
 
+// ============================================================================
+// WHAT DESERVES A THUMBNAIL
+// ============================================================================
+//
+// A thumbnail decodes a real image, so only files that are plausibly images are
+// worth opening: no giant files, and no images so large that decoding them would
+// stall the dock for a second. Reading an image header is cheap, which is how the
+// view decides up front which cells deserve a decode and which keep their type
+// icon.
+
+/// `STACK_THUMBNAIL_MAX_BYTES` and `STACK_THUMBNAIL_MAX_PIXELS` in `stack.c`.
+const THUMBNAIL_MAX_BYTES: u64 = 32 * 1024 * 1024;
+const THUMBNAIL_MAX_PIXELS: i64 = 80 * 1000 * 1000;
+
+// GdkPixbuf's header reader, which is what decides whether a file is an image at
+// all. The dock links the library through GTK already; only the C type of the
+// format it returns is ignored here.
+extern "C" {
+    fn gdk_pixbuf_get_file_info(
+        filename: *const c_char,
+        width: *mut c_int,
+        height: *mut c_int,
+    ) -> *mut std::ffi::c_void;
+}
+
+/// Whether `path` is a file worth decoding into a thumbnail.
+///
+/// Directories, FIFOs and sockets have no thumbnail; a file over the size cap is
+/// not read at all; and an image whose dimensions would take a second to decode
+/// keeps its type icon instead.
+pub fn path_has_thumbnail(path: &std::path::Path) -> bool {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !metadata.is_file() {
+        return false;
+    }
+
+    if metadata.len() == 0 || metadata.len() > THUMBNAIL_MAX_BYTES {
+        return false;
+    }
+
+    // Only the header is read here, and only GdkPixbuf's formats count: a text
+    // file with a .png name is not an image.
+    let Some(path) = std::ffi::CString::new(path.to_string_lossy().as_bytes())
+        .ok()
+        .filter(|path| !path.as_bytes().is_empty())
+    else {
+        return false;
+    };
+
+    let (mut width, mut height) = (0, 0);
+    let format = unsafe { gdk_pixbuf_get_file_info(path.as_ptr(), &mut width, &mut height) };
+    if format.is_null() || width <= 0 || height <= 0 {
+        return false;
+    }
+
+    i64::from(width) * i64::from(height) <= THUMBNAIL_MAX_PIXELS
+}
+
+/// Whether the file at `path` is worth decoding into a thumbnail.
+///
+/// # Safety
+///
+/// `path` must be null or NUL-terminated.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_path_has_thumbnail(path: *const c_char) -> c_int {
+    match text(path).filter(|path| !path.is_empty()) {
+        Some(path) => c_int::from(path_has_thumbnail(std::path::Path::new(&path))),
+        None => 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -679,5 +752,61 @@ mod tests {
             lambdock_stack_entries_free(entries);
             lambdock_stack_entries_free(std::ptr::null_mut());
         }
+    }
+
+    /// A small image is worth a decode; a file that is not an image is not, and
+    /// neither is one too large to read.
+    #[test]
+    fn only_plausible_images_deserve_a_thumbnail() {
+        let root = std::env::temp_dir().join("lambdock-stack-thumbnails");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("dir");
+
+        // A real one-pixel PNG: the bytes are the format, so nothing has to be
+        // installed to write one.
+        const ONE_PIXEL_PNG: [u8; 69] = [
+            0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48,
+            0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00,
+            0x00, 0x90, 0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x08,
+            0xd7, 0x63, 0xf8, 0xcf, 0xc0, 0x00, 0x00, 0x03, 0x01, 0x01, 0x00, 0x18, 0xdd, 0x8d,
+            0xb0, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+        ];
+
+        let image = root.join("tiny.png");
+        std::fs::write(&image, ONE_PIXEL_PNG).expect("write png");
+
+        let note = root.join("notes.txt");
+        std::fs::write(&note, "not an image").expect("write");
+
+        assert!(path_has_thumbnail(&image));
+
+        // Not an image GdkPixbuf can read.
+        assert!(!path_has_thumbnail(&note));
+        // A directory, a missing file, and an empty file.
+        assert!(!path_has_thumbnail(&root));
+        assert!(!path_has_thumbnail(&root.join("missing.png")));
+        let empty = root.join("empty.png");
+        std::fs::write(&empty, "").expect("write");
+        assert!(!path_has_thumbnail(&empty));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A file over the size cap is not even opened.
+    #[test]
+    fn a_file_too_large_to_read_is_not_a_thumbnail() {
+        let root = std::env::temp_dir().join("lambdock-stack-big");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("dir");
+
+        let big = root.join("big.png");
+        let file = std::fs::File::create(&big).expect("create");
+        // Sparse: the size is what this decision reads, not the contents.
+        file.set_len(THUMBNAIL_MAX_BYTES + 1).expect("set_len");
+        drop(file);
+
+        assert!(!path_has_thumbnail(&big));
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

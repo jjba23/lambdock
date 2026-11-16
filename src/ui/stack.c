@@ -78,36 +78,21 @@ static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
  * ============================================================================
  */
 
-/* A thumbnail decodes a real image, so only files that are plausibly images
- * are worth opening: no giant files, and no images so large that decoding them
- * would stall the dock for a second. */
-#define STACK_THUMBNAIL_MAX_BYTES (32 * 1024 * 1024)
-#define STACK_THUMBNAIL_MAX_PIXELS (80 * 1000 * 1000)
-
-/* Reading an image header is cheap, so the view can decide up front which cells
- * deserve a decode and which should keep their type icon. */
-static gboolean stack_path_has_thumbnail(const char *path) {
-  if (!path || *path == '\0' || !g_file_test(path, G_FILE_TEST_IS_REGULAR))
-    return FALSE; /* Directories, FIFOs and sockets have no thumbnail. */
-
-  GStatBuf info;
-  if (g_stat(path, &info) != 0 || info.st_size <= 0 ||
-      info.st_size > STACK_THUMBNAIL_MAX_BYTES)
-    return FALSE;
-
-  int width = 0;
-  int height = 0;
-  if (!gdk_pixbuf_get_file_info(path, &width, &height) || width <= 0 ||
-      height <= 0)
-    return FALSE; /* Not an image GdkPixbuf can read. */
-
-  return (gint64)width * height <= STACK_THUMBNAIL_MAX_PIXELS;
-}
+/* The two caps and the decision they feed (lambdock_stack_path_has_thumbnail) are
+ * in rust/src/ui/stack.rs, with the rest of the file's arithmetic.
+ */
+/* What deserves a thumbnail -- a regular file, under the size cap, an image
+ * GdkPixbuf can read, under the pixel cap -- is
+ * lambdock_stack_path_has_thumbnail() in rust/src/ui/stack.rs: it is a decision
+ * about a file, and it is tested there with a real one-pixel PNG. What stays here
+ * is the decode and the worker queue around it.
+ */
+int lambdock_stack_path_has_thumbnail(const char *path);
 
 /* Decodes one square, centre-cropped preview. Safe to call off the main thread:
  * it only touches GdkPixbuf and the file system. */
 static GdkPixbuf *stack_thumbnail_pixbuf(const char *path, int size) {
-  if (!stack_path_has_thumbnail(path) || size <= 0)
+  if (!lambdock_stack_path_has_thumbnail(path) || size <= 0)
     return NULL;
 
   /* Scale into a box twice the target size (so the square crop keeps enough

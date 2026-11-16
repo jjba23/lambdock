@@ -1,0 +1,7 @@
+Fixture for the C test suite: tests/xdg-config is exported as XDG_CONFIG_HOME, so
+the icon theme is the one this directory names and not whatever the developer runs.
+
+Both files say the same thing because the two toolkits read different ones: a GTK 4
+binary reads gtk-4.0/settings.ini and ignores gtk-3.0/settings.ini, so pinning only
+the 3.0 file left the tests on the developer's theme -- which is how
+`utilities-terminal` came to be missing from a machine that has it.
