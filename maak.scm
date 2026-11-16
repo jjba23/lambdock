@@ -37,33 +37,25 @@
   "Build and run the whole test suite headlessly.
 
 The shell wrapper only applies to the first command, so the pipeline is run by
-one inner `sh -c' instead of a bare `&&': otherwise `ninja' would execute
+one inner `sh -c' instead of a bare `&&': otherwise `cargo' would execute
 outside the Guix environment.
 
-The GTK tests need a display: with none, `gtk_init_check' fails and GLib turns
-the resulting GTK warnings into aborts (6 of 7 tests die with SIGTRAP), so the
-suite runs on a virtual X server, as in package.nix's checkPhase.`GDK_BACKEND', `GTK_A11Y' and `GSK_RENDERER' are pinned because there is no compositor, no a11y
-bus and no EGL under Xvfb; `GTK_A11Y=test' is GTK's own backend for the
-accessible-name assertions in the suite.
+The suite needs no display: every test is a decision, so it runs where the
+manifest shell does, with `make check' -- which is the suite, the lints and the
+Scheme tests in one target.
 
-The build directory is thrown away first: the Byggsteg job clone survives
-between jobs, and a tree configured by a different Meson version makes both
-`meson setup' and `ninja' fail with 'build data file ... references functions
-or classes that don't exist'. Rebuilding from scratch also means the passing
-tests are the ones that match the checked out sources."
+The cargo target directory is thrown away first: the Byggsteg job clone survives
+between jobs, and a tree built by a different toolchain can leave artifacts that
+no longer match the checked out sources. Rebuilding from scratch also means the
+passing tests are the ones that match this commit."
   (time-machine-manifest-shell
    (list "/bin/sh" "-c"
-         ;; One token, because it is one shell script: the quoting that keeps
-         ;; `-screen 0 1024x768x24' one argument to xvfb-run is part of the
-         ;; text the inner shell reads.
+         ;; One token, because it is one shell script.
          (~ "'~a'"
             (string-join
              (list "set -eu"
-                   "export GTK_A11Y=test GDK_BACKEND=x11 GSK_RENDERER=cairo"
-                   "rm -rf build"
-                   "meson setup build"
-                   "ninja -C build"
-                   "xvfb-run -a -s \"-screen 0 1024x768x24\" meson test -C build --print-errorlogs")
+                   "cargo clean --manifest-path rust/Cargo.toml"
+                   "make check")
              "; ")))
    #:verbose? #t))
 
@@ -97,8 +89,6 @@ tests are the ones that match the checked out sources."
                                          devscripts
                                          cme
                                          lintian
-                                         meson
-                                         ninja-build
                                          pkg-config
                                          gettext
                                          libgtk-4-dev
@@ -150,8 +140,6 @@ tests are the ones that match the checked out sources."
   (make-parameter (map symbol->string
                        '(rpm-build rpmdevtools
                                    gcc
-                                   meson
-                                   ninja-build
                                    pkgconfig
                                    gettext
                                    gtk4-devel
@@ -285,21 +273,16 @@ it resolves has to be committed with them."
   ;; Three steps of the same build, each run where it happens rather than as
   ;; one `&&' chain inside a single shell: the one that fails is the one that
   ;; says so.
-  (time-machine-manifest-shell (list "meson" "setup" "build"))
-  (time-machine-manifest-shell (list "ninja" "-C" "build" "lambdock-pot"))
-  (time-machine-manifest-shell (list "ninja" "-C" "build"
-                                     "lambdock-update-po")))
+  (time-machine-manifest-shell (list "make" "i18n")))
 
-(define (meson-build)
-  "Meson build."
-  ;;(delete-file-recursively "./build")
-  (time-machine-program-shell (list "meson" "setup" "build"))
-  (time-machine-program-shell (list "ninja" "-C" "build")))
+(define (build)
+  "Build the dock."
+  (time-machine-program-shell (list "make" "build")))
 
 (define (debug-run)
   "Debug run lambdock."
-  (meson-build)
-  (dsl:run (list "gdb" "--args" "./build/lambdock")))
+  (build)
+  (dsl:run (list "gdb" "--args" "rust/target/release/lambdock")))
 
 (define (flatpak-build)
   "Build Flatpak package."

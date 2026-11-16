@@ -248,6 +248,17 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.1 (2026-11-16)
+
+- *Every recipe builds with =make=.* The Dockerfile, the Debian rules, the
+  openSUSE spec, the Arch PKGBUILD and the Flatpak manifest lost their meson
+  setup/compile/test/install steps, and the project's own =maak.scm= tasks do
+  what a developer does: =make build=, =make check=, =make i18n=.  The test job
+  runs the whole suite in the manifest shell -- it needs no display, so there is
+  no Xvfb, no a11y bus and no pinned renderer left to explain.
+- *The Scheme suite is back in the tree*, which is what =make check= runs beside
+  the Rust tests and the lints: 342 assertions over the Guile modules.
+
 ** v2.0.0 (2026-11-16)
 
 - *The whole implementation is Rust and Scheme.* The C is gone: every module --
