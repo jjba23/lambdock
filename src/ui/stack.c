@@ -29,90 +29,16 @@ void lambdock_stack_entry_free(LambdockStackEntry *entry) {
   g_free(entry);
 }
 
-char *lambdock_stack_expand_path(const char *path) {
-  if (!path || *path == '\0')
-    return NULL;
-
-  if (g_strcmp0(path, "~") == 0)
-    return g_strdup(g_get_home_dir());
-
-  if (g_str_has_prefix(path, "~/"))
-    return g_build_filename(g_get_home_dir(), path + 2, NULL);
-
-  return g_strdup(path);
-}
-
-/** @path without trailing slashes (but "/" stays "/"). */
-static char *strip_trailing_slashes(const char *path) {
-  char *copy = g_strdup(path);
-  gsize length = strlen(copy);
-
-  while (length > 1 && copy[length - 1] == '/')
-    copy[--length] = '\0';
-
-  return copy;
-}
-
-char *lambdock_stack_child_path(const char *dir, const char *name) {
-  if (!dir || *dir == '\0' || !name || *name == '\0')
-    return NULL;
-
-  return g_build_filename(dir, name, NULL);
-}
-
-char *lambdock_stack_parent_path(const char *path, const char *root) {
-  if (!path || *path == '\0' || !root || *root == '\0')
-    return NULL;
-
-  g_autofree char *here = strip_trailing_slashes(path);
-  g_autofree char *ceiling = strip_trailing_slashes(root);
-
-  /* At the stack's own folder there is nowhere to go back to, and a path that
-   * is not inside the stack at all is not walked out of. */
-  if (g_strcmp0(here, ceiling) == 0 || !g_str_has_prefix(here, ceiling))
-    return NULL;
-
-  g_autofree char *parent = g_path_get_dirname(here);
-  if (g_strcmp0(parent, ceiling) == 0)
-    return g_strdup(ceiling);
-
-  /* Only report a parent that is still inside the stack. */
-  if (!g_str_has_prefix(parent, ceiling))
-    return g_strdup(ceiling);
-
-  return g_strdup(parent);
-}
-
-char *lambdock_stack_breadcrumb(const char *path, const char *root,
-                                const char *root_label) {
-  g_autofree char *here =
-      (path && *path != '\0') ? strip_trailing_slashes(path) : NULL;
-  g_autofree char *ceiling =
-      (root && *root != '\0') ? strip_trailing_slashes(root) : NULL;
-
-  g_autofree char *fallback = ceiling ? g_path_get_basename(ceiling) : NULL;
-  const char *label = (root_label && *root_label != '\0')
-                          ? root_label
-                          : (fallback ? fallback : _("Stack"));
-
-  /* Not inside the stack (or no stack at all): just say where we are. */
-  if (!here || !ceiling || g_strcmp0(here, ceiling) == 0 ||
-      !g_str_has_prefix(here, ceiling))
-    return g_strdup(label);
-
-  GString *crumb = g_string_new(label);
-  const char *rest = here + strlen(ceiling);
-  g_auto(GStrv) parts = g_strsplit(rest, "/", -1);
-
-  for (int i = 0; parts[i] != NULL; i++) {
-    if (*parts[i] == '\0')
-      continue;
-    g_string_append(crumb, " / ");
-    g_string_append(crumb, parts[i]);
-  }
-
-  return g_string_free(crumb, FALSE);
-}
+/* ============================================================================
+ * PATH ARITHMETIC -- in rust/src/ui/stack.rs
+ * ============================================================================
+ * Expanding `~`, joining a child, walking back to a parent without leaving the
+ * stack's own folder, and saying where you are in one line: all of it is string
+ * arithmetic, so it is Rust and it is tested. lambdock_stack_view_from_string()
+ * and lambdock_stack_view_to_string() went with it -- the view modes are two names
+ * and two enum values. What stays here is the folder listing and the view that
+ * draws it.
+ */
 
 static gint compare_stack_entries(gconstpointer a, gconstpointer b) {
   const LambdockStackEntry *entry_a = *(const LambdockStackEntry *const *)a;
@@ -216,6 +142,8 @@ static const LambdockStackViewOps STACK_VIEW_OPS[] = {
 };
 
 /** The descriptor of @view; unknown views fall back to the first row. */
+/* The view-name lookups (lambdock_stack_view_from_string / _to_string) are in
+ * rust/src/ui/stack.rs; the ops table below is what this file draws with. */
 static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
   for (gsize i = 0; i < G_N_ELEMENTS(STACK_VIEW_OPS); i++) {
     if (STACK_VIEW_OPS[i].view == view)
@@ -225,21 +153,6 @@ static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
   return &STACK_VIEW_OPS[0];
 }
 
-LambdockStackView lambdock_stack_view_from_string(const char *name) {
-  if (!name)
-    return LAMBDOCK_STACK_VIEW_GRID;
-
-  for (gsize i = 0; i < G_N_ELEMENTS(STACK_VIEW_OPS); i++) {
-    if (g_ascii_strcasecmp(name, STACK_VIEW_OPS[i].name) == 0)
-      return STACK_VIEW_OPS[i].view;
-  }
-
-  return LAMBDOCK_STACK_VIEW_GRID;
-}
-
-const char *lambdock_stack_view_to_string(LambdockStackView view) {
-  return stack_view_ops(view)->name;
-}
 
 /* ============================================================================
  * ENTRY ICONS

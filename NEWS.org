@@ -100,7 +100,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the app-specific actions behind the browser and player sections, the desktop
   entry's own launchers, the inspector that answers "why is this item here?", and
   the two long jobs -- emptying the trash and the deferred removal -- which keep the
-  C's rule that a widget is not destroyed from inside its own handler.  A
+  C's rule that a widget is not destroyed from inside its own handler.  The folder
+  stacks started the same way: expanding `~`, joining a child, walking back to a
+  parent without leaving the stack's own folder, the breadcrumb in one line and the
+  two view names are ~rust/src/ui/stack.rs~, tested as string arithmetic; what is
+  still C is the folder listing, the thumbnails and the view that draws them.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

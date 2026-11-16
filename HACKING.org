@@ -316,7 +316,7 @@ lambdock/
 │       ├── clock.h            # Analogue face: squircle, ticks, hands (in rust/src/ui/)
 │       ├── dock_item_windows.h # An item's windows: tracking, styling, lookup (in rust/src/ui/)
 │       ├── popover_menu.h     # Right-click/multi-window popover builder (in rust/src/ui/)
-│       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
+│       ├── stack.c/.h         # Folder stacks: listing, views, popover (paths in rust/src/ui/)
 │       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
 │       ├── trash.h            # Freedesktop.org trash: roots, count, empty, open (in rust/src/ui/)
 │       ├── preferences.c/.h   # Settings window + per-dock window registry

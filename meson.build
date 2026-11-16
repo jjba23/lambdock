@@ -274,6 +274,7 @@ rust_sources = files(
   'rust/src/ui/icon_zoom.rs',
   'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
+  'rust/src/ui/stack.rs',
   'rust/src/ui/popover_menu.rs',
   'rust/src/ui/shelf.rs',
   'rust/src/ui/shelf_follow.rs',

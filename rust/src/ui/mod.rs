@@ -21,6 +21,7 @@ pub mod poof;
 pub mod popover_menu;
 pub mod shelf;
 pub mod shelf_follow;
+pub mod stack;
 pub mod theme_engine;
 pub mod trash;
 pub mod widget_utils;
