@@ -25,8 +25,9 @@ use crate::core::item_text::{
 };
 use crate::log_warn;
 use crate::state::LambdockState;
-use gtk4::gio;
+use gtk4::gdk;
 use gtk4::glib;
+use gtk4::glib::translate::{FromGlib, IntoGlib};
 use gtk4::glib::translate::{from_glib_borrow, Borrowed};
 use gtk4::prelude::*;
 use std::ffi::CStr;
@@ -155,6 +156,20 @@ const ITEM_KIND_OPS: [KindOps; 6] = [
 ];
 
 extern "C" {
+    /// `dock_item_from_widget` in `src/ui/dock_item.c`: the widget back pointer.
+    fn dock_item_from_widget(widget: *mut gtk4::ffi::GtkWidget) -> *mut DockItem;
+
+    /// `lambdock_dock_item_show_menu` in `src/ui/dock_item.c`: the toggle half of
+    /// the keyboard's right click.
+    fn lambdock_dock_item_show_menu(item: *mut DockItem);
+
+    /// `dock_dnd_persist_order` in `src/guile_bridge.c`: remembers the new order.
+    fn dock_dnd_persist_order(state: *mut LambdockState);
+
+    /// `src/ui/launchpad.c`: the one launchpad, which Escape also closes.
+    fn lambdock_launchpad_is_open() -> c_int;
+    fn lambdock_launchpad_hide();
+
     /// `lambdock_launchpad_show` in `src/ui/launchpad.c`.
     fn lambdock_launchpad_show(state: *mut LambdockState);
 
@@ -278,6 +293,19 @@ unsafe fn only_window(item: &DockItem) -> Option<*mut AppWindow> {
     }
 
     Some(first.data.cast::<AppWindow>())
+}
+
+/// A popover field of an item or of the dock, as a popover.
+///
+/// # Safety
+///
+/// `popover` must be null or a live `GtkPopover`.
+unsafe fn popover_of(popover: *mut c_void) -> Option<Borrowed<gtk4::Popover>> {
+    if popover.is_null() {
+        return None;
+    }
+
+    Some(from_glib_borrow(popover.cast::<gtk4::ffi::GtkPopover>()))
 }
 
 /// A widget field of an item, as a widget.
@@ -614,6 +642,675 @@ mod kind_tests {
         // A null item is the fallback too.
         let null = unsafe { lambdock_item_title(std::ptr::null(), c"fallback".as_ptr()) };
         assert_eq!(unsafe { CStr::from_ptr(null) }.to_str(), Ok("fallback"));
+    }
+}
+
+
+// ============================================================================
+// THE KEYBOARD
+// ============================================================================
+//
+// A dock is a row of icons, which a screen reader sees as a row of unnamed
+// buttons unless each one says what it is -- and which a keyboard user cannot
+// reach at all unless the arrow keys walk it. The keys that move the focus, the
+// key that is a right click, and where a step lands are decisions about numbers,
+// so they are values with tests; the focus itself is GTK's.
+
+/// Where the focus is, as far as a step cares.
+#[derive(Clone, Copy)]
+enum Focus {
+    /// Nothing in the dock has it.
+    None,
+    /// The focused item sits at this index among the ones the keyboard reaches.
+    At(i32),
+    /// Something focused is not one of those items (a separator, or a widget the
+    /// dock does not own).
+    Elsewhere,
+}
+
+/// How far a key moves along the dock: -1, +1, or 0 when the key is not a step
+/// on this axis. The cross axis belongs to whatever is focused, not the dock.
+fn key_step(orientation: gtk4::Orientation, keyval: gdk::Key) -> i32 {
+    let (back, forward) = match orientation {
+        gtk4::Orientation::Horizontal => (gdk::Key::Left, gdk::Key::Right),
+        _ => (gdk::Key::Up, gdk::Key::Down),
+    };
+
+    if keyval == back {
+        -1
+    } else if keyval == forward {
+        1
+    } else {
+        0
+    }
+}
+
+/// Whether a key is the keyboard's right click: the Menu key, or Shift+F10.
+fn key_opens_menu(keyval: gdk::Key, modifiers: gdk::ModifierType) -> bool {
+    keyval == gdk::Key::Menu
+        || (keyval == gdk::Key::F10 && modifiers.contains(gdk::ModifierType::SHIFT_MASK))
+}
+
+/// Where a step from `focus` lands, clamped into the dock.
+///
+/// `None` means the key changes nothing -- an empty dock, or already at the end,
+/// which is what lets a parent take the key instead. With nothing focused, a step
+/// forward starts at the first item and a step back at the last.
+fn stepped_index(focus: Focus, delta: i32, count: usize) -> Option<usize> {
+    if count == 0 || delta == 0 {
+        return None;
+    }
+
+    let count = count as i32;
+    let base = match focus {
+        Focus::At(index) => index,
+        // Nothing focused, or something that is not an item: the step starts at
+        // the near end, so the first key always lands on an icon.
+        Focus::None | Focus::Elsewhere => {
+            if delta > 0 {
+                -1
+            } else {
+                count
+            }
+        }
+    };
+
+    let next = (base + delta).clamp(0, count - 1);
+
+    match focus {
+        // As far as this key goes: the dock has no business consuming it.
+        Focus::At(index) if next == index => None,
+        _ => Some(next as usize),
+    }
+}
+
+/// `state->dock_items`, the list the dock is built from.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+unsafe fn dock_items(state: *const LambdockState) -> *mut GList {
+    state
+        .as_ref()
+        .map_or(std::ptr::null_mut(), |state| state.dock_items.cast::<GList>())
+}
+
+/// Whether the keyboard can reach `item`: it has a button, and is not a separator
+/// (which is drawn, not focused).
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn keyboard_reachable(item: *const DockItem) -> bool {
+    item.as_ref()
+        .is_some_and(|item| !item.button.is_null() && item.kind != ITEM_SEPARATOR)
+}
+
+/// The `index`th item the keyboard can reach.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn item_at_index(state: *const LambdockState, index: usize) -> *mut DockItem {
+    let mut seen = 0;
+    let mut link = dock_items(state);
+
+    while let Some(entry) = link.as_ref() {
+        let item = entry.data.cast::<DockItem>();
+        if keyboard_reachable(item) {
+            if seen == index {
+                return item;
+            }
+            seen += 1;
+        }
+
+        link = entry.next;
+    }
+
+    std::ptr::null_mut()
+}
+
+/// The index of `target` among the reachable items, when it is one of them.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`; `target` must be null or a live
+/// `DockItem`.
+unsafe fn index_of(state: *const LambdockState, target: *const DockItem) -> Option<i32> {
+    if target.is_null() {
+        return None;
+    }
+
+    let mut index = 0;
+    let mut link = dock_items(state);
+
+    while let Some(entry) = link.as_ref() {
+        let item = entry.data.cast::<DockItem>();
+        if keyboard_reachable(item) {
+            if item == target.cast_mut() {
+                return Some(index);
+            }
+            index += 1;
+        }
+
+        link = entry.next;
+    }
+
+    None
+}
+
+/// The item that currently holds the keyboard focus, looking through the button's
+/// children so a focused label still resolves to its item.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+unsafe fn focused_item(state: *mut LambdockState) -> *mut DockItem {
+    let Some(state_ref) = state.as_ref() else {
+        return std::ptr::null_mut();
+    };
+
+    let Some(window) = widget_of(state_ref.window) else {
+        return std::ptr::null_mut();
+    };
+    let Some(window) = window.downcast_ref::<gtk4::Window>() else {
+        return std::ptr::null_mut();
+    };
+
+    let root = state_ref.window.cast::<gtk4::ffi::GtkWidget>();
+    let mut focus = gtk4::prelude::GtkWindowExt::focus(window);
+
+    while let Some(widget) = focus {
+        let item = dock_item_from_widget(widget.as_ptr());
+        if !item.is_null() {
+            return item;
+        }
+        if widget.as_ptr() == root {
+            break;
+        }
+
+        focus = widget.parent();
+    }
+
+    std::ptr::null_mut()
+}
+
+/// Where the focus is, for a step's arithmetic.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn focus_position(state: *mut LambdockState) -> Focus {
+    let item = focused_item(state);
+
+    if item.is_null() {
+        return Focus::None;
+    }
+
+    match index_of(state, item) {
+        Some(index) => Focus::At(index),
+        None => Focus::Elsewhere,
+    }
+}
+
+/// Puts the keyboard focus on `item`'s button.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn grab_item_focus(item: *mut DockItem) -> bool {
+    let Some(button) = item.as_ref().and_then(|item| widget_of(item.button)) else {
+        return false;
+    };
+
+    button.grab_focus();
+
+    true
+}
+
+/// How many items the keyboard can reach.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_count(state: *const LambdockState) -> c_int {
+    let mut count = 0;
+    let mut link = dock_items(state);
+
+    while let Some(entry) = link.as_ref() {
+        count += c_int::from(keyboard_reachable(entry.data.cast::<DockItem>()));
+        link = entry.next;
+    }
+
+    count
+}
+
+/// The `index`th item the keyboard can reach, or null.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_at_index(
+    state: *const LambdockState,
+    index: c_int,
+) -> *mut DockItem {
+    if state.is_null() || index < 0 {
+        return std::ptr::null_mut();
+    }
+
+    item_at_index(state, index as usize)
+}
+
+/// The index of `item` among the reachable ones, or -1 when it is not one.
+///
+/// # Safety
+///
+/// Both must be null or live.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_index_of(
+    state: *const LambdockState,
+    item: *const DockItem,
+) -> c_int {
+    if state.is_null() {
+        return -1;
+    }
+
+    index_of(state, item).unwrap_or(-1)
+}
+
+/// The item that holds the keyboard focus, or null.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_focused(state: *mut LambdockState) -> *mut DockItem {
+    if state.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    focused_item(state)
+}
+
+/// Moves the focus `delta` items along the dock.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_focus_step(
+    state: *mut LambdockState,
+    delta: c_int,
+) -> c_int {
+    if state.is_null() || delta == 0 {
+        return 0;
+    }
+
+    let count = lambdock_dock_item_count(state) as usize;
+    if count == 0 {
+        return 0;
+    }
+
+    let Some(next) = stepped_index(focus_position(state), delta, count) else {
+        return 0;
+    };
+
+    c_int::from(grab_item_focus(item_at_index(state, next)))
+}
+
+/// Moves the focus to the first or the last item.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_focus_edge(
+    state: *mut LambdockState,
+    last: c_int,
+) -> c_int {
+    if state.is_null() {
+        return 0;
+    }
+
+    let count = lambdock_dock_item_count(state) as usize;
+    if count == 0 {
+        return 0;
+    }
+
+    let index = if last != 0 { count - 1 } else { 0 };
+
+    c_int::from(grab_item_focus(item_at_index(state, index)))
+}
+
+/// Lays the dock's child widgets out in the order of `state->dock_items`.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn reorder_dock_widgets(state: &LambdockState) {
+    let Some(box_) = widget_of(state.box_) else {
+        return;
+    };
+    let Some(box_) = box_.downcast_ref::<gtk4::Box>() else {
+        return;
+    };
+
+    let mut previous: Option<gtk4::Widget> = None;
+    let mut link = state.dock_items.cast::<GList>();
+
+    while let Some(entry) = link.as_ref() {
+        let item = entry.data.cast::<DockItem>();
+        link = entry.next;
+
+        let Some(item) = item.as_ref() else {
+            continue;
+        };
+
+        let child = if !item.container.is_null() {
+            item.container
+        } else {
+            item.button
+        };
+        let Some(child) = widget_of(child) else {
+            continue;
+        };
+        let parent = child.parent().map(|parent| parent.as_ptr());
+        if parent != Some(box_.upcast_ref::<gtk4::Widget>().as_ptr()) {
+            continue;
+        }
+
+        box_.reorder_child_after(child.as_ref(), previous.as_ref());
+        previous = Some(child.as_ref().clone());
+    }
+}
+
+/// Moves `item` `delta` places along the dock, and remembers the order.
+///
+/// # Safety
+///
+/// Both must be null or live.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_move(
+    state: *mut LambdockState,
+    item: *mut DockItem,
+    delta: c_int,
+) -> c_int {
+    let (Some(state_ref), false) = (state.as_ref(), item.is_null() || delta == 0) else {
+        return 0;
+    };
+
+    let count = lambdock_dock_item_count(state) as usize;
+    let Some(index) = index_of(state, item) else {
+        return 0;
+    };
+    let target = index + delta;
+    if target < 0 || target as usize >= count {
+        return 0;
+    }
+
+    let Some(other) = item_at_index(state, target as usize).as_ref() else {
+        return 0;
+    };
+    let other = other as *const DockItem as *mut DockItem;
+
+    let list = glib::ffi::g_list_find(state_ref.dock_items.cast(), item.cast());
+    if list.is_null() {
+        return 0;
+    }
+    let list = glib::ffi::g_list_delete_link(state_ref.dock_items.cast(), list);
+    ((*(state as *mut LambdockState)).dock_items) = list.cast();
+
+    // The neighbour may have been the link that was just deleted: look it up
+    // again, and put the item back rather than drop it off the dock.
+    let other_link = glib::ffi::g_list_find(list, other.cast());
+    if other_link.is_null() {
+        let list = glib::ffi::g_list_append(list, item.cast());
+        ((*(state as *mut LambdockState)).dock_items) = list.cast();
+        return 0;
+    }
+
+    let before = if delta > 0 {
+        (*other_link).next
+    } else {
+        other_link
+    };
+    let list = glib::ffi::g_list_insert_before(list, before, item.cast());
+    ((*(state as *mut LambdockState)).dock_items) = list.cast();
+
+    reorder_dock_widgets(&*state);
+    dock_dnd_persist_order(state);
+
+    1
+}
+
+/// Closes every open panel of `state`: the item menus, the dock's own popover and
+/// the launchpad.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_items_close_popovers(state: *mut LambdockState) -> c_int {
+    let Some(state_ref) = state.as_ref() else {
+        return 0;
+    };
+
+    let mut closed = false;
+    let mut link = state_ref.dock_items.cast::<GList>();
+
+    while let Some(entry) = link.as_ref() {
+        link = entry.next;
+
+        let item = entry.data.cast::<DockItem>();
+        let Some(popover) = item.as_ref().and_then(|item| popover_of(item.popover)) else {
+            continue;
+        };
+
+        if crate::ui::is_shown(popover.upcast_ref()) {
+            popover.popdown();
+            closed = true;
+        }
+    }
+
+    if let Some(popover) = popover_of(state_ref.popover) {
+        if crate::ui::is_shown(popover.upcast_ref()) {
+            popover.popdown();
+            closed = true;
+        }
+    }
+
+    if lambdock_launchpad_is_open() != 0 {
+        lambdock_launchpad_hide();
+        closed = true;
+    }
+
+    c_int::from(closed)
+}
+
+/// What a key does to the dock, as a whole.
+///
+/// Arrow keys move the focus along the dock's own axis (with Ctrl, they rearrange
+/// it), Home and End jump to either end, Menu and Shift+F10 open the focused
+/// item's menu, and Escape closes whatever is open. Anything else is not the
+/// dock's.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_items_handle_key(
+    state: *mut LambdockState,
+    keyval: u32,
+    modifiers: u32,
+) -> c_int {
+    let Some(state_ref) = state.as_ref() else {
+        return 0;
+    };
+
+    let key = gdk::Key::from_glib(keyval);
+    let modifiers = gdk::ModifierType::from_bits_truncate(modifiers);
+
+    if key == gdk::Key::Escape {
+        return lambdock_dock_items_close_popovers(state);
+    }
+
+    let focused = focused_item(state);
+
+    if key_opens_menu(key, modifiers) {
+        if focused.is_null() {
+            return 0;
+        }
+
+        lambdock_dock_item_show_menu(focused);
+        return 1;
+    }
+
+    // Compared rather than converted: an orientation nobody set is horizontal,
+    // which is better than a panic on a value mirrored from C.
+    let orientation = if state_ref.orientation == gtk4::Orientation::Vertical.into_glib() {
+        gtk4::Orientation::Vertical
+    } else {
+        gtk4::Orientation::Horizontal
+    };
+
+    let step = key_step(orientation, key);
+    if step != 0 {
+        // Ctrl+arrow rearranges the dock, so dragging an icon is not the only way
+        // to move it.
+        if modifiers.contains(gdk::ModifierType::CONTROL_MASK) {
+            if focused.is_null() {
+                return 0;
+            }
+            return lambdock_dock_item_move(state, focused, step);
+        }
+
+        return lambdock_dock_item_focus_step(state, step);
+    }
+
+    if key == gdk::Key::Home {
+        return lambdock_dock_item_focus_edge(state, 0);
+    }
+    if key == gdk::Key::End {
+        return lambdock_dock_item_focus_edge(state, 1);
+    }
+
+    0
+}
+
+/// Installs the dock's keyboard handling on `root`, once.
+///
+/// # Safety
+///
+/// `root` must be null or a live `GtkWidget`; `state` must be a live
+/// `LambdockState` that outlives it.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_attach_key_navigation(
+    root: *mut gtk4::ffi::GtkWidget,
+    state: *mut LambdockState,
+) {
+    use gtk4::glib::translate::from_glib_borrow;
+
+    if root.is_null() || state.is_null() {
+        return;
+    }
+
+    let root: Borrowed<gtk4::Widget> = from_glib_borrow(root);
+    if unsafe { root.data::<bool>(KEY_NAVIGATION_KEY) }.is_some() {
+        return;
+    }
+
+    let keys = gtk4::EventControllerKey::new();
+    // Capture phase: the arrow keys must reach the dock before a child (a focused
+    // icon, the scroll view) consumes them as its own navigation.
+    keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
+
+    keys.connect_key_pressed(move |_, keyval, _, modifiers| {
+        let handled = unsafe {
+            lambdock_dock_items_handle_key(state, keyval.into_glib(), modifiers.bits())
+        };
+
+        if handled != 0 {
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+
+    root.add_controller(keys);
+    root.set_data(KEY_NAVIGATION_KEY, true);
+}
+
+/// Where `root` records that the keyboard handling is installed.
+const KEY_NAVIGATION_KEY: &str = "lambdock-key-navigation";
+
+#[cfg(test)]
+mod key_tests {
+    use super::*;
+
+    /// The axis the dock runs along decides which pair of arrows step.
+    #[test]
+    fn a_step_key_belongs_to_one_axis() {
+        use gtk4::Orientation::{Horizontal, Vertical};
+
+        assert_eq!(key_step(Horizontal, gdk::Key::Left), -1);
+        assert_eq!(key_step(Horizontal, gdk::Key::Right), 1);
+        assert_eq!(key_step(Horizontal, gdk::Key::Up), 0);
+        assert_eq!(key_step(Horizontal, gdk::Key::Down), 0);
+
+        assert_eq!(key_step(Vertical, gdk::Key::Up), -1);
+        assert_eq!(key_step(Vertical, gdk::Key::Down), 1);
+        assert_eq!(key_step(Vertical, gdk::Key::Left), 0);
+        assert_eq!(key_step(Vertical, gdk::Key::Right), 0);
+
+        // Not a step at all.
+        assert_eq!(key_step(Horizontal, gdk::Key::space), 0);
+        assert_eq!(key_step(Vertical, gdk::Key::Escape), 0);
+    }
+
+    /// Two spellings of "open the item's menu", and nothing else is one.
+    #[test]
+    fn the_menu_key_and_shift_f10_open_the_menu() {
+        let none = gdk::ModifierType::empty();
+        let shift = gdk::ModifierType::SHIFT_MASK;
+
+        assert!(key_opens_menu(gdk::Key::Menu, none));
+        assert!(key_opens_menu(gdk::Key::F10, shift));
+
+        // F10 alone is not, and neither is Shift with another key. The Menu key
+        // opens the menu whatever else is held: it has no other meaning here.
+        assert!(key_opens_menu(gdk::Key::Menu, shift));
+        assert!(!key_opens_menu(gdk::Key::F10, none));
+        assert!(!key_opens_menu(gdk::Key::a, shift));
+    }
+
+    /// A step is clamped into the dock, and with nothing focused it starts at the
+    /// near end.
+    #[test]
+    fn a_step_starts_at_the_near_end_and_stops_at_the_far_one() {
+        // Nothing focused: forward is the first item, back is the last.
+        assert_eq!(stepped_index(Focus::None, 1, 3), Some(0));
+        assert_eq!(stepped_index(Focus::None, -1, 3), Some(2));
+
+        // The middle walks both ways.
+        assert_eq!(stepped_index(Focus::At(1), 1, 3), Some(2));
+        assert_eq!(stepped_index(Focus::At(1), -1, 3), Some(0));
+
+        // At either end the key does nothing, so a parent can still have it.
+        assert_eq!(stepped_index(Focus::At(0), -1, 3), None);
+        assert_eq!(stepped_index(Focus::At(2), 1, 3), None);
+
+        // A dock of one is always at its end, and an empty dock has no index.
+        assert_eq!(stepped_index(Focus::At(0), 1, 1), None);
+        assert_eq!(stepped_index(Focus::None, 1, 0), None);
+        assert_eq!(stepped_index(Focus::None, -1, 0), None);
+
+        // The focus can sit on something the dock does not list -- a separator,
+        // or a widget that is not an item. That is not a position, so the step
+        // starts from the near end instead of refusing to move.
+        assert_eq!(stepped_index(Focus::Elsewhere, 1, 3), Some(0));
+        assert_eq!(stepped_index(Focus::Elsewhere, -1, 3), Some(2));
     }
 }
 

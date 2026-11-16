@@ -192,3 +192,14 @@ __attribute__((weak)) void lambdock_stack_set_view(DockItem *item, LambdockStack
 __attribute__((weak)) void lambdock_launchpad_show(LambdockState *state) {
   (void)state;
 }
+
+/* Escape closes the launchpad, and the Menu key opens the focused item's menu.
+ * Neither file is compiled into a slice binary, and "nothing is open, nothing to
+ * show" is what those binaries need to hear. */
+__attribute__((weak)) gboolean lambdock_launchpad_is_open(void) { return FALSE; }
+
+__attribute__((weak)) void lambdock_launchpad_hide(void) {}
+
+__attribute__((weak)) void lambdock_dock_item_show_menu(DockItem *item) {
+  (void)item;
+}
