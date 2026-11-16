@@ -20,7 +20,9 @@ use gtk4::prelude::*;
 use std::ffi::CStr;
 use std::os::raw::c_int;
 
-/// `GtkLayerShellLayer`: above everything, which is what an overlay wants.
+/// `GtkLayerShellLayer`: above the windows (the dock) and above everything (an
+/// overlay).
+pub const LAYER_TOP: c_int = 2;
 pub const LAYER_OVERLAY: c_int = 3;
 
 /// `GtkLayerShellEdge`, in the library's order.
@@ -31,6 +33,7 @@ pub const EDGE_BOTTOM: c_int = 3;
 
 /// `GtkLayerShellKeyboardMode`: the compositor hands this surface the keyboard.
 pub const KEYBOARD_MODE_EXCLUSIVE: c_int = 1;
+pub const KEYBOARD_MODE_ON_DEMAND: c_int = 2;
 
 extern "C" {
     fn gtk_layer_is_supported() -> c_int;
@@ -153,36 +156,24 @@ pub unsafe fn set_monitor(window: &gtk4::Window, monitor: *mut gdk::ffi::GdkMoni
     gtk_layer_set_monitor(window.as_ptr().cast(), monitor);
 }
 
-/// Whether `widget` is a layer surface (a window whose surface layer shell
-/// owns).
-///
-/// The library's own predicate takes a `GtkWindow *`, so the window check comes
-/// first: the dock's state holds widgets, not windows.
+/// Whether `window` is a layer surface (one whose surface layer shell owns).
 ///
 /// # Safety
 ///
-/// `widget` must be a live widget.
-pub unsafe fn is_layer_window(widget: &gtk4::Widget) -> bool {
-    use gtk4::glib::translate::ToGlibPtr;
+/// `window` must be a live window.
+pub unsafe fn is_layer_window(window: &impl IsA<gtk4::Window>) -> bool {
+    let pointer: *mut gtk4::ffi::GtkWindow = window.as_ref().as_ptr().cast();
 
-    if !widget.is::<gtk4::Window>() {
-        return false;
-    }
-
-    let pointer: *mut gtk4::ffi::GtkWidget = widget.to_glib_none().0;
-
-    gtk_layer_is_layer_window(pointer.cast()) != 0
+    gtk_layer_is_layer_window(pointer) != 0
 }
 
 /// The margin between `edge` and the screen edge, which is what the slide moves.
 ///
 /// # Safety
 ///
-/// `widget` must be a live widget that is already a layer surface.
-pub unsafe fn set_margin(widget: &gtk4::Widget, edge: c_int, margin: c_int) {
-    use gtk4::glib::translate::ToGlibPtr;
+/// `window` must be a live window that is already a layer surface.
+pub unsafe fn set_margin(window: &impl IsA<gtk4::Window>, edge: c_int, margin: c_int) {
+    let pointer: *mut gtk4::ffi::GtkWindow = window.as_ref().as_ptr().cast();
 
-    let pointer: *mut gtk4::ffi::GtkWidget = widget.to_glib_none().0;
-
-    gtk_layer_set_margin(pointer.cast(), edge, margin);
+    gtk_layer_set_margin(pointer, edge, margin);
 }

@@ -730,16 +730,24 @@ are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI an
 named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
 stays as the contract the tests call.
 
-=dock_window.c= is two-thirds moved. In =rust/src/dock_window.rs= now: the
+=dock_window.c= is most of the way moved. In =rust/src/dock_window.rs= now: the
 layout half (the monitor, the dimensions it gives the overlay and the capsule,
 the row's margins and alignment, the room the fisheye spreads into, and the input
 region that keeps the unseen parts of the surface from eating clicks), the pure
 surface policy (which edges to anchor and how much desktop to reserve, returned
 by value as a mirrored struct), the slide (its frame callback, the settling
 window that tells an echo apart from a real crossing, and the reduced-motion
-shortcut), the row-at-rest reset, and auto-hide with reveal. What is left in C is
-the fisheye itself, the layer-surface setup and mode classes, the about dialog,
-the teardown, and =main.c= -- which comes last, since it owns everything else.
+shortcut), the row-at-rest reset, auto-hide with reveal, the mode CSS classes and
+the shelf's shape, the layer-shell surface itself (the two branches, the keyboard
+mode, the monitor, the anchors and the exclusive zone), the mode refresh, and the
+first hide. What is left in C is the fisheye, the backdrop menu, the about
+dialog, the teardown, and =main.c= -- which comes last, since it owns everything
+else.
+
+The surface-signal wiring (=on_window_map= and the two =GdkSurface= handlers)
+deliberately stays in C: they connect handlers with `state` as their signal data,
+which is exactly what =detach_window_handlers= disconnects by on teardown, and a
+Rust closure has no user data to disconnect by.
 
 A dozen of those are called from the C half by name, so the file now opens with
 the seam: the declaration list is what is Rust, and reading it is reading the

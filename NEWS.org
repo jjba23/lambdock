@@ -185,6 +185,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   ~LAMBDOCK_DEBUG=1~: the trace still reports the margin, the strip and the
   arrival, and the input region still flips to the whole surface while the dock
   is away.
+- *The dock's look and its surface are Rust too.* The mode CSS classes and the
+  shelf's projected shape, the layer-shell surface and both of its branches (a
+  compositor without the protocol still gets an ordinary window, and X11 still
+  claims its edge through EWMH), the exclusive zone, the mode refresh after a
+  reload, and the first auto-hide are ~rust/src/dock_window.rs~ now, so
+  ~src/dock_window.c~ is down to the fisheye, the backdrop menu, the about
+  dialog and the teardown -- 2230 lines to 984.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

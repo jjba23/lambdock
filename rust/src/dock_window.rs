@@ -19,6 +19,7 @@ use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::{from_glib_borrow, Borrowed, IntoGlib};
 use gtk4::prelude::*;
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use crate::app_window::GList;
@@ -31,8 +32,10 @@ use crate::core::render_stats::{lambdock_stats_bump, INPUT_REGION_SETS, SURFACE_
 use crate::dock_item::{dock_items_refresh_polls, DockItem};
 use crate::state::LambdockState;
 use crate::ui::icon_zoom::{lambdock_icon_zoom_is_zoom, lambdock_icon_zoom_set_scale};
-use crate::ui::layer_shell::{self, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP};
-use crate::ui::shelf::{apply_shelf_layout, lambdock_shelf_geometry_for, shelf_reflection_set_icon_size};
+use crate::ui::layer_shell::{self, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, KEYBOARD_MODE_ON_DEMAND, LAYER_TOP};
+use crate::ui::shelf::{
+    apply_shelf_layout, lambdock_shelf_active, lambdock_shelf_geometry_for, shelf_reflection_set_icon_size,
+};
 use crate::ui::DEFAULT_ICON_SIZE;
 use crate::x11_tracker::lambdock_x11_dock_apply;
 
@@ -952,12 +955,13 @@ pub unsafe extern "C" fn dock_surface_policy_for(state: *const LambdockState) ->
 ///
 /// `dock` must be a live dock.
 unsafe fn set_window_margin(dock: &LambdockState, margin: c_int) {
-    let Some(window) = widget_of(dock.window) else {
+    let Some(window) = window_of(dock) else {
         return;
     };
+    let window = &*window;
 
-    if layer_shell::is_layer_window(&window) {
-        layer_shell::set_margin(&window, dock.edge, margin);
+    if layer_shell::is_layer_window(window) {
+        layer_shell::set_margin(window, dock.edge, margin);
     }
 }
 
@@ -1423,10 +1427,10 @@ pub unsafe extern "C" fn hide_dock(state: *mut LambdockState) {
     // Auto-hide slides the surface off-screen with a layer-shell margin. Without
     // layer shell (X11, GNOME) there is no margin to move, so "hiding" would
     // only freeze the fisheye while the dock stays visible.
-    let Some(window) = widget_of(dock.window) else {
+    let Some(window) = window_of(dock) else {
         return;
     };
-    if !layer_shell::is_layer_window(&window) {
+    if !layer_shell::is_layer_window(&*window) {
         return;
     }
 
@@ -1464,6 +1468,296 @@ pub unsafe extern "C" fn hide_dock(state: *mut LambdockState) {
     if dock.is_hidden == 0 || dock.target_margin != hidden_margin {
         start_margin_animation(dock, hidden_margin);
         dock.is_hidden = 1;
+    }
+}
+
+// ===========================================================================
+// DOCK MODE AND CSS CLASSES
+// ===========================================================================
+
+/// `AUTOHIDE_INITIAL_DELAY_MS` in `lambdock.h`: how long a fresh dock stays out
+/// before it first slides away.
+const AUTOHIDE_INITIAL_DELAY_MS: u32 = 1000;
+
+/// Sets or clears one CSS class on a widget the state holds.
+///
+/// # Safety
+///
+/// `widget` must be null or a live widget.
+unsafe fn set_class(widget: *mut c_void, class: &CStr, enabled: bool) {
+    crate::ui::widget_utils::lambdock_set_css_class(
+        widget.cast(),
+        class.as_ptr(),
+        c_int::from(enabled),
+    );
+}
+
+/// The dock's window, borrowed, when it has one.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Window>> {
+    let widget = widget_of(dock.window)?;
+    let pointer = widget.as_ptr();
+
+    let window: Borrowed<gtk4::Window> = from_glib_borrow(pointer.cast());
+
+    Some(window)
+}
+
+/// Tags the capsule and the window with the shelf's state classes, plus the
+/// class naming the edge the shelf is docked to.
+///
+/// Both widgets are tagged on purpose: user CSS can then target the whole dock
+/// (the window) or the shelf itself (the capsule, which carries the theme).
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirroring: bool) {
+    const EDGE_CLASSES: [&CStr; 4] = [c"shelf-bottom", c"shelf-top", c"shelf-left", c"shelf-right"];
+
+    // Edges are mutually exclusive: clear them all, then set the current one.
+    for widget in [dock.bg_capsule, dock.window] {
+        for class in EDGE_CLASSES {
+            set_class(widget, class, false);
+        }
+    }
+
+    for widget in [dock.bg_capsule, dock.window] {
+        set_class(widget, c"shelf-mode", shelf_active);
+        // `shelf-mirror` means the glass actually shows icon reflections: the
+        // reflection widget then draws the running indicator itself, so the CSS
+        // one must stay quiet.
+        set_class(widget, c"shelf-mirror", mirroring);
+    }
+
+    if !shelf_active {
+        return;
+    }
+
+    // `shelf_edge_class` answers a static string, so it is read, not taken.
+    let edge_class = CStr::from_ptr(shelf_edge_class(dock.edge));
+    for widget in [dock.bg_capsule, dock.window] {
+        set_class(widget, edge_class, true);
+    }
+}
+
+/// Projects the styled capsule onto the shape the shelf parameters describe: the
+/// tilt, the keystone (flare) or both. With neither, the frame passes through.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn apply_shelf_shape(dock: &LambdockState) {
+    if dock.bg_shelf.is_null() {
+        return;
+    }
+
+    crate::ui::shelf::shelf_frame_set_shape(
+        dock.bg_shelf.cast(),
+        dock.edge,
+        shelf_tilt_for_edge(dock.edge, dock.shelf.tilt_deg),
+        dock.shelf.perspective,
+        dock.shelf.flare_px,
+    );
+}
+
+/// Toggles the `taskbar` class on the capsule so themes can give taskbar mode
+/// its own rectangular, edge-to-edge styling, and the `shelf-*` classes that let
+/// any theme restyle the glass shelf.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn apply_dock_mode_classes(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    if dock.bg_capsule.is_null() {
+        return;
+    }
+
+    let shelf_active = lambdock_shelf_active(state) != 0;
+    let mirroring = shelf_active && lambdock_shelf_geometry_for(state, dock.icon_size).band_px > 0;
+
+    set_class(dock.bg_capsule, c"taskbar", dock.taskbar != 0);
+    apply_shelf_css_classes(dock, shelf_active, mirroring);
+    apply_shelf_shape(dock);
+}
+
+// ===========================================================================
+// THE LAYER-SHELL SURFACE
+// ===========================================================================
+
+/// Puts `policy`'s anchors onto the surface.
+///
+/// # Safety
+///
+/// `window` must already be a layer surface.
+unsafe fn apply_surface_anchors(window: &gtk4::Window, policy: &DockSurfacePolicy) {
+    for (edge, anchored) in [
+        (EDGE_TOP, policy.anchor_top),
+        (EDGE_BOTTOM, policy.anchor_bottom),
+        (EDGE_LEFT, policy.anchor_left),
+        (EDGE_RIGHT, policy.anchor_right),
+    ] {
+        layer_shell::set_anchor(window, edge, anchored != 0);
+    }
+}
+
+/// Reserves desktop space for the dock, or nothing at all while it auto-hides.
+///
+/// The rule lives in [`dock_surface_policy_for`], and this is the one way to
+/// apply it: the surface is created with it, and every configuration reload
+/// re-applies it (auto-hide and the capsule thickness can both change).
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn dock_apply_exclusive_zone(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+    if !layer_shell::is_layer_window(&*window) {
+        return;
+    }
+
+    let policy = dock_surface_policy_for(state);
+    layer_shell::set_exclusive_zone(&window, policy.exclusive_zone_px);
+}
+
+/// Converts a standard GTK window to a layer-shell surface anchored to the
+/// docked edge.
+///
+/// Layer shell is a Wayland protocol that not every compositor implements (and
+/// that X11 does not have at all). Where it is missing the dock is still a
+/// perfectly good normal window, so this says so once and leaves it alone rather
+/// than letting every later `gtk_layer_*` call log its own critical.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock with its window built.
+#[no_mangle]
+pub unsafe extern "C" fn setup_layer_shell_window(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    let Some(widget) = widget_of(dock.window) else {
+        return;
+    };
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    if layer_shell::lambdock_layer_shell_available() == 0 {
+        // Two different reasons with two different consequences, so they get two
+        // different messages: on X11 the dock still claims its edge through EWMH
+        // and only loses the slide; on a Wayland compositor without the protocol
+        // there is nothing to claim it with.
+        if crate::x11_tracker::lambdock_x11_session() != 0 {
+            crate::log_info!(
+                "Dock",
+                "X11 session: docking through EWMH instead of layer shell. The dock reserves its edge and tracks windows; auto-hide needs a layer surface and stays off."
+            );
+        } else {
+            crate::log_warn!(
+                "Dock",
+                "This compositor has no wlr-layer-shell support (GNOME on Wayland is the common one): showing the dock as an ordinary window. It launches and lists nothing running; place it, or use a compositor that implements the protocol."
+            );
+        }
+
+        // An X11 dock has to say what it is *before* the window manager sees the
+        // window: by the time it is mapped it has already been managed, and a
+        // window managed as an application is decorated, tiled and listed in
+        // taskbars. Layer shell has the same requirement in the other direction
+        // -- `gtk_layer_init_for_window` must come before the surface exists --
+        // which is why this only happens on the branch not using it.
+        widget.realize();
+        lambdock_x11_dock_apply(state);
+        return;
+    }
+
+    layer_shell::init_for_window(&window);
+    layer_shell::set_namespace(&window, c"lambdock");
+
+    // Layer surfaces get no keyboard by default, which would leave the dock
+    // unreachable for keyboard-only users: icons could not be tabbed to, and
+    // Escape would never reach an open stack. On-demand keeps the compositor in
+    // charge while letting a click (or a compositor shortcut) hand the dock the
+    // keyboard. Protocol versions below 4 have no on-demand mode and fall back
+    // to "none"; the dock stays usable by pointer there.
+    layer_shell::set_keyboard_mode(&window, KEYBOARD_MODE_ON_DEMAND);
+
+    // A monitor that has already been unplugged must not be handed to the
+    // compositor; with none set the surface follows the default output.
+    let monitor = dock.monitor.cast::<gdk::ffi::GdkMonitor>();
+    if layer_shell::is_monitor_valid(monitor) != 0 {
+        layer_shell::set_monitor(&window, monitor);
+    }
+
+    // The dock renders on the top layer, above normal application windows.
+    layer_shell::set_layer(&window, LAYER_TOP);
+
+    let policy = dock_surface_policy_for(state);
+    apply_surface_anchors(&window, &policy);
+
+    // The exclusive zone reserves desktop space so windows do not overlap the
+    // dock.
+    layer_shell::set_exclusive_zone(&window, policy.exclusive_zone_px);
+}
+
+/// Re-applies the anchors, the mode classes and the dimensions after a live
+/// configuration reload toggles dock <-> taskbar mode.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn refresh_dock_mode(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    // Anchors only exist on a layer surface (no layer shell on X11 or GNOME).
+    if layer_shell::is_layer_window(&*window) {
+        let policy = dock_surface_policy_for(state);
+        apply_surface_anchors(&window, &policy);
+    }
+
+    apply_dock_mode_classes(state);
+    // Dimension updates end by re-placing the X11 window, which is where a mode
+    // switch (dock <-> taskbar) changes the dock's size.
+    update_dock_dimensions(state);
+}
+
+/// Schedules the first hide, on a dock that auto-hides.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn schedule_initial_autohide(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    // Without a layer surface there is no slide, so there is nothing to
+    // schedule.
+    if dock.auto_hide != 0 && layer_shell::is_layer_window(&*window) {
+        schedule_hide_timer(state, AUTOHIDE_INITIAL_DELAY_MS);
     }
 }
 
