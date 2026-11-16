@@ -22,6 +22,7 @@ Summary:        Wayland desktop dock customizable with GNU Guile Scheme
 License:        MIT
 URL:            https://github.com/jjba23/lambdock
 Source0:        %{name}-%{version}.tar.gz
+BuildRequires:  cargo
 BuildRequires:  gcc
 BuildRequires:  gettext
 BuildRequires:  meson
@@ -34,6 +35,7 @@ BuildRequires:  pkgconfig(guile-3.0)
 BuildRequires:  pkgconfig(wayland-client)
 BuildRequires:  pkgconfig(wayland-protocols)
 BuildRequires:  pkgconfig(x11)
+BuildRequires:  rust
 Requires:       gtk4
 Requires:       guile
 Requires:       hicolor-icon-theme

@@ -10,6 +10,8 @@
   ninja,
   pkg-config,
   wayland-scanner,
+  cargo,
+  rustc,
   glib,
   wrapGAppsHook4,
   xvfb-run,
@@ -41,6 +43,10 @@ stdenv.mkDerivation (finalAttrs: {
     ninja
     pkg-config
     wayland-scanner
+    # The ported modules: meson calls rustc for the archive and cargo for the
+    # Rust unit tests.
+    rustc
+    cargo
     glib
     wrapGAppsHook4
     gettext

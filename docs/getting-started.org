@@ -306,11 +306,13 @@ dock into a full-width taskbar with window titles, set
 :CUSTOM_ID: dependencies
 :END:
 
-The project requires the following C and Scheme dependencies:
+The project requires the following C, Rust and Scheme dependencies:
 
 - *GTK 4* (~gtk4~)
 - *GTK4 Layer Shell* (~gtk4-layer-shell~)
 - *GNU Guile 3.0* (~guile-3.0~)
+- *Rust toolchain* (~rustc~ and ~cargo~): it builds the modules ported from C to
+  Rust so far; see [[file:../HACKING.org::#the-rust-seam][HACKING: The Rust seam]].
 - *Wayland development files* (~libwayland-dev~, ~wayland-protocols~,
   ~wlr-protocols~)
 - *X11 support* (~gtk4-x11~ and ~libx11-dev~, optional): with them the dock

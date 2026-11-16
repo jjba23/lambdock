@@ -15,6 +15,7 @@
              (gnu packages gettext)
              (gnu packages freedesktop)
              (gnu packages pkg-config)
+             (gnu packages rust)
              (gnu packages xorg))
 
 (define %source-dir
@@ -33,7 +34,11 @@
                      #:parallel-tests? #t))
     (native-inputs (list (list glib "bin")
                          pkg-config
-                         gettext-minimal))
+                         gettext-minimal
+                         ;; `rustc' compiles the ported modules and `cargo'
+                         ;; runs their tests; meson invokes both.
+                         rust
+                         (list rust "cargo")))
     (inputs (list gtk
                   gtk4-layer-shell
                   guile-3.0

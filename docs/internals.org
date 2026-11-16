@@ -441,9 +441,9 @@ system deployment.
   package builds, and full system configurations.
 
 And for the Nix people, ~flake.nix~ and ~package.nix~ provide the same guarantees
-in their ecosystem: the flake pins ~nixpkgs~, builds the C core with Meson, and
-runs the test suite under ~xvfb~ with a private DBus session, so ~nix flake check~
-means something.
+in their ecosystem: the flake pins ~nixpkgs~, builds the C and Rust core with
+Meson, and runs the test suite under ~xvfb~ with a private DBus session, so
+~nix flake check~ means something.
 
 ------------------
 

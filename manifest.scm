@@ -32,6 +32,7 @@
              (gnu packages gettext)
              (gnu packages build-tools)
              (gnu packages commencement)
+             (gnu packages rust)
              (gnu packages rust-apps)
              ((guix licenses)
               #:prefix license:))
@@ -40,6 +41,11 @@
                           ;; for production Guile 3.0 is used
                           ;; for dev Arei REPL use Guile Next
                           gcc-toolchain
+                          ;; The Rust toolchain: `rustc' builds the ported
+                          ;; modules and `cargo' runs their tests, both driven
+                          ;; by meson. `rust' keeps cargo in its own output.
+                          rust
+                          (list rust "cargo")
                           gettext-minimal
                           pkg-config
                           meson

@@ -10,7 +10,7 @@
 # Sets target version metadata and compiler flags used system-wide.
 project('lambdock', 'c',
   version: '1.4.0',
-  meson_version: '>= 0.62.0',
+  meson_version: '>= 0.63.0',
   default_options: [
     'c_std=gnu17',            # Target standard C17 with GNU extensions
     'warning_level=3',        # Turn on strict compiler warnings (enables -Wall, -Wextra, -Wpedantic)
@@ -243,6 +243,56 @@ add_project_arguments('-DLOCALEDIR="' + localedir + '"', language: 'c')
 subdir('po')
 
 # ------------------------------------------------------------------------------
+# Rust Core Library
+# ------------------------------------------------------------------------------
+# The ported modules live in `rust/`; meson stays the one build system that
+# knows about the GResource, the Wayland scanner, the translations and the
+# install, and links the Rust archive into the C executable. A module moves by
+# adding its file to `rust_sources`, deleting its `.c` from the lists below, and
+# keeping its header as the C-side contract.
+#
+# shortcut: plain rustc rather than cargo while the crate has no dependencies;
+# the first crate dependency is what brings cargo into this section, and not just
+# into the unit-test target at the end of this file.
+rustc = find_program('rustc')
+
+rust_sources = files(
+  'rust/src/lib.rs',
+  'rust/src/core/mod.rs',
+  'rust/src/core/poll_budget.rs',
+)
+
+rust_args = [
+  '--crate-name', 'lambdock',
+  '--crate-type', 'staticlib',
+  '--edition', '2021',
+  '-C', 'opt-level=' + get_option('optimization'),
+  '-o', '@OUTPUT@',
+]
+
+if get_option('debug')
+  rust_args += ['-C', 'debuginfo=2']
+endif
+
+rust_lib = custom_target(
+  'lambdock-rust',
+  input: rust_sources,
+  output: 'liblambdock.a',
+  command: [rustc] + rust_args + ['@INPUT0@'],
+)
+
+# The archive carries Rust's `std`, so the C link needs what `std` needs. The
+# archive comes first: a static library has to precede the libraries its objects
+# reference. `sources` is what makes every target that links it wait for the
+# custom command above, instead of racing it.
+rust_lib_dep = declare_dependency(
+  sources: rust_lib,
+  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
+)
+
+lambdock_deps += rust_lib_dep
+
+# ------------------------------------------------------------------------------
 # Source Code Definitions & Executable Build
 # ------------------------------------------------------------------------------
 # Specify inclusion directory for headers (`#include "something.h"` looking inside `src/`)
@@ -258,7 +308,6 @@ sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
-  'src/core/poll_budget.c',
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
@@ -331,7 +380,6 @@ full_app_sources = files(
   'src/core/dock_dims.c',
   'src/core/dock_motion.c',
   'src/core/item_text.c',
-  'src/core/poll_budget.c',
   'src/core/poof.c',
   'src/core/render_stats.c',
   'src/core/tracker_rules.c',
@@ -455,10 +503,12 @@ unit_tests = [
   {
     # The poller budget: intervals in, polls per second out. The Scheme thunks
     # themselves are the bridge's business; how often a dock may call them is
-    # this file's, and it needs no display to decide.
+    # this module's business, and it needs no display to decide. It is the first
+    # module ported to Rust, so this binary is also the proof that the C ABI in
+    # `src/core/poll_budget.h` links against the archive.
     'id': 'poll_budget',
-    'extra_sources': ['src/core/poll_budget.c'],
-    'deps': [dependency('glib-2.0')],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), rust_lib_dep],
   },
   {
     # Same deal for the item wording: strings in, strings out, no widgets.
@@ -582,3 +632,21 @@ if guile_prog.found() and scheme_test_driver.found()
 else
   message('Guile interpreter not found: skipping pure-Scheme unit tests')
 endif
+
+# ------------------------------------------------------------------------------
+# Rust Unit Tests
+# ------------------------------------------------------------------------------
+# `cargo test` runs the tests that live beside the ported modules. The target
+# directory and the cargo home live in the build tree, so the source checkout
+# can stay read-only (a Guix or Nix build sandbox), and `--offline` keeps the
+# suite from reaching the network.
+cargo = find_program('cargo')
+
+rust_test_env = environment()
+rust_test_env.set('CARGO_TARGET_DIR', meson.project_build_root() / 'rust-target')
+rust_test_env.set('CARGO_HOME', meson.project_build_root() / 'rust-cargo-home')
+
+test('rust_unit_tests', cargo,
+     args: ['test', '--locked', '--offline', '--quiet',
+            '--manifest-path', meson.project_source_root() / 'rust' / 'Cargo.toml'],
+     env: rust_test_env)

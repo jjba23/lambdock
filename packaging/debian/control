@@ -3,10 +3,12 @@ Section: x11
 Priority: optional
 Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 Build-Depends: debhelper-compat (= 13),
-               meson (>= 0.62.0),
+               meson (>= 0.63.0),
                ninja-build,
                pkg-config,
                gettext,
+               cargo,
+               rustc,
                libgtk-4-dev,
                libgtk4-layer-shell-dev,
                guile-3.0-dev,
@@ -22,7 +24,7 @@ Package: lambdock
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, guile-3.0
 Description: GTK4 desktop dock extensible in Guile Scheme
- Lambdock is a lightweight desktop dock built with a C core, GTK4, and dynamic
- configuration powered by GNU Guile Scheme.  On Wayland it uses gtk4-layer-shell
+ Lambdock is a lightweight desktop dock built with a C and Rust core, GTK4, and
+ dynamic configuration powered by GNU Guile Scheme.  On Wayland it uses gtk4-layer-shell
  for edge anchoring and the foreign-toplevel protocol for window tracking; on
  X11 it docks itself and tracks windows through EWMH.

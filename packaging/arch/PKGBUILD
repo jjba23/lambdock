@@ -22,10 +22,12 @@ depends=(
 )
 
 makedepends=(
+  'cargo'
   'gettext'
   'meson'
   'ninja'
   'pkgconf'
+  'rust'
   'wayland-protocols'
 )
 

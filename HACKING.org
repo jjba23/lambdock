@@ -14,7 +14,7 @@
 
 #+begin_quote
 Welcome aboard! This guide is the map for the territory that is the *lambdock*
-codebase. It is aimed at a competent C / GTK / Scheme developer who has *not*
+codebase. It is aimed at a competent C / Rust / GTK / Scheme developer who has *not*
 seen this project before. It explains what the pieces are, how execution and data
 flow between them, what the lifecycles are, and -- most importantly -- the traps
 that will bite you. Read it once end to end, then keep it open as a reference.
@@ -36,8 +36,8 @@ that will bite you. Read it once end to end, then keep it open as a reference.
 :CUSTOM_ID: what-this-document-is
 :END:
 
-lambdock is a small program with a deliberately unusual shape: a C core that
-draws, and an embedded Lisp that decides. This guide is the bridge between
+lambdock is a small program with a deliberately unusual shape: a C and Rust core
+that draws, and an embedded Lisp that decides. This guide is the bridge between
 reading the code and changing it safely.
 
 ** Who it is for
@@ -247,12 +247,12 @@ already.
 
 lambdock is two runtimes living in one process:
 
-- A *C core* built on [[https://gtk.org/][GTK4]] and
+- A *C and Rust core* built on [[https://gtk.org/][GTK4]] and
   [[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]. It owns the
   window, the widgets, the CSS, the Wayland protocols, the animations, and all
   memory.
 - An *embedded GNU Guile Scheme engine* that owns the /configuration/ and, at
-  runtime, can drive the C core through exported primitives.
+  runtime, can drive the core through exported primitives.
 
 The division of responsibility is deliberate and is the single most important
 thing to internalize:
@@ -327,6 +327,13 @@ lambdock/
 │       ├── app_actions.c/.h   # Launch/close/MPRIS actions behind the popover
 │       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
+├── rust/                      # The Rust side: the archive meson links in
+│   ├── Cargo.toml             # Crate `lambdock`, staticlib + rlib, no deps yet
+│   └── src/
+│       ├── lib.rs             # Crate root: the modules below, over the C ABI
+│       └── core/              # Layer 1, the Rust home of the decisions above
+│           ├── mod.rs
+│           └── poll_budget.rs # The poller budget: the first module ported
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
 │   ├── core.scm             # Public API surface: init-dock!, load-dock-config!, start-repl!
 │   ├── items.scm            # <dock-item> record, constructors, dynamic pollers
@@ -383,7 +390,9 @@ The canonical, hermetic environment is [[https://guix.gnu.org/][GNU Guix]]; [[ht
 native distro toolchains are also supported.
 
 Required: ~gtk4~, ~gtk4-layer-shell~, ~guile-3.0~, ~wayland-client~,
-~wayland-scanner~, plus [[https://mesonbuild.com/][Meson]],
+~wayland-scanner~, the Rust toolchain (~rustc~ and ~cargo~) for the modules
+ported so far (see [[#the-rust-seam][The Rust seam]]), plus
+[[https://mesonbuild.com/][Meson]] (0.63 or newer),
 [[https://ninja-build.org/][Ninja]] and
 [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]].
 
@@ -392,6 +401,39 @@ for it and defines ~HAVE_X11~ when it is there; without it the tree still builds
 ~x11_tracker.c~ compiles to the no-op half, and the dock is Wayland-only. Do not
 add ~#ifdef~s on ~HAVE_X11~ outside ~x11_tracker.c~: the rest of the tree calls
 ~lambdock_x11_session()~ and friends, which exist either way.
+
+** The Rust seam
+:PROPERTIES:
+:CUSTOM_ID: the-rust-seam
+:END:
+
+The port from C to Rust goes one module at a time, and the tree is green after
+every step. ~rust/~ is a Cargo crate that builds two ways: ~rustc --crate-type
+staticlib~ for the archive meson links into the C executable, and ~cargo test~
+for the tests that live beside each module.
+
+Meson stays the one build system: it owns the GResource, the Wayland scanner,
+the translations and the install, and it is what invokes ~rustc~ and ~cargo~.
+The C headers are the contract at the seam -- =src/core/poll_budget.h= declares
+functions that now live in Rust -- so no C caller changed. That is the whole
+trick, and it is why a module can move without the dock changing behaviour.
+
+To move one module:
+
+1. Write its tests first, in ~rust/src/core/<module>.rs~, against the C ABI its
+   header declares: ~guint~ is ~u32~, ~gsize~ is ~usize~, and ~gboolean~ is a C
+   ~int~ because Rust's ~bool~ is one byte and would not match ~-Werror~'s ABI.
+2. Watch them fail, then make them pass.
+3. Add the file to ~rust_sources~ in =meson.build=.
+4. Delete the ~.c~ from the two source lists (~sources~ and ~full_app_sources~)
+   and from its test's ~extra_sources~, then remove the file.
+5. Keep the header until the last C caller is gone.
+6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
+
+Ported so far: =core/poll_budget.c= → =rust/src/core/poll_budget.rs=, whose
+tests are the same cases as =tests/test_poll_budget.c= (which still runs, and now
+links the Rust archive). Not yet ported: everything GTK, Wayland and Guile; the
+first crate dependency is what turns ~rustc~ into ~cargo~ in =meson.build=.
 
 ** Guix (preferred)
 :PROPERTIES:
@@ -447,15 +489,19 @@ The full list is the set of definitions at the top level of =maak.scm=.
 :CUSTOM_ID: tests
 :END:
 
-~meson test~ drives two kinds of suites: GLib/GTK C binaries (one per unit) and a
-pure-Guile suite for the Scheme engine.
+~meson test~ drives three kinds of suites: GLib/GTK C binaries (one per unit), a
+pure-Guile suite for the Scheme engine, and ~cargo test~ for the modules already
+ported to Rust.
 
 #+begin_src sh
 meson test -C build                 # everything
 meson test -C build --list          # list suite names
 meson test -C build scheme_unit_tests
+meson test -C build rust_unit_tests
 # or a single binary directly
 ./build/test_dock_item
+# or the Rust tests alone, from the crate directory
+cd rust && cargo test
 # or the Scheme suite standalone
 ./tests/run_scheme_tests.sh
 #+end_src
@@ -1679,7 +1725,8 @@ own hand, so the log is the only way to see the sequence.
 - The dynamic-item and trash poll timers skip their work while the dock is off
   screen (=dock_is_off_screen()=), and =dock_items_refresh_polls()= catches every
   item up on reveal, so the first visible frame shows current values.
-- The declared poll intervals have a budget: =core/poll_budget.c= totals them and
+- The declared poll intervals have a budget: =core/poll_budget.c= — now
+  =rust/src/core/poll_budget.rs= — totals them and
   =populate_dock_items_for= logs a warning above
   =LAMBDOCK_POLL_BUDGET_PER_SECOND= (12/s).  Every dynamic item is a Scheme thunk
   on the main thread, so a configuration that asks for more is an error worth

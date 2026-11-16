@@ -9,7 +9,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-Nothing yet.
+- *The port from C to Rust has started.* ~src/core/poll_budget.c~ is now
+  ~rust/src/core/poll_budget.rs~, exported over the same C ABI, so the dock
+  behaves exactly as before and =tests/test_poll_budget.c= still runs against it.
+  Meson builds the Rust archive with ~rustc~, links it into the binary, and runs
+  the crate's tests with ~cargo test~.  Building from source now needs a Rust
+  toolchain and Meson 0.63 or newer; every packaging recipe names them.
 
 ---------
 

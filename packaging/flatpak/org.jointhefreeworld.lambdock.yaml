@@ -7,6 +7,10 @@ app-id: org.jointhefreeworld.lambdock
 runtime: org.gnome.Platform
 runtime-version: '50'
 sdk: org.gnome.Sdk
+sdk-extensions:
+  # `rustc' and `cargo' are not in the GNOME SDK; the Rust extension is the
+  # supported way to build the ported modules inside the sandbox.
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: lambdock
 finish-args:
   - --socket=wayland
@@ -51,6 +55,8 @@ modules:
   # Lambdock
   - name: lambdock
     buildsystem: meson
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
     sources:
       - type: dir
         path: ../../

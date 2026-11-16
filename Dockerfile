@@ -28,6 +28,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
     zypper --non-interactive refresh; \
     echo "==> Installing build dependencies"; \
     zypper --non-interactive install --no-recommends \
+        cargo \
         gcc \
         gcc-c++ \
         glib2-devel \
@@ -38,6 +39,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
         meson \
         ninja \
         pkg-config \
+        rust \
         wayland-devel \
         wayland-protocols-devel \
         wlroots-devel; \
@@ -54,6 +56,7 @@ COPY data/ ./data/
 COPY po/ ./po/
 COPY protocols/ ./protocols/
 COPY resources/ ./resources/
+COPY rust/ ./rust/
 COPY scheme/ ./scheme/
 COPY src/ ./src/
 COPY tests/ ./tests/

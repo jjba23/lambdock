@@ -1,0 +1,20 @@
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+[package]
+name = "lambdock"
+# The version that ships is `project(version:)` in meson.build, which the
+# packaging and `--version` read. This crate is never published, so it does not
+# keep a second copy to drift out of step.
+version = "0.0.0"
+edition = "2021"
+publish = false
+license = "MIT"
+
+[lib]
+name = "lambdock"
+# `staticlib` is what meson links into the C executable; `rlib` is what
+# `cargo test` needs to link the unit tests.
+crate-type = ["staticlib", "rlib"]

@@ -46,7 +46,7 @@ welcome patch -- and a good first contribution.
 :CUSTOM_ID: read-the-guide
 :END:
 
-New to the codebase? Start with the [[file:../HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C core, the embedded GNU Guile Scheme
+New to the codebase? Start with the [[file:../HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C and Rust core, the embedded GNU Guile Scheme
 engine, the bi-directional data flow, the full dock/item/window lifecycles, the
 build and test workflow, and the common pitfalls to watch out for. It covers the
 threading model, memory ownership rules, GTK/GLib hazards and the invariants that
@@ -95,7 +95,7 @@ maak run
 :CUSTOM_ID: tests
 :END:
 
-The suite has two halves, and both run under Meson:
+The suite has three halves, and all of them run under Meson:
 
 #+begin_src sh
 meson setup build
@@ -129,6 +129,11 @@ ninja -C build test
   [[file:../tests/run_scheme_tests.sh][tests/run_scheme_tests.sh]]): the pure-Guile configuration engine -- state,
   items, presets, loader, layout overrides and core -- with no display server and
   no C runtime needed, so they are fast and easy to run in a loop.
+- *Rust unit tests* (~rust/src/core/*.rs~, run by ~cargo test~ through
+  ~rust_unit_tests~): the modules ported from C so far, each with the same cases
+  as the C binary it replaced.  The C binary stays in the suite while its header
+  still has C callers, so the two sides of the seam are checked against each
+  other.  ~cd rust && cargo test~ runs them on their own.
 
 The Nix package runs exactly this suite under
 [[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a
