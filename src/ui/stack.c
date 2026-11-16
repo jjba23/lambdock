@@ -106,166 +106,13 @@ static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
  * from decoding hundreds of pictures in the background.
  */
 
-#define VIEW_THUMBNAIL_QUEUE_KEY "lambdock-view-thumbnail-queue"
-
-typedef struct {
-  GWeakRef image;
-  char *path;
-  int size;
-} ViewThumbnailRequest;
-
-typedef struct {
-  GQueue *pending; /* ViewThumbnailRequest* */
-  gboolean running;
-} ViewThumbnailQueue;
-
-typedef struct {
-  GWeakRef view;
-  GtkWidget *image; /* Strong ref for the duration of the decode */
-  char *path;
-  int size;
-} ViewThumbnailJob;
-
-static void view_thumbnail_request_free(ViewThumbnailRequest *request) {
-  g_weak_ref_clear(&request->image);
-  g_free(request->path);
-  g_free(request);
-}
-
-static void view_thumbnail_job_free(gpointer data) {
-  ViewThumbnailJob *job = (ViewThumbnailJob *)data;
-  g_weak_ref_clear(&job->view);
-  g_clear_object(&job->image);
-  g_free(job->path);
-  g_free(job);
-}
-
-static void view_thumbnail_thread(GTask *task, gpointer source_object,
-                                  gpointer task_data,
-                                  GCancellable *cancellable) {
-  (void)source_object;
-  (void)cancellable;
-  ViewThumbnailJob *job = (ViewThumbnailJob *)task_data;
-  GdkPixbuf *pixbuf = lambdock_stack_thumbnail_pixbuf(job->path, job->size);
-
-  g_task_return_pointer(task, pixbuf, pixbuf ? g_object_unref : NULL);
-}
-
-static void view_thumbnail_queue_clear(ViewThumbnailQueue *queue) {
-  while (!g_queue_is_empty(queue->pending))
-    view_thumbnail_request_free(g_queue_pop_head(queue->pending));
-}
-
-static void view_thumbnail_queue_free(gpointer data) {
-  ViewThumbnailQueue *queue = (ViewThumbnailQueue *)data;
-  view_thumbnail_queue_clear(queue);
-  g_queue_free(queue->pending);
-  g_free(queue);
-}
-
-static void on_view_thumbnail_unmap(GtkWidget *view, gpointer user_data) {
-  (void)user_data;
-  ViewThumbnailQueue *queue =
-      g_object_get_data(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY);
-  if (queue)
-    view_thumbnail_queue_clear(queue);
-}
-
-static void view_thumbnail_run_next(GtkWidget *view);
-
-static void on_view_thumbnail_ready(GObject *source_object,
-                                    GAsyncResult *result,
-                                    gpointer user_data) {
-  (void)source_object;
-  (void)user_data;
-
-  GTask *task = G_TASK(result);
-  GError *error = NULL;
-  GdkPixbuf *pixbuf = g_task_propagate_pointer(task, &error);
-  if (!pixbuf && error) {
-    LOG_C_DEBUG("UI", "Thumbnail decode failed: %s", error->message);
-    g_clear_error(&error);
-  }
-
-  ViewThumbnailJob *job = (ViewThumbnailJob *)g_task_get_task_data(task);
-  GtkWidget *view = g_weak_ref_get(&job->view);
-  if (view) {
-    ViewThumbnailQueue *queue =
-        g_object_get_data(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY);
-
-    if (queue) {
-      if (pixbuf && job->image && GTK_IS_IMAGE(job->image)) {
-        GdkTexture *texture = lambdock_stack_texture_from_pixbuf(pixbuf);
-        gtk_image_set_from_paintable(GTK_IMAGE(job->image),
-                                    GDK_PAINTABLE(texture));
-        g_object_unref(texture);
-      }
-
-      queue->running = FALSE;
-      view_thumbnail_run_next(view);
-    }
-    g_object_unref(view);
-  }
-
-  if (pixbuf)
-    g_object_unref(pixbuf);
-}
-
-static void view_thumbnail_run_next(GtkWidget *view) {
-  ViewThumbnailQueue *queue =
-      g_object_get_data(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY);
-  if (!queue || queue->running)
-    return;
-
-  while (!g_queue_is_empty(queue->pending)) {
-    ViewThumbnailRequest *request = g_queue_pop_head(queue->pending);
-    GtkWidget *image = g_weak_ref_get(&request->image);
-    if (!image) {
-      view_thumbnail_request_free(request);
-      continue;
-    }
-
-    ViewThumbnailJob *job = g_new0(ViewThumbnailJob, 1);
-    g_weak_ref_init(&job->view, view);
-    job->image = image; /* Takes the reference from the weak lookup. */
-    job->path = g_strdup(request->path);
-    job->size = request->size;
-    view_thumbnail_request_free(request);
-
-    queue->running = TRUE;
-    GTask *task = g_task_new(NULL, NULL, on_view_thumbnail_ready, NULL);
-    g_task_set_task_data(task, job, view_thumbnail_job_free);
-    g_task_run_in_thread(task, view_thumbnail_thread);
-    g_object_unref(task);
-    return;
-  }
-}
-
-static void view_thumbnail_schedule(GtkWidget *view, GtkWidget *image,
-                                    const char *path, int size) {
-  ViewThumbnailQueue *queue =
-      g_object_get_data(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY);
-  if (!queue || !image || !path || size <= 0)
-    return;
-
-  ViewThumbnailRequest *request = g_new0(ViewThumbnailRequest, 1);
-  g_weak_ref_init(&request->image, image);
-  request->path = g_strdup(path);
-  request->size = size;
-  g_queue_push_tail(queue->pending, request);
-  view_thumbnail_run_next(view);
-}
-
-static void view_thumbnail_queue_attach(GtkWidget *view) {
-  if (g_object_get_data(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY))
-    return;
-
-  ViewThumbnailQueue *queue = g_new0(ViewThumbnailQueue, 1);
-  queue->pending = g_queue_new();
-  g_object_set_data_full(G_OBJECT(view), VIEW_THUMBNAIL_QUEUE_KEY, queue,
-                         view_thumbnail_queue_free);
-  g_signal_connect(view, "unmap", G_CALLBACK(on_view_thumbnail_unmap), NULL);
-}
+/* The queue itself -- one decode at a time on a worker thread, the result
+ * swapped into its cell on the main loop, and the pending work dropped when the
+ * view is unmapped -- is lambdock_stack_thumbnail_attach() and _schedule() in
+ * rust/src/ui/stack.rs. What stays here is what the pictures are for: the grid
+ * and the list build their cells, attach a queue to the box that holds them, and
+ * ask for a preview of every file that might have one.
+ */
 
 /* Opens an entry and dismisses the stack popover it was clicked in. The item
  * has been handed off to the desktop, so leaving the panel covering it serves no
@@ -415,7 +262,7 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
                                   DockItem *item) {
   GtkIconTheme *theme = stack_icon_theme();
   GtkWidget *flow = gtk_flow_box_new();
-  view_thumbnail_queue_attach(flow);
+  lambdock_stack_thumbnail_attach(flow);
 
   /* A stack is browsed, not skimmed: its icons are drawn considerably larger
    * than the dock's, and every cell has room for a two-line name. */
@@ -445,8 +292,8 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
       /* The worker decides whether the file really is an image; doing that
        * check here would put a few hundred header reads on the main thread. */
       if (!entry->is_dir)
-        view_thumbnail_schedule(flow, image, entry->path,
-                                cell_icon_size * 2);
+        lambdock_stack_thumbnail_schedule(flow, image, entry->path,
+                                          cell_icon_size * 2);
     }
 
     /* Wrapping is what caps the label's natural width: with it, the cell is as
@@ -485,7 +332,7 @@ static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
   lambdock_accessible_update(
       box, _("Folder contents"),
       _("Use the arrow keys to choose an entry and Enter to open it."));
-  view_thumbnail_queue_attach(box);
+  lambdock_stack_thumbnail_attach(box);
 
   int list_icon_size = MAX(24, (int)(icon_size * 0.7));
 
@@ -499,8 +346,8 @@ static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
     if (image) {
       gtk_box_append(GTK_BOX(row), image);
       if (!entry->is_dir)
-        view_thumbnail_schedule(box, image, entry->path,
-                                list_icon_size * 2);
+        lambdock_stack_thumbnail_schedule(box, image, entry->path,
+                                          list_icon_size * 2);
     }
 
     GtkWidget *label = gtk_label_new(entry->name);

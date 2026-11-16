@@ -167,6 +167,33 @@ GtkWidget *lambdock_stack_entry_image(GtkIconTheme *theme, const char *name,
                                       gboolean is_dir, int size);
 
 /**
+ * lambdock_stack_thumbnail_attach:
+ * @view: the box or flow box that holds a view's cells.
+ *
+ * Gives @view a thumbnail queue. Doing nothing on a second call is deliberate:
+ * a rebuilt view keeps the queue it already has, so a rebuild does not start a
+ * second worker for the same box.
+ *
+ * The queue is dropped with the view, and emptied when the view is unmapped: a
+ * closed stack must not keep decoding a folder's pictures in the background.
+ */
+void lambdock_stack_thumbnail_attach(GtkWidget *view);
+
+/**
+ * lambdock_stack_thumbnail_schedule:
+ * @view: a view that had lambdock_stack_thumbnail_attach() called on it.
+ * @image: the cell's GtkImage, which is replaced when the preview is ready.
+ * @path: (nullable): the file to preview.
+ * @size: pixel size of the square preview to decode.
+ *
+ * Asks for @path's preview, decoded off the main thread one picture at a time.
+ * Stale requests are safe by construction: @image is held weakly and @view
+ * weakly, so a closed panel's results are dropped instead of painted.
+ */
+void lambdock_stack_thumbnail_schedule(GtkWidget *view, GtkWidget *image,
+                                       const char *path, int size);
+
+/**
  * lambdock_stack_entry_free:
  * @entry: (nullable): a single entry.
  */

@@ -22,9 +22,12 @@ use gtk4::gdk;
 use gtk4::gdk_pixbuf;
 use gtk4::gio;
 use gtk4::glib;
-use gtk4::glib::translate::{Borrowed, IntoGlibPtr};
+use gtk4::glib::translate::{from_glib_borrow, Borrowed, IntoGlibPtr};
 use gtk4::prelude::*;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::os::raw::{c_char, c_int};
+use std::rc::Rc;
 
 /// `LambdockStackView`.
 pub const VIEW_GRID: c_int = 0;
@@ -717,6 +720,217 @@ pub unsafe extern "C" fn lambdock_stack_entry_image(
     image
 }
 
+
+// ============================================================================
+// THE VIEW'S THUMBNAIL QUEUE
+// ============================================================================
+//
+// Opening a folder asks for a preview of every entry it holds, and a hundred
+// decodes on the main loop would freeze the panel that is drawing them. So the
+// pictures are decoded one at a time on a worker thread, and each result is
+// swapped into its cell when the main loop gets to it.
+//
+// The queue belongs to the view and is emptied when the view is unmapped:
+// closing a stack must stop a large folder from being decoded in the
+// background. What is in flight is not repeated -- a decode already running
+// delivers its one picture, and then the queue is empty.
+
+/// Where the queue hangs off its view.
+const QUEUE_KEY: &str = "lambdock-view-thumbnail-queue";
+
+/// One picture waiting for its turn.
+struct Request {
+    /// The cell it will be painted into, weakly: a row that has gone away must
+    /// not keep its image alive.
+    image: glib::WeakRef<gtk4::Image>,
+    path: String,
+    size: i32,
+}
+
+/// A view's pending pictures, and the one decode in flight.
+#[derive(Default)]
+struct Queue {
+    pending: RefCell<VecDeque<Request>>,
+    /// The cell being decoded for, held strongly so a result always has
+    /// somewhere to go even when its row has been rebuilt meanwhile.
+    current: RefCell<Option<gtk4::Image>>,
+    running: Cell<bool>,
+}
+
+type QueueHandle = Rc<Queue>;
+
+/// A preview decoded off the main loop.
+///
+/// It is a pixbuf because that is what a worker may build: a texture may only
+/// be made on the main thread.
+struct Decoded(*mut gdk_pixbuf::ffi::GdkPixbuf);
+
+// A pixbuf is not thread-affine, and this one is made inside the worker and
+// touched by no other thread until the main loop takes the reference over --
+// which is how GLib's own GTask moves the same object across threads.
+unsafe impl Send for Decoded {}
+
+impl Decoded {
+    /// The decoded picture as a texture, or `None` when the decode failed.
+    fn into_texture(&self) -> Option<gdk::Texture> {
+        if self.0.is_null() {
+            return None;
+        }
+
+        let pixbuf: Borrowed<gdk_pixbuf::Pixbuf> = unsafe { from_glib_borrow(self.0) };
+
+        Some(texture_from_pixbuf(&pixbuf))
+    }
+}
+
+impl Drop for Decoded {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe { glib::gobject_ffi::g_object_unref(self.0.cast()) };
+        }
+    }
+}
+
+/// The queue hanging off `view`, if it has one.
+fn queue_of(view: &gtk4::Widget) -> Option<QueueHandle> {
+    unsafe { view.data::<QueueHandle>(QUEUE_KEY) }.map(|queue| unsafe { queue.as_ref().clone() })
+}
+
+/// Decodes one preview, off the main loop.
+fn decode(path: &str, size: i32) -> Decoded {
+    match thumbnail(std::path::Path::new(path), size) {
+        Some(pixbuf) => Decoded(pixbuf.into_glib_ptr()),
+        None => Decoded(std::ptr::null_mut()),
+    }
+}
+
+/// Paints a result into the cell it was decoded for, and starts the next one.
+fn finish(queue: &QueueHandle, view: &gtk4::Widget, decoded: Decoded) {
+    queue.running.set(false);
+
+    if let Some(image) = queue.current.borrow_mut().take() {
+        if let Some(texture) = decoded.into_texture() {
+            image.set_paintable(Some(&texture));
+        }
+    }
+
+    run_next(view, queue);
+}
+
+/// Starts the next decode, unless one is already running.
+fn run_next(view: &gtk4::Widget, queue: &QueueHandle) {
+    if queue.running.get() {
+        return;
+    }
+
+    let Some(request) = queue.pending.borrow_mut().pop_front() else {
+        return;
+    };
+    let Some(image) = request.image.upgrade() else {
+        // The cell went away before its picture did. The next one may still be
+        // worth decoding, so this is a step rather than a stop.
+        run_next(view, queue);
+        return;
+    };
+
+    queue.running.set(true);
+    *queue.current.borrow_mut() = Some(image);
+
+    let Request { path, size, .. } = request;
+    let weak_view = glib::SendWeakRef::from(view.downgrade());
+
+    std::thread::spawn(move || {
+        let decoded = decode(&path, size);
+
+        // `g_idle_add` and not a thread-default source: the only main context a
+        // worker thread may reach is the one the application runs on.
+        glib::idle_add_once(move || {
+            let Some(view) = weak_view.upgrade() else {
+                return;
+            };
+            let Some(queue) = queue_of(&view) else {
+                return;
+            };
+
+            finish(&queue, &view, decoded);
+        });
+    });
+}
+
+/// Gives `view` a thumbnail queue, and empties it when the view is unmapped.
+///
+/// # Safety
+///
+/// `view` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_thumbnail_attach(view: *mut gtk4::ffi::GtkWidget) {
+    use gtk4::glib::translate::from_glib_borrow;
+
+    if view.is_null() {
+        return;
+    }
+
+    crate::ui::ensure_gtk_initialized();
+
+    // Borrowed, never owned: the caller hands over the box it has just built and
+    // has not parented yet, so an owned wrapper would drop the floating
+    // reference and finalize the view along with its queue.
+    let view: Borrowed<gtk4::Widget> = from_glib_borrow(view);
+
+    if queue_of(&view).is_some() {
+        return;
+    }
+
+    view.set_data(QUEUE_KEY, Rc::new(Queue::default()));
+
+    view.connect_unmap(|view| {
+        // Whatever is still queued for a view that is off screen will never be
+        // looked at.
+        if let Some(queue) = queue_of(view) {
+            queue.pending.borrow_mut().clear();
+        }
+    });
+}
+
+/// Queues a preview of `path` for `image`, to be decoded in the background.
+///
+/// # Safety
+///
+/// `view` and `image` must be null or live widgets; `path` must be null or a C
+/// string.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_thumbnail_schedule(
+    view: *mut gtk4::ffi::GtkWidget,
+    image: *mut gtk4::ffi::GtkWidget,
+    path: *const c_char,
+    size: c_int,
+) {
+    if view.is_null() || image.is_null() || size <= 0 {
+        return;
+    }
+
+    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
+        return;
+    };
+
+    let view: Borrowed<gtk4::Widget> = from_glib_borrow(view);
+    let Some(queue) = queue_of(&view) else {
+        return;
+    };
+
+    let cell: Borrowed<gtk4::Widget> = from_glib_borrow(image);
+    let Some(cell) = cell.as_ref().downcast_ref::<gtk4::Image>() else {
+        return;
+    };
+
+    queue.pending.borrow_mut().push_back(Request {
+        image: cell.downgrade(),
+        path,
+        size,
+    });
+
+    run_next(&view, &queue);
+}
 
 // ============================================================================
 // THE VIEW'S KEYBOARD
