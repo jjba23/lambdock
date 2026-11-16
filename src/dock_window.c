@@ -541,45 +541,6 @@ static void on_motion_notify(GtkEventControllerMotion *controller, double x,
  * ========================================================================= */
 
 /**
- * on_right_click:
- * Gesture controller callback for right-click context menu activation.
- */
-void on_right_click(GtkGestureClick *gesture, gint n_press, gdouble x,
-                    gdouble y, gpointer user_data) {
-  (void)gesture;
-  (void)n_press;
-  LambdockState *state = (LambdockState *)user_data;
-
-  if (!state->popover)
-    return;
-
-  /* Point the popover's arrow at the click, so the menu grows away from it. */
-  GdkRectangle rect = {(int)x, (int)y, 1, 1};
-  gtk_popover_set_pointing_to(GTK_POPOVER(state->popover), &rect);
-
-  if (!gtk_widget_get_visible(state->popover))
-    state->active_popovers++;
-
-  gtk_popover_popup(GTK_POPOVER(state->popover));
-}
-
-/**
- * on_popover_closed:
- * Decrements active popover counter when a context menu is dismissed, and
- * resumes auto-hide once the last one is gone.
- */
-void on_popover_closed(GtkPopover *popover, gpointer user_data) {
-  (void)popover;
-  LambdockState *state = (LambdockState *)user_data;
-
-  if (state->active_popovers > 0)
-    state->active_popovers--;
-
-  if (state->auto_hide && state->active_popovers == 0)
-    schedule_hide_timer(state, AUTOHIDE_POPOVER_DELAY_MS);
-}
-
-/**
  * on_surface_resized:
  * GTK decides its toplevels' sizes by itself, on the first frames of a window
  * and whenever a size request changes -- and X11 has no protocol where the

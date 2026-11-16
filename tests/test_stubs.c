@@ -17,6 +17,7 @@
 #include "../src/ui/shelf.h"
 #include "../src/ui/stack.h"
 #include "../src/guile_bridge.h"
+#include <wayland-util.h>
 
 void unregister_dock_state(LambdockState *state) { (void)state; }
 
@@ -29,6 +30,23 @@ void unregister_dock_state(LambdockState *state) { (void)state; }
 __attribute__((weak)) void update_dock_dimensions(LambdockState *state) {
   (void)state;
 }
+
+/* `rust/src/toplevel_tracker.rs` tells the dock it is connected; a slice test
+ * has no dock, and a test that never shows one never asks. */
+__attribute__((weak)) void dock_window_set_tracker_connected(
+    LambdockState *state, gboolean connected) {
+  (void)state;
+  (void)connected;
+}
+
+/* The generated interface description of the foreign-toplevel manager. A binary
+ * that links only a slice links no protocol code at all, but the archive's
+ * codegen units reach the tracker's registry handler, so the symbol has to
+ * resolve; nothing in such a test ever binds to a compositor, so an inert
+ * stand-in is the whole of what it needs. The real definition, from the
+ * generated protocol source, wins wherever that is compiled in. */
+__attribute__((weak)) struct wl_interface
+    zwlr_foreign_toplevel_manager_v1_interface;
 
 /* `rust/src/ui/shelf_follow.rs` asks the shelf frame where it projects a point.
  * A test binary that links a slice has no shelf frame at all, so the answers are

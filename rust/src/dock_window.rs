@@ -1761,6 +1761,76 @@ pub unsafe extern "C" fn schedule_initial_autohide(state: *mut LambdockState) {
     }
 }
 
+// ===========================================================================
+// THE BACKGROUND MENU
+// ===========================================================================
+
+/// `AUTOHIDE_POPOVER_DELAY_MS` in `lambdock.h`: how long the dock waits after
+/// its last menu closes before the hide countdown restarts.
+const AUTOHIDE_POPOVER_DELAY_MS: u32 = 400;
+
+/// Opens the backdrop menu at the click, so it grows away from the pointer.
+///
+/// # Safety
+///
+/// `user_data` must be null or a live dock; the signal arguments are ignored.
+#[no_mangle]
+pub unsafe extern "C" fn on_right_click(
+    _gesture: *mut gtk4::ffi::GtkGestureClick,
+    _n_press: c_int,
+    x: f64,
+    y: f64,
+    user_data: *mut c_void,
+) {
+    let Some(dock) = user_data.cast::<LambdockState>().as_ref() else {
+        return;
+    };
+    let Some(popover) = widget_of(dock.popover) else {
+        return;
+    };
+    let Some(popover) = popover.downcast_ref::<gtk4::Popover>() else {
+        return;
+    };
+
+    let point = gdk::Rectangle::new(x as c_int, y as c_int, 1, 1);
+    popover.set_pointing_to(Some(&point));
+
+    // `is_shown`, not `is_visible`: a popover is nobody's child, so the
+    // ancestor-asking getter answers "no" for one that is open.
+    if !crate::ui::is_shown(popover.upcast_ref()) {
+        // The state is the counter's owner, so a menu that is already open is
+        // not counted twice.
+        if let Some(dock) = user_data.cast::<LambdockState>().as_mut() {
+            dock.active_popovers += 1;
+        }
+    }
+
+    popover.popup();
+}
+
+/// Counts a menu out, and lets auto-hide resume once the last one is gone.
+///
+/// # Safety
+///
+/// `user_data` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn on_popover_closed(
+    _popover: *mut gtk4::ffi::GtkPopover,
+    user_data: *mut c_void,
+) {
+    let Some(dock) = user_data.cast::<LambdockState>().as_mut() else {
+        return;
+    };
+
+    if dock.active_popovers > 0 {
+        dock.active_popovers -= 1;
+    }
+
+    if dock.auto_hide != 0 && dock.active_popovers == 0 {
+        schedule_hide_timer(user_data.cast(), AUTOHIDE_POPOVER_DELAY_MS);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

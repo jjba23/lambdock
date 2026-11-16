@@ -739,8 +739,8 @@ by value as a mirrored struct), the slide (its frame callback, the settling
 window that tells an echo apart from a real crossing, and the reduced-motion
 shortcut), the row-at-rest reset, auto-hide with reveal, the mode CSS classes and
 the shelf's shape, the layer-shell surface itself (the two branches, the keyboard
-mode, the monitor, the anchors and the exclusive zone), the mode refresh, and the
-first hide. What is left in C is the fisheye, the backdrop menu, the about
+mode, the monitor, the anchors and the exclusive zone), the mode refresh, the
+first hide, and the backdrop menu. What is left in C is the fisheye, the about
 dialog, the teardown, and =main.c= -- which comes last, since it owns everything
 else.
 

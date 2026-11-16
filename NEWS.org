@@ -191,7 +191,8 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   claims its edge through EWMH), the exclusive zone, the mode refresh after a
   reload, and the first auto-hide are ~rust/src/dock_window.rs~ now, so
   ~src/dock_window.c~ is down to the fisheye, the backdrop menu, the about
-  dialog and the teardown -- 2230 lines to 984.
+  dialog and the teardown -- and, with the backdrop menu, the last of the dock's
+  pointer behaviour. src/dock_window.c is 2230 lines down to 945.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same
