@@ -741,9 +741,19 @@ shortcut), the row-at-rest reset, auto-hide with reveal, the mode CSS classes an
 the shelf's shape, the layer-shell surface itself (the two branches, the keyboard
 mode, the monitor, the anchors and the exclusive zone), the mode refresh, the
 first hide, the backdrop menu, and the fisheye (the cached item centres, the
-per-frame sizes, the reflection that grows with its icon). What is left in C is
-the four motion callbacks that hand the pointer to it, the about dialog, the
-teardown, and =main.c= -- which comes last, since it owns everything else.
+per-frame sizes, the reflection that grows with its icon), the About dialog and the teardown
+(one named step per kind of resource, with the re-entrancy guard the C had).
+
+What is left in C is 380 lines: the four motion callbacks that hand the pointer
+to the fisheye, the surface-signal wiring, the motion controller that installs
+both, and the declarations of everything above. =main.c= is the last file.
+
+Two things that moved with them and are worth knowing: the about dialog's
+version comes from meson (=LAMBDOCK_VERSION= through =rust/build.rs=), so there
+is still one version string in the project; and teardown disconnects handlers
+through =g_signal_handlers_disconnect_matched=, because
+=g_signal_handlers_disconnect_by_data= is a macro in gobject's headers and not
+an exported symbol.
 
 The hover path keeps the C's two measurements, which is what
 =test_render_budget= asserts: a pointer that moves less than

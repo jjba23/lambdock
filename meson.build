@@ -317,6 +317,7 @@ endif
 # The Scheme search path the C build passed as -D, now compiled into the Rust
 # bridge: it is the same directory the install rule below uses.
 rust_env += {'LAMBDOCK_SCHEME_DIR': scheme_install_path}
+rust_env += {'LAMBDOCK_VERSION': meson.project_version()}
 
 rust_lib = custom_target(
   'lambdock-rust',

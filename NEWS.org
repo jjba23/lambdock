@@ -198,7 +198,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   coarsened layout steps, the reflection that grows with its icon, and the two
   measurements that keep a hover from relaying out the row -- is
   ~rust/src/dock_window.rs~.  What is left of ~dock_window.c~ is 708 lines: the
-  four motion callbacks, the about dialog and the teardown.
+  four motion callbacks, the surface-signal wiring and the motion controller --
+  380 lines of adapters and declarations.  The About dialog and the whole
+  teardown moved with it, so a dock's whole life -- from its window to the last
+  `g_free` -- is Rust now, with the About dialog's version still coming from
+  meson so there is one version string in the project.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

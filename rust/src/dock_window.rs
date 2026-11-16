@@ -17,12 +17,13 @@
 
 use gtk4::gdk;
 use gtk4::glib;
-use gtk4::glib::translate::{from_glib_borrow, Borrowed, IntoGlib};
+use gtk4::glib::translate::{from_glib_borrow, from_glib_full, from_glib_none, Borrowed, IntoGlib};
 use gtk4::prelude::*;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use crate::app_window::GList;
+use crate::cstr::{cstring, translated};
 use crate::core::dock_dims::{
     lambdock_dock_dims_compute, DockDims, FISHEYE_MAX_SCALE, FISHEYE_RADIUS_PX,
 };
@@ -35,7 +36,7 @@ use crate::core::render_stats::{
     lambdock_stats_add, lambdock_stats_bump, GEOMETRY_REFRESHES, HOVER_FRAMES, HOVER_SKIPS, HOVER_US,
     INPUT_REGION_SETS, LAYOUT_STEPS, SURFACE_RESIZES,
 };
-use crate::dock_item::{dock_items_refresh_polls, DockItem};
+use crate::dock_item::{dock_items_refresh_polls, free_dock_item, DockItem};
 use crate::state::LambdockState;
 use crate::ui::icon_zoom::{
     lambdock_icon_zoom_is_zoom, lambdock_icon_zoom_set_scale, lambdock_icon_zoom_target_size,
@@ -46,7 +47,30 @@ use crate::ui::shelf::{
     lambdock_shelf_params_effective, shelf_reflection_set_extent, shelf_reflection_set_icon_size,
 };
 use crate::ui::DEFAULT_ICON_SIZE;
-use crate::x11_tracker::lambdock_x11_dock_apply;
+use crate::x11_tracker::{lambdock_x11_dock_apply, lambdock_x11_dock_forget};
+
+/// Drops every handler connected with `data`, which is what teardown does before
+/// it frees the state those handlers carry.
+///
+/// `g_signal_handlers_disconnect_by_data` is a macro over this call in
+/// gobject's own headers -- it is not an exported symbol -- so the mask is
+/// spelled out here.
+///
+/// # Safety
+///
+/// `instance` must be a live `GObject`; `data` the pointer its handlers were
+/// connected with.
+unsafe fn disconnect_handlers_by_data(instance: *mut c_void, data: *mut c_void) {
+    glib::gobject_ffi::g_signal_handlers_disconnect_matched(
+        instance.cast(),
+        glib::gobject_ffi::G_SIGNAL_MATCH_DATA,
+        0,
+        0,
+        std::ptr::null_mut(),
+        std::ptr::null_mut(),
+        data,
+    );
+}
 
 /// Whether the auto-hide trace is on.
 ///
@@ -2142,6 +2166,440 @@ pub unsafe extern "C" fn dock_apply_hover_at(state: *mut LambdockState, x: f64, 
         HOVER_US,
         (glib::ffi::g_get_monotonic_time() - started_us) as u64,
     );
+}
+
+// ===========================================================================
+// APPLICATION ACTIONS (QUIT AND ABOUT)
+// ===========================================================================
+
+/// Where the live About dialog hangs off the application.
+///
+/// The dialog is created from an app-level action and must be singular. The live
+/// instance lives on the `GtkApplication` -- the object that outlives every
+/// window here -- instead of a file-scope pointer, so there is no hidden global
+/// and its lifetime is the application's.
+const ABOUT_DIALOG_KEY: &str = "lambdock-about-dialog";
+
+/// The bundled logo, and the icon name to fall back on.
+const ABOUT_LOGO_RESOURCE: &str = "/org/jointhefreeworld/lambdock/img/agnus-dei.png";
+
+/// Terminates the GTK application loop.
+///
+/// # Safety
+///
+/// `user_data` must be the live `GtkApplication`.
+#[no_mangle]
+pub unsafe extern "C" fn on_quit_action(
+    _action: *mut gtk4::gio::ffi::GSimpleAction,
+    _parameter: *mut glib::ffi::GVariant,
+    user_data: *mut c_void,
+) {
+    if user_data.is_null() {
+        return;
+    }
+
+    let app: gtk4::Application = from_glib_none(user_data.cast());
+    app.quit();
+}
+
+/// The open About dialog, if there is one.
+fn about_dialog_open(app: &gtk4::Application) -> Option<gtk4::Window> {
+    let dialog = unsafe { app.data::<gtk4::Window>(ABOUT_DIALOG_KEY) }?;
+    let dialog = unsafe { dialog.as_ref() }.clone();
+
+    // A dialog that is being destroyed still answers its data key for a moment:
+    // the type check the C did is the `is` below.
+    dialog.is::<gtk4::Window>().then_some(dialog)
+}
+
+/// Fills the identity fields: name, version, description, copyright.
+fn about_dialog_set_identity(about: &gtk4::AboutDialog) {
+    about.set_program_name(Some("lambdock"));
+
+    // The version meson stamped into the C half: `option_env!` keeps a build
+    // without meson (a bare `cargo test`) from claiming one.
+    if let Some(version) = option_env!("LAMBDOCK_PACKAGE_VERSION") {
+        about.set_version(Some(version));
+    }
+
+    about.set_comments(Some(&translated(
+        c"A modern Wayland-native hackable desktop dock bar.\n\nEngineered with the performance of C and GTK4 Layer Shell for smooth auto-hide and animations, featuring dynamic Wayland toplevel window tracking, live CSS hot-reloading, and dynamic configuration powered by GNU Guile Scheme.",
+    )));
+
+    about.set_copyright(Some("Copyright © Josep Bigorra <jjbigorra@gmail.com>"));
+}
+
+/// Fills the credits: authors, licence and project links.
+fn about_dialog_set_credits(about: &gtk4::AboutDialog) {
+    about.set_authors(&["Josep Bigorra (jjbigorra@gmail.com)"]);
+    about.set_license_type(gtk4::License::MitX11);
+    about.set_website(Some("https://github.com/jjba23/lambdock"));
+    about.set_website_label(&translated(c"Find the project's source code here"));
+}
+
+/// Uses the bundled logo when it loads, and the icon theme otherwise.
+fn about_dialog_set_logo(about: &gtk4::AboutDialog) {
+    // The gtk-rs wrapper of `gdk_texture_new_from_resource` assumes the
+    // resource exists; the C checked, so this does too.
+    let resource = cstring(ABOUT_LOGO_RESOURCE);
+    let texture = unsafe { gdk::ffi::gdk_texture_new_from_resource(resource.as_ptr()) };
+
+    if texture.is_null() {
+        crate::log_warn!(
+            "About",
+            "Failed to load logo from GResource: {ABOUT_LOGO_RESOURCE}"
+        );
+        about.set_logo_icon_name(Some("lambdock"));
+        return;
+    }
+
+    let texture: gdk::Texture = unsafe { from_glib_full(texture) };
+    about.set_logo(Some(&texture));
+}
+
+/// Builds the dialog, registers it as the live instance, and returns it.
+fn about_dialog_build(app: &gtk4::Application) -> gtk4::Window {
+    let about = gtk4::AboutDialog::new();
+
+    about.add_css_class("about-dialog");
+    about_dialog_set_identity(&about);
+    about_dialog_set_credits(&about);
+    about_dialog_set_logo(&about);
+    about.set_modal(true);
+
+    // The dialog forgets itself before it goes away, so the next invocation of
+    // the action builds a fresh one.
+    let app_for_close = app.clone();
+    about.connect_close_request(move |about| {
+        unsafe { app_for_close.set_data(ABOUT_DIALOG_KEY, Option::<gtk4::Window>::None) };
+        about.destroy();
+
+        glib::Propagation::Stop
+    });
+
+    unsafe { app.set_data(ABOUT_DIALOG_KEY, about.clone().upcast::<gtk4::Window>()) };
+
+    about.upcast()
+}
+
+/// Shows the About dialog, reusing the one already open if there is one.
+///
+/// # Safety
+///
+/// `user_data` must be the live `GtkApplication`.
+#[no_mangle]
+pub unsafe extern "C" fn on_about_action(
+    _action: *mut gtk4::gio::ffi::GSimpleAction,
+    _parameter: *mut glib::ffi::GVariant,
+    user_data: *mut c_void,
+) {
+    if user_data.is_null() {
+        return;
+    }
+
+    let app: gtk4::Application = from_glib_none(user_data.cast());
+
+    let about = match about_dialog_open(&app) {
+        Some(about) => about,
+        None => about_dialog_build(&app),
+    };
+
+    about.present();
+}
+
+// ===========================================================================
+// MEMORY AND DESTRUCTORS
+// ===========================================================================
+//
+// `destroy_dock_instance` is a sequence of named steps, one per kind of resource
+// a dock owns. Each step checks and clears its own pointers, so the body reads as
+// an inventory and no step can run twice by accident.
+
+/// Removes and drops this dock's CSS providers.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_css_providers(dock: &mut LambdockState) {
+    let Some(display) = gdk::Display::default() else {
+        return;
+    };
+
+    for provider in [
+        &mut dock.base_css_provider,
+        &mut dock.taskbar_css_provider,
+        &mut dock.shelf_css_provider,
+        &mut dock.user_css_provider,
+    ] {
+        if provider.is_null() {
+            continue;
+        }
+
+        let css: gtk4::CssProvider = from_glib_none(provider.cast::<gtk4::ffi::GtkCssProvider>());
+        gtk4::style_context_remove_provider_for_display(&display, &css);
+
+        let pointer = std::mem::replace(provider, std::ptr::null_mut());
+        glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
+    }
+}
+
+/// Stops the auto-hide timeout and the frame callbacks this dock owns.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_timers(dock: &mut LambdockState) {
+    cancel_hide_timer_inner(dock);
+
+    if dock.tick_cb_id != 0 {
+        if let Some(window) = widget_of(dock.window) {
+            gtk4::ffi::gtk_widget_remove_tick_callback(window.as_ptr().cast(), dock.tick_cb_id);
+        }
+    }
+    dock.tick_cb_id = 0;
+
+    stop_pointer_tick_inner(dock);
+}
+
+/// Detaches every handler carrying `state`, so teardown cannot re-enter.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn detach_window_handlers(dock: &mut LambdockState) {
+    if let Some(window) = widget_of(dock.window) {
+        disconnect_handlers_by_data(
+            window.as_ptr().cast(),
+            (dock as *mut LambdockState).cast(),
+        );
+    }
+
+    // The surface outlives this state: it is GTK's, it is destroyed after the
+    // last signal has been emitted for it, and a `layout` or a resize during
+    // that teardown reaches the handler with a dangling state. Dropping the
+    // handlers here is why the X11 placement does not need a liveness check.
+    if !dock.x11_surface.is_null() {
+        disconnect_handlers_by_data(
+            dock.x11_surface,
+            (dock as *mut LambdockState).cast(),
+        );
+        dock.x11_surface = std::ptr::null_mut();
+    }
+}
+
+/// Unparents the background context menu without letting its handlers run.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_background_popover(dock: &mut LambdockState) {
+    if dock.popover.is_null() {
+        return;
+    }
+
+    let popover = widget_of(dock.popover);
+    if let Some(popover) = &popover {
+        // The popover's "closed" handler carries `state` and would schedule a
+        // hide timer on this soon-to-be-freed state; disconnect it before
+        // unparenting so no callback runs against freed memory.
+        disconnect_handlers_by_data(
+            popover.as_ptr().cast(),
+            (dock as *mut LambdockState).cast(),
+        );
+
+        if crate::ui::parent_of(popover).is_some() {
+            popover.unparent();
+        }
+    }
+
+    dock.popover = std::ptr::null_mut();
+}
+
+/// Frees the dock items, and their individual polling timers and popovers.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_dock_items(dock: &mut LambdockState) {
+    let items = dock.dock_items;
+    // Cleared first: freeing an item may call back.
+    dock.dock_items = std::ptr::null_mut();
+
+    let mut node = items;
+    while !node.is_null() {
+        free_dock_item((*node).data.cast());
+        node = (*node).next;
+    }
+
+    glib::ffi::g_list_free(items.cast());
+}
+
+/// Frees the Wayland toplevel window trackers.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_window_trackers(dock: &mut LambdockState) {
+    let trackers = dock.window_trackers;
+    dock.window_trackers = std::ptr::null_mut();
+
+    let mut node = trackers;
+    while !node.is_null() {
+        crate::toplevel_tracker::free_window_tracker((*node).data);
+        node = (*node).next;
+    }
+
+    glib::ffi::g_list_free(trackers.cast());
+}
+
+/// Destroys the GTK window, safing the widget pointers before GTK can emit
+/// "destroy".
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_window(dock: &mut LambdockState) {
+    let Some(window) = widget_of(dock.window) else {
+        return;
+    };
+    let Some(window) = window.downcast_ref::<gtk4::Window>() else {
+        return;
+    };
+
+    dock.window = std::ptr::null_mut();
+    dock.bg_shelf = std::ptr::null_mut();
+    dock.bg_capsule = std::ptr::null_mut();
+
+    if layer_shell::is_layer_window(window) {
+        layer_shell::set_monitor(window, std::ptr::null_mut());
+    }
+
+    window.destroy();
+}
+
+/// Drops the borrowed monitor reference, and its handlers, together.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn destroy_monitor(dock: &mut LambdockState) {
+    if dock.monitor.is_null() {
+        return;
+    }
+
+    disconnect_handlers_by_data(
+        dock.monitor,
+        (dock as *mut LambdockState).cast(),
+    );
+
+    let pointer = std::mem::replace(&mut dock.monitor, std::ptr::null_mut());
+    glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
+}
+
+/// Unparents popovers and widgets, cleans up window trackers and dock items, and
+/// destroys the GTK window safely without disposal warnings.
+///
+/// Takes the state with it: the pointer is invalid on return.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock this module created.
+#[no_mangle]
+pub unsafe extern "C" fn destroy_dock_instance(state: *mut LambdockState) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    // Re-entrancy guard: a "destroy" signal emitted while this runs must not
+    // free the state a second time.
+    if dock.is_destroying != 0 {
+        return;
+    }
+    dock.is_destroying = 1;
+
+    destroy_css_providers(dock);
+    if !dock.active_theme_class.is_null() {
+        crate::glib::g_free(dock.active_theme_class.cast());
+        dock.active_theme_class = std::ptr::null_mut();
+    }
+
+    // The launchpad is a global overlay that belongs to no single dock: take it
+    // down with the dock it was opened from (it is recreated lazily).
+    crate::ui::launchpad::lambdock_launchpad_shutdown();
+
+    crate::dock_registry::dock_registry_remove(state);
+
+    destroy_timers(dock);
+
+    // Window handlers go before the widgets: nothing they carry may fire while
+    // the tree below is being taken apart.
+    detach_window_handlers(dock);
+    destroy_background_popover(dock);
+    destroy_dock_items(dock);
+    destroy_window_trackers(dock);
+    destroy_window(dock);
+
+    if !dock.size_group.is_null() {
+        let pointer = std::mem::replace(&mut dock.size_group, std::ptr::null_mut());
+        glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
+    }
+    if !dock.item_centres.is_null() {
+        let pointer = std::mem::replace(&mut dock.item_centres, std::ptr::null_mut());
+        glib::ffi::g_array_unref(pointer.cast());
+    }
+    destroy_monitor(dock);
+
+    for text in [&mut dock.config_path, &mut dock.theme] {
+        if !text.is_null() {
+            let pointer = std::mem::replace(text, std::ptr::null_mut());
+            crate::glib::g_free(pointer.cast());
+        }
+    }
+
+    // The window id and the rectangle it had are the X11 placement's memory: a
+    // dock that is rebuilt gets a new window, and it has to be placed again.
+    lambdock_x11_dock_forget(state);
+
+    crate::glib::g_free(state.cast());
+}
+
+// ===========================================================================
+// THE RECONNECTING STATE
+// ===========================================================================
+//
+// Window tracking is a listener: when the compositor restarts, its
+// foreign-toplevel proxies disappear with it and the tracker binds the new
+// manager when it is announced. The dock's items are configuration, not tracking
+// state, so they are left where they are; the label is the only visible
+// difference, and it says why nothing is being tracked right now.
+
+/// Shows or hides the "reconnecting" label, and the class that dims the dock.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn dock_window_set_tracker_connected(
+    state: *mut LambdockState,
+    connected: bool,
+) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    dock.tracker_connected = c_int::from(connected);
+
+    if let Some(label) = widget_of(dock.reconnect_label) {
+        label.set_visible(!connected);
+    }
+
+    if let Some(window) = window_of(dock) {
+        if connected {
+            window.remove_css_class("tracker-disconnected");
+        } else {
+            window.add_css_class("tracker-disconnected");
+        }
+    }
 }
 
 #[cfg(test)]
