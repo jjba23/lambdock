@@ -692,14 +692,14 @@ pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::G
 
     crate::ui::ensure_gtk_initialized();
 
-    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+    let view = crate::ui::widget_from_pointer(view);
 
     let keys = gtk4::EventControllerKey::new();
     // Capture: a flow box has its own arrow-key bindings for moving its cursor, and
     // those would otherwise swallow the keys the stack navigation needs.
     keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
 
-    let target = view.clone();
+    let target: gtk4::Widget = view.as_ref().clone();
     keys.connect_key_pressed(move |_, keyval, _, _| {
         let handled = match keyval {
             gdk::Key::Left => focus_step(&target, -1, 0),
@@ -734,7 +734,7 @@ pub unsafe extern "C" fn lambdock_stack_view_focus_step(
         return 0;
     }
 
-    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+    let view = crate::ui::widget_from_pointer(view);
     c_int::from(focus_step(&view, dx, dy))
 }
 
@@ -752,7 +752,7 @@ pub unsafe extern "C" fn lambdock_stack_view_focus_edge(
         return 0;
     }
 
-    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+    let view = crate::ui::widget_from_pointer(view);
     c_int::from(focus_edge(&view, last != 0))
 }
 

@@ -9,6 +9,8 @@
 //! callers do not move; what changes is who implements the body. Widgets are
 //! borrowed from C as `gtk4::Widget` and never owned here.
 
+use gtk4::glib::translate::Borrowed;
+
 pub mod app_actions;
 pub mod clock;
 pub mod desktop_entry;
@@ -41,12 +43,14 @@ pub(crate) fn ensure_gtk_initialized() {
 
 /// A widget borrowed from C for the length of one call.
 ///
-/// The wrapper is `from_glib_none`'d, so it adds a reference for as long as it
-/// lives and releases it at the end of the call; nothing is owned here.
+/// `from_glib_borrow`, never `from_glib_none`: the latter sinks a floating
+/// reference and unrefs on drop, so it would take the caller's widget away --
+/// a widget C still holds but has not sunk yet (a box built and not yet
+/// appended) comes back freed. A borrow touches neither the count nor the flag.
 pub(crate) unsafe fn widget_from_pointer(
     pointer: *mut gtk4::ffi::GtkWidget,
-) -> gtk4::Widget {
-    use gtk4::glib::translate::from_glib_none;
+) -> Borrowed<gtk4::Widget> {
+    use gtk4::glib::translate::from_glib_borrow;
 
-    from_glib_none(pointer)
+    from_glib_borrow(pointer)
 }
