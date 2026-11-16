@@ -892,8 +892,9 @@ static GskTransform *shelf_frame_transform_new(const LambdockShelfFrame *self,
     GskTransform *transform = gsk_transform_translate(NULL, &origin);
     transform = gsk_transform_rotate_3d(transform, self->tilt, &axis);
     transform = gsk_transform_perspective(transform, (float)self->perspective);
+    /* Every gsk_transform_*() call takes ownership of the chain it extends,
+     * so `transform` now belongs to `tilt_transform` and is not unreffed. */
     tilt_transform = gsk_transform_translate(transform, &pivot);
-    gsk_transform_unref(transform);
   }
 
   if (!keystone_transform)
@@ -903,9 +904,10 @@ static GskTransform *shelf_frame_transform_new(const LambdockShelfFrame *self,
 
   /* The keystone is applied to the tilted slab, as the frame has always drawn
    * it: `gsk_transform_transform(next, previous)` applies previous first. */
+  /* `next` is transfer full and `other` transfer none: the composed chain owns
+   * the keystone, and only the tilt is ours to drop. */
   GskTransform *composed =
       gsk_transform_transform(keystone_transform, tilt_transform);
-  gsk_transform_unref(keystone_transform);
   gsk_transform_unref(tilt_transform);
   return composed;
 }

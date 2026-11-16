@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+#include <math.h>
 #include "../src/dock_window.h"
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
@@ -641,6 +642,55 @@ static void test_frame_projection_keystone(void) {
   gtk_window_destroy(GTK_WINDOW(window));
 }
 
+/* A tilted slab, alone and with a flare, inward and outward: the inner edge
+ * moves but stays centred, the same way on every projection.  Each projection
+ * builds and frees its own transform, so projecting more than once is what
+ * exposed the tilt chain being unreffed after it had been handed on. */
+static void test_frame_projection_tilt(void) {
+  const int slab_w = 400;
+  const int slab_h = 60;
+  const int flares[] = {0, -51, 26};
+
+  for (gsize i = 0; i < G_N_ELEMENTS(flares); i++) {
+    GtkWidget *slab = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
+    gtk_widget_set_size_request(slab, slab_w, slab_h);
+    GtkWidget *frame = shelf_frame_new(slab);
+    shelf_frame_set_shape(frame, GTK_LAYER_SHELL_EDGE_BOTTOM, 10.0, 400.0,
+                          flares[i]);
+
+    GtkWidget *window = gtk_window_new();
+    gtk_window_set_child(GTK_WINDOW(window), frame);
+    gtk_window_set_default_size(GTK_WINDOW(window), slab_w + 160, slab_h + 60);
+    gtk_window_present(GTK_WINDOW(window));
+
+    if (!pump_until_allocated(frame)) {
+      g_test_skip("window was never allocated");
+      gtk_window_destroy(GTK_WINDOW(window));
+      return;
+    }
+
+    g_assert_true(shelf_frame_is_projected(frame));
+
+    const float w = (float)gtk_widget_get_width(frame);
+    graphene_point_t first = GRAPHENE_POINT_INIT(w / 2.0f, 0.0f);
+    g_assert_true(shelf_frame_project_point(frame, &first));
+    g_assert_true(isfinite(first.x) && isfinite(first.y));
+    /* The tilt moves the inner edge but keeps it centred on the dock. */
+    g_assert_cmpfloat_with_epsilon(first.x, w / 2.0f, 0.01f);
+    g_assert_cmpfloat(fabsf(first.y), >, 0.1f);
+
+    /* The same frame projects the same point the same way every time. */
+    for (int round = 0; round < 8; round++) {
+      graphene_point_t again = GRAPHENE_POINT_INIT(w / 2.0f, 0.0f);
+      g_assert_true(shelf_frame_project_point(frame, &again));
+      g_assert_cmpfloat_with_epsilon(again.x, first.x, 0.001f);
+      g_assert_cmpfloat_with_epsilon(again.y, first.y, 0.001f);
+    }
+
+    gtk_window_destroy(GTK_WINDOW(window));
+  }
+}
+
 /* Builds the dock's arrangement: a slab, its frame, and a separator-sized widget
  * laid over them by a follower. */
 typedef struct {
@@ -818,6 +868,7 @@ int main(int argc, char **argv) {
   g_test_add_func("/ui/shelf/frame_projection_flat", test_frame_projection_flat);
   g_test_add_func("/ui/shelf/frame_projection_keystone",
                   test_frame_projection_keystone);
+  g_test_add_func("/ui/shelf/frame_projection_tilt", test_frame_projection_tilt);
   g_test_add_func("/ui/shelf/follow_flat", test_follow_flat_pass_through);
   g_test_add_func("/ui/shelf/follow_projected", test_follow_projected_leans);
 

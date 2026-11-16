@@ -9,7 +9,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-Nothing yet.
+- *A tilted shelf no longer crashes the dock.* Building the shelf's projection
+  unreffed the tilt chain after handing it to the next transform, and the
+  keystone after composing it, so any ~dock-shelf-tilt~ other than 0 drew from
+  freed memory and the dock died with SIGSEGV in ~gsk_transform_to_matrix~,
+  sooner with a flare as well.  A regression test projects a tilted frame
+  repeatedly, with no flare, an inward flare and an outward one.
 
 ---------
 
