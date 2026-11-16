@@ -52,6 +52,10 @@ static MainTimers g_timers;
  * with the monitor lookup; they cross the seam by name. */
 int is_settings_filename_c(const char *filename);
 char *get_config_dir_c(void);
+void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
+                              gpointer user_data);
+void on_export_settings_action(GSimpleAction *action, GVariant *parameter,
+                               gpointer user_data);
 char *get_state_dir_c(void);
 GList *scan_settings_files(void);
 gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
@@ -887,54 +891,6 @@ static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
   dock_menu_popover_build(state);
   dock_input_install(state);
   dock_present(state);
-}
-
-/**
- * on_system_motion_changed:
- * The desktop's "reduce motion" (GTK's `gtk-enable-animations`) can change
- * while the dock is running; every dock re-reads it so the next slide or hover
- * is immediate instead of animated.
- */
-static void apply_motion_visitor(LambdockState *state, gpointer user_data) {
-  (void)user_data;
-  dock_apply_motion_preference(state);
-}
-
-/**
- * on_export_settings_action:
- * @parameter: the dock's settings path, "" for the fallback dock.
- *
- * Writes the dock's resolved configuration as settings.scm text (see
- * `export-dock-settings!`) and opens it in the user's editor, so "what is my
- * dock actually doing" is answerable without a REPL.
- */
-static void on_export_settings_action(GSimpleAction *action,
-                                      GVariant *parameter,
-                                      gpointer user_data) {
-  (void)action;
-  (void)user_data;
-
-  const char *config_path =
-      parameter ? g_variant_get_string(parameter, NULL) : NULL;
-  char *written = export_dock_settings_to_file(config_path);
-  if (!written) {
-    LOG_C_WARN("Main", "Could not capture the dock's settings");
-    return;
-  }
-
-  LOG_C_INFO("Main", "Captured the running dock in %s", written);
-  if (!lambdock_open_path(written))
-    LOG_C_WARN("Main", "Could not open %s", written);
-  g_free(written);
-}
-
-static void on_system_motion_changed(GObject *settings, GParamSpec *pspec,
-                                     gpointer user_data) {
-  (void)settings;
-  (void)pspec;
-  (void)user_data;
-
-  dock_registry_foreach(apply_motion_visitor, NULL);
 }
 
 /**

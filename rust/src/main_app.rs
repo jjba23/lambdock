@@ -23,6 +23,8 @@ use gtk4::prelude::*;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 
 use crate::cstr::{cstring, text_or_empty};
+use crate::dock_window::dock_apply_motion_preference;
+use crate::state::LambdockState;
 
 /// The names a settings file can have: `settings.scm`, and the per-dock
 /// `settings-<name>.scm`.
@@ -260,6 +262,67 @@ pub extern "C" fn scan_settings_files() -> *mut crate::app_window::GList {
     }
 
     list
+}
+
+// ===========================================================================
+// SMALL ACTION HANDLERS
+// ===========================================================================
+
+/// Every dock re-reads the desktop's motion setting.
+extern "C" fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void) {
+    unsafe { dock_apply_motion_preference(state) };
+}
+
+/// The desktop's "reduce motion" (GTK's `gtk-enable-animations`) can change while
+/// the dock is running, so every dock re-reads it: the next slide or hover is
+/// then immediate instead of animated.
+///
+/// # Safety
+///
+/// The arguments are the signal's own and are ignored.
+#[no_mangle]
+pub unsafe extern "C" fn on_system_motion_changed(
+    _settings: *mut glib::gobject_ffi::GObject,
+    _pspec: *mut c_void,
+    _user_data: *mut c_void,
+) {
+    crate::dock_registry::dock_registry_foreach(Some(apply_motion_visitor), std::ptr::null_mut());
+}
+
+/// Writes the dock's resolved configuration as settings-file text and opens it in
+/// the user's editor, so "what is my dock actually doing" is answerable without a
+/// REPL.
+///
+/// # Safety
+///
+/// `parameter` must be null or a string `GVariant` holding the dock's settings
+/// path, "" for the fallback dock.
+#[no_mangle]
+pub unsafe extern "C" fn on_export_settings_action(
+    _action: *mut gtk4::gio::ffi::GSimpleAction,
+    parameter: *mut glib::ffi::GVariant,
+    _user_data: *mut c_void,
+) {
+    let config_path = if parameter.is_null() {
+        std::ptr::null()
+    } else {
+        glib::ffi::g_variant_get_string(parameter, std::ptr::null_mut())
+    };
+
+    let written = crate::bridge::export_dock_settings_to_file(config_path);
+    if written.is_null() {
+        crate::log_warn!("Main", "Could not capture the dock's settings");
+        return;
+    }
+
+    let path = crate::cstr::text_or_empty(written);
+    crate::log_info!("Main", "Captured the running dock in {path}");
+
+    if crate::ui::desktop_entry::lambdock_open_path(written) == 0 {
+        crate::log_warn!("Main", "Could not open {path}");
+    }
+
+    crate::glib::g_free(written.cast());
 }
 
 #[cfg(test)]
