@@ -43,6 +43,21 @@ fn wrap_turn(turn: f64) -> f64 {
     }
 }
 
+/// The reading wrapped into a day.
+///
+/// A poll that reads the clock across midnight, or a caller whose arithmetic
+/// went negative, still produces a possible face -- and a face that is told
+/// 86400 draws midnight, not a full extra turn.
+pub fn seconds_in_day(seconds_of_day: c_int) -> c_int {
+    let mut seconds = seconds_of_day % SECONDS_PER_DAY;
+
+    if seconds < 0 {
+        seconds += SECONDS_PER_DAY;
+    }
+
+    seconds
+}
+
 /// Where the three hands point at that moment.
 ///
 /// The hour hand creeps forward with the minutes and the minute hand with the
@@ -50,12 +65,7 @@ fn wrap_turn(turn: f64) -> f64 {
 /// independent dials.
 #[no_mangle]
 pub extern "C" fn lambdock_clock_turns_for_seconds(seconds_of_day: c_int) -> ClockTurns {
-    // A poll that reads the clock across midnight, or a caller whose arithmetic
-    // went negative, still produces a possible face.
-    let mut seconds = seconds_of_day % SECONDS_PER_DAY;
-    if seconds < 0 {
-        seconds += SECONDS_PER_DAY;
-    }
+    let seconds = seconds_in_day(seconds_of_day);
 
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
@@ -89,11 +99,7 @@ pub unsafe extern "C" fn lambdock_squircle_point(
     out_y: *mut f64,
 ) {
     // Below 2 the curve would be star-shaped and turn the bezel inside out.
-    let exponent = if squareness > 2.0 {
-        squareness
-    } else {
-        2.0
-    };
+    let exponent = if squareness > 2.0 { squareness } else { 2.0 };
     let angle = wrap_turn(turn) * 2.0 * PI;
     let cosine = angle.cos();
     let sine = angle.sin();
@@ -196,6 +202,16 @@ mod tests {
         // from a timezone change or a caller's arithmetic.
         assert_eq!(turns(SECONDS_PER_DAY).hour, 0.0);
         near(turns(-3600).hour, 11.0 / 12.0);
+    }
+
+    #[test]
+    fn a_reading_wraps_into_its_day() {
+        assert_eq!(seconds_in_day(0), 0);
+        assert_eq!(seconds_in_day(SECONDS_PER_DAY - 1), SECONDS_PER_DAY - 1);
+        assert_eq!(seconds_in_day(SECONDS_PER_DAY), 0);
+        assert_eq!(seconds_in_day(SECONDS_PER_DAY + 61), 61);
+        assert_eq!(seconds_in_day(-1), SECONDS_PER_DAY - 1);
+        assert_eq!(seconds_in_day(-SECONDS_PER_DAY), 0);
     }
 
     // ======================================================================

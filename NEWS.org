@@ -44,7 +44,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   transform over a raster rather than a re-resolved icon.  ~ui/meter.c~ is
   ~rust/src/ui/meter.rs~ now, gauge and all: its geometry and colour thresholds
   are plain functions the snapshot only paints, and the C test reads them back
-  through the header as before.  A test binary that
+  through the header as before.  ~ui/clock.c~ is ~rust/src/ui/clock.rs~ too, and
+  gained the C test it never had: the face was only checked through its
+  arithmetic, so ~test_clock.c~ now holds the seam -- the wrap into a day, the
+  type guards and the icon-sized measure -- while the painting stays a
+  transcription of the same geometry.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the

@@ -313,6 +313,7 @@ lambdock/
 │       ├── shelf_follow.c/.h  # Separators following the shelf's projection
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
+│       ├── clock.h            # Analogue face: squircle, ticks, hands (in rust/src/ui/)
 │       ├── dock_item_windows.c/.h # An item's windows: tracking, styling, lookup
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
@@ -479,7 +480,10 @@ alongside it as =rust/src/ui/widget_utils.rs=. The widget layer has started too:
 allocation and snapshot at once, and the first to hand a floating reference back
 to C (see the floating-reference trap below) -- and =src/ui/meter.c= is
 =rust/src/ui/meter.rs=, the first one whose *drawing* is a value: the geometry and
-the colour thresholds are plain functions the gauge only paints.
+the colour thresholds are plain functions the gauge only paints. =src/ui/clock.c=
+is =rust/src/ui/clock.rs=, the same idea one step further -- the face asks
+=core/clock_face.rs= where the hands point and paints the answer, so the widget
+itself owns no more than the reading it was last given.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1406,6 +1410,7 @@ pointer dies:
 | 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
+| 4     | =ui/clock.h=           | Analogue clock face: squircle body, ticks, hands, glass (body in Rust)             |
 | 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
 | 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
 | 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |

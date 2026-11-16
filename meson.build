@@ -265,6 +265,7 @@ rust_sources = files(
   'rust/src/dock_item.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
+  'rust/src/ui/clock.rs',
   'rust/src/ui/icon_resolver.rs',
   'rust/src/ui/icon_zoom.rs',
   'rust/src/ui/meter.rs',
@@ -355,7 +356,6 @@ sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
@@ -409,7 +409,6 @@ full_app_sources = files(
   'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
@@ -551,6 +550,14 @@ unit_tests = [
   {
     'id': 'dock_dnd',
     'extra_sources': full_test_sources,
+  },
+  {
+    'id': 'clock',
+    # The face is Rust now; this binary is what proves the C ABI in
+    # `src/ui/clock.h` still links and behaves. It is new with the port -- the
+    # module never had one, and the clock's only test was its arithmetic.
+    'extra_sources': [test_stubs, lambdock_resources],
+    'deps': [gtk_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
     # Clock face geometry: hand positions and the squircle, as arithmetic. No
