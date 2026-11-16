@@ -250,35 +250,42 @@ subdir('po')
 # install, and links the Rust archive into the C executable. A module moves by
 # adding its file to `rust_sources`, deleting its `.c` from the lists below, and
 # keeping its header as the C-side contract.
-#
-# shortcut: plain rustc rather than cargo while the crate has no dependencies;
-# the first crate dependency is what brings cargo into this section, and not just
-# into the unit-test target at the end of this file.
-rustc = find_program('rustc')
+cargo = find_program('cargo')
 
 rust_sources = files(
   'rust/src/lib.rs',
   'rust/src/core/mod.rs',
+  'rust/src/core/clock_face.rs',
+  'rust/src/core/dock_click.rs',
+  'rust/src/core/dock_motion.rs',
+  'rust/src/core/poof.rs',
   'rust/src/core/poll_budget.rs',
+  'rust/src/core/tracker_rules.rs',
 )
 
-rust_args = [
-  '--crate-name', 'lambdock',
-  '--crate-type', 'staticlib',
-  '--edition', '2021',
-  '-C', 'opt-level=' + get_option('optimization'),
-  '-o', '@OUTPUT@',
-]
-
-if get_option('debug')
-  rust_args += ['-C', 'debuginfo=2']
-endif
+# `cargo build` writes `<target-dir>/<profile>/liblambdock.a` and a custom target
+# may not declare an output in a subdirectory, so `rust/cargo-build.sh` copies it
+# next to the declared one. It also keeps CARGO_HOME inside the build tree, which
+# is what lets a read-only source checkout (a Guix or Nix sandbox) build.
+rust_profile = get_option('debug') ? 'debug' : 'release'
 
 rust_lib = custom_target(
   'lambdock-rust',
-  input: rust_sources,
+  input: rust_sources + files(
+    'rust/Cargo.toml',
+    'rust/Cargo.lock',
+    'rust/cargo-build.sh',
+  ),
   output: 'liblambdock.a',
-  command: [rustc] + rust_args + ['@INPUT0@'],
+  command: [
+    find_program('rust/cargo-build.sh'),
+    meson.project_source_root() / 'rust' / 'Cargo.toml',
+    meson.project_build_root() / 'rust-target',
+    rust_profile,
+    '@OUTPUT@',
+  ],
+  env: {'CARGO_HOME': meson.project_build_root() / 'rust-cargo-home'},
+  console: true,
 )
 
 # The archive carries Rust's `std`, so the C link needs what `std` needs. The
@@ -304,13 +311,9 @@ sources = files(
   'src/accessibility.c',
   'src/app_window.c',
   'src/core/config_values.c',
-  'src/core/dock_click.c',
   'src/core/dock_dims.c',
-  'src/core/dock_motion.c',
   'src/core/item_text.c',
-  'src/core/poof.c',
   'src/core/render_stats.c',
-  'src/core/tracker_rules.c',
   'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
@@ -331,7 +334,6 @@ sources = files(
   'src/ui/launchpad.c',
   'src/ui/meter.c',
   'src/ui/clock.c',
-  'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/poof.c',
@@ -376,13 +378,9 @@ full_app_sources = files(
   'src/accessibility.c',
   'src/app_window.c',
   'src/core/config_values.c',
-  'src/core/dock_click.c',
   'src/core/dock_dims.c',
-  'src/core/dock_motion.c',
   'src/core/item_text.c',
-  'src/core/poof.c',
   'src/core/render_stats.c',
-  'src/core/tracker_rules.c',
   'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
@@ -403,7 +401,6 @@ full_app_sources = files(
   'src/ui/launchpad.c',
   'src/ui/meter.c',
   'src/ui/clock.c',
-  'src/core/clock_face.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/poof.c',
@@ -461,10 +458,11 @@ unit_tests = [
   },
   {
     # Deliberately no GTK and no Wayland here: the tracker's decisions are
-    # booleans in, booleans out, and linking only this file proves it.
+    # booleans in, booleans out. The module is Rust now; this binary is what
+    # proves the C ABI in `src/core/tracker_rules.h` still links and behaves.
     'id': 'tracker_rules',
-    'extra_sources': ['src/core/tracker_rules.c'],
-    'deps': [dependency('glib-2.0')],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), rust_lib_dep],
   },
   {
     'id': 'dock_dims',
@@ -472,10 +470,11 @@ unit_tests = [
                       'src/ui/icon_zoom.c', lambdock_resources],
   },
   {
-    # Click policy: counts and flags in, one enum out. No GTK, no Wayland.
+    # Click policy: counts and flags in, one enum out. No GTK, no Wayland, and
+    # the enum values are the header's, which is what this binary checks.
     'id': 'dock_click',
-    'extra_sources': ['src/core/dock_click.c'],
-    'deps': [dependency('glib-2.0')],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), rust_lib_dep],
   },
   {
     # What an X11 window means and where the dock puts itself on an X11 screen:
@@ -488,17 +487,18 @@ unit_tests = [
   },
   {
     # The poof's cloud is arithmetic too: puffs in, puffs out. The widget only
-    # draws what this returns, so the burst is tested without a display.
+    # draws what the Rust module returns, so the burst is tested without a
+    # display.
     'id': 'poof',
-    'extra_sources': ['src/core/poof.c'],
-    'deps': [dependency('glib-2.0'), libm_dep],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
   },
   {
-    # Deliberately no GTK here: dock_motion.c is pure arithmetic, and the test
-    # binary proves it by linking nothing else.
+    # Deliberately no GTK here: the motion arithmetic is pure, and the test
+    # binary proves it by linking nothing but GLib and the Rust archive.
     'id': 'dock_motion',
-    'extra_sources': ['src/core/dock_motion.c'],
-    'deps': [dependency('glib-2.0'), libm_dep],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
   },
   {
     # The poller budget: intervals in, polls per second out. The Scheme thunks
@@ -542,10 +542,12 @@ unit_tests = [
   },
   {
     # Clock face geometry: hand positions and the squircle, as arithmetic. No
-    # GTK here either -- the widget only paints what this returns.
+    # GTK here either -- the widget only paints what this returns, and the
+    # `LambdockClockTurns` this binary reads back is the struct the Rust module
+    # returns by value.
     'id': 'clock_face',
-    'extra_sources': ['src/core/clock_face.c'],
-    'deps': [dependency('glib-2.0'), libm_dep],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
   },
   {
     'id': 'meter',
@@ -640,8 +642,6 @@ endif
 # directory and the cargo home live in the build tree, so the source checkout
 # can stay read-only (a Guix or Nix build sandbox), and `--offline` keeps the
 # suite from reaching the network.
-cargo = find_program('cargo')
-
 rust_test_env = environment()
 rust_test_env.set('CARGO_TARGET_DIR', meson.project_build_root() / 'rust-target')
 rust_test_env.set('CARGO_HOME', meson.project_build_root() / 'rust-cargo-home')

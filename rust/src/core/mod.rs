@@ -9,4 +9,9 @@
 //! touches a widget, a display or the Guile runtime, so its tests are ordinary
 //! Rust tests and need nothing but the compiler.
 
+pub mod clock_face;
+pub mod dock_click;
+pub mod dock_motion;
+pub mod poof;
 pub mod poll_budget;
+pub mod tracker_rules;

@@ -19,7 +19,8 @@
  * way to test them was to fake a compositor.
  *
  * `toplevel_tracker.c` reads the state, calls these, and then does the widget
- * work. tests/test_tracker_rules.c links this file alone.
+ * work. The implementation is rust/src/core/tracker_rules.rs, and
+ * tests/test_tracker_rules.c links nothing but GLib and the Rust archive.
  */
 
 /**

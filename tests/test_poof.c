@@ -8,8 +8,8 @@
 #include <math.h>
 
 /* Every assertion here is about arithmetic: the burst is a value in
- * core/poof.c, and src/ui/poof.c only draws it. That is why this suite needs
- * neither GTK nor a display. */
+ * rust/src/core/poof.rs, and src/ui/poof.c only draws it. That is why this suite
+ * needs neither GTK nor a display. */
 
 static void fill(LambdockPoofParticle *particles, guint32 seed) {
   lambdock_poof_particles_init(particles, LAMBDOCK_POOF_PARTICLES, seed);

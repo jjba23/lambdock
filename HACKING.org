@@ -183,8 +183,10 @@ expensive, because the state they move is widgets.
 - *=ui/= may include =core/=, never the reverse.* There is one known leak:
   =core/dock_dims.h= includes =ui/shelf.h= (for =LambdockShelfGeometry=), and
   =core/config_values.h= includes =lambdock.h= (for =LambdockShelfParams=).
-  =core/dock_motion.c=, =core/item_text.c= and =core/tracker_rules.c= are
-  genuinely GTK-free and their test binaries link nothing but GLib;
+  The modules in =rust/src/core/= (=dock_click=, =dock_motion=,
+  =tracker_rules=, =clock_face=, =poof=, =poll_budget=) and =core/item_text.c=
+  are genuinely GTK-free and their test binaries link nothing but GLib and the
+  Rust archive;
   =config_values= and =dock_dims= are pure in content but typed against the
   central header, so their tests link GTK. Moving the shelf/dock value structs
   into =core/= would close the loop.
@@ -303,11 +305,8 @@ lambdock/
 │   ├── logger.h               # LOG_C_* colored logging macros
 │   ├── core/                  # Layer 1: decisions from values, no widgets
 │   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
-│   │   ├── dock_click.c/.h    # What a left click does: launch/minimize/restore/list
 │   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
-│   │   ├── dock_motion.c/.h   # Easing + slide/fisheye arithmetic, GTK-free
 │   │   ├── item_text.c/.h     # All item wording: labels, tooltips, gauges, plurals, GTK-free
-│   │   ├── tracker_rules.c/.h # Window-tracking decisions, GTK-free
 │   │   └── x11_rules.c/.h     # EWMH decisions: which windows to list, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
@@ -329,11 +328,18 @@ lambdock/
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
 ├── rust/                      # The Rust side: the archive meson links in
 │   ├── Cargo.toml             # Crate `lambdock`, staticlib + rlib, no deps yet
+│   ├── Cargo.lock
+│   ├── cargo-build.sh         # Puts cargo's archive where meson declares it
 │   └── src/
 │       ├── lib.rs             # Crate root: the modules below, over the C ABI
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
-│           └── poll_budget.rs # The poller budget: the first module ported
+│           ├── clock_face.rs  # Hand positions + the squircle
+│           ├── dock_click.rs  # What a left click does
+│           ├── dock_motion.rs # Easing, slide, auto-hide margin, fisheye
+│           ├── poof.rs        # The burst as particles
+│           ├── poll_budget.rs # The poller budget
+│           └── tracker_rules.rs # Window-tracking decisions
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
 │   ├── core.scm             # Public API surface: init-dock!, load-dock-config!, start-repl!
 │   ├── items.scm            # <dock-item> record, constructors, dynamic pollers
@@ -408,32 +414,37 @@ add ~#ifdef~s on ~HAVE_X11~ outside ~x11_tracker.c~: the rest of the tree calls
 :END:
 
 The port from C to Rust goes one module at a time, and the tree is green after
-every step. ~rust/~ is a Cargo crate that builds two ways: ~rustc --crate-type
-staticlib~ for the archive meson links into the C executable, and ~cargo test~
-for the tests that live beside each module.
+every step. ~rust/~ is a Cargo crate built by ~cargo build --offline --locked~;
+~rust/cargo-build.sh~ puts the archive where meson can declare it, because cargo
+always writes ~<target-dir>/<profile>/liblambdock.a~ and a meson custom target
+may not declare an output in a subdirectory.
 
 Meson stays the one build system: it owns the GResource, the Wayland scanner,
-the translations and the install, and it is what invokes ~rustc~ and ~cargo~.
-The C headers are the contract at the seam -- =src/core/poll_budget.h= declares
-functions that now live in Rust -- so no C caller changed. That is the whole
-trick, and it is why a module can move without the dock changing behaviour.
+the translations and the install, and it is what invokes ~cargo~. The C headers
+are the contract at the seam -- =src/core/dock_click.h= declares functions that
+now live in Rust -- so no C caller changed. That is the whole trick, and it is
+why a module can move without the dock changing behaviour.
 
 To move one module:
 
 1. Write its tests first, in ~rust/src/core/<module>.rs~, against the C ABI its
    header declares: ~guint~ is ~u32~, ~gsize~ is ~usize~, and ~gboolean~ is a C
    ~int~ because Rust's ~bool~ is one byte and would not match ~-Werror~'s ABI.
+   A struct of doubles returned by value is ~#[repr(C)]~ with the same field
+   order, and a nullable out-parameter is a ~*mut~ the function checks.
 2. Watch them fail, then make them pass.
 3. Add the file to ~rust_sources~ in =meson.build=.
 4. Delete the ~.c~ from the two source lists (~sources~ and ~full_app_sources~)
    and from its test's ~extra_sources~, then remove the file.
-5. Keep the header until the last C caller is gone.
+5. Keep the header until the last C caller is gone. The C test binary keeps
+   running: it is the only check that the ABI at the seam still matches.
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
-Ported so far: =core/poll_budget.c= → =rust/src/core/poll_budget.rs=, whose
-tests are the same cases as =tests/test_poll_budget.c= (which still runs, and now
-links the Rust archive). Not yet ported: everything GTK, Wayland and Guile; the
-first crate dependency is what turns ~rustc~ into ~cargo~ in =meson.build=.
+Ported so far, each with the same cases as the =tests/test_<module>.c= that still
+runs against it: =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=
+(whose status sentence still goes through gettext), =core/dock_motion.c=,
+=core/clock_face.c= and =core/poof.c=. Not yet ported: everything GTK, Wayland
+and Guile.
 
 ** Guix (preferred)
 :PROPERTIES:
@@ -902,8 +913,9 @@ documented in [[file:docs/configuration.org::#the-dock-dsl][README: The dock DSL
 :END:
 
 A left click on an application item is one function:
-=core/dock_click.c:lambdock_click_action_for(window_count, window_minimized,
-window_active, launcher_command)= returns one of
+=core/dock_click.h:lambdock_click_action_for(window_count, window_minimized,
+window_active, launcher_command)= (implemented in =rust/src/core/dock_click.rs=)
+returns one of
 
 | Action                     | When                                                | Applied by                                              |
 |----------------------------+-----------------------------------------------------+---------------------------------------------------------|
@@ -1188,10 +1200,10 @@ pointer dies:
 |-------+------------------------+--------------------------------------------------------------------------------+
 | 1     | =core/config_values.c= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf params, edges) |
 | 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
-| 1     | =core/dock_click.c=    | What a left click on an app item does: launch, minimize, restore, list -- GTK-free |
-| 1     | =core/dock_motion.c=   | Easing and slide/fisheye arithmetic -- GTK-free, GLib only                       |
+| 1     | =core/dock_click.h=    | Click policy: launch, minimize, restore, list -- GTK-free, in Rust               |
+| 1     | =core/dock_motion.h=   | Easing and slide/fisheye arithmetic -- GTK-free, in Rust                         |
 | 1     | =core/item_text.c=     | All item wording: labels, tooltips, gauges, plurals -- GTK-free                  |
-| 1     | =core/tracker_rules.c= | Window-tracking decisions: own app id, stale item, hide/reveal -- GTK-free       |
+| 1     | =core/tracker_rules.h= | Window-tracking decisions: own app id, stale item, hide/reveal -- in Rust        |
 | 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
 | 2     | =guile_bridge.c=       | The only Scheme config reader; table-driven item builders; exclusion checks      |
 | 2     | =toplevel_tracker.c=   | Wayland manager/handle listeners; owns the proxies; one visitor per event        |
@@ -1268,7 +1280,7 @@ widgets.
 
 ** Decisions are extracted even when the caller is a protocol listener
 The tracker's listeners are three lines each: cast the event data, call the pure
-rule in =core/tracker_rules.c= (=lambdock_tracker_should_hide()=,
+rule in =rust/src/core/tracker_rules.rs= (=lambdock_tracker_should_hide()=,
 ~..._item_should_be_dropped()~, ~..._ignores_app_id()~), then call one helper or
 one visitor. "Should this dock hide?" is a function of three booleans, so it is
 tested by =tests/test_tracker_rules.c= without a compositor. When a condition in a

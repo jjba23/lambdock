@@ -13,8 +13,8 @@
  * ============================================================================
  *
  * A widget the size of the icon it replaces, animated by the frame clock: each
- * frame resolves the puffs in core/poof.c for the current progress and paints
- * them as radial gradients. When the animation is over the widget takes itself
+ * frame resolves the puffs in rust/src/core/poof.rs for the current progress and
+ * paints them as radial gradients. When the animation is over the widget takes itself
  * out of the dock's box, and the dock measures itself again so the remaining
  * icons close the gap.
  */

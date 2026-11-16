@@ -14,9 +14,9 @@
  * =========================================================================
  * The arithmetic behind the dock's movement, as functions of values: no
  * widgets, no timers, no display, no GTK. `dock_window.c` keeps the GTK half
- * (frame callbacks, widget mutation) and asks in here for every number it
- * needs, which is what makes the shapes below testable -- and arguable --
- * without a running compositor.
+ * (frame callbacks, widget mutation) and asks rust/src/core/dock_motion.rs for
+ * every number it needs, which is what makes the shapes below testable -- and
+ * arguable -- without a running compositor.
  */
 
 /**

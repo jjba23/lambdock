@@ -692,8 +692,9 @@ static void launch_command(const char *command) {
  * activate_app_item:
  * What a left click on an application item does.
  *
- * The decision is core/dock_click.c's -- "launch, minimize, restore or list" --
- * and this only applies it, so the policy stays testable without a compositor.
+ * The decision is rust/src/core/dock_click.rs's -- "launch, minimize, restore or
+ * list" -- and this only applies it, so the policy stays testable without a
+ * compositor.
  * Clicking the icon of the focused app minimizes it (minimize to dock);
  * clicking an icon whose window is minimized or behind another brings it
  * forward.

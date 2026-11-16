@@ -533,8 +533,8 @@ void dock_apply_motion_preference(LambdockState *state) {
 /* =========================================================================
  * FISHEYE HOVER MAGNIFICATION
  * =========================================================================
- * The bell curve itself is in core/dock_motion.c; this half only reads widget
- * bounds and pushes the resulting sizes into the row.
+ * The bell curve itself is in rust/src/core/dock_motion.rs; this half only reads
+ * widget bounds and pushes the resulting sizes into the row.
  */
 
 /** Grows the glass reflection with a magnified icon, keeping the band fixed. */

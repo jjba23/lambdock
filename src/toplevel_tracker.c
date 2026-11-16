@@ -24,8 +24,8 @@
  * The X11/EWMH half lives in x11_tracker.c, which fills the same records and
  * calls the same broadcasts; see core/x11_rules.h for the decisions it makes.
  * Nothing here builds a widget, and the decisions ("should this dock hide?",
- * "is this item stale?") live in core/tracker_rules.c, which is unit tested
- * without a display.
+ * "is this item stale?") live in rust/src/core/tracker_rules.rs, which is unit
+ * tested without a display.
  */
 
 #include "toplevel_tracker.h"
