@@ -2552,3 +2552,9 @@ Read [[file:README.org]] for the user-facing feature description, and this file
 for how to work on the code. When you fix one of the pitfalls above, please
 update this document in the same change -- and if you learn something that would
 have saved you an afternoon, add it to [[#debugging-tips][Debugging tips]].
+
+A release bump touches =rust/Cargo.toml=, and that changes the crate's own entry
+in the workspace's =Cargo.lock= -- so every recipe's =--locked= build fails until
+the lock is refreshed. One =cargo build --offline= (no =--locked=) after the bump
+is that refresh; it has bitten two releases.
+
