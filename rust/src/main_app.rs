@@ -20,9 +20,9 @@ use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::prelude::*;
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_char, c_double, c_int, c_void};
 
-use crate::cstr::text_or_empty;
+use crate::cstr::{cstring, text_or_empty};
 
 /// The names a settings file can have: `settings.scm`, and the per-dock
 /// `settings-<name>.scm`.
@@ -161,6 +161,107 @@ pub unsafe extern "C" fn find_monitor_by_connector(
     std::ptr::null_mut()
 }
 
+// ===========================================================================
+// DIRECTORY DISCOVERY
+// ===========================================================================
+
+/// The application's own directory under a GLib-provided base directory.
+fn app_dir(base: std::path::PathBuf) -> std::path::PathBuf {
+    base.join("lambdock")
+}
+
+/// `~/.config/lambdock`: the settings files.
+fn config_dir() -> std::path::PathBuf {
+    app_dir(glib::user_config_dir())
+}
+
+/// `~/.local/state/lambdock`: the runtime state the settings are layered with.
+///
+/// The preferences the Preferences window remembers and the layout drag and drop
+/// writes live here, not in the config directory: they are runtime state, and
+/// `(lambdock layout)` and `(lambdock prefs)` name the same place.
+fn state_dir() -> std::path::PathBuf {
+    // GLib grew `g_get_user_state_dir` in 2.72 and the vendored bindings do not
+    // expose it, so the XDG rule it implements is written out here: an absolute
+    // `XDG_STATE_HOME`, else `~/.local/state`.
+    let base = std::env::var_os("XDG_STATE_HOME")
+        .map(std::path::PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(|home| std::path::PathBuf::from(home).join(".local").join("state"))
+        })
+        .unwrap_or_default();
+
+    app_dir(base)
+}
+
+/// The settings files in `directory`, as absolute paths, sorted by name.
+///
+/// Sorted because a dock is spawned per file: a directory listing's order is the
+/// filesystem's business, and the docks should appear in the same order on every
+/// run. A directory that cannot be read has no settings files -- a fresh install
+/// has not made one yet -- which is the same answer the C's `g_dir_open` gave.
+fn settings_files_in(directory: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let Ok(entries) = std::fs::read_dir(directory) else {
+        return Vec::new();
+    };
+
+    let mut files: Vec<std::path::PathBuf> = entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(is_settings_filename)
+        })
+        .map(|entry| directory.join(entry.file_name()))
+        .collect();
+
+    files.sort();
+
+    files
+}
+
+/// Every settings file in the dock's configuration directory.
+fn settings_files() -> Vec<std::path::PathBuf> {
+    settings_files_in(&config_dir())
+}
+
+/// A path as a `(transfer full)` C string.
+fn dup_path(path: &std::path::Path) -> *mut c_char {
+    unsafe { crate::glib::g_strdup(cstring(&path.to_string_lossy()).as_ptr()) }
+}
+
+/// `~/.config/lambdock`, for the C half. `(transfer full)`.
+#[no_mangle]
+pub extern "C" fn get_config_dir_c() -> *mut c_char {
+    dup_path(&config_dir())
+}
+
+/// `~/.local/state/lambdock`, for the C half. `(transfer full)`.
+#[no_mangle]
+pub extern "C" fn get_state_dir_c() -> *mut c_char {
+    dup_path(&state_dir())
+}
+
+/// The settings files, as a `GList` of `g_strdup`ed paths the caller frees with
+/// `g_list_free_full(list, g_free)`.
+#[no_mangle]
+pub extern "C" fn scan_settings_files() -> *mut crate::app_window::GList {
+    extern "C" {
+        fn g_list_append(list: *mut crate::app_window::GList, data: *mut c_void) -> *mut crate::app_window::GList;
+    }
+
+    let mut list: *mut crate::app_window::GList = std::ptr::null_mut();
+
+    for path in settings_files() {
+        unsafe { list = g_list_append(list, dup_path(&path).cast()) };
+    }
+
+    list
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +282,39 @@ mod tests {
         assert!(!is_settings_filename("settings"));
         assert!(!is_settings_filename(""));
         assert!(!is_settings_filename("settings-.scm."));
+    }
+
+    /// Only settings files are picked up, sorted, and an unreadable directory
+    /// has none -- which is what a fresh install looks like.
+    #[test]
+    fn a_directory_is_scanned_for_settings_files() {
+        let root = std::env::temp_dir().join(format!("lambdock-scan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("a temporary directory");
+
+        for name in [
+            "settings-work.scm",
+            "settings.scm",
+            "notes.txt",
+            "settings.scm.bak",
+            "settings-home.scm",
+        ] {
+            std::fs::write(root.join(name), "").expect("a file");
+        }
+
+        let found: Vec<String> = settings_files_in(&root)
+            .iter()
+            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+
+        assert_eq!(
+            found,
+            ["settings-home.scm", "settings-work.scm", "settings.scm"],
+            "sorted, and only the two documented shapes"
+        );
+
+        std::fs::remove_dir_all(&root).expect("cleanup");
+        assert!(settings_files_in(&root).is_empty(), "a directory that is gone has none");
     }
 
     /// One notch is thirty pixels, and the offset never leaves the band.

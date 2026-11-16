@@ -51,6 +51,9 @@ static MainTimers g_timers;
  * called, and how a wheel moves the row -- are `rust/src/main_app.rs` now, along
  * with the monitor lookup; they cross the seam by name. */
 int is_settings_filename_c(const char *filename);
+char *get_config_dir_c(void);
+char *get_state_dir_c(void);
+GList *scan_settings_files(void);
 gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
                         double dy, gpointer user_data);
 GdkMonitor *find_monitor_by_connector(const char *connector);
@@ -66,52 +69,6 @@ void unregister_dock_state(LambdockState *state) {
 /* =========================================================================
  * HELPER ROUTINES FOR DIRECTORY DISCOVERY & FILE MATCHING
  * ========================================================================= */
-
-/**
- * get_config_dir_c:
- * Resolves the configuration directory (~/.config/lambdock).
- */
-static char *get_config_dir_c(void) {
-  const char *config_dir = g_get_user_config_dir();
-  return g_build_filename(config_dir, "lambdock", NULL);
-}
-
-/**
- * get_state_dir_c:
- * Resolves the runtime state directory (~/.local/state/lambdock).
- *
- * The preferences the Preferences window remembers and the layout drag and drop
- * writes live here, not in the config directory: they are runtime state, and
- * `(lambdock layout)` and `(lambdock prefs)` name the same place.
- */
-static char *get_state_dir_c(void) {
-  return g_build_filename(g_get_user_state_dir(), "lambdock", NULL);
-}
-
-/**
- * scan_settings_files:
- * Scans ~/.config/lambdock/ for all matching settings files (settings.scm or
- * settings-*.scm). Returns a GList of heap-allocated absolute file path
- * strings.
- */
-static GList *scan_settings_files(void) {
-  char *config_dir = get_config_dir_c();
-  GList *file_list = NULL;
-
-  GDir *dir = g_dir_open(config_dir, 0, NULL);
-  if (dir) {
-    const char *filename;
-    while ((filename = g_dir_read_name(dir)) != NULL) {
-      if (is_settings_filename_c(filename)) {
-        char *full_path = g_build_filename(config_dir, filename, NULL);
-        file_list = g_list_append(file_list, full_path);
-      }
-    }
-    g_dir_close(dir);
-  }
-  g_free(config_dir);
-  return file_list;
-}
 
 /* =========================================================================
  * GUILE SCHEME <-> C BRIDGE & HOT-RELOAD LOGIC
