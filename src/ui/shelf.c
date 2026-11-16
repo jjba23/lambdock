@@ -693,75 +693,19 @@ static void lambdock_shelf_frame_size_allocate(GtkWidget *widget, int width,
  *
  * Returns: TRUE when @out was filled in.
  */
+/* rust/src/ui/shelf.rs: the keystone is pure arithmetic over the frame's size, so
+ * it is a value there and this is the only place that wraps it for the transform
+ * below. Returns TRUE when the projection is worth applying. */
+gboolean lambdock_shelf_keystone_matrix(int width, int height, gboolean horizontal,
+                                        int flare, gboolean pinned_at_end,
+                                        graphene_matrix_t *out);
+
 static gboolean shelf_frame_keystone(int width, int height,
                                      gboolean horizontal, int flare,
                                      gboolean pinned_at_end,
                                      graphene_matrix_t *out) {
-  double depth = horizontal ? (double)height : (double)width;
-  /* The frame reserves `2 * flare` on the cross axis for the widened edge, so the
-   * slab itself spans the rest. */
-  double cross = (horizontal ? (double)width : (double)height) - 2.0 * flare;
-
-  if (flare <= 0 || depth <= 0.0 || cross <= 0.0 || !out)
-    return FALSE;
-
-  /* Keep the slab at most 1.5x as wide at the screen edge: past that the
-   * projection folds in on itself. */
-  double max_flare = cross * 0.25;
-  double amount = MIN((double)flare, max_flare);
-
-  /* w on the edge that touches the screen; dividing by it magnifies that edge. */
-  double pinned_scale = (cross - 2.0 * amount) / cross;
-  double sweep = (1.0 - pinned_scale) / depth; /* d(w)/d(depth) */
-  double centre = (horizontal ? (double)width : (double)height) / 2.0;
-
-  /* Row 0 and 2 of the matrix: the cross coordinate picks up the projected
-   * offset, and (for a top/left dock) the constant part of w. */
-  double cross_from_depth = 0.0; /* the cross coordinate picks up depth */
-  double cross_constant = 0.0;
-  double w_from_depth;
-  double w_constant;
-
-  if (pinned_at_end) {
-    /* w(depth) = 1 - sweep * depth, so the far edge (depth 0) is untouched. */
-    cross_from_depth = -centre * sweep;
-    w_from_depth = -sweep;
-    w_constant = 1.0;
-  } else {
-    /* w(depth) = pinned_scale + sweep * depth, so the pinned edge (depth 0) is
-     * the magnified one. */
-    cross_constant = centre * (pinned_scale - 1.0);
-    cross_from_depth = centre * sweep;
-    w_from_depth = sweep;
-    w_constant = pinned_scale;
-  }
-
-  /* graphene stores matrices row-major and applies them to row vectors, so
-   * (x', y', w') = (x, y, 1) * M and the result is divided by w'. The `w' row is
-   * row 3; the cross coordinate is row 0 for a horizontal dock and row 1 for a
-   * vertical one, and it is the *column* of the depth axis that picks up the
-   * projection. */
-  float values[16] = {
-      1.0f, 0.0f, 0.0f, 0.0f, /* row 0: x */
-      0.0f, 1.0f, 0.0f, 0.0f, /* row 1: y */
-      0.0f, 0.0f, 1.0f, 0.0f, /* row 2: z */
-      0.0f, 0.0f, 0.0f, 1.0f, /* row 3: w */
-  };
-
-  if (horizontal) {
-    values[4] = (float)cross_from_depth;  /* m10: x picks up y */
-    values[12] = (float)cross_constant;   /* m30 */
-    values[7] = (float)w_from_depth;      /* m13: w picks up y */
-    values[15] = (float)w_constant;       /* m33 */
-  } else {
-    values[1] = (float)cross_from_depth;  /* m01: y picks up x */
-    values[13] = (float)cross_constant;   /* m31 */
-    values[3] = (float)w_from_depth;      /* m03: w picks up x */
-    values[15] = (float)w_constant;       /* m33 */
-  }
-
-  graphene_matrix_init_from_float(out, values);
-  return TRUE;
+  return lambdock_shelf_keystone_matrix(width, height, horizontal, flare,
+                                        pinned_at_end, out) != FALSE;
 }
 
 /**
