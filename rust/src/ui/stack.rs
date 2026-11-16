@@ -16,6 +16,7 @@
 //! refuses to step above the folder the stack was given, and the breadcrumb says
 //! only where inside that folder you are.
 
+use crate::cstr::{non_empty_text, text, translated};
 use crate::dock_item::DockItem;
 use crate::glib::{g_malloc0, strdup_string};
 use crate::log_debug;
@@ -187,31 +188,6 @@ fn dirname(path: &str) -> String {
         Some((dir, _)) => dir.to_owned(),
         None => String::from("."),
     }
-}
-
-fn translated(msgid: &std::ffi::CStr) -> String {
-    unsafe {
-        let message = crate::glib::tr(msgid);
-        if message.is_null() {
-            return String::new();
-        }
-
-        std::ffi::CStr::from_ptr(message)
-            .to_string_lossy()
-            .into_owned()
-    }
-}
-
-unsafe fn text(pointer: *const c_char) -> Option<String> {
-    if pointer.is_null() {
-        return None;
-    }
-
-    Some(
-        std::ffi::CStr::from_ptr(pointer)
-            .to_string_lossy()
-            .into_owned(),
-    )
 }
 
 /// `path` with its home directory expanded.
@@ -608,7 +584,7 @@ pub unsafe extern "C" fn lambdock_stack_thumbnail_for_path(
     path: *const c_char,
     size: c_int,
 ) -> *mut gdk::ffi::GdkPaintable {
-    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
+    let Some(path) = non_empty_text(path) else {
         return std::ptr::null_mut();
     };
 
@@ -631,7 +607,7 @@ pub unsafe extern "C" fn lambdock_stack_thumbnail_pixbuf(
     path: *const c_char,
     size: c_int,
 ) -> *mut gdk_pixbuf::ffi::GdkPixbuf {
-    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
+    let Some(path) = non_empty_text(path) else {
         return std::ptr::null_mut();
     };
 
@@ -964,8 +940,8 @@ fn describe_button(button: &gtk4::Button, entry: &Entry) {
     unsafe {
         crate::accessibility::lambdock_accessible_update(
             button.as_ptr().cast(),
-            CString::new(entry.name.as_str()).unwrap_or_default().as_ptr(),
-            CString::new(description).unwrap_or_default().as_ptr(),
+            crate::cstr::cstring(&entry.name).as_ptr(),
+            crate::cstr::cstring(&description).as_ptr(),
         )
     };
 }
@@ -991,7 +967,7 @@ fn close_popover(widget: &gtk4::Widget) {
 
 /// Opens (or walks into) `entry` when `button` is clicked.
 fn attach_open(button: &gtk4::Button, entry: &Entry, item: *mut DockItem) {
-    let path = CString::new(entry.path.as_str()).unwrap_or_default();
+    let path = crate::cstr::cstring(&entry.path);
     let is_dir = entry.is_dir;
 
     button.connect_clicked(move |button| {
@@ -1401,8 +1377,8 @@ fn header_button(icon_name: &str, label: &str, description: &str) -> gtk4::Butto
     unsafe {
         crate::accessibility::lambdock_accessible_update(
             button.as_ptr().cast(),
-            CString::new(label).unwrap_or_default().as_ptr(),
-            CString::new(description).unwrap_or_default().as_ptr(),
+            crate::cstr::cstring(label).as_ptr(),
+            crate::cstr::cstring(&description).as_ptr(),
         )
     };
 
@@ -1424,7 +1400,7 @@ unsafe fn panel_header(
     header.add_css_class("stack-header");
 
     let root = text((*item).stack_path);
-    let here = CString::new(path.unwrap_or_default()).unwrap_or_default();
+    let here = crate::cstr::cstring(path.unwrap_or_default());
 
     if parent_path(path, root.as_deref()).is_some() {
         let back = header_button(
@@ -1502,7 +1478,7 @@ unsafe fn panel_header(
         &translated(c"Opens this folder in the file manager."),
     );
     open.add_css_class("stack-open");
-    let here = CString::new(path.unwrap_or_default()).unwrap_or_default();
+    let here = crate::cstr::cstring(path.unwrap_or_default());
     open.connect_clicked(move |_| {
         if unsafe { crate::ui::desktop_entry::lambdock_open_path(here.as_ptr()) } == 0 {
             log_warn!(
@@ -1542,7 +1518,7 @@ unsafe fn panel_new(item: *mut DockItem, path: Option<&str>) -> Option<gtk4::Wid
     let mut truncated: c_int = 0;
     let entries = match &listing {
         Some(path) => {
-            let path = CString::new(path.as_str()).unwrap_or_default();
+            let path = crate::cstr::cstring(path.as_str());
             lambdock_stack_list_directory_limited(path.as_ptr(), MAX_ENTRIES, &mut truncated)
         }
         None => lambdock_stack_list_directory_limited(
@@ -1769,7 +1745,7 @@ unsafe fn set_view(item: *mut DockItem, view: c_int) {
     if !state.is_null() {
         let key = dock_item_key(item);
         if !key.is_null() {
-            let name_c = CString::new(name).unwrap_or_default();
+            let name_c = crate::cstr::cstring(&name);
             dock_layout_set_view((*state).config_path, key, name_c.as_ptr());
             crate::glib::g_free(key.cast());
         }

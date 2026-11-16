@@ -504,14 +504,6 @@ fn music_invoke(bus_name: &str, action: c_int) {
     );
 }
 
-unsafe fn text_option(pointer: *const c_char) -> Option<String> {
-    if pointer.is_null() {
-        return None;
-    }
-
-    Some(CStr::from_ptr(pointer).to_string_lossy().into_owned())
-}
-
 /// What kind of application this is.
 ///
 /// # Safety
@@ -525,10 +517,10 @@ pub unsafe extern "C" fn lambdock_app_kind(
     categories: *const c_char,
 ) -> c_int {
     app_kind(
-        text_option(app_id).as_deref(),
-        text_option(name).as_deref(),
-        text_option(exec).as_deref(),
-        text_option(categories).as_deref(),
+        crate::cstr::text(app_id).as_deref(),
+        crate::cstr::text(name).as_deref(),
+        crate::cstr::text(exec).as_deref(),
+        crate::cstr::text(categories).as_deref(),
     )
 }
 
@@ -547,11 +539,11 @@ pub unsafe extern "C" fn lambdock_app_actions(
     music_bus: *const c_char,
 ) -> *mut glib::ffi::GArray {
     let actions = actions(
-        text_option(app_id).as_deref(),
-        text_option(name).as_deref(),
-        text_option(exec).as_deref(),
-        text_option(categories).as_deref(),
-        text_option(music_bus).as_deref(),
+        crate::cstr::text(app_id).as_deref(),
+        crate::cstr::text(name).as_deref(),
+        crate::cstr::text(exec).as_deref(),
+        crate::cstr::text(categories).as_deref(),
+        crate::cstr::text(music_bus).as_deref(),
     );
 
     let array = glib::ffi::g_array_new(glib::ffi::GFALSE, glib::ffi::GFALSE, c_uint::BITS / 8);
@@ -592,7 +584,7 @@ pub unsafe extern "C" fn lambdock_app_action_command(
     exec: *const c_char,
     action: c_int,
 ) -> *mut c_char {
-    match action_command(text_option(exec).as_deref(), action) {
+    match action_command(crate::cstr::text(exec).as_deref(), action) {
         Some(command) => strdup_string(&command),
         None => std::ptr::null_mut(),
     }
@@ -615,7 +607,7 @@ pub unsafe extern "C" fn lambdock_app_music_player_find(
     app_id: *const c_char,
     name: *const c_char,
 ) -> *mut c_char {
-    match music_player_find(text_option(app_id).as_deref(), text_option(name).as_deref()) {
+    match music_player_find(crate::cstr::text(app_id).as_deref(), crate::cstr::text(name).as_deref()) {
         Some(bus_name) => strdup_string(&bus_name),
         None => std::ptr::null_mut(),
     }
@@ -628,7 +620,7 @@ pub unsafe extern "C" fn lambdock_app_music_player_find(
 /// `bus_name` must be null or a NUL-terminated string.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_app_music_invoke(bus_name: *const c_char, action: c_int) {
-    if let Some(bus_name) = text_option(bus_name).filter(|bus_name| !bus_name.is_empty()) {
+    if let Some(bus_name) = crate::cstr::text(bus_name).filter(|bus_name| !bus_name.is_empty()) {
         music_invoke(&bus_name, action);
     }
 }

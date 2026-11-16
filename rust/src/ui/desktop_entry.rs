@@ -17,7 +17,7 @@
 //! its desktop file rarely agree on spelling, so the cache indexes every entry
 //! under every name it could be reported as.
 
-use crate::glib::{g_free, g_malloc0, strdup_string, tr};
+use crate::glib::{g_free, g_malloc0, strdup_string};
 use crate::log_info;
 use crate::log_warn;
 use gtk4::glib::{self, KeyFile, KeyFileFlags};
@@ -259,14 +259,6 @@ pub struct DesktopEntry {
     pub alternates: *mut glib::ffi::GPtrArray,
 }
 
-unsafe fn text_option(pointer: *const c_char) -> Option<String> {
-    if pointer.is_null() {
-        return None;
-    }
-
-    Some(CStr::from_ptr(pointer).to_string_lossy().into_owned())
-}
-
 /// Reads a GLib-allocated string and frees it.
 unsafe fn read_and_free(pointer: *mut c_char) -> String {
     if pointer.is_null() {
@@ -279,16 +271,7 @@ unsafe fn read_and_free(pointer: *mut c_char) -> String {
     text
 }
 
-/// The translated label of a message, duplicated so C can `g_free` it.
-unsafe fn translated(msgid: &CStr) -> *mut c_char {
-    let message = tr(msgid);
 
-    if message.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    crate::glib::g_strdup(message)
-}
 
 unsafe fn ptr_array_len(array: *const glib::ffi::GPtrArray) -> usize {
     if array.is_null() {
@@ -456,7 +439,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_new_from_data(
     let entry = g_malloc0(std::mem::size_of::<DesktopEntry>()).cast::<DesktopEntry>();
 
     (*entry).id = crate::glib::g_strdup(id);
-    (*entry).stem = match text_option(id) {
+    (*entry).stem = match crate::cstr::text(id) {
         Some(id) => strdup_string(entry_stem(&id)),
         None => std::ptr::null_mut(),
     };
@@ -485,7 +468,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_new_from_data(
 pub unsafe extern "C" fn lambdock_desktop_entry_new_from_file(
     path: *const c_char,
 ) -> *mut DesktopEntry {
-    let Some(path) = text_option(path) else {
+    let Some(path) = crate::cstr::text(path) else {
         return std::ptr::null_mut();
     };
 
@@ -566,22 +549,22 @@ pub unsafe extern "C" fn lambdock_desktop_entry_source_label(
         return std::ptr::null_mut();
     }
 
-    let Some(path) = text_option((*entry).path) else {
-        return translated(c"Application");
+    let Some(path) = crate::cstr::text((*entry).path) else {
+        return crate::cstr::translated_dup(c"Application");
     };
 
     // "~/.local/share/flatpak/exports/share/applications/x.desktop" and
     // "/var/lib/flatpak/..." are both Flatpak exports.
     if path.contains("/flatpak/") {
-        return translated(c"Flatpak");
+        return crate::cstr::translated_dup(c"Flatpak");
     }
 
     let user_dir = glib::user_data_dir().to_string_lossy().into_owned();
     if !user_dir.is_empty() && path.starts_with(&user_dir) {
-        return translated(c"Your files");
+        return crate::cstr::translated_dup(c"Your files");
     }
 
-    translated(c"System")
+    crate::cstr::translated_dup(c"System")
 }
 
 /// Whether the entry lists `category` in its `Categories=`.
@@ -599,7 +582,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_has_category(
         return 0;
     }
 
-    let Some(categories) = text_option((*entry).categories) else {
+    let Some(categories) = crate::cstr::text((*entry).categories) else {
         return 0;
     };
     let category = CStr::from_ptr(category).to_string_lossy();
@@ -703,10 +686,10 @@ unsafe fn scan_one_dir(
 /// differ, because they really are two applications (a GNOME settings panel and a
 /// third-party tool may both be called "Displays").
 unsafe fn application_identity_key(entry: *const DesktopEntry) -> String {
-    let name = casefold(&text_option((*entry).name).unwrap_or_default());
+    let name = casefold(&crate::cstr::text((*entry).name).unwrap_or_default());
 
-    let wm_class = text_option((*entry).wm_class).filter(|class| !class.is_empty());
-    let signal = wm_class.or_else(|| text_option((*entry).icon));
+    let wm_class = crate::cstr::text((*entry).wm_class).filter(|class| !class.is_empty());
+    let signal = wm_class.or_else(|| crate::cstr::text((*entry).icon));
 
     // \x1f cannot appear in a desktop file value, so it cannot make two
     // different names collide.
@@ -786,8 +769,8 @@ pub unsafe extern "C" fn lambdock_desktop_entries_scan() -> *mut glib::ffi::GPtr
 
     entries.sort_by(|left, right| {
         collate(
-            &text_option((**left).name).unwrap_or_default(),
-            &text_option((**right).name).unwrap_or_default(),
+            &crate::cstr::text((**left).name).unwrap_or_default(),
+            &crate::cstr::text((**right).name).unwrap_or_default(),
         )
     });
 
@@ -888,12 +871,12 @@ unsafe fn cache_index_entry(
     index: &mut HashMap<String, *mut DesktopEntry>,
     entry: *mut DesktopEntry,
 ) {
-    cache_index_add(index, text_option((*entry).id), entry);
+    cache_index_add(index, crate::cstr::text((*entry).id), entry);
 
-    let stem = text_option((*entry).stem);
+    let stem = crate::cstr::text((*entry).stem);
     cache_index_add(index, stem.clone(), entry);
-    cache_index_add(index, text_option((*entry).wm_class), entry);
-    cache_index_add(index, exec_base_name(text_option((*entry).exec)), entry);
+    cache_index_add(index, crate::cstr::text((*entry).wm_class), entry);
+    cache_index_add(index, exec_base_name(crate::cstr::text((*entry).exec)), entry);
     cache_index_add(
         index,
         stem.as_deref().map(|stem| last_component(stem).to_owned()),
@@ -984,7 +967,7 @@ pub unsafe extern "C" fn lambdock_desktop_entries_cached() -> *mut glib::ffi::GP
 pub unsafe extern "C" fn lambdock_desktop_entry_lookup(
     app_id: *const c_char,
 ) -> *const DesktopEntry {
-    let Some(app_id) = text_option(app_id).filter(|app_id| !app_id.is_empty()) else {
+    let Some(app_id) = crate::cstr::text(app_id).filter(|app_id| !app_id.is_empty()) else {
         return std::ptr::null();
     };
 
@@ -1025,13 +1008,13 @@ pub unsafe extern "C" fn lambdock_desktop_entry_lookup(
 /// full)`.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_app_name_for(app_id: *const c_char) -> *mut c_char {
-    let Some(id) = text_option(app_id).filter(|id| !id.is_empty()) else {
+    let Some(id) = crate::cstr::text(app_id).filter(|id| !id.is_empty()) else {
         return std::ptr::null_mut();
     };
 
     let entry = lambdock_desktop_entry_lookup(app_id);
     if !entry.is_null() {
-        if let Some(name) = text_option((*entry).name).filter(|name| !name.is_empty()) {
+        if let Some(name) = crate::cstr::text((*entry).name).filter(|name| !name.is_empty()) {
             return strdup_string(&name);
         }
     }
@@ -1052,13 +1035,13 @@ pub unsafe extern "C" fn lambdock_app_name_for(app_id: *const c_char) -> *mut c_
 /// full)`.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_app_icon_for(app_id: *const c_char) -> *mut c_char {
-    let Some(id) = text_option(app_id).filter(|id| !id.is_empty()) else {
+    let Some(id) = crate::cstr::text(app_id).filter(|id| !id.is_empty()) else {
         return std::ptr::null_mut();
     };
 
     let entry = lambdock_desktop_entry_lookup(app_id);
     if !entry.is_null() {
-        if let Some(icon) = text_option((*entry).icon).filter(|icon| !icon.is_empty()) {
+        if let Some(icon) = crate::cstr::text((*entry).icon).filter(|icon| !icon.is_empty()) {
             return strdup_string(&icon);
         }
     }
@@ -1074,7 +1057,7 @@ pub unsafe extern "C" fn lambdock_app_icon_for(app_id: *const c_char) -> *mut c_
 /// `command` must be null or a NUL-terminated string.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_spawn_command(command: *const c_char) -> c_int {
-    let Some(command) = text_option(command).filter(|command| !command.is_empty()) else {
+    let Some(command) = crate::cstr::text(command).filter(|command| !command.is_empty()) else {
         return 0;
     };
 
@@ -1094,7 +1077,7 @@ pub unsafe extern "C" fn lambdock_spawn_command(command: *const c_char) -> c_int
 /// `path` must be null or a NUL-terminated string.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_open_path(path: *const c_char) -> c_int {
-    let Some(path) = text_option(path).filter(|path| !path.is_empty()) else {
+    let Some(path) = crate::cstr::text(path).filter(|path| !path.is_empty()) else {
         return 0;
     };
 
@@ -1259,22 +1242,22 @@ mod tests {
             assert!(!entry.is_null());
 
             assert_eq!(
-                text_option((*entry).stem).as_deref(),
+                crate::cstr::text((*entry).stem).as_deref(),
                 Some("org.gnome.Nautilus")
             );
-            assert_eq!(text_option((*entry).name).as_deref(), Some("Files"));
+            assert_eq!(crate::cstr::text((*entry).name).as_deref(), Some("Files"));
             // The field code goes, and the space it leaves with it.
             assert_eq!(
-                text_option((*entry).exec).as_deref(),
+                crate::cstr::text((*entry).exec).as_deref(),
                 Some("nautilus --new-window")
             );
             // Only the first class is what a compositor reports.
             assert_eq!(
-                text_option((*entry).wm_class).as_deref(),
+                crate::cstr::text((*entry).wm_class).as_deref(),
                 Some("Org.gnome.Nautilus")
             );
             assert_eq!(
-                text_option((*entry).categories).as_deref(),
+                crate::cstr::text((*entry).categories).as_deref(),
                 Some("System;FileManager;")
             );
             assert_eq!((*entry).no_display, 0);
@@ -1282,8 +1265,8 @@ mod tests {
             assert_eq!(ptr_array_len((*entry).actions), 1);
 
             let action = ptr_array_at((*entry).actions, 0).cast::<DesktopAction>();
-            assert_eq!(text_option((*action).id).as_deref(), Some("new-window"));
-            assert_eq!(text_option((*action).name).as_deref(), Some("New Window"));
+            assert_eq!(crate::cstr::text((*action).id).as_deref(), Some("new-window"));
+            assert_eq!(crate::cstr::text((*action).name).as_deref(), Some("New Window"));
 
             assert_ne!(
                 lambdock_desktop_entry_has_category(entry, c"filemanager".as_ptr()),
@@ -1309,7 +1292,7 @@ mod tests {
             let entry = lambdock_desktop_entry_new_from_data(data.as_ptr(), id.as_ptr());
             assert!(!entry.is_null());
             assert_eq!(
-                text_option((*entry).icon).as_deref(),
+                crate::cstr::text((*entry).icon).as_deref(),
                 Some("application-x-executable")
             );
             assert!((*entry).actions.is_null(), "no Actions= means no array");
@@ -1345,11 +1328,11 @@ mod tests {
             let entry = lambdock_desktop_entry_new_from_file(path_text.as_ptr());
             assert!(!entry.is_null());
             assert_eq!(
-                text_option((*entry).path),
+                crate::cstr::text((*entry).path),
                 Some(path.to_string_lossy().into_owned())
             );
             assert_eq!(
-                text_option((*entry).id).as_deref(),
+                crate::cstr::text((*entry).id).as_deref(),
                 Some("lambdock-entry-test.desktop")
             );
 

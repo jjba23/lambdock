@@ -325,31 +325,6 @@ const STACK_VIEW_LIST: i32 = 1;
 
 /// A C string as a Rust string, empty when null.
 ///
-/// # Safety
-///
-/// `pointer` must be null or NUL-terminated.
-unsafe fn text(pointer: Text) -> String {
-    if pointer.is_null() {
-        return String::new();
-    }
-
-    std::ffi::CStr::from_ptr(pointer)
-        .to_string_lossy()
-        .into_owned()
-}
-
-/// A translated message, as a Rust string.
-unsafe fn translated(msgid: &std::ffi::CStr) -> String {
-    let message = crate::glib::tr(msgid);
-    if message.is_null() {
-        return String::new();
-    }
-
-    std::ffi::CStr::from_ptr(message)
-        .to_string_lossy()
-        .into_owned()
-}
-
 /// The item a button belongs to, when it is still on the dock.
 unsafe fn item_of(button: &gtk4::Widget) -> *mut DockItem {
     dock_item_from_widget(button.as_ptr().cast())
@@ -386,7 +361,7 @@ fn separator() -> gtk4::Separator {
 
 /// The item's name (or a sensible fallback) and the rule under it.
 unsafe fn append_header(vbox: &gtk4::Box, item: *const DockItem) {
-    let title = text(lambdock_item_title(item, c"Application".as_ptr()));
+    let title = crate::cstr::text_or_empty(lambdock_item_title(item, c"Application".as_ptr()));
     let label = gtk4::Label::new(Some(&title));
     label.add_css_class("title");
 
@@ -414,7 +389,7 @@ fn append_detail_row(vbox: &gtk4::Box, title: &str, value: &str) {
 /// Whether the icon theme (or, for a path, the file system) can resolve the item's
 /// icon.
 unsafe fn icon_is_known(item: *const DockItem) -> bool {
-    let icon = text((*item).icon);
+    let icon = crate::cstr::text_or_empty((*item).icon);
     if icon.is_empty() {
         return false;
     }
@@ -433,7 +408,7 @@ unsafe fn icon_is_known(item: *const DockItem) -> bool {
 unsafe fn trash_count_text() -> String {
     let count = crate::ui::trash::lambdock_trash_count();
     let message = crate::glib::trn(c"%u item in the trash", c"%u items in the trash", count);
-    let format = text(message);
+    let format = crate::cstr::text_or_empty(message);
 
     format.replace("%u", &count.to_string())
 }
@@ -446,7 +421,7 @@ unsafe fn append_trash_section(vbox: &gtk4::Box, item: *mut DockItem) {
     count_label.add_css_class("dim-label");
     vbox.append(&count_label);
 
-    let open = menu_row_new(Some("user-trash-symbolic"), &translated(c"Open"));
+    let open = menu_row_new(Some("user-trash-symbolic"), &crate::cstr::translated(c"Open"));
     open.connect_clicked(move |_| unsafe {
         if crate::ui::trash::lambdock_trash_open() == 0 {
             crate::log_warn!("UI", "Could not open the trash");
@@ -455,7 +430,7 @@ unsafe fn append_trash_section(vbox: &gtk4::Box, item: *mut DockItem) {
     });
     vbox.append(&open);
 
-    let empty = menu_row_new(Some("edit-delete-symbolic"), &translated(c"Empty Trash"));
+    let empty = menu_row_new(Some("edit-delete-symbolic"), &crate::cstr::translated(c"Empty Trash"));
     empty.add_css_class("destructive-action");
     empty.set_sensitive(count > 0);
     empty.connect_clicked(move |button| unsafe {
@@ -505,9 +480,9 @@ unsafe fn stack_view_button(item: *mut DockItem, view: i32, label: &str) -> gtk4
     button.add_css_class("view-mode");
 
     let description = if active {
-        translated(c"The stack is shown this way.")
+        crate::cstr::translated(c"The stack is shown this way.")
     } else {
-        translated(c"Shows the stack this way.")
+        crate::cstr::translated(c"Shows the stack this way.")
     };
     crate::accessibility::lambdock_accessible_update(
         button.as_ptr().cast(),
@@ -547,16 +522,16 @@ unsafe fn append_stack_section(vbox: &gtk4::Box, item: *mut DockItem) {
     views.append(&stack_view_button(
         item,
         STACK_VIEW_GRID,
-        &translated(c"Grid"),
+        &crate::cstr::translated(c"Grid"),
     ));
     views.append(&stack_view_button(
         item,
         STACK_VIEW_LIST,
-        &translated(c"List"),
+        &crate::cstr::translated(c"List"),
     ));
     vbox.append(&views);
 
-    let open = menu_row_new(Some("folder-open-symbolic"), &translated(c"Open"));
+    let open = menu_row_new(Some("folder-open-symbolic"), &crate::cstr::translated(c"Open"));
     open.connect_clicked(move |_| unsafe {
         if item.is_null() {
             return;
@@ -572,7 +547,7 @@ unsafe fn append_stack_section(vbox: &gtk4::Box, item: *mut DockItem) {
 unsafe fn append_launchpad_section(vbox: &gtk4::Box, item: *mut DockItem) {
     let show = menu_row_new(
         Some("view-app-grid-symbolic"),
-        &translated(c"Show Launchpad"),
+        &crate::cstr::translated(c"Show Launchpad"),
     );
 
     show.connect_clicked(move |_| unsafe {
@@ -595,9 +570,9 @@ unsafe fn append_launchpad_section(vbox: &gtk4::Box, item: *mut DockItem) {
 /// icon-only and therefore invisible to a screen reader, so it is named after the
 /// window it closes.
 unsafe fn append_window_row(vbox: &gtk4::Box, item: *mut DockItem, window: *mut AppWindow) {
-    let title = text((*window).title);
+    let title = crate::cstr::text_or_empty((*window).title);
     let title = if title.is_empty() {
-        translated(c"Window")
+        crate::cstr::translated(c"Window")
     } else {
         title
     };
@@ -649,7 +624,7 @@ unsafe fn append_window_row(vbox: &gtk4::Box, item: *mut DockItem, window: *mut 
     let close = gtk4::Button::from_icon_name("window-close-symbolic");
     close.add_css_class("flat");
     close.add_css_class("window-close");
-    close.set_tooltip_text(Some(&translated(c"Close this window")));
+    close.set_tooltip_text(Some(&crate::cstr::translated(c"Close this window")));
     crate::accessibility::lambdock_accessible_update(
         close.as_ptr().cast(),
         c"Close window".as_ptr(),
@@ -674,7 +649,7 @@ unsafe fn append_new_instance_row(vbox: &gtk4::Box, item: *mut DockItem, kind: i
         return;
     }
 
-    let launch = menu_row_new(Some("window-new-symbolic"), &translated(c"New Instance"));
+    let launch = menu_row_new(Some("window-new-symbolic"), &crate::cstr::translated(c"New Instance"));
     launch.connect_clicked(move |_| unsafe {
         if !item.is_null() {
             crate::ui::desktop_entry::lambdock_spawn_command((*item).exec);
@@ -690,7 +665,7 @@ unsafe fn append_close_all_row(vbox: &gtk4::Box, item: *mut DockItem, window_cou
         return;
     }
 
-    let close_all = menu_row_new(Some("window-close-symbolic"), &translated(c"Close All"));
+    let close_all = menu_row_new(Some("window-close-symbolic"), &crate::cstr::translated(c"Close All"));
     close_all.connect_clicked(move |_| unsafe {
         if item.is_null() {
             return;
@@ -722,7 +697,7 @@ unsafe fn append_window_section(vbox: &gtk4::Box, item: *mut DockItem, kind: i32
     if (*item).windows.is_null() {
         // Nothing is running: offer to start it.
         if !(*item).exec.is_null() && *(*item).exec != 0 {
-            let launch = menu_row_new(Some("system-run-symbolic"), &translated(c"Open"));
+            let launch = menu_row_new(Some("system-run-symbolic"), &crate::cstr::translated(c"Open"));
             launch.connect_clicked(move |_| unsafe {
                 if !item.is_null() {
                     crate::ui::desktop_entry::lambdock_spawn_command((*item).exec);
@@ -764,21 +739,21 @@ unsafe fn item_app_actions(item: *mut DockItem) -> (i32, Vec<i32>, Option<String
     let categories = if entry.is_null() {
         None
     } else {
-        Some(text((*entry).categories)).filter(|categories| !categories.is_empty())
+        crate::cstr::non_empty_text((*entry).categories)
     };
     let app_id = if !entry.is_null() && !(*entry).stem.is_null() {
-        text((*entry).stem)
+        crate::cstr::text_or_empty((*entry).stem)
     } else {
-        text((*item).app_id)
+        crate::cstr::text_or_empty((*item).app_id)
     };
     let name = if !(*item).name.is_null() && *(*item).name != 0 {
-        text((*item).name)
+        crate::cstr::text_or_empty((*item).name)
     } else if !entry.is_null() {
-        text((*entry).name)
+        crate::cstr::text_or_empty((*entry).name)
     } else {
         String::new()
     };
-    let exec = Some(text((*item).exec)).filter(|exec| !exec.is_empty());
+    let exec = crate::cstr::non_empty_text((*item).exec);
 
     let kind = crate::ui::app_actions::app_kind(
         Some(&app_id),
@@ -819,7 +794,7 @@ unsafe fn append_action_buttons(
     vbox.append(&separator());
 
     for chosen in actions {
-        let label = text(crate::ui::app_actions::lambdock_app_action_label(*chosen));
+        let label = crate::cstr::text_or_empty(crate::ui::app_actions::lambdock_app_action_label(*chosen));
         let button = menu_row_new(action_icon(*chosen).as_deref(), &label);
 
         let chosen = *chosen;
@@ -835,7 +810,7 @@ unsafe fn append_action_buttons(
                     .unwrap_or_default();
                 crate::ui::app_actions::lambdock_app_music_invoke(bus.as_ptr(), chosen);
             } else if let Some(command) =
-                crate::ui::app_actions::action_command(Some(&text((*item).exec)), chosen)
+                crate::ui::app_actions::action_command(Some(&crate::cstr::text_or_empty((*item).exec)), chosen)
             {
                 let command = std::ffi::CString::new(command).unwrap_or_default();
                 crate::ui::desktop_entry::lambdock_spawn_command(command.as_ptr());
@@ -875,8 +850,8 @@ unsafe fn append_desktop_actions(vbox: &gtk4::Box, item: *mut DockItem) {
             continue;
         }
 
-        let name = text((*action).name);
-        let command = text((*action).exec);
+        let name = crate::cstr::text_or_empty((*action).name);
+        let command = crate::cstr::text_or_empty((*action).exec);
         let button = menu_row_new(Some("system-run-symbolic"), &name);
 
         button.connect_clicked(move |_| unsafe {
@@ -904,30 +879,30 @@ unsafe fn append_inspector_section(vbox: &gtk4::Box, item: *mut DockItem) {
             .map_or(std::ptr::null(), |state| state.config_path)
     };
     let launcher = crate::core::item_text::lambdock_inspector_launcher_text(config_path, key);
-    append_detail_row(vbox, &translated(c"Launcher"), &text(launcher));
+    append_detail_row(vbox, &crate::cstr::translated(c"Launcher"), &crate::cstr::text_or_empty(launcher));
     crate::glib::g_free(launcher.cast());
     crate::glib::g_free(key.cast());
 
     let entry = item_desktop_entry(item);
     let entry_text = if entry.is_null() {
-        translated(c"none: the item does not resolve to a desktop entry")
+        crate::cstr::translated(c"none: the item does not resolve to a desktop entry")
     } else {
-        format!("{}\n{}", text((*entry).id), text((*entry).path))
+        format!("{}\n{}", crate::cstr::text_or_empty((*entry).id), crate::cstr::text_or_empty((*entry).path))
     };
-    append_detail_row(vbox, &translated(c"Desktop entry"), &entry_text);
+    append_detail_row(vbox, &crate::cstr::translated(c"Desktop entry"), &entry_text);
 
     let icon_text = crate::core::item_text::lambdock_inspector_icon_text(
         (*item).icon,
         c_int::from(icon_is_known(item)),
     );
-    append_detail_row(vbox, &translated(c"Icon"), &text(icon_text));
+    append_detail_row(vbox, &crate::cstr::translated(c"Icon"), &crate::cstr::text_or_empty(icon_text));
     crate::glib::g_free(icon_text.cast());
 
     let poller_text = crate::core::item_text::lambdock_inspector_poller_text(
         (*item).poll_name,
         (*item).poll_interval,
     );
-    append_detail_row(vbox, &translated(c"Poller"), &text(poller_text));
+    append_detail_row(vbox, &crate::cstr::translated(c"Poller"), &crate::cstr::text_or_empty(poller_text));
     crate::glib::g_free(poller_text.cast());
 }
 
@@ -937,7 +912,7 @@ unsafe fn append_inspector_entry(vbox: &gtk4::Box, item: *mut DockItem) {
 
     let toggle = menu_row_new(
         Some("help-about-symbolic"),
-        &translated(c"Why is this item here?"),
+        &crate::cstr::translated(c"Why is this item here?"),
     );
     toggle.connect_clicked(move |_| unsafe {
         if !item.is_null() {
@@ -962,7 +937,7 @@ unsafe fn append_remove_entry(vbox: &gtk4::Box, item: *mut DockItem) {
 
     let remove = menu_row_new(
         Some("edit-delete-symbolic"),
-        &translated(c"Remove from Dock"),
+        &crate::cstr::translated(c"Remove from Dock"),
     );
     remove.add_css_class("destructive-action");
     remove.connect_clicked(move |_| unsafe {

@@ -483,7 +483,7 @@ unsafe fn add_file(state: *mut LambdockState, file: &gio::File) -> bool {
             return false;
         }
 
-        let name = text((*entry).name);
+        let name = crate::cstr::text_or_empty((*entry).name);
         let known = !find_dock_item_by_app_id(state, (*entry).id).is_null()
             || !find_dock_item_by_app_id(state, (*entry).name).is_null();
 
@@ -512,7 +512,7 @@ unsafe fn add_file(state: *mut LambdockState, file: &gio::File) -> bool {
                 "UI",
                 "Added dock item from desktop entry: {} ({})",
                 name,
-                text((*entry).exec)
+                crate::cstr::text_or_empty((*entry).exec)
             );
             true
         };
@@ -533,17 +533,6 @@ unsafe fn add_file(state: *mut LambdockState, file: &gio::File) -> bool {
 
 /// A C string as a Rust string, empty when unset.
 ///
-/// # Safety
-///
-/// `pointer` must be null or a NUL-terminated string.
-unsafe fn text(pointer: *const c_char) -> String {
-    if pointer.is_null() {
-        return String::new();
-    }
-
-    CStr::from_ptr(pointer).to_string_lossy().into_owned()
-}
-
 /// A `GObject` reference handed to the trash worker and back to the main loop.
 ///
 /// The reference is taken on the main thread before the worker starts and released

@@ -41,15 +41,22 @@ extern "C" {
     pub fn g_log(domain: *const c_char, level: c_int, format: *const c_char, ...);
 }
 
+/// A Rust string as a C string, cut at an interior NUL.
+///
+/// `CString::new` refuses an interior NUL outright, and does not say which half
+/// it kept; `g_strdup` stops at it. A log line or a CSS class that somehow
+/// carries a NUL should come out truncated, as `g_strdup` would have, rather than
+/// disappear entirely.
+pub(crate) fn c_string(text: &str) -> std::ffi::CString {
+    let whole = text.split_once('\0').map_or(text, |(head, _)| head);
+
+    std::ffi::CString::new(whole).unwrap_or_default()
+}
+
 /// `g_strdup` of a Rust string, for a `(transfer full)` field that C frees with
 /// `g_free`.
-///
-/// A string with an interior NUL is truncated rather than refused: it is a log
-/// message or a CSS class, never a path.
 pub(crate) fn strdup_string(text: &str) -> *mut c_char {
-    let text = std::ffi::CString::new(text).unwrap_or_default();
-
-    unsafe { g_strdup(text.as_ptr()) }
+    unsafe { g_strdup(c_string(text).as_ptr()) }
 }
 
 /// Translate `msgid`, whose literal stays at the call site.
