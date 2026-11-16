@@ -61,6 +61,8 @@ GList *scan_settings_files(void);
 gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
                         double dy, gpointer user_data);
 GdkMonitor *find_monitor_by_connector(const char *connector);
+void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
+                          const char *config_path);
 
 /**
  * unregister_dock_state:
@@ -77,12 +79,6 @@ void unregister_dock_state(LambdockState *state) {
 /* =========================================================================
  * GUILE SCHEME <-> C BRIDGE & HOT-RELOAD LOGIC
  * ========================================================================= */
-
-/**
- * forward declaration of create_dock_instance.
- */
-static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
-                                 const char *config_path);
 
 /* -------------------------------------------------------------------------
  * SELECTING DOCKS
@@ -583,31 +579,6 @@ static void setup_config_file_monitors(GtkApplication *app) {
  * ========================================================================= */
 
 /**
- * on_monitor_invalidated:
- * Called synchronously by GDK when a monitor is disconnected.
- * Unbinds gtk-layer-shell from the output immediately to prevent a Wayland
- * protocol abort.
- */
-static void on_monitor_invalidated(GdkMonitor *monitor, gpointer user_data) {
-  LambdockState *state = (LambdockState *)user_data;
-  (void)monitor;
-  if (!state || state->is_destroying)
-    return;
-
-  LOG_C_INFO("Main",
-             "Monitor invalidated for dock instance [%s]. Unbinding layer "
-             "shell output...",
-             state->config_path ? state->config_path : "default");
-
-  if (state->window && GTK_IS_WINDOW(state->window) &&
-      gtk_layer_is_layer_window(GTK_WINDOW(state->window))) {
-    // Unbind layer shell surface from the dead output before dispatch cycle
-    // fails
-    gtk_layer_set_monitor(GTK_WINDOW(state->window), NULL);
-  }
-}
-
-/**
  * on_monitors_changed_cb:
  * Triggered whenever the Wayland compositor adds or removes display monitor
  * outputs.
@@ -659,238 +630,6 @@ static void setup_monitor_listeners(GtkApplication *app) {
                  "Registered listener for display monitor hotplug events.");
     }
   }
-}
-
-/* =========================================================================
- * GTK APPLICATION ACTIVATION (UI CONSTRUCTION & SETUP)
- * ========================================================================= */
-
-/**
- * create_dock_instance:
- * Constructs and displays a single dock window on a specific monitor output for
- * a config_path.
- * @param app Pointer to active GtkApplication instance.
- * @param monitor GdkMonitor target (or NULL for default monitor).
- * @param config_path Absolute path to the settings file for this dock instance.
- */
-/* -------------------------------------------------------------------------
- * DOCK INSTANCE CONSTRUCTION
- * -------------------------------------------------------------------------
- * Creating a dock is a sequence of independent steps: read the settings, build
- * the widget tree, build the menu, install the input, then show it. Each step is
- * its own function so a step can be read (and changed) without holding the whole
- * 170-line construction in your head.
- */
-
-/** Reads everything the dock needs out of the settings file into @state. */
-/** The scrolling content viewport: the item box inside a scroller. */
-static GtkWidget *dock_viewport_build(LambdockState *state) {
-  GtkWidget *scrolled_window = gtk_scrolled_window_new();
-  gtk_widget_set_overflow(scrolled_window, GTK_OVERFLOW_VISIBLE);
-  gtk_scrolled_window_set_propagate_natural_width(
-      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
-  gtk_scrolled_window_set_propagate_natural_height(
-      GTK_SCROLLED_WINDOW(scrolled_window), TRUE);
-
-  state->box = gtk_box_new(state->orientation, state->item_spacing);
-  gtk_widget_set_overflow(state->box, GTK_OVERFLOW_VISIBLE);
-  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled_window),
-                                state->box);
-
-  /* The viewport only ever scrolls along the dock's main axis. */
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL)
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
-                                   GTK_POLICY_EXTERNAL, GTK_POLICY_NEVER);
-  else
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled_window),
-                                   GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
-
-  GtkEventController *scroll_ctrl =
-      gtk_event_controller_scroll_new(GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
-  g_signal_connect(scroll_ctrl, "scroll", G_CALLBACK(on_dock_scroll), state);
-  gtk_widget_add_controller(scrolled_window, scroll_ctrl);
-
-  return scrolled_window;
-}
-
-/** The capsule (and its shelf frame) inside the window's overlay. */
-static void dock_capsule_build(LambdockState *state) {
-  GtkWidget *overlay = gtk_overlay_new();
-  gtk_widget_set_overflow(overlay, GTK_OVERFLOW_VISIBLE);
-  gtk_window_set_child(GTK_WINDOW(state->window), overlay);
-  state->overlay = overlay;
-
-  GtkWidget *bg_capsule = gtk_box_new(state->orientation, 0);
-  gtk_widget_add_css_class(bg_capsule, "lambdock-window");
-  state->bg_capsule = bg_capsule;
-
-  /* Wrap the styled capsule in the shelf frame. With the default shelf
-   * parameters (no tilt) the frame is a pure pass-through. */
-  state->bg_shelf = shelf_frame_new(bg_capsule);
-  gtk_widget_set_overflow(state->bg_shelf, GTK_OVERFLOW_VISIBLE);
-
-  apply_dock_mode_classes(state);
-}
-
-/** Assembles window -> overlay -> [shelf frame( capsule ), scroller]. */
-static void dock_widgets_build(LambdockState *state) {
-  dock_capsule_build(state);
-
-  GtkWidget *scrolled_window = dock_viewport_build(state);
-  state->scrolled_window = scrolled_window;
-
-  update_dock_dimensions(state);
-
-  GtkSizeGroupMode mode = (state->orientation == GTK_ORIENTATION_HORIZONTAL)
-                              ? GTK_SIZE_GROUP_HORIZONTAL
-                              : GTK_SIZE_GROUP_VERTICAL;
-  state->size_group = gtk_size_group_new(mode);
-  gtk_size_group_add_widget(state->size_group, state->bg_capsule);
-  gtk_size_group_add_widget(state->size_group, scrolled_window);
-
-  gtk_overlay_set_child(GTK_OVERLAY(state->overlay), state->bg_shelf);
-  gtk_overlay_add_overlay(GTK_OVERLAY(state->overlay), scrolled_window);
-
-  /* The compositor restarting drops the foreign-toplevel proxies; this says so
-   * while the tracker re-binds, and is hidden the rest of the time. */
-  state->reconnect_label =
-      gtk_label_new(lambdock_tracker_status_text(FALSE));
-  gtk_widget_add_css_class(state->reconnect_label, "dock-reconnecting");
-  gtk_widget_set_halign(state->reconnect_label, GTK_ALIGN_CENTER);
-  gtk_widget_set_valign(state->reconnect_label, GTK_ALIGN_START);
-  gtk_widget_set_can_target(state->reconnect_label, FALSE);
-  gtk_widget_set_visible(state->reconnect_label, FALSE);
-  gtk_overlay_add_overlay(GTK_OVERLAY(state->overlay), state->reconnect_label);
-
-  gtk_widget_set_overflow(state->box, GTK_OVERFLOW_VISIBLE);
-  gtk_widget_set_overflow(state->window, GTK_OVERFLOW_VISIBLE);
-}
-
-/** The window's own context menu: Preferences (for this dock), About, Quit. */
-static void dock_menu_popover_build(LambdockState *state) {
-  GMenu *menu_model = g_menu_new();
-
-  /* Preferences carries the dock's settings path as its action target: with
-   * several settings files in use, the menu must open the pane for the dock it
-   * was right-clicked on, not for an arbitrary one. */
-  GMenuItem *prefs_item = g_menu_item_new(_("Preferences…"), NULL);
-  g_menu_item_set_action_and_target(prefs_item, "app.preferences", "s",
-                                    state->config_path ? state->config_path
-                                                       : "");
-  g_menu_append_item(menu_model, prefs_item);
-  g_object_unref(prefs_item);
-
-  /* Capture what this dock resolves to, GUI and drag-and-drop edits included,
-   * as a settings file. A bug report can carry it; a user can read it. */
-  GMenuItem *export_item = g_menu_item_new(_("Save settings.scm…"), NULL);
-  g_menu_item_set_action_and_target(export_item, "app.export-settings", "s",
-                                    state->config_path ? state->config_path
-                                                       : "");
-  g_menu_append_item(menu_model, export_item);
-  g_object_unref(export_item);
-
-  g_menu_append(menu_model, _("About Lambdock"), "app.about");
-  g_menu_append(menu_model, _("Quit"), "app.quit");
-
-  GtkWidget *popover =
-      gtk_popover_menu_new_from_model(G_MENU_MODEL(menu_model));
-  g_object_unref(menu_model);
-
-  gtk_widget_set_parent(popover, state->window);
-  gtk_popover_set_has_arrow(GTK_POPOVER(popover), FALSE);
-  lambdock_popover_close_on_escape(popover);
-
-  g_signal_connect(popover, "closed", G_CALLBACK(on_popover_closed), state);
-  state->popover = popover;
-}
-
-/** Right click, drag and drop, keyboard navigation, motion tracking. */
-static void dock_input_install(LambdockState *state) {
-  GtkGesture *right_click_gesture = gtk_gesture_click_new();
-  gtk_gesture_single_set_button(GTK_GESTURE_SINGLE(right_click_gesture),
-                                GDK_BUTTON_SECONDARY);
-  g_signal_connect(right_click_gesture, "pressed", G_CALLBACK(on_right_click),
-                   state);
-  gtk_widget_add_controller(state->window,
-                            GTK_EVENT_CONTROLLER(right_click_gesture));
-
-  setup_dock_motion_controller(state);
-  dock_dnd_setup(state);
-
-  /* Keyboard access: arrows walk the icons, Menu opens their context menu,
-   * Escape closes whatever the dock has open, Ctrl+Arrow rearranges them. */
-  lambdock_dock_attach_key_navigation(state->window, state);
-}
-
-/** Shows the dock and puts it under window tracking / auto-hide. */
-static void dock_present(LambdockState *state) {
-  setup_layer_shell_window(state);
-
-  /* A dock that starts with reduced motion must not run a first slide. */
-  dock_apply_motion_preference(state);
-
-  dock_registry_add(state);
-  g_signal_connect_swapped(state->window, "destroy",
-                           G_CALLBACK(destroy_dock_instance), state);
-
-  gtk_window_present(GTK_WINDOW(state->window));
-
-  /* Window tracking is a bonus, not a requirement: report why it is unavailable
-   * and carry on with the pinned items. */
-  g_autoptr(GError) tracker_error = NULL;
-  if (init_toplevel_tracker(&tracker_error)) {
-    /* A dock created during a compositor restart starts reconnecting, without
-     * waiting for the next tracker event to tell it. */
-    dock_window_set_tracker_connected(state, lambdock_tracker_connected());
-  } else {
-    LOG_C_WARN("Tracker", "window tracking unavailable: %s",
-               tracker_error->message);
-  }
-
-  sync_window_trackers(state);
-
-  if (state->auto_hide && state->show_when_clear &&
-      state->window_trackers != NULL)
-    hide_dock(state);
-  else
-    schedule_initial_autohide(state);
-}
-
-static void create_dock_instance(GtkApplication *app, GdkMonitor *monitor,
-                                 const char *config_path) {
-  LambdockState *state = g_new0(LambdockState, 1);
-
-  state->monitor = monitor ? g_object_ref(monitor) : NULL;
-  state->config_path = config_path ? g_strdup(config_path) : NULL;
-
-  /* Listen for this monitor disappearing out from under the dock. */
-  if (state->monitor) {
-    g_signal_connect(state->monitor, "invalidate",
-                     G_CALLBACK(on_monitor_invalidated), state);
-  }
-
-  state->edge = get_position_config_for(state->config_path);
-  state->orientation = (state->edge == GTK_LAYER_SHELL_EDGE_LEFT ||
-                        state->edge == GTK_LAYER_SHELL_EDGE_RIGHT)
-                           ? GTK_ORIENTATION_VERTICAL
-                           : GTK_ORIENTATION_HORIZONTAL;
-
-  /* One reader for the whole settings file, shared with the reload path. */
-  dock_read_settings(state);
-
-  state->window = gtk_application_window_new(app);
-  /* A window without a title is announced as an unnamed frame; name the dock so
-   * a screen reader says what surface the focus just landed on. */
-  gtk_window_set_title(GTK_WINDOW(state->window), _("Lambdock dock"));
-
-  /* The theme stylesheet needs the window's CSS context, hence this order. */
-  load_custom_css(state);
-
-  dock_widgets_build(state);
-  populate_dock_items_for(state);
-  dock_menu_popover_build(state);
-  dock_input_install(state);
-  dock_present(state);
 }
 
 /**

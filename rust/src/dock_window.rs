@@ -104,7 +104,7 @@ fn trace(message: &str) {
 /// # Safety
 ///
 /// `pointer` must be null or a live widget.
-unsafe fn widget_of(pointer: *mut c_void) -> Option<Borrowed<gtk4::Widget>> {
+pub(crate) unsafe fn widget_of(pointer: *mut c_void) -> Option<Borrowed<gtk4::Widget>> {
     if pointer.is_null() {
         return None;
     }
@@ -146,7 +146,7 @@ unsafe fn surface_of(widget: &gtk4::Widget) -> Option<gdk::Surface> {
 }
 
 /// The dock's orientation, as the enum the widget calls take.
-fn orientation_of(state: &LambdockState) -> gtk4::Orientation {
+pub(crate) fn orientation_of(state: &LambdockState) -> gtk4::Orientation {
     if state.orientation == gtk4::Orientation::Vertical.into_glib() {
         gtk4::Orientation::Vertical
     } else {
@@ -1531,7 +1531,7 @@ unsafe fn set_class(widget: *mut c_void, class: &CStr, enabled: bool) {
 /// # Safety
 ///
 /// `dock` must be a live dock.
-unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Window>> {
+pub(crate) unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Window>> {
     let widget = widget_of(dock.window)?;
     let pointer = widget.as_ptr();
 

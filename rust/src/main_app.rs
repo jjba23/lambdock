@@ -18,13 +18,21 @@
 
 use gtk4::gdk;
 use gtk4::glib;
+use gtk4::glib::translate::{from_glib_none, IntoGlibPtr};
+use gtk4::glib::variant::ToVariant;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::prelude::*;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 
-use crate::cstr::{cstring, text_or_empty};
-use crate::dock_window::dock_apply_motion_preference;
+use crate::cstr::{cstring, text_or_empty, translated};
+use crate::dock_window::{
+    apply_dock_mode_classes, destroy_dock_instance, dock_apply_motion_preference,
+    dock_window_set_tracker_connected, hide_dock, on_popover_closed, on_right_click,
+    orientation_of, schedule_initial_autohide, setup_dock_motion_controller,
+    setup_layer_shell_window, update_dock_dimensions, widget_of, window_of,
+};
 use crate::state::LambdockState;
+use crate::ui::layer_shell::{self, EDGE_LEFT, EDGE_RIGHT};
 
 /// The names a settings file can have: `settings.scm`, and the per-dock
 /// `settings-<name>.scm`.
@@ -323,6 +331,393 @@ pub unsafe extern "C" fn on_export_settings_action(
     }
 
     crate::glib::g_free(written.cast());
+}
+
+// ===========================================================================
+// BUILDING ONE DOCK
+// ===========================================================================
+//
+// Creating a dock is a sequence of steps: read the settings, build the widget
+// tree, build the menu, install the input, then show it. Each step is its own
+// function, so a step can be read without holding the whole construction in your
+// head.
+//
+// One ownership rule runs through all of them, and it is the reason this file is
+// `unsafe` at all: the state holds *raw pointers* to its widgets, because the C
+// header, the ABI and the tests all read them from there. So a widget is either
+// parented inside the step that built it -- the tree holds the only reference
+// that matters, and the wrapper may drop -- or it is handed over floating
+// (`keep_floating`), so the step that adopts it later sinks that reference and
+// nothing leaks. A `GObject` that is not a widget (the size group) is handed over
+// owning its reference instead (`keep_owned`), which is what teardown unrefs.
+
+/// Hands `widget` to the state as a floating reference, for a later parent to
+/// sink.
+fn keep_floating(widget: gtk4::Widget) -> *mut c_void {
+    unsafe { glib::gobject_ffi::g_object_force_floating(widget.as_ptr().cast()) };
+
+    let pointer: *mut gtk4::ffi::GtkWidget = widget.into_glib_ptr();
+
+    pointer.cast()
+}
+
+/// Hands a `GObject` to the state, which owns the reference from here on.
+fn keep_owned(object: glib::Object) -> *mut c_void {
+    let pointer: *mut glib::gobject_ffi::GObject = object.into_glib_ptr();
+
+    pointer.cast()
+}
+
+/// Called by GDK when a monitor is unplugged: unbinds layer shell from the dead
+/// output immediately, before the next dispatch cycle fails.
+unsafe fn on_monitor_invalidated(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    if dock.is_destroying != 0 {
+        return;
+    }
+
+    let path = crate::cstr::text_or_empty(dock.config_path);
+    crate::log_info!(
+        "Main",
+        "Monitor invalidated for dock instance [{}]. Unbinding layer shell output...",
+        if path.is_empty() { "default" } else { path.as_str() }
+    );
+
+    if let Some(window) = window_of(dock) {
+        if layer_shell::is_layer_window(&*window) {
+            layer_shell::set_monitor(&window, std::ptr::null_mut());
+        }
+    }
+}
+
+/// The scrolling content viewport: the item box inside a scroller.
+///
+/// # Safety
+///
+/// `dock` must be a live dock under construction.
+unsafe fn build_viewport(dock: &mut LambdockState) -> *mut c_void {
+    let scrolled = gtk4::ScrolledWindow::new();
+    scrolled.set_overflow(gtk4::Overflow::Visible);
+    scrolled.set_propagate_natural_width(true);
+    scrolled.set_propagate_natural_height(true);
+
+    let box_ = gtk4::Box::new(orientation_of(dock), dock.item_spacing);
+    box_.set_overflow(gtk4::Overflow::Visible);
+    // Parented right here: the scroller owns it from now on.
+    scrolled.set_child(Some(&box_));
+    dock.box_ = box_.as_ptr().cast();
+
+    // The viewport only ever scrolls along the dock's main axis.
+    if orientation_of(dock) == gtk4::Orientation::Horizontal {
+        scrolled.set_policy(gtk4::PolicyType::External, gtk4::PolicyType::Never);
+    } else {
+        scrolled.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::External);
+    }
+
+    let scroll = gtk4::EventControllerScroll::new(gtk4::EventControllerScrollFlags::BOTH_AXES);
+    let pointer = dock as *mut LambdockState;
+    scroll.connect_scroll(move |_, dx, dy| {
+        if on_dock_scroll(std::ptr::null_mut(), dx, dy, pointer.cast()) != 0 {
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    scrolled.add_controller(scroll);
+
+    keep_floating(scrolled.upcast())
+}
+
+/// The capsule (and its shelf frame) inside the window's overlay.
+///
+/// # Safety
+///
+/// `dock` must be a live dock with its window built.
+unsafe fn build_capsule(dock: &mut LambdockState) -> *mut c_void {
+    let Some(window) = window_of(dock) else {
+        return std::ptr::null_mut();
+    };
+
+    let overlay = gtk4::Overlay::new();
+    overlay.set_overflow(gtk4::Overflow::Visible);
+    window.set_child(Some(&overlay));
+    dock.overlay = overlay.as_ptr().cast();
+
+    let capsule = gtk4::Box::new(orientation_of(dock), 0);
+    capsule.add_css_class("lambdock-window");
+    dock.bg_capsule = capsule.as_ptr().cast();
+
+    // Wrap the styled capsule in the shelf frame, which parents the capsule.
+    // With the default shelf parameters (no tilt) the frame passes through.
+    let frame = crate::ui::shelf::shelf_frame_new(capsule.as_ptr().cast());
+    apply_dock_mode_classes(dock as *mut LambdockState);
+
+    if !frame.is_null() {
+        let frame: gtk4::Widget = from_glib_none(frame);
+        frame.set_overflow(gtk4::Overflow::Visible);
+        dock.bg_shelf = frame.as_ptr().cast();
+        keep_floating(frame)
+    } else {
+        std::ptr::null_mut()
+    }
+}
+
+/// Window -> overlay -> [shelf frame( capsule ), scroller].
+///
+/// # Safety
+///
+/// `dock` must be a live dock with its window and settings read.
+unsafe fn build_widgets(dock: &mut LambdockState) {
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    // The overlay and the shelf frame come from this step, as in the C: the frame
+    // was handed over floating, so adopting it here is what sinks it.
+    let frame_pointer = build_capsule(dock);
+
+    let overlay_pointer = dock.overlay;
+    if overlay_pointer.is_null() {
+        return;
+    }
+    let overlay: gtk4::Overlay = from_glib_none(overlay_pointer.cast());
+
+    if !frame_pointer.is_null() {
+        let frame: gtk4::Widget = from_glib_none(frame_pointer.cast());
+        overlay.set_child(Some(&frame));
+    }
+
+    let scrolled_pointer = build_viewport(dock);
+    if scrolled_pointer.is_null() {
+        return;
+    }
+    let scrolled: gtk4::ScrolledWindow = from_glib_none(scrolled_pointer.cast());
+    dock.scrolled_window = scrolled_pointer;
+    overlay.add_overlay(&scrolled);
+
+    update_dock_dimensions(dock as *mut LambdockState);
+
+    let mode = match orientation_of(dock) {
+        gtk4::Orientation::Horizontal => gtk4::SizeGroupMode::Horizontal,
+        _ => gtk4::SizeGroupMode::Vertical,
+    };
+    let size_group = gtk4::SizeGroup::new(mode);
+    size_group.add_widget(&scrolled);
+    if let Some(capsule) = widget_of(dock.bg_capsule) {
+        size_group.add_widget(&*capsule);
+    }
+    dock.size_group = keep_owned(size_group.upcast());
+
+    // The compositor restarting drops the foreign-toplevel proxies; this says so
+    // while the tracker re-binds, and is hidden the rest of the time.
+    let status = crate::core::tracker_rules::lambdock_tracker_status_text(0);
+    let label = gtk4::Label::new(crate::cstr::text(status).as_deref());
+    label.add_css_class("dock-reconnecting");
+    label.set_halign(gtk4::Align::Center);
+    label.set_valign(gtk4::Align::Start);
+    label.set_can_target(false);
+    label.set_visible(false);
+    overlay.add_overlay(&label);
+    dock.reconnect_label = label.as_ptr().cast();
+
+    if let Some(box_) = widget_of(dock.box_) {
+        box_.set_overflow(gtk4::Overflow::Visible);
+    }
+    window.set_overflow(gtk4::Overflow::Visible);
+}
+
+/// The window's own context menu: Preferences (for this dock), Save settings,
+/// About and Quit.
+///
+/// # Safety
+///
+/// `dock` must be a live dock with its window built.
+unsafe fn build_menu_popover(dock: &mut LambdockState) {
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    let path = crate::cstr::text_or_empty(dock.config_path);
+    let target = path.to_variant();
+
+    let menu = gtk4::gio::Menu::new();
+
+    // Both of the first two carry the dock's settings path as their action
+    // target: with several settings files in use, the menu must act on the dock
+    // it was right-clicked on, not on an arbitrary one.
+    let preferences = gtk4::gio::MenuItem::new(Some(&translated(c"Preferences…")), None);
+    preferences.set_action_and_target_value(Some("app.preferences"), Some(&target));
+    menu.append_item(&preferences);
+
+    // Capture what this dock resolves to, GUI and drag-and-drop edits included,
+    // as a settings file. A bug report can carry it; a user can read it.
+    let export = gtk4::gio::MenuItem::new(Some(&translated(c"Save settings.scm…")), None);
+    export.set_action_and_target_value(Some("app.export-settings"), Some(&target));
+    menu.append_item(&export);
+
+    menu.append(Some(&translated(c"About Lambdock")), Some("app.about"));
+    menu.append(Some(&translated(c"Quit")), Some("app.quit"));
+
+    let popover = gtk4::PopoverMenu::from_model(Some(&menu));
+    popover.set_parent(&*window);
+    popover.set_has_arrow(false);
+    crate::ui::popover_menu::lambdock_popover_close_on_escape(popover.as_ptr().cast());
+
+    let pointer = dock as *mut LambdockState;
+    popover.connect_closed(move |popover| {
+        on_popover_closed(popover.as_ptr().cast(), pointer.cast());
+    });
+
+    dock.popover = popover.as_ptr().cast();
+}
+
+/// Right click, drag and drop, motion tracking and keyboard navigation.
+///
+/// # Safety
+///
+/// `dock` must be a live dock with its window built.
+unsafe fn build_input(dock: &mut LambdockState) {
+    let Some(window) = window_of(dock) else {
+        return;
+    };
+
+    let pointer = dock as *mut LambdockState;
+    let right_click = gtk4::GestureClick::new();
+    right_click.set_button(gtk4::gdk::BUTTON_SECONDARY);
+    right_click.connect_pressed(move |gesture, n_press, x, y| {
+        on_right_click(gesture.as_ptr().cast(), n_press, x, y, pointer.cast());
+    });
+    window.add_controller(right_click);
+
+    setup_dock_motion_controller(dock as *mut LambdockState);
+    crate::ui::dock_dnd::dock_dnd_setup(dock as *mut LambdockState);
+
+    // Keyboard access: arrows walk the icons, Menu opens their context menu,
+    // Escape closes whatever the dock has open, Ctrl+Arrow rearranges them.
+    crate::dock_item::lambdock_dock_attach_key_navigation(
+        window.as_ptr().cast(),
+        dock as *mut LambdockState,
+    );
+}
+
+/// Shows the dock and puts it under window tracking and auto-hide.
+///
+/// # Safety
+///
+/// `dock` must be a live dock with its widgets built.
+unsafe fn present(dock: *mut LambdockState) {
+    let Some(state) = dock.as_ref() else {
+        return;
+    };
+    let Some(window) = window_of(state) else {
+        return;
+    };
+
+    setup_layer_shell_window(dock);
+
+    // A dock that starts with reduced motion must not run a first slide.
+    dock_apply_motion_preference(dock);
+
+    crate::dock_registry::dock_registry_add(dock);
+
+    let pointer = dock;
+    window.connect_destroy(move |_| destroy_dock_instance(pointer));
+
+    window.present();
+
+    // Window tracking is a bonus, not a requirement: say why it is unavailable
+    // and carry on with the pinned items.
+    let mut error: *mut glib::ffi::GError = std::ptr::null_mut();
+    if crate::toplevel_tracker::init_toplevel_tracker(&mut error) != 0 {
+        // A dock created during a compositor restart starts reconnecting,
+        // without waiting for the next tracker event to tell it.
+        dock_window_set_tracker_connected(
+            dock,
+            crate::toplevel_tracker::lambdock_tracker_connected() != 0,
+        );
+    } else {
+        let message = crate::cstr::text((*error).message).unwrap_or_default();
+        crate::log_warn!("Tracker", "window tracking unavailable: {message}");
+    }
+
+    crate::toplevel_tracker::sync_window_trackers(dock);
+
+    let state = &*dock;
+    if state.auto_hide != 0 && state.show_when_clear != 0 && !state.window_trackers.is_null() {
+        hide_dock(dock);
+    } else {
+        schedule_initial_autohide(dock);
+    }
+}
+
+/// Constructs and displays one dock, on `monitor` and for `config_path`.
+///
+/// # Safety
+///
+/// `app` must be the live application; `monitor` must be null or a live
+/// `GdkMonitor`; `config_path` must be null or NUL-terminated.
+#[no_mangle]
+pub unsafe extern "C" fn create_dock_instance(
+    app: *mut gtk4::ffi::GtkApplication,
+    monitor: *mut gdk::ffi::GdkMonitor,
+    config_path: *const c_char,
+) {
+    if app.is_null() {
+        return;
+    }
+
+    // Allocated with GLib, like the C did, because `destroy_dock_instance` frees
+    // it with `g_free`.
+    let memory = crate::glib::g_malloc0(std::mem::size_of::<LambdockState>());
+    let state = memory.cast::<LambdockState>();
+    let dock = &mut *state;
+
+    if !monitor.is_null() {
+        glib::gobject_ffi::g_object_ref(monitor.cast());
+        dock.monitor = monitor.cast();
+
+        // Listen for this monitor disappearing out from under the dock.
+        let monitor: gdk::Monitor = from_glib_none(monitor);
+        let pointer = state;
+        monitor.connect_invalidate(move |_| on_monitor_invalidated(pointer));
+    }
+
+    dock.config_path = match crate::cstr::text(config_path) {
+        Some(path) => cstring(&path).into_raw(),
+        None => std::ptr::null_mut(),
+    };
+
+    dock.edge = crate::bridge::get_position_config_for(dock.config_path);
+    dock.orientation = if dock.edge == EDGE_LEFT || dock.edge == EDGE_RIGHT {
+        gtk4::Orientation::Vertical.into_glib()
+    } else {
+        gtk4::Orientation::Horizontal.into_glib()
+    };
+
+    // One reader for the whole settings file, shared with the reload path.
+    crate::bridge::dock_read_settings(state);
+
+    let app: gtk4::Application = from_glib_none(app);
+    let window = gtk4::ApplicationWindow::new(&app);
+    // A window without a title is announced as an unnamed frame; name the dock
+    // so a screen reader says what surface the focus just landed on.
+    window.set_title(Some(&translated(c"Lambdock dock")));
+    dock.window = window.as_ptr().cast();
+
+    // The theme stylesheet needs the window's CSS context, hence this order.
+    crate::ui::theme_engine::load_custom_css(state);
+
+    build_widgets(dock);
+    crate::bridge::populate_dock_items_for(state);
+    build_menu_popover(dock);
+    build_input(dock);
+    present(state);
+
+    // The application owns the window from here on; the state keeps the pointer
+    // the C header and the tests read.
+    let _: *mut gtk4::ffi::GtkApplicationWindow = window.into_glib_ptr();
 }
 
 #[cfg(test)]
