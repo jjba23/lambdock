@@ -232,7 +232,7 @@ Repeated cases are data, not switches. If you add a case, add a row:
 | =STACK_VIEW_OPS=                     | =ui/stack.c=        | one stack view (grid / list)              |
 | =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
 | =k_*_actions=                        | =ui/preferences.c=  | one "do something" row (e.g. add a widget) |
-| =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.c= | one "do this to every dock" action        |
+| =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.h= | one "do this to every dock" action (Rust) |
 
 The last one is how a compositor event reaches every dock: the tracker defines one
 visitor per event and hands it to ~dock_registry_foreach~, which walks a snapshot.
@@ -293,7 +293,7 @@ lambdock/
 ├── src/                       # The C side, in four layers (see The map at a glance)
 │   ├── main.c                 # Boot, Guile boot, monitor hotplug, dock reconciliation
 │   ├── dock_window.c          # LambdockState lifecycle: layer shell, animation, auto-hide, teardown
-│   ├── dock_registry.c        # The only owner of the active-dock list (snapshot + typed foreach)
+│   ├── dock_registry.h        # The active-dock list: the contract (the list is in rust/)
 │   ├── app_window.c           # AppWindow ownership: new/set-title/matches/free
 │   ├── guile_bridge.c         # C→Scheme readers: config getters + table-driven item builders
 │   ├── toplevel_tracker.c     # Window records + broadcasts; the Wayland backend (manager/handle listeners)
@@ -339,6 +339,7 @@ lambdock/
 │       ├── ui/                # Layers 3-4, the Rust home of src/ui/
 │       │   ├── mod.rs
 │       │   └── widget_utils.rs # CSS-class toggles
+│       ├── dock_registry.rs   # The only owner of the active-dock list
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
 │           ├── clock_face.rs  # Hand positions + the squircle
@@ -453,14 +454,16 @@ To move one module:
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
 Ported so far: the whole of layer 1, the config-reading half of the Scheme
-bridge, and the first widget module. =core/poll_budget.c=, =core/dock_click.c=,
-=core/tracker_rules.c=, =core/dock_motion.c=, =core/clock_face.c=,
-=core/poof.c=, =core/item_text.c=, =core/config_values.c=, =core/dock_dims.c=,
-=core/x11_rules.c= and =core/render_stats.c= are now =rust/src/core/*.rs=, and
-=src/core/= keeps their headers as the C-side contract. =rust/src/bridge.rs=
-holds every getter and the load/export calls; =src/guile_bridge.c= keeps the item
-builders, the layout writes and the poll procedures. =src/ui/widget_utils.c= is
-=rust/src/ui/widget_utils.rs=, the first module written against =gtk4-rs=.
+bridge, the dock registry, and the first widget module. =core/poll_budget.c=,
+=core/dock_click.c=, =core/tracker_rules.c=, =core/dock_motion.c=,
+=core/clock_face.c=, =core/poof.c=, =core/item_text.c=, =core/config_values.c=,
+=core/dock_dims.c=, =core/x11_rules.c= and =core/render_stats.c= are now
+=rust/src/core/*.rs=, and =src/core/= keeps their headers as the C-side
+contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
+=src/guile_bridge.c= keeps the item builders, the layout writes and the poll
+procedures. =rust/src/dock_registry.rs= owns the live-dock list, and
+=src/ui/widget_utils.c= is =rust/src/ui/widget_utils.rs=, the first module
+written against =gtk4-rs=.
 
 ** GTK from Rust, and why the crates are vendored
 :PROPERTIES:
@@ -1289,7 +1292,7 @@ pointer dies:
 | 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
 | 2     | =guile_bridge.c=       | Table-driven item builders, layout writes, stored poll procedures (readers: Rust) |
 | 2     | =toplevel_tracker.c=   | Wayland manager/handle listeners; owns the proxies; one visitor per event        |
-| 2     | =dock_registry.c=      | The only owner of the active-dock list; snapshot + typed ~foreach~               |
+| 2     | =dock_registry.h=      | The only owner of the active-dock list; snapshot + typed ~foreach~ -- in Rust   |
 | 2     | =app_window.c=         | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |
 | 2     | =accessibility.c=      | Reduce-motion preference, GTK animation setting, accessible label text           |
 | 2     | =lambdock.h=           | THE central header: ~LambdockState~, ~DockItem~, ~AppWindow~, constants          |
@@ -1344,7 +1347,7 @@ a monitor, ask =lambdock_dock_dims_compute()= once, push the finished struct int
 widgets.
 
 ** One owner per piece of mutable state
-- The set of docks lives in =dock_registry.c=; nothing else keeps that list, and
+- The set of docks lives in rust/src/dock_registry.rs; nothing else keeps that list, and
   callers either iterate a snapshot or, preferably, hand a =DockVisitor= to
   ~dock_registry_foreach()~ -- destroying a dock inside the loop cannot corrupt
   the iteration either way.

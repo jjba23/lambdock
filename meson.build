@@ -258,6 +258,7 @@ rust_sources = files(
   'rust/src/bridge.rs',
   'rust/src/glib.rs',
   'rust/src/guile.rs',
+  'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
@@ -323,7 +324,6 @@ sources = files(
   'src/main.c',
   'src/accessibility.c',
   'src/app_window.c',
-  'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -384,7 +384,6 @@ test_stubs = files('tests/test_stubs.c')
 full_app_sources = files(
   'src/accessibility.c',
   'src/app_window.c',
-  'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -455,7 +454,7 @@ unit_tests = [
   },
   {
     'id': 'dock_registry',
-    'extra_sources': ['src/dock_registry.c'],
+    'extra_sources': [],
   },
   {
     # Deliberately no GTK and no Wayland here: the tracker's decisions are

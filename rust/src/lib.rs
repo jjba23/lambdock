@@ -12,6 +12,7 @@
 
 pub mod bridge;
 pub mod core;
+pub mod dock_registry;
 pub(crate) mod glib;
 pub(crate) mod guile;
 pub mod ui;
