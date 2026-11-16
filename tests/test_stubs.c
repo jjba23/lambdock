@@ -10,7 +10,9 @@
 
 #include "../src/dock_window.h"
 #include "../src/lambdock.h"
+#include "../src/ui/dock_item.h"
 #include "../src/ui/shelf.h"
+#include "../src/guile_bridge.h"
 
 void unregister_dock_state(LambdockState *state) { (void)state; }
 
@@ -48,4 +50,91 @@ __attribute__((weak)) gboolean shelf_frame_project_point(GtkWidget *frame,
 __attribute__((weak)) GtkOrientation shelf_frame_cross_orientation(GtkWidget *frame) {
   (void)frame;
   return GTK_ORIENTATION_HORIZONTAL;
+}
+
+/* The two Rust modules that own the item record and its drag and drop still call
+ * into dock_item.c (the widget builder), shelf.c (the reflection's indicator) and
+ * the Scheme bridge (the layout overrides). A binary that links a slice has none
+ * of those, and these doubles are the "nothing is there" answers: no item, no
+ * reflection, no layout to persist. Each real definition wins wherever its file
+ * is compiled in. */
+__attribute__((weak)) char *dock_item_key(const DockItem *item) {
+  (void)item;
+  return NULL;
+}
+
+__attribute__((weak)) DockItem *dock_item_from_widget(GtkWidget *widget) {
+  (void)widget;
+  return NULL;
+}
+
+__attribute__((weak)) void free_dock_item(DockItem *item) { (void)item; }
+
+__attribute__((weak)) void dock_item_refresh_trash(DockItem *item) { (void)item; }
+
+__attribute__((weak)) void dock_item_update_accessible(DockItem *item) { (void)item; }
+
+__attribute__((weak)) DockItem *create_dock_item(LambdockState *state,
+                                                 const char *name,
+                                                 const char *icon,
+                                                 const char *exec,
+                                                 const char *app_id,
+                                                 gboolean is_favorite,
+                                                 gboolean hover_animate) {
+  (void)state;
+  (void)name;
+  (void)icon;
+  (void)exec;
+  (void)app_id;
+  (void)is_favorite;
+  (void)hover_animate;
+  return NULL;
+}
+
+__attribute__((weak)) DockItem *create_stack_dock_item(LambdockState *state,
+                                                       const char *name,
+                                                       const char *icon,
+                                                       const char *path,
+                                                       const char *view,
+                                                       gboolean hover_animate) {
+  (void)state;
+  (void)name;
+  (void)icon;
+  (void)path;
+  (void)view;
+  (void)hover_animate;
+  return NULL;
+}
+
+__attribute__((weak)) void shelf_reflection_set_running(GtkWidget *reflection,
+                                                        gboolean running) {
+  (void)reflection;
+  (void)running;
+}
+
+__attribute__((weak)) void reveal_dock(LambdockState *state) { (void)state; }
+
+__attribute__((weak)) void dock_layout_add_item(const char *config_path,
+                                                const char *kind,
+                                                const char *name,
+                                                const char *icon,
+                                                const char *exec,
+                                                const char *extra) {
+  (void)config_path;
+  (void)kind;
+  (void)name;
+  (void)icon;
+  (void)exec;
+  (void)extra;
+}
+
+__attribute__((weak)) void dock_layout_remove_item(const char *config_path,
+                                                   const char *key) {
+  (void)config_path;
+  (void)key;
+}
+
+__attribute__((weak)) void dock_layout_set_order(const char *config_path, GList *keys) {
+  (void)config_path;
+  (void)keys;
 }

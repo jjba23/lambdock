@@ -324,7 +324,7 @@ lambdock/
 │       ├── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
 │       ├── desktop_entry.h    # .desktop parsing + app-id alias cache (in rust/src/ui/)
 │       ├── app_actions.h      # Launch/close/MPRIS actions behind the popover (in rust/src/ui/)
-│       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
+│       ├── dock_dnd.h         # Drag and drop: reorder, add, drop on stack/trash (in rust/src/ui/)
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
 ├── rust/                      # The Rust side: the archive meson links in
 │   ├── Cargo.toml             # Crate `lambdock`; gtk4-rs is the only dependency
@@ -1364,7 +1364,7 @@ matters and is the canonical teardown sequence:
 - ~create_trash_dock_item~: an icon item whose artwork follows the trash, plus a
   refresh timer (~trash_timer_id~) that re-counts it. The counting and emptying
   live in =rust/src/ui/trash.rs=, against the freedesktop.org trash layout; nothing about
-  it is desktop-specific.  =ui/dock_dnd.c= gives the item a drop target for
+  it is desktop-specific.  =rust/src/ui/dock_dnd.rs= gives the item a drop target for
   file lists, which hands each dropped file to ~lambdock_trash_file()~ (GIO's
   ~g_file_trash()~) on a worker thread.
 - Tracked (running-window) items created by the tracker use
@@ -1437,7 +1437,7 @@ pointer dies:
 | 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
 | 4     | =ui/desktop_entry.h=   | =.desktop= parsing, exec field codes, app-id alias cache (body in Rust)          |
 | 4     | =ui/app_actions.h=     | App actions: launch commands, MPRIS/D-Bus calls (body in Rust)                  |
-| 4     | =ui/dock_dnd.c=        | Drag and drop: reorder, add favourites, drop onto stack/trash                    |
+| 4     | =ui/dock_dnd.h=        | Drag and drop: reorder, add favourites, drop onto stack/trash (body in Rust)     |
 | 4     | =ui/widget_utils.c=    | CSS-class toggles for state-driven styling (the "is it a taskbar" decisions)      |
 
 The layer numbers match [[#map-at-a-glance][The map at a glance]], which explains what each layer

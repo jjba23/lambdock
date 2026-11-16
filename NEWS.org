@@ -77,7 +77,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   throwaway trash roots only.  ~ui/shelf_follow.c~ is
   ~rust/src/ui/shelf_follow.rs~: the Jacobian of the shelf's projection at the
   separator's own place is a matrix built from four numbers, tested with a flat
-  projection, a lean and a stretch, and the widget only paints what it says.  A
+  projection, a lean and a stretch, and the widget only paints what it says.
+  ~ui/dock_dnd.c~ is ~rust/src/ui/dock_dnd.rs~: the drop index and the list move
+  are pure and tested, the gestures are gtk-rs's own drag sources and drop
+  targets, and trashing dropped files runs on a worker thread that comes back to
+  the main loop holding the button reference it took before it started.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

@@ -12,6 +12,7 @@
 pub mod app_actions;
 pub mod clock;
 pub mod desktop_entry;
+pub mod dock_dnd;
 pub mod dock_item_windows;
 pub mod icon_resolver;
 pub mod icon_zoom;
