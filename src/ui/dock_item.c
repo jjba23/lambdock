@@ -67,7 +67,8 @@ void dock_item_activate_launchpad(DockItem *item);
 void dock_item_activate_trash(DockItem *item);
 
 /* The per-kind accessible text; see ITEM_KIND_OPS. Each one only reads the item
- * and hands plain values to core/item_text.c, which owns the wording. */
+ * and hands plain values to rust/src/core/item_text.rs, which owns the
+ * wording. */
 static LambdockItemText describe_app_item(const DockItem *item);
 static LambdockItemText describe_dynamic_item(const DockItem *item);
 static LambdockItemText describe_stack_item(const DockItem *item);
@@ -189,7 +190,8 @@ DockItem *dock_item_from_widget(GtkWidget *widget) {
  */
 
 /* What a screen reader should say about each kind of item. The wording itself
- * lives in core/item_text.c; these only extract the inputs from the item. */
+ * lives in rust/src/core/item_text.rs; these only extract the inputs from the
+ * item. */
 static LambdockItemText describe_app_item(const DockItem *item) {
   return lambdock_item_text_app(item->name, g_list_length(item->windows));
 }
@@ -1725,8 +1727,8 @@ void dock_item_refresh_trash(DockItem *item) {
       gtk_image_set_from_icon_name(GTK_IMAGE(item->icon_image), icon);
   }
 
-  /* The wording (and its plural form) is in core/item_text.c, the same place the
-   * screen-reader description comes from. */
+  /* The wording (and its plural form) is in rust/src/core/item_text.rs, the same
+   * place the screen-reader description comes from. */
   g_autofree char *tooltip = lambdock_item_trash_tooltip(item->name, count);
 
   if (item->button)

@@ -12,6 +12,7 @@
 pub mod clock_face;
 pub mod dock_click;
 pub mod dock_motion;
+pub mod item_text;
 pub mod poof;
 pub mod poll_budget;
 pub mod tracker_rules;

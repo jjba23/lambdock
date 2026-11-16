@@ -9,22 +9,13 @@
 //! where the only way to test them was to fake a compositor. `toplevel_tracker.c`
 //! reads the state, asks here, and then does the widget work.
 
+use crate::glib::tr;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
-
-extern "C" {
-    // `_()` in C is this symbol. main.c sets the locale and the text domain
-    // once, so asking here returns the sentence the C side would have shown.
-    fn gettext(msgid: *const c_char) -> *mut c_char;
-}
 
 /// Ways the compositor spells "this is the dock itself". Tracking one of these
 /// would put an icon for the dock inside the dock.
 const OWN_APP_IDS: [&str; 2] = ["lambdock", "org.jointhefreeworld.lambdock"];
-
-/// What the dock says while the window list is gone. It carries its own NUL
-/// because gettext takes a C string; the msgid is the one already in po/*.po.
-const RECONNECTING: &str = "Reconnecting…\0";
 
 /// Whether @app_id carries no tracking information.
 ///
@@ -95,9 +86,8 @@ pub unsafe extern "C" fn lambdock_tracker_status_text(connected: c_int) -> *cons
         return std::ptr::null();
     }
 
-    // The msgid is already in po/*.po, so the translations keep working; the
-    // domain and the locale are set up in main.c, as for `_()` in C.
-    gettext(RECONNECTING.as_ptr() as *const c_char) as *const c_char
+    // The msgid is the one already in po/*.po, so the translations keep working.
+    tr(c"Reconnecting…")
 }
 
 #[cfg(test)]

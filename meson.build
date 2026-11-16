@@ -253,11 +253,14 @@ subdir('po')
 cargo = find_program('cargo')
 
 rust_sources = files(
+  'rust/build.rs',
   'rust/src/lib.rs',
+  'rust/src/glib.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
   'rust/src/core/dock_click.rs',
   'rust/src/core/dock_motion.rs',
+  'rust/src/core/item_text.rs',
   'rust/src/core/poof.rs',
   'rust/src/core/poll_budget.rs',
   'rust/src/core/tracker_rules.rs',
@@ -312,7 +315,6 @@ sources = files(
   'src/app_window.c',
   'src/core/config_values.c',
   'src/core/dock_dims.c',
-  'src/core/item_text.c',
   'src/core/render_stats.c',
   'src/core/x11_rules.c',
   'src/dock_registry.c',
@@ -379,7 +381,6 @@ full_app_sources = files(
   'src/app_window.c',
   'src/core/config_values.c',
   'src/core/dock_dims.c',
-  'src/core/item_text.c',
   'src/core/render_stats.c',
   'src/core/x11_rules.c',
   'src/dock_registry.c',
@@ -511,10 +512,12 @@ unit_tests = [
     'deps': [dependency('glib-2.0'), rust_lib_dep],
   },
   {
-    # Same deal for the item wording: strings in, strings out, no widgets.
+    # Same deal for the item wording: strings in, strings out, no widgets. The
+    # strings are g_strdup'ed here and freed by the C side, which is what this
+    # binary checks.
     'id': 'item_text',
-    'extra_sources': ['src/core/item_text.c'],
-    'deps': [dependency('glib-2.0'), libm_dep],
+    'extra_sources': [],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
   },
   {
     'id': 'stack',

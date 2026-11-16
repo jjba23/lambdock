@@ -11,3 +11,4 @@
 //! module at a time: from C's point of view nothing moved.
 
 pub mod core;
+pub(crate) mod glib;

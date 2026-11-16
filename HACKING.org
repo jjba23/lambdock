@@ -184,9 +184,9 @@ expensive, because the state they move is widgets.
   =core/dock_dims.h= includes =ui/shelf.h= (for =LambdockShelfGeometry=), and
   =core/config_values.h= includes =lambdock.h= (for =LambdockShelfParams=).
   The modules in =rust/src/core/= (=dock_click=, =dock_motion=,
-  =tracker_rules=, =clock_face=, =poof=, =poll_budget=) and =core/item_text.c=
-  are genuinely GTK-free and their test binaries link nothing but GLib and the
-  Rust archive;
+  =tracker_rules=, =clock_face=, =poof=, =poll_budget=, =item_text=) are
+  genuinely GTK-free and their test binaries link nothing but GLib and the Rust
+  archive;
   =config_values= and =dock_dims= are pure in content but typed against the
   central header, so their tests link GTK. Moving the shelf/dock value structs
   into =core/= would close the loop.
@@ -306,7 +306,6 @@ lambdock/
 │   ├── core/                  # Layer 1: decisions from values, no widgets
 │   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
 │   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
-│   │   ├── item_text.c/.h     # All item wording: labels, tooltips, gauges, plurals, GTK-free
 │   │   └── x11_rules.c/.h     # EWMH decisions: which windows to list, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
@@ -329,14 +328,17 @@ lambdock/
 ├── rust/                      # The Rust side: the archive meson links in
 │   ├── Cargo.toml             # Crate `lambdock`, staticlib + rlib, no deps yet
 │   ├── Cargo.lock
+│   ├── build.rs               # Links GLib, which the C contract hands strings to
 │   ├── cargo-build.sh         # Puts cargo's archive where meson declares it
 │   └── src/
 │       ├── lib.rs             # Crate root: the modules below, over the C ABI
+│       ├── glib.rs            # The one place the crate names GLib and gettext
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
 │           ├── clock_face.rs  # Hand positions + the squircle
 │           ├── dock_click.rs  # What a left click does
 │           ├── dock_motion.rs # Easing, slide, auto-hide margin, fisheye
+│           ├── item_text.rs   # All item wording: labels, tooltips, gauges, plurals
 │           ├── poof.rs        # The burst as particles
 │           ├── poll_budget.rs # The poller budget
 │           └── tracker_rules.rs # Window-tracking decisions
@@ -441,10 +443,23 @@ To move one module:
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
 Ported so far, each with the same cases as the =tests/test_<module>.c= that still
-runs against it: =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=
-(whose status sentence still goes through gettext), =core/dock_motion.c=,
-=core/clock_face.c= and =core/poof.c=. Not yet ported: everything GTK, Wayland
-and Guile.
+runs against it: =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=,
+=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c= and =core/item_text.c=.
+Not yet ported: everything GTK, Wayland and Guile.
+
+Two things the C ABI decides for a ported module, and both are now in
+=rust/src/glib.rs=:
+
+- *A returned string is GLib's.* The header says ~(transfer full)~, so the C
+  callers free it with ~g_free~ and ~lambdock_item_text_clear~. Rust allocates it
+  with ~g_strdup~ and never with its own allocator, which also means ~cargo test~
+  has to link GLib: =rust/build.rs= asks pkg-config where it is.
+- *A translated sentence with substitutions is formatted by
+  ~g_strdup_printf~*, not by ~format!~, so a translation may reorder its
+  placeholders. ~gettext~ and ~ngettext~ are called through ~tr~ and ~trn~, whose
+  ~&CStr~ argument is converted to a ~const char *~ at the boundary -- a ~&CStr~
+  is a fat pointer, and passing one straight to C shifts every following
+  argument.
 
 ** Guix (preferred)
 :PROPERTIES:
@@ -1202,7 +1217,7 @@ pointer dies:
 | 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
 | 1     | =core/dock_click.h=    | Click policy: launch, minimize, restore, list -- GTK-free, in Rust               |
 | 1     | =core/dock_motion.h=   | Easing and slide/fisheye arithmetic -- GTK-free, in Rust                         |
-| 1     | =core/item_text.c=     | All item wording: labels, tooltips, gauges, plurals -- GTK-free                  |
+| 1     | =core/item_text.h=     | All item wording: labels, tooltips, gauges, plurals -- in Rust                |
 | 1     | =core/tracker_rules.h= | Window-tracking decisions: own app id, stale item, hide/reveal -- in Rust        |
 | 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
 | 2     | =guile_bridge.c=       | The only Scheme config reader; table-driven item builders; exclusion checks      |
