@@ -311,7 +311,7 @@ lambdock/
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
 │       ├── shelf_follow.c/.h  # Separators following the shelf's projection
-│       ├── icon_zoom.c/.h     # Fisheye magnification by transform, not re-raster
+│       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.c/.h         # Circular gauge widget for meter items
 │       ├── dock_item_windows.c/.h # An item's windows: tracking, styling, lookup
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
@@ -473,7 +473,11 @@ owns the window records, =rust/src/accessibility.rs= decides whether the dock ma
 animate and pushes accessible labels, and the whole of =src/ui/icon_resolver.c= --
 the icon search paths and the six-stage pipeline that turns a name into a
 =GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c=
-alongside it as =rust/src/ui/widget_utils.rs=.
+alongside it as =rust/src/ui/widget_utils.rs=. The widget layer has started too:
+=src/ui/poof.c= is =rust/src/ui/poof.rs=, and =src/ui/icon_zoom.c= is
+=rust/src/ui/icon_zoom.rs= -- the first Rust widget that overrides measure, size
+allocation and snapshot at once, and the first to hand a floating reference back
+to C (see the floating-reference trap below).
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -482,7 +486,7 @@ error, it is a corrupted field two modules away, so the mirror carries a test
 pinning the size and the offsets of the fields Rust reads -- numbers taken from
 ~offsetof~ in C. When =lambdock.h= grows a field, that test fails and says so.
 
-=GTK from Rust has two traps=, both found by tests:
+=GTK from Rust has three traps=, all found by tests:
 
 - *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
   leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
@@ -494,6 +498,13 @@ pinning the size and the offsets of the fields Rust reads -- numbers taken from
   back a floating reference and the C callers sink it by appending the widget to a
   box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
   through the C constructors and only borrows the wrapper type on the way in.
+- *A widget built in Rust has to be floated again before C gets it.* The same
+  contract runs the other way: ~lambdock_icon_zoom_new~ returns a widget the
+  caller appends to a box, and appending sinks what it is given. A gtk4-rs
+  ~build()~ sinks the object already, so the module forces the floating flag back
+  on (~g_object_force_floating~) and hands its own reference over
+  (~into_glib_ptr~). Without that, the box's sink would leave one reference
+  behind per icon -- an invisible leak that only valgrind reports.
 
 =GTK 4.14 or newer= is the floor now: the Rust half enables =gtk4-rs='s =v4_14=
 feature for ~Accessible::announce~, where the C code compiled that call out below
@@ -574,6 +585,19 @@ let widget: Borrowed<Widget> = from_glib_borrow(pointer);  // never owned here
 The behaviour of a widget module is tested by the C suite, which already owns a
 display and real widgets; =cargo test= stays display-free, so a Rust test here
 pins down only what needs no widget (a null pointer, a bad class name).
+
+*The archive is pulled by codegen unit, not by function.* One object per module
+is what keeps a decision test's link line small, but a module also needs the
+shards of monomorphised generic instances that its module did not define, and one
+of those shards can hold a neighbour's closure. So a C test binary that links a
+slice of the application sources can be asked for a C symbol it never mentions:
+=test_icon_zoom= reached =update_dock_dimensions= through =ui::poof='s idle
+callback, which shares a shard with the subclass registration the zoom needs.
+=tests/test_stubs.c= answers with a *weak* double, so the real definition in
+=dock_window.c= still wins in every binary that compiles it, and a binary that
+never shows a dock never calls either. Add the module's own weak double there
+when a new port trips the same way -- and give the target =test_stubs= and
+whatever dependency it needs to compile it.
 
 What the Scheme boundary costs, learned the hard way:
 
@@ -1378,7 +1402,7 @@ pointer dies:
 | 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
 | 4     | =ui/shelf.c=           | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections   |
 | 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
-| 4     | =ui/icon_zoom.c=       | Fisheye magnification by transform, not re-raster (GtkWidget subclass)           |
+| 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.c=           | Circular gauge for meter items (GtkWidget subclass, snapshot drawing)            |
 | 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
 | 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
@@ -1828,7 +1852,7 @@ scaled once per frame in =update_dock_items_fisheye()=, and skipped entirely whe
 the dock is hidden, sliding, or motion is reduced.
 
 ** Paint continuously, lay out coarsely
-The fisheye magnifies by painting a transform (=ui/icon_zoom.c=), so the icon
+The fisheye magnifies by painting a transform (=rust/src/ui/icon_zoom.rs=), so the icon
 follows the pointer exactly; only the *size request* steps. =lambdock_size_step()=
 rounds magnified sizes to =FISHEYE_LAYOUT_STEP_PX= (2 px), which halves the row's
 re-measures during a hover sweep -- =test_dock_motion.c= measures it: 23 distinct

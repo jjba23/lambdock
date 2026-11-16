@@ -266,6 +266,7 @@ rust_sources = files(
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/icon_resolver.rs',
+  'rust/src/ui/icon_zoom.rs',
   'rust/src/ui/poof.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
@@ -345,7 +346,6 @@ sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/theme_engine.c',
-  'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_item_windows.c',
@@ -401,7 +401,6 @@ full_app_sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/theme_engine.c',
-  'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_item_windows.c',
@@ -423,7 +422,7 @@ unit_tests = [
   {
     'id': 'theme_engine',
     'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
-                      'src/ui/icon_zoom.c', lambdock_resources],
+                      lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
@@ -441,8 +440,10 @@ unit_tests = [
   },
   {
     'id': 'icon_zoom',
-    'extra_sources': ['src/ui/icon_zoom.c'],
-    'deps': [gtk_dep, libm_dep, rust_lib_dep],
+    # The widget is Rust now; this binary is what proves the C ABI in
+    # `src/ui/icon_zoom.h` still links and behaves.
+    'extra_sources': [test_stubs],
+    'deps': [gtk_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
     'id': 'dock_window',
@@ -459,8 +460,7 @@ unit_tests = [
   },
   {
     'id': 'config_values',
-    'extra_sources': ['src/ui/shelf.c',
-                      'src/ui/icon_zoom.c', lambdock_resources],
+    'extra_sources': [test_stubs, 'src/ui/shelf.c', lambdock_resources],
   },
   {
     'id': 'dock_registry',
@@ -478,8 +478,7 @@ unit_tests = [
   },
   {
     'id': 'dock_dims',
-    'extra_sources': ['src/ui/shelf.c',
-                      'src/ui/icon_zoom.c', lambdock_resources],
+    'extra_sources': [test_stubs, 'src/ui/shelf.c', lambdock_resources],
   },
   {
     # Click policy: counts and flags in, one enum out. No GTK, no Wayland, and
@@ -565,8 +564,7 @@ unit_tests = [
   },
   {
     'id': 'meter',
-    'extra_sources': ['src/ui/meter.c',
-                      'src/ui/icon_zoom.c', lambdock_resources],
+    'extra_sources': [test_stubs, 'src/ui/meter.c', lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {

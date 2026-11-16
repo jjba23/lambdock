@@ -37,10 +37,17 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   dock's fields (~reduce_motion~ first) -- and the Rust half needs GTK 4.14 for
   accessible announcements.  ~ui/poof.c~ is now ~rust/src/ui/poof.rs~, the first
   widget *subclass* written from Rust: it owns a frame-clock tick, paints its
-  puffs through a snapshot, and takes itself out of the dock on an idle.  The
-  release profile builds one codegen unit per module, so a C test that only calls
-  a decision function still links nothing but GLib instead of dragging GTK and
-  Guile into its link line.
+  puffs through a snapshot, and takes itself out of the dock on an idle.
+  ~ui/icon_zoom.c~ followed it to ~rust/src/ui/icon_zoom.rs~: the fish-eye is the
+  first Rust widget to override measure, size allocation and snapshot at once, so
+  the size it reports still spreads the row and the magnified icon is still a
+  transform over a raster rather than a re-resolved icon.  A test binary that
+  links only a slice of the C sources now needs one weak double
+  (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
+  reaches the archive through the codegen units it shares, not only through the
+  function the test calls.  The release profile builds one codegen unit per
+  module, so a C test that only calls a decision function still links nothing but
+  GLib instead of dragging GTK and Guile into its link line.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from
