@@ -984,7 +984,7 @@ fn close_popover(widget: &gtk4::Widget) {
             root.clone().downcast::<gtk4::Popover>().ok()
         });
 
-    if let Some(popover) = popover.filter(|popover| popover.is_visible()) {
+    if let Some(popover) = popover.filter(|popover| crate::ui::is_shown(popover.upcast_ref())) {
         popover.popdown();
     }
 }
@@ -1726,7 +1726,7 @@ pub unsafe extern "C" fn lambdock_stack_show(item: *mut DockItem) {
     popover_fill(item, root.as_deref());
 
     let state = (*item).state;
-    if !popover.is_visible() && !state.is_null() {
+    if !crate::ui::is_shown(popover.upcast_ref()) && !state.is_null() {
         (*state).active_popovers += 1;
     }
 
@@ -1778,7 +1778,7 @@ unsafe fn set_view(item: *mut DockItem, view: c_int) {
     // If the stack is on screen, redraw it in the new view mode right away --
     // where it is looking, not necessarily at its root.
     if let Some(popover) = popover_of(item) {
-        if popover.is_visible() {
+        if crate::ui::is_shown(popover.upcast_ref()) {
             let path = current_path(item);
             popover_rebuild(item, path.as_deref());
         }

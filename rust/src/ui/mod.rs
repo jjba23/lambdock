@@ -41,6 +41,19 @@ pub(crate) fn ensure_gtk_initialized() {
     let _ = gtk4::init();
 }
 
+/// Whether `widget` is shown, on its own.
+///
+/// gtk-rs's `WidgetExt::is_visible()` is `gtk_widget_is_visible()`, which also
+/// asks every ancestor -- and a popover is nobody's child, so an open menu
+/// answers "no" there. This is the widget's own flag, which is what the C read
+/// with `gtk_widget_get_visible()`, and what decides whether there is a panel to
+/// close or a menu to redraw.
+pub(crate) fn is_shown(widget: &gtk4::Widget) -> bool {
+    use gtk4::glib::translate::{from_glib, ToGlibPtr};
+
+    unsafe { from_glib(gtk4::ffi::gtk_widget_get_visible(widget.to_glib_none().0)) }
+}
+
 /// A widget borrowed from C for the length of one call.
 ///
 /// `from_glib_borrow`, never `from_glib_none`: the latter sinks a floating

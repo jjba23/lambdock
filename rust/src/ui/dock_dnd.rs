@@ -256,7 +256,7 @@ pub unsafe extern "C" fn schedule_remove_dock_item(item: *mut DockItem) {
 
     if !(*item).popover.is_null() {
         let popover: gtk4::Popover = from_glib_none((*item).popover.cast::<ffi::GtkPopover>());
-        if popover.is_visible() {
+        if crate::ui::is_shown(popover.upcast_ref()) {
             popover.popdown();
         }
     }
@@ -733,7 +733,7 @@ pub unsafe extern "C" fn dock_dnd_setup_item(item: *mut DockItem) {
         if !(*dragged).popover.is_null() {
             let popover: gtk4::Popover =
                 from_glib_none((*dragged).popover.cast::<ffi::GtkPopover>());
-            if popover.is_visible() {
+            if crate::ui::is_shown(popover.upcast_ref()) {
                 popover.popdown();
             }
         }

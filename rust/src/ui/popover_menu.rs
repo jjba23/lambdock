@@ -164,7 +164,7 @@ pub unsafe extern "C" fn lambdock_popover_close_on_escape(popover: *mut ffi::Gtk
             return glib::Propagation::Proceed;
         }
 
-        if target.is_visible() {
+        if crate::ui::is_shown(target.upcast_ref()) {
             target.popdown();
         }
 
