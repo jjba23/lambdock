@@ -670,3 +670,18 @@ test('rust_unit_tests', cargo,
      # A cold run compiles the crate's graph (gtk4-rs included) in the test
      # profile, which is well past meson's 30-second default.
      timeout: 600)
+
+# clippy is a component a Rust toolchain may or may not carry, so it is looked for
+# rather than required: a packager with a minimal toolchain still builds, and a
+# developer who has it gets the lint check as a test. The crate declares its lints
+# in Cargo.toml; this is what runs them.
+cargo_clippy = find_program('cargo-clippy', required: false)
+if cargo_clippy.found()
+  test('rust_clippy', cargo_clippy,
+       args: ['--locked', '--offline', '--all-targets', '--quiet',
+              '--manifest-path', meson.project_source_root() / 'rust' / 'Cargo.toml'],
+       env: rust_test_env,
+       timeout: 600)
+else
+  message('cargo-clippy not found: skipping the Rust lint check')
+endif

@@ -64,11 +64,12 @@ pub fn geometry(width: i32, height: i32) -> MeterGeometry {
     }
 
     let size = f64::from(width.min(height));
-    let mut geometry = MeterGeometry::default();
-
-    geometry.tile_radius = (size * 0.22) as f32;
-    geometry.center_x = (f64::from(width) / 2.0) as f32;
-    geometry.center_y = (f64::from(height) / 2.0) as f32;
+    let mut geometry = MeterGeometry {
+        tile_radius: (size * 0.22) as f32,
+        center_x: (f64::from(width) / 2.0) as f32,
+        center_y: (f64::from(height) / 2.0) as f32,
+        ..MeterGeometry::default()
+    };
 
     // The gauge wears a tile of its own: a bare ring would be drawn half over the
     // glass and half over whatever is behind the dock (a dock whose icons

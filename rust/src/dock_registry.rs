@@ -89,7 +89,10 @@ pub unsafe extern "C" fn dock_registry_contains(state: *const LambdockState) -> 
         return 0;
     }
 
-    docks().iter().any(|registered| *registered as *const LambdockState == state) as c_int
+    docks()
+        .iter()
+        .any(|registered| std::ptr::eq(*registered as *const LambdockState, state))
+        as c_int
 }
 
 /// How many docks are registered right now.

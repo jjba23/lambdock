@@ -100,6 +100,11 @@ pub unsafe extern "C" fn lambdock_icon_search_paths_build(
 
 /// The same list for the running process: the real XDG data directories and
 /// `$HOME`.
+///
+/// # Safety
+///
+/// The result is `(transfer full)`: a null-terminated array of `g_strdup`ed paths
+/// that the caller frees with `g_strfreev`.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_icon_search_paths_new() -> *mut *mut c_char {
     lambdock_icon_search_paths_build(

@@ -22,6 +22,20 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 gtk4 = { version = "0.11.5", features = ["v4_14"] }
 
+# The lints live here rather than in `#![...]` attributes so they apply to every
+# target the crate builds -- library, unit tests and the doc tests alike -- and so
+# a reader finds them next to the toolchain that runs them. `clippy::` lints are
+# ignored by a plain `cargo build`, which is what lets this be a deny without
+# making a packager's build depend on clippy being installed.
+[lints.rust]
+# Lifetime elision in paths is the one rust-2018 idiom worth denying: `&ItemNames`
+# reads as if the lifetime did not matter, and it is exactly the lifetime that
+# keeps a borrowed name from outliving its array.
+rust_2018_idioms = { level = "deny", priority = -2 }
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+
 # One codegen unit per module, so a C test that only calls a decision function
 # does not drag the widget code (and GTK) into its link: the linker only pulls
 # the objects a target references.

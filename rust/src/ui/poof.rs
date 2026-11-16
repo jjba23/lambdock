@@ -251,11 +251,7 @@ pub unsafe extern "C" fn lambdock_poof_take_slot(item: *mut DockItem) -> c_int {
     let item = &*item;
     let state = item.state;
 
-    if state.is_null()
-        || (*state).window.is_null()
-        || (*state).box_.is_null()
-        || (*state).box_ == std::ptr::null_mut()
-    {
+    if state.is_null() || (*state).window.is_null() || (*state).box_.is_null() {
         return 0;
     }
 

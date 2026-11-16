@@ -147,7 +147,9 @@ pub unsafe extern "C" fn lambdock_shelf_geometry_for(
 /// budget.
 #[no_mangle]
 pub extern "C" fn lambdock_reflection_band_count(axis_len: f64) -> c_int {
-    if !(axis_len > 0.0) {
+    // NaN and a zero-length axis both get the full budget: there is nothing to
+    // fade, and a widget must still paint the bands it promised.
+    if axis_len.is_nan() || axis_len <= 0.0 {
         return REFLECTION_BANDS;
     }
 

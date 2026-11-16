@@ -58,10 +58,10 @@ fn index(stat: c_int) -> Option<usize> {
 /// Clears every counter.
 #[no_mangle]
 pub extern "C" fn lambdock_stats_reset() {
-    for i in 0..STAT_COUNT {
-        unsafe {
-            COUNTERS[i] = 0;
-        }
+    // One assignment rather than a loop: the counters are a fixed array, and
+    // "all of them, at once" is what the reset means.
+    unsafe {
+        COUNTERS = [0; STAT_COUNT];
     }
 }
 

@@ -1026,6 +1026,15 @@ unsafe fn reorder_dock_widgets(state: &LambdockState) {
     }
 }
 
+/// Writes the item list back into the dock's state.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`; `list` must be the list it should hold.
+unsafe fn set_dock_items(state: *mut LambdockState, list: *mut glib::ffi::GList) {
+    (*state).dock_items = list.cast();
+}
+
 /// Moves `item` `delta` places along the dock, and remembers the order.
 ///
 /// # Safety
@@ -1060,14 +1069,14 @@ pub unsafe extern "C" fn lambdock_dock_item_move(
         return 0;
     }
     let list = glib::ffi::g_list_delete_link(state_ref.dock_items.cast(), list);
-    ((*(state as *mut LambdockState)).dock_items) = list.cast();
+    set_dock_items(state, list);
 
     // The neighbour may have been the link that was just deleted: look it up
     // again, and put the item back rather than drop it off the dock.
     let other_link = glib::ffi::g_list_find(list, other.cast());
     if other_link.is_null() {
         let list = glib::ffi::g_list_append(list, item.cast());
-        ((*(state as *mut LambdockState)).dock_items) = list.cast();
+        set_dock_items(state, list);
         return 0;
     }
 
@@ -1077,7 +1086,7 @@ pub unsafe extern "C" fn lambdock_dock_item_move(
         other_link
     };
     let list = glib::ffi::g_list_insert_before(list, before, item.cast());
-    ((*(state as *mut LambdockState)).dock_items) = list.cast();
+    set_dock_items(state, list);
 
     reorder_dock_widgets(&*state);
     dock_dnd_persist_order(state);

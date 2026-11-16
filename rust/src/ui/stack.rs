@@ -727,7 +727,7 @@ unsafe impl Send for Decoded {}
 
 impl Decoded {
     /// The decoded picture as a texture, or `None` when the decode failed.
-    fn into_texture(&self) -> Option<gdk::Texture> {
+    fn texture(&self) -> Option<gdk::Texture> {
         if self.0.is_null() {
             return None;
         }
@@ -764,7 +764,7 @@ fn finish(queue: &QueueHandle, view: &gtk4::Widget, decoded: Decoded) {
     queue.running.set(false);
 
     if let Some(image) = queue.current.borrow_mut().take() {
-        if let Some(texture) = decoded.into_texture() {
+        if let Some(texture) = decoded.texture() {
             image.set_paintable(Some(&texture));
         }
     }
@@ -1375,10 +1375,13 @@ fn header_button(icon_name: &str, label: &str, description: &str) -> gtk4::Butto
     button.add_css_class("stack-header-button");
     button.set_tooltip_text(Some(label));
     unsafe {
+        let label = crate::cstr::cstring(label);
+        let description = crate::cstr::cstring(description);
+
         crate::accessibility::lambdock_accessible_update(
             button.as_ptr().cast(),
-            crate::cstr::cstring(label).as_ptr(),
-            crate::cstr::cstring(&description).as_ptr(),
+            label.as_ptr(),
+            description.as_ptr(),
         )
     };
 
@@ -1745,7 +1748,7 @@ unsafe fn set_view(item: *mut DockItem, view: c_int) {
     if !state.is_null() {
         let key = dock_item_key(item);
         if !key.is_null() {
-            let name_c = crate::cstr::cstring(&name);
+            let name_c = crate::cstr::cstring(name);
             dock_layout_set_view((*state).config_path, key, name_c.as_ptr());
             crate::glib::g_free(key.cast());
         }
@@ -1829,7 +1832,7 @@ fn child_at(view: &gtk4::Widget, index: usize) -> Option<gtk4::Widget> {
 fn child_count(view: &gtk4::Widget) -> usize {
     if let Some(flow) = view.downcast_ref::<gtk4::FlowBox>() {
         let mut count = 0;
-        while flow.child_at_index(count as i32).is_some() {
+        while flow.child_at_index(count).is_some() {
             count += 1;
         }
         return count as usize;
@@ -2336,7 +2339,7 @@ mod tests {
         assert_eq!(stepped_index(3, -1, 0, grid.0, grid.1), 2, "left");
         assert_eq!(stepped_index(0, 0, 1, grid.0, grid.1), 3, "down is one row");
         assert_eq!(stepped_index(4, 0, -1, grid.0, grid.1), 1, "up is one row");
-        assert_eq!(stepped_index(5, 0, 1, grid.0, grid.1), 8.min(6), "clamped at the last");
+        assert_eq!(stepped_index(5, 0, 1, grid.0, grid.1), 6, "clamped at the last");
         assert_eq!(stepped_index(0, 0, -1, grid.0, grid.1), 0, "clamped at the first");
 
         // A list is a grid one wide.

@@ -401,7 +401,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_new_from_data(
     let is_application = key_file
         .string(GROUP, "Type")
         .ok()
-        .map_or(true, |kind| kind.eq_ignore_ascii_case("Application"));
+        .is_none_or(|kind| kind.eq_ignore_ascii_case("Application"));
     if !is_application {
         return std::ptr::null_mut();
     }
@@ -933,6 +933,11 @@ unsafe fn cache_ensure() {
 }
 
 /// Drops the cache, so the next lookup rescans the applications directories.
+///
+/// # Safety
+///
+/// Safe to call from any thread: the cache is behind a mutex, and the entries it
+/// held are freed here.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_desktop_cache_invalidate() {
     let mut guard = cache();

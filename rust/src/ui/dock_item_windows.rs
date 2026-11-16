@@ -87,7 +87,7 @@ pub fn exec_matches_app_id(exec: Option<&str>, app_id: Option<&str>) -> bool {
 
 /// Whether an item is known by `app_id`: any of the spellings a launcher can be
 /// written with, plus the exec heuristic.
-pub fn item_matches_app_id(item: &ItemNames, app_id: &str) -> bool {
+pub fn item_matches_app_id(item: &ItemNames<'_>, app_id: &str) -> bool {
     let equal = |field: Option<&str>| field.is_some_and(|field| field.eq_ignore_ascii_case(app_id));
 
     equal(item.app_id)
@@ -98,7 +98,7 @@ pub fn item_matches_app_id(item: &ItemNames, app_id: &str) -> bool {
 }
 
 /// Whether an item resolves to the same desktop entry -- the precise match.
-pub fn item_matches_entry(item: &ItemNames, entry: &EntryNames) -> bool {
+pub fn item_matches_entry(item: &ItemNames<'_>, entry: &EntryNames<'_>) -> bool {
     let equal = |left: Option<&str>, right: Option<&str>| match (left, right) {
         (Some(left), Some(right)) => left.eq_ignore_ascii_case(right),
         _ => false,

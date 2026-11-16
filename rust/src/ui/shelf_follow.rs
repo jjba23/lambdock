@@ -187,9 +187,8 @@ unsafe fn local_matrix(
         return None;
     }
 
-    let Some(bounds) = widget.compute_bounds(&from_glib_none::<_, gtk4::Widget>(frame)) else {
-        return None;
-    };
+    let frame_widget: gtk4::Widget = from_glib_none(frame);
+    let bounds = widget.compute_bounds(&frame_widget)?;
 
     let centre = (
         bounds.x() + bounds.width() / 2.0,

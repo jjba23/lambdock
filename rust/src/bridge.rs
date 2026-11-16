@@ -396,6 +396,10 @@ pub unsafe extern "C" fn get_monitor_config_for(config_path: *const c_char) -> *
 }
 
 /// The settings file the default dock came from, or null.
+///
+/// # Safety
+///
+/// The result is `(transfer full)`: free it with `g_free`.
 #[no_mangle]
 pub unsafe extern "C" fn get_config_path_c() -> *mut c_char {
     string_for(

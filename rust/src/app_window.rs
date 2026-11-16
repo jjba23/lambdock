@@ -115,7 +115,7 @@ pub unsafe extern "C" fn app_window_matches(
     window: *const AppWindow,
     handle: *const LambdockToplevel,
 ) -> c_int {
-    (!window.is_null() && (*window).handle == handle as *mut LambdockToplevel) as c_int
+    (!window.is_null() && std::ptr::eq((*window).handle, handle)) as c_int
 }
 
 /// Frees one record; null is a no-op.

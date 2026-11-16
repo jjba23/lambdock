@@ -125,6 +125,11 @@ fn ray_path(cx: f64, cy: f64, turn: f64, from_px: f64, to_px: f64) -> gsk::Path 
 }
 
 /// A stroked run with round ends, the shape every tick and hand is made of.
+///
+/// Eight numbers is what a line segment from a centre is: the callers are the
+/// dial, the hour, the minute and the second hand, and naming the arguments is
+/// cheaper than a struct four helpers have to build.
+#[allow(clippy::too_many_arguments)]
 fn paint_ray(
     snapshot: &gtk4::Snapshot,
     cx: f64,

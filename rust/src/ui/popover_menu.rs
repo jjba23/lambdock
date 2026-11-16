@@ -794,8 +794,9 @@ unsafe fn append_action_buttons(
     vbox.append(&separator());
 
     for chosen in actions {
-        let label = crate::cstr::text_or_empty(crate::ui::app_actions::lambdock_app_action_label(*chosen));
-        let button = menu_row_new(action_icon(*chosen).as_deref(), &label);
+        let label =
+            crate::cstr::text_or_empty(crate::ui::app_actions::lambdock_app_action_label(*chosen));
+        let button = menu_row_new(action_icon(*chosen), &label);
 
         let chosen = *chosen;
         let music_bus = music_bus.clone();
