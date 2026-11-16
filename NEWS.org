@@ -248,6 +248,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.6 (2026-11-16)
+
+- *The build finds the C toolchain a sandbox gives it.* =build.rs= compiled the
+  generated resource bundle and protocol code with a hard-coded =cc= and =ar=,
+  which Guix's build environment does not provide under those names -- its
+  implicit inputs ship =gcc=, and =cc= lives in =gcc-toolchain=.  The script now
+  honours =CC= and =AR=, the Guix recipe names =gcc-toolchain= as a native input,
+  and the Debian recipe says =gcc= and =binutils= out loud.
+
 ** v2.0.5 (2026-11-16)
 
 - *The vendored crates ship their fixtures in the source archive again.* A global

@@ -96,6 +96,11 @@ fn generate(_what: &str) {
     let cflags = String::from_utf8(cflags.stdout).expect("pkg-config printed UTF-8");
     let cflags: Vec<&str> = cflags.split_whitespace().collect();
 
+    // The toolchain's own compiler, or whichever the environment names: a sandbox
+    // (Guix, Nix) puts it on PATH under a name of its choosing.
+    let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_owned());
+    let ar = std::env::var("AR").unwrap_or_else(|_| "ar".to_owned());
+
     let mut objects = Vec::new();
     for source in [&resources, &protocol] {
         let object = source.with_extension("o");
@@ -106,7 +111,7 @@ fn generate(_what: &str) {
         arguments.push(&source_text);
         arguments.extend(cflags.iter().copied());
 
-        run("cc", &arguments, source_root);
+        run(&cc, &arguments, source_root);
         objects.push(object);
     }
 

@@ -51,6 +51,10 @@
     (native-inputs (list (list glib "bin")
                          pkg-config
                          gettext-minimal
+                         ;; `build.rs' compiles the generated resource bundle and
+                         ;; protocol code with `cc', and archives them with `ar':
+                         ;; both come from the toolchain, not from a bare `gcc'.
+                         gcc-toolchain
                          ;; `rustc' and `cargo' build the crate and run the
                          ;; suite; `wayland-scanner' and `glib:bin' generate the
                          ;; protocol and the resource bundle.

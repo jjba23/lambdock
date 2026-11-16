@@ -3,6 +3,8 @@ Section: x11
 Priority: optional
 Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 Build-Depends: debhelper-compat (= 13),
+               gcc,
+               binutils,
                pkg-config,
                wayland-scanner,
                libglib2.0-bin,
