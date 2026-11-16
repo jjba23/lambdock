@@ -23,11 +23,18 @@
 //! that is exactly the classic `icon + 24px` capsule, the frame is a pass-through
 //! and the reflections stay hidden.
 
-use crate::core::config_values::{lambdock_shelf_params_default, ShelfParams};
+use crate::core::config_values::{
+    lambdock_shelf_params_default, ShelfParams, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP,
+    SHELF_DEFAULT_PERSPECTIVE,
+};
 use crate::core::dock_dims::ShelfGeometry;
 use crate::state::LambdockState;
-use gtk4::graphene;
-use std::os::raw::c_int;
+use gtk4::glib::translate::{from_glib_borrow, IntoGlib, IntoGlibPtr};
+use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use gtk4::{ffi, glib, graphene, gsk};
+use std::cell::Cell;
+use std::os::raw::{c_double, c_int, c_void};
 
 /// `DEFAULT_ICON_SIZE` in `lambdock.h`.
 const DEFAULT_ICON_SIZE: c_int = 48;
@@ -262,6 +269,413 @@ pub unsafe extern "C" fn lambdock_shelf_keystone_matrix(
     1
 }
 
+/// Whether a dock on this edge runs horizontally, i.e. whether its depth is the
+/// vertical axis.
+fn is_horizontal(edge: c_int) -> bool {
+    edge == EDGE_TOP || edge == EDGE_BOTTOM
+}
+
+/// Whether the edge touching the screen is the far end of the depth axis.
+fn is_pinned_at_end(edge: c_int) -> bool {
+    edge == EDGE_BOTTOM || edge == EDGE_RIGHT
+}
+
+/// The projection the frame applies to the slab: the keystone (which gives the
+/// slab its trapezoid) followed by the tilt (which tips it away from the viewer).
+///
+/// `None` when the shelf is a plain rectangle that needs no projection.
+pub fn frame_transform(
+    edge: c_int,
+    tilt: f64,
+    perspective: f64,
+    flare: c_int,
+    width: i32,
+    height: i32,
+) -> Option<gsk::Transform> {
+    if tilt == 0.0 && flare == 0 {
+        return None;
+    }
+    if width <= 0 || height <= 0 {
+        return None;
+    }
+
+    let horizontal = is_horizontal(edge);
+
+    let keystone = keystone(width, height, horizontal, flare, is_pinned_at_end(edge))
+        .map(|values| gsk::Transform::new().matrix(&graphene::Matrix::from_float(values)));
+
+    let tilt_transform = if tilt == 0.0 {
+        None
+    } else {
+        // Tilt around the docked edge: that edge stays pinned on screen while the
+        // inner edge recedes and is projected slightly narrower.
+        let (width, height) = (width as f32, height as f32);
+        let pivot = match edge {
+            EDGE_TOP => graphene::Point::new(width / 2.0, 0.0),
+            EDGE_LEFT => graphene::Point::new(0.0, height / 2.0),
+            EDGE_RIGHT => graphene::Point::new(width, height / 2.0),
+            _ => graphene::Point::new(width / 2.0, height),
+        };
+
+        let axis = if horizontal {
+            graphene::Vec3::new(1.0, 0.0, 0.0)
+        } else {
+            graphene::Vec3::new(0.0, 1.0, 0.0)
+        };
+
+        let origin = graphene::Point::new(-pivot.x(), -pivot.y());
+
+        Some(
+            gsk::Transform::new()
+                .translate(&origin)
+                .rotate_3d(tilt as f32, &axis)
+                .perspective(perspective as f32)
+                .translate(&pivot),
+        )
+    };
+
+    match (keystone, tilt_transform) {
+        (None, None) => None,
+        (Some(keystone), None) => Some(keystone),
+        (None, Some(tilt)) => Some(tilt),
+        // The keystone is applied to the tilted slab, as the frame has always drawn
+        // it: `transform(next)` applies `self` first.
+        (Some(keystone), Some(tilt)) => Some(keystone.transform(Some(&tilt))),
+    }
+}
+
+mod imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct ShelfFrame {
+        /// Docked edge: the tilt axis and the edge the slab stays pinned to.
+        pub edge: Cell<c_int>,
+        /// Tilt angle in degrees (0 = disabled).
+        pub tilt: Cell<f64>,
+        /// Projective distance in pixels.
+        pub perspective: Cell<f64>,
+        /// Keystone lean per side, in pixels.
+        pub flare: Cell<c_int>,
+        pub child: std::cell::RefCell<Option<gtk4::Widget>>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ShelfFrame {
+        const NAME: &'static str = "LambdockShelfFrame";
+        type Type = super::ShelfFrame;
+        type ParentType = gtk4::Widget;
+    }
+
+    impl ObjectImpl for ShelfFrame {
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            self.edge.set(EDGE_BOTTOM);
+            self.perspective.set(SHELF_DEFAULT_PERSPECTIVE);
+
+            let widget = self.obj();
+            widget.set_can_focus(false);
+            widget.set_can_target(false);
+            widget.set_overflow(gtk4::Overflow::Visible);
+            widget.add_css_class("shelf-frame");
+        }
+
+        fn dispose(&self) {
+            if let Some(child) = self.child.borrow_mut().take() {
+                child.unparent();
+            }
+        }
+    }
+
+    impl WidgetImpl for ShelfFrame {
+        fn measure(&self, orientation: gtk4::Orientation, for_size: i32) -> (i32, i32, i32, i32) {
+            let Some(child) = self
+                .child
+                .borrow()
+                .clone()
+                .filter(|child| child.should_layout())
+            else {
+                return (0, 0, -1, -1);
+            };
+
+            let (minimum, natural, min_baseline, nat_baseline) =
+                child.measure(orientation, for_size);
+
+            // The keystone widens the screen-side edge, so the frame has to reserve
+            // that much room across the dock or the flare would be clipped by the
+            // surface.
+            let horizontal = is_horizontal(self.edge.get());
+            let cross_axis = (horizontal && orientation == gtk4::Orientation::Horizontal)
+                || (!horizontal && orientation == gtk4::Orientation::Vertical);
+            let flare = self.flare.get().max(0);
+
+            if cross_axis && flare > 0 {
+                (
+                    minimum + 2 * flare,
+                    natural + 2 * flare,
+                    min_baseline,
+                    nat_baseline,
+                )
+            } else {
+                (minimum, natural, min_baseline, nat_baseline)
+            }
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            let Some(child) = self
+                .child
+                .borrow()
+                .clone()
+                .filter(|child| child.should_layout())
+            else {
+                return;
+            };
+
+            let horizontal = is_horizontal(self.edge.get());
+
+            // The child is the slab as the theme draws it: it keeps the dock's
+            // width on the inner edge, and the projection spreads it out to fill the
+            // room reserved for the flare.
+            let inset = self.flare.get().max(0);
+            let offset = graphene::Point::new(
+                if horizontal { inset as f32 } else { 0.0 },
+                if horizontal { 0.0 } else { inset as f32 },
+            );
+            let transform = if inset > 0 {
+                Some(gsk::Transform::new().translate(&offset))
+            } else {
+                None
+            };
+
+            child.allocate(
+                if horizontal { width - 2 * inset } else { width },
+                if horizontal {
+                    height
+                } else {
+                    height - 2 * inset
+                },
+                baseline,
+                transform,
+            );
+        }
+
+        fn snapshot(&self, snapshot: &gtk4::Snapshot) {
+            let widget = self.obj();
+            let Some(child) = self.child.borrow().clone() else {
+                return;
+            };
+
+            let transform = frame_transform(
+                self.edge.get(),
+                self.tilt.get(),
+                self.perspective.get(),
+                self.flare.get(),
+                widget.width(),
+                widget.height(),
+            );
+
+            let Some(transform) = transform else {
+                widget.snapshot_child(&child, snapshot);
+                return;
+            };
+
+            snapshot.save();
+            snapshot.transform(Some(&transform));
+            widget.snapshot_child(&child, snapshot);
+            snapshot.restore();
+        }
+    }
+}
+
+glib::wrapper! {
+    /// A slab re-rendered through a projective tilt and keystone.
+    pub struct ShelfFrame(ObjectSubclass<imp::ShelfFrame>)
+        @extends gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
+}
+
+/// The frame behind a widget pointer, or `None` when it is not one.
+///
+/// # Safety
+///
+/// `pointer` must be null or a live `GtkWidget`.
+unsafe fn as_frame(pointer: *mut ffi::GtkWidget) -> Option<glib::translate::Borrowed<ShelfFrame>> {
+    if pointer.is_null() {
+        return None;
+    }
+
+    let widget: glib::translate::Borrowed<gtk4::Widget> = from_glib_borrow(pointer);
+    if !widget.is::<ShelfFrame>() {
+        return None;
+    }
+
+    let widget: gtk4::Widget = widget.into_inner();
+    Some(glib::translate::Borrowed::new(widget.unsafe_cast()))
+}
+
+/// Wraps `child` in a frame.
+///
+/// # Safety
+///
+/// `child` must be null or an unparented widget; the result is `(transfer full)`
+/// and the C callers append it, like the `g_object_new` this replaces.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_new(child: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    let frame: ShelfFrame = glib::Object::builder().build();
+
+    if !child.is_null() {
+        let child: gtk4::Widget = gtk4::glib::translate::from_glib_none(child);
+        child.set_parent(&frame);
+        *frame.imp().child.borrow_mut() = Some(child);
+    }
+
+    glib::gobject_ffi::g_object_force_floating(frame.as_ptr().cast());
+
+    frame.upcast::<gtk4::Widget>().into_glib_ptr()
+}
+
+/// Sets the tilt, keeping whatever flare the frame already has.
+///
+/// # Safety
+///
+/// `frame` must be null or a live frame.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_set_tilt(
+    frame: *mut ffi::GtkWidget,
+    edge: c_int,
+    degrees: c_double,
+    perspective: c_double,
+) {
+    let flare = match as_frame(frame) {
+        Some(frame) => frame.imp().flare.get(),
+        None => 0,
+    };
+
+    shelf_frame_set_shape(frame, edge, degrees, perspective, flare);
+}
+
+/// Sets the docked edge, the tilt and the keystone in one go.
+///
+/// # Safety
+///
+/// `frame` must be null or a live frame.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_set_shape(
+    frame: *mut ffi::GtkWidget,
+    edge: c_int,
+    degrees: c_double,
+    perspective: c_double,
+    flare_px: c_int,
+) {
+    let Some(frame) = as_frame(frame) else {
+        return;
+    };
+
+    let imp = frame.imp();
+    let geometry_changed = imp.edge.get() != edge || imp.flare.get() != flare_px;
+    let paint_changed = geometry_changed || imp.tilt.get() != degrees;
+
+    imp.edge.set(edge);
+    imp.tilt.set(degrees);
+    imp.flare.set(flare_px);
+    if perspective > 0.0 {
+        imp.perspective.set(perspective);
+    }
+
+    // The flare reserves room in the layout, so a change in it has to re-measure;
+    // the tilt only changes how the same slab is painted.
+    if geometry_changed {
+        frame.queue_resize();
+    } else if paint_changed {
+        frame.queue_draw();
+    }
+}
+
+/// Whether `widget` is a shelf frame.
+///
+/// # Safety
+///
+/// `widget` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_is_frame(widget: *mut c_void) -> c_int {
+    c_int::from(as_frame(widget.cast()).is_some())
+}
+
+/// Whether the slab is drawn as a shape rather than a rectangle.
+///
+/// # Safety
+///
+/// `frame` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) -> c_int {
+    match as_frame(frame) {
+        Some(frame) => c_int::from(frame.imp().tilt.get() != 0.0 || frame.imp().flare.get() != 0),
+        None => 0,
+    }
+}
+
+/// The axis across the dock: vertical for a dock on the top or bottom edge,
+/// horizontal for one on the left or right.
+///
+/// # Safety
+///
+/// `frame` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_cross_orientation(frame: *mut ffi::GtkWidget) -> c_int {
+    let Some(frame) = as_frame(frame) else {
+        return gtk4::Orientation::Vertical.into_glib();
+    };
+
+    let cross = if is_horizontal(frame.imp().edge.get()) {
+        gtk4::Orientation::Vertical
+    } else {
+        gtk4::Orientation::Horizontal
+    };
+
+    cross.into_glib()
+}
+
+/// Projects `point` through the frame's transform, in place.
+///
+/// # Safety
+///
+/// `frame` must be null or a live frame; `point` must be null or point at a
+/// writable `graphene_point_t`.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_frame_project_point(
+    frame: *mut ffi::GtkWidget,
+    point: *mut graphene::ffi::graphene_point_t,
+) -> c_int {
+    let Some(frame) = as_frame(frame) else {
+        return 0;
+    };
+    if point.is_null() {
+        return 0;
+    }
+
+    let Some(transform) = frame_transform(
+        frame.imp().edge.get(),
+        frame.imp().tilt.get(),
+        frame.imp().perspective.get(),
+        frame.imp().flare.get(),
+        frame.width(),
+        frame.height(),
+    ) else {
+        return 0;
+    };
+
+    let target = graphene::Point::new((*point).x, (*point).y);
+    let projected = transform.transform_point(&target);
+
+    (*point).x = projected.x();
+    (*point).y = projected.y();
+
+    1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -459,5 +873,36 @@ mod tests {
                 defaults.front_px
             );
         }
+    }
+    /// A frame with no tilt and no flare hands the widget straight through: the
+    /// flat dock must stay pixel-identical to the unwrapped capsule.
+    #[test]
+    fn a_flat_shelf_has_no_transform() {
+        assert!(frame_transform(EDGE_BOTTOM, 0.0, 400.0, 0, 100, 40).is_none());
+        // Nothing allocated yet, nothing to project.
+        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 10, 0, 0).is_none());
+    }
+
+    /// Either projection on its own is enough to need a transform.
+    #[test]
+    fn a_tilt_or_a_flare_is_a_transform() {
+        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 0, 100, 40).is_some());
+        assert!(frame_transform(EDGE_BOTTOM, 0.0, 400.0, 10, 100, 40).is_some());
+        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 10, 100, 40).is_some());
+    }
+
+    /// The dock's edges decide both axes: which way the depth runs and which edge
+    /// the slab stays pinned to.
+    #[test]
+    fn the_edges_decide_the_axes() {
+        assert!(is_horizontal(EDGE_TOP));
+        assert!(is_horizontal(EDGE_BOTTOM));
+        assert!(!is_horizontal(EDGE_LEFT));
+        assert!(!is_horizontal(EDGE_RIGHT));
+
+        assert!(is_pinned_at_end(EDGE_BOTTOM));
+        assert!(is_pinned_at_end(EDGE_RIGHT));
+        assert!(!is_pinned_at_end(EDGE_TOP));
+        assert!(!is_pinned_at_end(EDGE_LEFT));
     }
 }

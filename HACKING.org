@@ -309,7 +309,7 @@ lambdock/
 │   │   └── x11_rules.h        # EWMH decisions: which windows, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
-│       ├── shelf.h            # Glass shelf: 3D frame projection + icon reflections (measure in rust/src/ui/)
+│       ├── shelf.c/.h         # Icon reflections still paint in C; the frame and its maths are in rust/src/ui/
 │       ├── shelf_follow.h     # Separators following the shelf's projection (in rust/src/ui/)
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
@@ -1423,7 +1423,7 @@ pointer dies:
 | 3     | =dock_window.c=        | ~LambdockState~ lifecycle, layer shell, margin animation, auto-hide, teardown    |
 | 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
 | 4     | =ui/dock_item_windows.h= | An item's windows: tracking, running styling, app-id lookup (body in Rust)      |
-| 4     | =ui/shelf.h=           | Glass shelf: frame and reflections in C; what it measures in Rust               |
+| 4     | =ui/shelf.h=           | Glass shelf: frame and its maths in Rust; the reflections still in C            |
 | 4     | =ui/shelf_follow.h=    | Separators that follow the shelf's projection instead of sitting flat (in Rust)  |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
@@ -1747,7 +1747,7 @@ classic ~icon + 24~ capsule, so the flat dock is untouched.
 - ~lambdock_shelf_active()~ is the single switch used by the CSS classes
   (~shelf-mode~, ~shelf-mirror~, ~shelf-<edge>~), the modifier stylesheet and
   the reflection widgets: TRUE when any geometric parameter deviates.
-- ~LambdockShelfFrame~ (=ui/shelf.c=) wraps the themed capsule and re-renders it
+- ~LambdockShelfFrame~ (=rust/src/ui/shelf.rs=) wraps the themed capsule and re-renders it
   through a projective =GskTransform= (~gsk_transform_rotate_3d~ +
   ~gsk_transform_perspective~). GTK CSS transforms are affine only, which is why
   the tilt cannot live in the stylesheet; with ~tilt == 0~ the frame is a plain

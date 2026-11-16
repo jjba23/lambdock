@@ -85,7 +85,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   glass shelf is half moved the same way: what it *measures* -- the parameters in
   force, whether the shelf look is on, the capsule's band and overhang, and the
   per-repaint band budget -- is ~rust/src/ui/shelf.rs~, tested from a zeroed dock
-  and a configured one, while the frame and the reflections still paint in C.  A
+  and a configured one.  The frame followed it: its keystone is a matrix written
+  out by hand (a shear would slant both sides the same way), the tilt is a 3D
+  rotation around the docked edge, and the widget reserves the flare's room and
+  paints the slab through one composed transform.  Only the reflections still
+  paint in C, where the banded mirror, the contact shadow and the running dot
+  live.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
