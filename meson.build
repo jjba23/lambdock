@@ -273,6 +273,7 @@ rust_sources = files(
   'rust/src/ui/icon_zoom.rs',
   'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
+  'rust/src/ui/shelf_follow.rs',
   'rust/src/ui/theme_engine.rs',
   'rust/src/ui/trash.rs',
   'rust/src/ui/widget_utils.rs',
@@ -358,7 +359,6 @@ sources = files(
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
-  'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
 )
 
@@ -406,7 +406,6 @@ full_app_sources = files(
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
-  'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]

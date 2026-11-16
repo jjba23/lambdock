@@ -310,7 +310,7 @@ lambdock/
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
-│       ├── shelf_follow.c/.h  # Separators following the shelf's projection
+│       ├── shelf_follow.h     # Separators following the shelf's projection (in rust/src/ui/)
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
 │       ├── clock.h            # Analogue face: squircle, ticks, hands (in rust/src/ui/)
@@ -1424,7 +1424,7 @@ pointer dies:
 | 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
 | 4     | =ui/dock_item_windows.h= | An item's windows: tracking, running styling, app-id lookup (body in Rust)      |
 | 4     | =ui/shelf.c=           | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections   |
-| 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
+| 4     | =ui/shelf_follow.h=    | Separators that follow the shelf's projection instead of sitting flat (in Rust)  |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
 | 4     | =ui/clock.h=           | Analogue clock face: squircle body, ticks, hands, glass (body in Rust)             |

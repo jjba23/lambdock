@@ -10,6 +10,7 @@
 
 #include "../src/dock_window.h"
 #include "../src/lambdock.h"
+#include "../src/ui/shelf.h"
 
 void unregister_dock_state(LambdockState *state) { (void)state; }
 
@@ -21,4 +22,30 @@ void unregister_dock_state(LambdockState *state) { (void)state; }
  * calls this anyway. */
 __attribute__((weak)) void update_dock_dimensions(LambdockState *state) {
   (void)state;
+}
+
+/* `rust/src/ui/shelf_follow.rs` asks the shelf frame where it projects a point.
+ * A test binary that links a slice has no shelf frame at all, so the answers are
+ * "no frame, no projection": the follow then draws its child flat, which is what
+ * a dock without a glass shelf does. shelf.c wins wherever it is compiled in. */
+__attribute__((weak)) gboolean shelf_frame_is_frame(gpointer widget) {
+  (void)widget;
+  return FALSE;
+}
+
+__attribute__((weak)) gboolean shelf_frame_is_projected(GtkWidget *frame) {
+  (void)frame;
+  return FALSE;
+}
+
+__attribute__((weak)) gboolean shelf_frame_project_point(GtkWidget *frame,
+                                                         graphene_point_t *point) {
+  (void)frame;
+  (void)point;
+  return FALSE;
+}
+
+__attribute__((weak)) GtkOrientation shelf_frame_cross_orientation(GtkWidget *frame) {
+  (void)frame;
+  return GTK_ORIENTATION_HORIZONTAL;
 }
