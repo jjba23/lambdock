@@ -323,7 +323,7 @@ lambdock/
 │       ├── theme_engine.h     # GResource CSS loading + selector scoping (in rust/src/ui/)
 │       ├── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
 │       ├── desktop_entry.h    # .desktop parsing + app-id alias cache (in rust/src/ui/)
-│       ├── app_actions.c/.h   # Launch/close/MPRIS actions behind the popover
+│       ├── app_actions.h      # Launch/close/MPRIS actions behind the popover (in rust/src/ui/)
 │       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
 ├── rust/                      # The Rust side: the archive meson links in
@@ -492,7 +492,10 @@ the appliers touch GTK. =src/ui/desktop_entry.c= is =rust/src/ui/desktop_entry.r
 too, parsing and cache included: the field-code and camel-case tables are the
 sharp end of the tests, and the cache is a single value behind a mutex instead of
 three file statics. =LambdockDesktopEntry= is mirrored there field for field, so
-the C test still reads it by offset.
+the C test still reads it by offset. =src/ui/app_actions.c= is
+=rust/src/ui/app_actions.rs=: what kind of application a set of names describes
+and what command opens another window of it are pure, and the playback controls
+are the one part that talks to the session bus.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1429,7 +1432,7 @@ pointer dies:
 | 4     | =ui/theme_engine.h=    | GResource theme load, selector scoping, user ~styles.css~ override (body in Rust)|
 | 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
 | 4     | =ui/desktop_entry.h=   | =.desktop= parsing, exec field codes, app-id alias cache (body in Rust)          |
-| 4     | =ui/app_actions.c=     | App actions: launch commands, MPRIS/D-Bus calls, command building                |
+| 4     | =ui/app_actions.h=     | App actions: launch commands, MPRIS/D-Bus calls (body in Rust)                  |
 | 4     | =ui/dock_dnd.c=        | Drag and drop: reorder, add favourites, drop onto stack/trash                    |
 | 4     | =ui/widget_utils.c=    | CSS-class toggles for state-driven styling (the "is it a taskbar" decisions)      |
 

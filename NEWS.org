@@ -66,7 +66,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the duplicate collapsing and the cache are ~rust/src/ui/desktop_entry.rs~ --
   strings in, strings out at the top, one cache value behind a mutex at the
   bottom, and ~LambdockDesktopEntry~ mirrored field for field so the C test still
-  reads it by offset.  A test binary that
+  reads it by offset.  ~ui/app_actions.c~ is ~rust/src/ui/app_actions.rs~: the
+  kind of application a set of names describes and the command that opens
+  another window of it are pure and tested (each browser family's flag, the
+  quoting, the unknown browser that gets no private mode), while the playback
+  controls stay the one part that talks to the session bus.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the

@@ -265,6 +265,7 @@ rust_sources = files(
   'rust/src/dock_item.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
+  'rust/src/ui/app_actions.rs',
   'rust/src/ui/clock.rs',
   'rust/src/ui/desktop_entry.rs',
   'rust/src/ui/dock_item_windows.rs',
@@ -353,7 +354,6 @@ sources = files(
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
-  'src/ui/app_actions.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
@@ -403,7 +403,6 @@ full_app_sources = files(
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
-  'src/ui/app_actions.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
@@ -605,7 +604,9 @@ unit_tests = [
   },
   {
     'id': 'app_actions',
-    'extra_sources': ['src/ui/app_actions.c'],
+    # The module is Rust now; this binary is what proves the C ABI in
+    # `src/ui/app_actions.h` still links and behaves.
+    'extra_sources': [],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {
