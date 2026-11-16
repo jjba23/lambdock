@@ -18,6 +18,8 @@
 
 use crate::glib::{g_malloc0, strdup_string};
 use gtk4::glib;
+use gtk4::gdk;
+use gtk4::prelude::*;
 use std::os::raw::{c_char, c_int};
 
 /// `LambdockStackView`.
@@ -507,6 +509,253 @@ pub unsafe extern "C" fn lambdock_stack_path_has_thumbnail(path: *const c_char) 
     }
 }
 
+
+// ============================================================================
+// THE VIEW'S KEYBOARD
+// ============================================================================
+//
+// A grid of tiles is expected to answer the arrow keys as a grid, and a list as a
+// list: one step is one entry sideways, and one *row* up or down -- which is why
+// the number of columns the wrapped grid put on its first row matters. The
+// controller captures the keys before the FlowBox does, because a flow box has its
+// own cursor bindings and those would otherwise swallow what the stack needs.
+
+/// The entry at `index`, or `None` when the view is shorter than that.
+///
+/// A flow box wraps each entry in a `GtkFlowBoxChild`, and the focusable widget is
+/// the button inside it.
+fn child_at(view: &gtk4::Widget, index: usize) -> Option<gtk4::Widget> {
+    if let Some(flow) = view.downcast_ref::<gtk4::FlowBox>() {
+        let child = flow.child_at_index(index as i32)?;
+        return Some(
+            child
+                .child()
+                .unwrap_or_else(|| child.clone().upcast::<gtk4::Widget>()),
+        );
+    }
+
+    let mut child = view.first_child();
+    let mut seen = 0;
+    while let Some(each) = child {
+        if seen == index {
+            return Some(each);
+        }
+
+        seen += 1;
+        child = each.next_sibling();
+    }
+
+    None
+}
+
+/// How many entries the view holds.
+fn child_count(view: &gtk4::Widget) -> usize {
+    if let Some(flow) = view.downcast_ref::<gtk4::FlowBox>() {
+        let mut count = 0;
+        while flow.child_at_index(count as i32).is_some() {
+            count += 1;
+        }
+        return count as usize;
+    }
+
+    let mut count = 0;
+    let mut child = view.first_child();
+    while let Some(each) = child {
+        count += 1;
+        child = each.next_sibling();
+    }
+
+    count
+}
+
+/// How many cards the wrapped grid put on its first row, which is how far one
+/// "row" is for Up/Down. A grid that has not been allocated yet reports one.
+fn grid_columns(flow: &gtk4::FlowBox) -> i32 {
+    let Some(first) = flow.child_at_index(0) else {
+        return 1;
+    };
+    let flow_widget = flow.upcast_ref::<gtk4::Widget>();
+
+    let Some(first_bounds) = first.compute_bounds(flow_widget) else {
+        return 1;
+    };
+
+    let mut columns = 0;
+    let mut index = 0;
+    while let Some(child) = flow.child_at_index(index) {
+        if let Some(bounds) = child.compute_bounds(flow_widget) {
+            if (bounds.y() - first_bounds.y()).abs() > 1.0 {
+                break;
+            }
+            columns += 1;
+        }
+
+        index += 1;
+    }
+
+    columns.max(1)
+}
+
+/// Index of the entry that holds the keyboard focus, if any.
+fn focused_index(view: &gtk4::Widget) -> Option<usize> {
+    let window = view.root().and_then(|root| root.downcast::<gtk4::Window>().ok())?;
+    let focus: gtk4::Widget = gtk4::prelude::GtkWindowExt::focus(&window)?;
+
+    let mut index = 0;
+    let mut child = view.first_child();
+    while let Some(each) = child {
+        // The focus can sit on a label inside an entry, so the entry is the nearest
+        // ancestor that matches -- and the view itself is the wall.
+        let mut widget = Some(focus.clone());
+        while let Some(candidate) = widget {
+            if candidate == each {
+                return Some(index);
+            }
+            if candidate == *view {
+                break;
+            }
+
+            widget = candidate.parent();
+        }
+
+        index += 1;
+        child = each.next_sibling();
+    }
+
+    None
+}
+
+/// The index one step lands on, clamped into the view.
+fn stepped_index(current: usize, dx: i32, dy: i32, columns: i32, count: usize) -> usize {
+    let next = current as i32 + dx + dy * columns;
+
+    next.clamp(0, count.saturating_sub(1) as i32) as usize
+}
+
+/// Moves the focus by one step: `dx` entries sideways and `dy` rows down, where a
+/// row is as wide as the grid.
+fn focus_step(view: &gtk4::Widget, dx: i32, dy: i32) -> bool {
+    let count = child_count(view);
+    if count == 0 {
+        return false;
+    }
+
+    let Some(current) = focused_index(view) else {
+        return focus_edge(view, false);
+    };
+
+    let columns = match view.downcast_ref::<gtk4::FlowBox>() {
+        Some(flow) => grid_columns(flow),
+        None => 1,
+    };
+
+    let next = stepped_index(current, dx, dy, columns, count);
+    if next == current {
+        return true;
+    }
+
+    let Some(target) = child_at(view, next) else {
+        return false;
+    };
+
+    target.grab_focus();
+
+    true
+}
+
+/// Moves the focus to the first or last entry.
+fn focus_edge(view: &gtk4::Widget, last: bool) -> bool {
+    let count = child_count(view);
+    if count == 0 {
+        return false;
+    }
+
+    let Some(target) = child_at(view, if last { count - 1 } else { 0 }) else {
+        return false;
+    };
+
+    target.grab_focus();
+
+    true
+}
+
+/// Installs the view's arrow-key handling, once per view.
+///
+/// # Safety
+///
+/// `view` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::GtkWidget) {
+    if view.is_null() {
+        return;
+    }
+
+    crate::ui::ensure_gtk_initialized();
+
+    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+
+    let keys = gtk4::EventControllerKey::new();
+    // Capture: a flow box has its own arrow-key bindings for moving its cursor, and
+    // those would otherwise swallow the keys the stack navigation needs.
+    keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
+
+    let target = view.clone();
+    keys.connect_key_pressed(move |_, keyval, _, _| {
+        let handled = match keyval {
+            gdk::Key::Left => focus_step(&target, -1, 0),
+            gdk::Key::Right => focus_step(&target, 1, 0),
+            gdk::Key::Up => focus_step(&target, 0, -1),
+            gdk::Key::Down => focus_step(&target, 0, 1),
+            gdk::Key::Home => focus_edge(&target, false),
+            gdk::Key::End => focus_edge(&target, true),
+            _ => return glib::Propagation::Proceed,
+        };
+
+        // The keys are the view's whether or not there was somewhere to move to.
+        let _ = handled;
+        glib::Propagation::Stop
+    });
+
+    view.add_controller(keys);
+}
+
+/// Moves the view's focus by one step.
+///
+/// # Safety
+///
+/// `view` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_focus_step(
+    view: *mut gtk4::ffi::GtkWidget,
+    dx: c_int,
+    dy: c_int,
+) -> c_int {
+    if view.is_null() {
+        return 0;
+    }
+
+    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+    c_int::from(focus_step(&view, dx, dy))
+}
+
+/// Moves the view's focus to its first or last entry.
+///
+/// # Safety
+///
+/// `view` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_focus_edge(
+    view: *mut gtk4::ffi::GtkWidget,
+    last: c_int,
+) -> c_int {
+    if view.is_null() {
+        return 0;
+    }
+
+    let view: gtk4::Widget = crate::ui::widget_from_pointer(view);
+    c_int::from(focus_edge(&view, last != 0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -808,5 +1057,43 @@ mod tests {
         assert!(!path_has_thumbnail(&big));
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+
+    /// One step is one entry sideways and one *row* down, and it stops at the ends
+    /// instead of wrapping: a grid's edge is where the pointer stops too.
+    #[test]
+    fn one_step_is_one_entry_or_one_row() {
+        // A grid three cards wide with seven entries in it.
+        let grid = (3, 7);
+
+        assert_eq!(stepped_index(0, 1, 0, grid.0, grid.1), 1, "right");
+        assert_eq!(stepped_index(2, 1, 0, grid.0, grid.1), 3, "right wraps to the next row");
+        assert_eq!(stepped_index(3, -1, 0, grid.0, grid.1), 2, "left");
+        assert_eq!(stepped_index(0, 0, 1, grid.0, grid.1), 3, "down is one row");
+        assert_eq!(stepped_index(4, 0, -1, grid.0, grid.1), 1, "up is one row");
+        assert_eq!(stepped_index(5, 0, 1, grid.0, grid.1), 8.min(6), "clamped at the last");
+        assert_eq!(stepped_index(0, 0, -1, grid.0, grid.1), 0, "clamped at the first");
+
+        // A list is a grid one wide.
+        assert_eq!(stepped_index(0, 0, 1, 1, 4), 1);
+        assert_eq!(stepped_index(3, 0, 1, 1, 4), 3);
+        assert_eq!(stepped_index(1, 1, 0, 1, 4), 2);
+
+        // One entry: every step lands on it.
+        assert_eq!(stepped_index(0, 1, 1, 3, 1), 0);
+    }
+
+    /// The step is clamped into the view, never past its last entry.
+    #[test]
+    fn a_step_never_leaves_the_view() {
+        for count in 1..8usize {
+            for current in 0..count {
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1), (3, 2), (-3, -2)] {
+                    let next = stepped_index(current, dx, dy, 3, count);
+                    assert!(next < count, "count {count} from {current} by ({dx},{dy})");
+                }
+            }
+        }
     }
 }

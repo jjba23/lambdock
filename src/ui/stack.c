@@ -456,189 +456,15 @@ static GtkWidget *scrolled_view(GtkWidget *child, int max_height) {
  * through a hundred cells to reach the one they can see.
  */
 
-static GtkWidget *stack_view_child_at(GtkWidget *view, int index) {
-  if (!view || index < 0)
-    return NULL;
-
-  if (GTK_IS_FLOW_BOX(view)) {
-    GtkFlowBoxChild *child =
-        gtk_flow_box_get_child_at_index(GTK_FLOW_BOX(view), (guint)index);
-    if (!child)
-      return NULL;
-
-    /* The flow box wraps each entry in a GtkFlowBoxChild; the focusable widget
-     * is the button inside it. */
-    GtkWidget *inner = gtk_flow_box_child_get_child(child);
-    return inner ? inner : GTK_WIDGET(child);
-  }
-
-  int i = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(view); child != NULL;
-       child = gtk_widget_get_next_sibling(child), i++) {
-    if (i == index)
-      return child;
-  }
-  return NULL;
-}
-
-static int stack_view_child_count(GtkWidget *view) {
-  if (!view)
-    return 0;
-
-  if (GTK_IS_FLOW_BOX(view)) {
-    int count = 0;
-    while (gtk_flow_box_get_child_at_index(GTK_FLOW_BOX(view), (guint)count))
-      count++;
-    return count;
-  }
-
-  int count = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(view); child != NULL;
-       child = gtk_widget_get_next_sibling(child))
-    count++;
-  return count;
-}
-
-/* How many cards the wrapped grid put on its first row, which is how far one
- * "row" is for Up/Down. A grid that has not been allocated yet reports one. */
-static int stack_grid_columns(GtkFlowBox *flow) {
-  GtkWidget *first =
-      GTK_WIDGET(gtk_flow_box_get_child_at_index(flow, 0));
-  if (!first)
-    return 1;
-
-  graphene_rect_t first_bounds;
-  if (!gtk_widget_compute_bounds(first, GTK_WIDGET(flow), &first_bounds))
-    return 1;
-
-  int columns = 0;
-  for (guint i = 0;; i++) {
-    GtkWidget *child =
-        GTK_WIDGET(gtk_flow_box_get_child_at_index(flow, i));
-    if (!child)
-      break;
-
-    graphene_rect_t bounds;
-    if (!gtk_widget_compute_bounds(child, GTK_WIDGET(flow), &bounds))
-      continue;
-    if (fabs(bounds.origin.y - first_bounds.origin.y) > 1.0)
-      break;
-    columns++;
-  }
-
-  return columns > 0 ? columns : 1;
-}
-
-/* Index of the entry that holds the keyboard focus, or -1. */
-static int stack_view_focused_index(GtkWidget *view) {
-  if (!view)
-    return -1;
-
-  GtkRoot *root = gtk_widget_get_root(view);
-  GtkWidget *focus = (root && GTK_IS_WINDOW(root))
-                         ? gtk_window_get_focus(GTK_WINDOW(root))
-                         : NULL;
-  if (!focus)
-    return -1;
-
-  int index = 0;
-  for (GtkWidget *child = gtk_widget_get_first_child(view); child != NULL;
-       child = gtk_widget_get_next_sibling(child), index++) {
-    for (GtkWidget *w = focus; w != NULL; w = gtk_widget_get_parent(w)) {
-      if (w == child)
-        return index;
-      if (w == view)
-        break;
-    }
-  }
-  return -1;
-}
-
-gboolean lambdock_stack_view_focus_step(GtkWidget *view, int dx, int dy) {
-  if (!view)
-    return FALSE;
-
-  int count = stack_view_child_count(view);
-  if (count == 0)
-    return FALSE;
-
-  int current = stack_view_focused_index(view);
-  if (current < 0)
-    return lambdock_stack_view_focus_edge(view, FALSE);
-
-  int columns = GTK_IS_FLOW_BOX(view) ? stack_grid_columns(GTK_FLOW_BOX(view)) : 1;
-  int next = current + dx + dy * columns;
-  next = CLAMP(next, 0, count - 1);
-  if (next == current)
-    return TRUE;
-
-  GtkWidget *target = stack_view_child_at(view, next);
-  if (!target)
-    return FALSE;
-
-  gtk_widget_grab_focus(target);
-  return TRUE;
-}
-
-gboolean lambdock_stack_view_focus_edge(GtkWidget *view, gboolean last) {
-  int count = stack_view_child_count(view);
-  if (count == 0)
-    return FALSE;
-
-  GtkWidget *target = stack_view_child_at(view, last ? count - 1 : 0);
-  if (!target)
-    return FALSE;
-
-  gtk_widget_grab_focus(target);
-  return TRUE;
-}
-
-static gboolean on_stack_view_key_pressed(GtkEventControllerKey *controller,
-                                          guint keyval, guint keycode,
-                                          GdkModifierType state,
-                                          gpointer user_data) {
-  (void)controller;
-  (void)keycode;
-  (void)state;
-
-  GtkWidget *view = GTK_WIDGET(user_data);
-
-  switch (keyval) {
-  case GDK_KEY_Left:
-    lambdock_stack_view_focus_step(view, -1, 0);
-    return TRUE;
-  case GDK_KEY_Right:
-    lambdock_stack_view_focus_step(view, 1, 0);
-    return TRUE;
-  case GDK_KEY_Up:
-    lambdock_stack_view_focus_step(view, 0, -1);
-    return TRUE;
-  case GDK_KEY_Down:
-    lambdock_stack_view_focus_step(view, 0, 1);
-    return TRUE;
-  case GDK_KEY_Home:
-    lambdock_stack_view_focus_edge(view, FALSE);
-    return TRUE;
-  case GDK_KEY_End:
-    lambdock_stack_view_focus_edge(view, TRUE);
-    return TRUE;
-  default:
-    return FALSE;
-  }
-}
-
-static void stack_view_attach_keys(GtkWidget *view) {
-  if (!view)
-    return;
-
-  GtkEventController *keys = gtk_event_controller_key_new();
-  /* Capture: a flow box has its own arrow-key bindings for moving its cursor,
-   * and those would otherwise swallow the keys the stack navigation needs. */
-  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_stack_view_key_pressed),
-                   view);
-  gtk_widget_add_controller(view, keys);
-}
+/* ============================================================================
+ * THE VIEW'S KEYBOARD -- in rust/src/ui/stack.rs
+ * ============================================================================
+ * Which entry the focus is on, how wide a row of the wrapped grid is, and where one
+ * arrow-key step lands: the navigation walks the view's own children, so it is Rust
+ * now, with the step arithmetic (one entry sideways, one row down, clamped at the
+ * ends) tested there. What stays here is the two views it navigates.
+ */
+void lambdock_stack_view_attach_keys(GtkWidget *view);
 
 /* The icon theme of the default display, or NULL while it is starting up. */
 static GtkIconTheme *stack_icon_theme(void) {
@@ -736,7 +562,7 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
     gtk_flow_box_append(GTK_FLOW_BOX(flow), button);
   }
 
-  stack_view_attach_keys(flow);
+  lambdock_stack_view_attach_keys(flow);
   return scrolled_view(flow, STACK_MAX_HEIGHT);
 }
 
@@ -787,7 +613,7 @@ static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
     gtk_box_append(GTK_BOX(box), button);
   }
 
-  stack_view_attach_keys(box);
+  lambdock_stack_view_attach_keys(box);
   return scrolled_view(box, STACK_MAX_HEIGHT);
 }
 

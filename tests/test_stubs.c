@@ -11,7 +11,10 @@
 #include "../src/dock_window.h"
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
+#include "../src/toplevel_tracker.h"
+#include "../src/ui/launchpad.h"
 #include "../src/ui/shelf.h"
+#include "../src/ui/stack.h"
 #include "../src/guile_bridge.h"
 
 void unregister_dock_state(LambdockState *state) { (void)state; }
@@ -137,4 +140,31 @@ __attribute__((weak)) void dock_layout_remove_item(const char *config_path,
 __attribute__((weak)) void dock_layout_set_order(const char *config_path, GList *keys) {
   (void)config_path;
   (void)keys;
+}
+
+/* The item menu and the stack's view reach into the item builder, the tracker and
+ * the launchpad for the actions they offer. A binary that links a slice has none of
+ * them, and "no title, no window to focus, no view to switch" is what those doubles
+ * answer; each real definition wins wherever its file is compiled in. */
+__attribute__((weak)) const char *lambdock_item_title(const DockItem *item,
+                                                      const char *fallback) {
+  (void)item;
+  return fallback;
+}
+
+__attribute__((weak)) void activate_toplevel_window(LambdockToplevel *window) {
+  (void)window;
+}
+
+__attribute__((weak)) void close_toplevel_window(LambdockToplevel *window) {
+  (void)window;
+}
+
+__attribute__((weak)) void lambdock_stack_set_view(DockItem *item, LambdockStackView view) {
+  (void)item;
+  (void)view;
+}
+
+__attribute__((weak)) void lambdock_launchpad_show(LambdockState *state) {
+  (void)state;
 }

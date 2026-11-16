@@ -38,3 +38,15 @@ pub mod widget_utils;
 pub(crate) fn ensure_gtk_initialized() {
     let _ = gtk4::init();
 }
+
+/// A widget borrowed from C for the length of one call.
+///
+/// The wrapper is `from_glib_none`'d, so it adds a reference for as long as it
+/// lives and releases it at the end of the call; nothing is owned here.
+pub(crate) unsafe fn widget_from_pointer(
+    pointer: *mut gtk4::ffi::GtkWidget,
+) -> gtk4::Widget {
+    use gtk4::glib::translate::from_glib_none;
+
+    from_glib_none(pointer)
+}

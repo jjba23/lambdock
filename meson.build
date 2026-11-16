@@ -445,9 +445,11 @@ unit_tests = [
   {
     'id': 'desktop_entry',
     # The module is Rust now; this binary is what proves the C ABI in
-    # `src/ui/desktop_entry.h` still links and behaves.
-    'extra_sources': [],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
+    # `src/ui/desktop_entry.h` still links and behaves. `test_stubs` is there for
+    # the archive's own seam: a Rust module shares codegen units with its neighbours,
+    # so this binary resolves calls it never makes.
+    'extra_sources': [test_stubs],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), layer_shell_dep, rust_lib_dep],
   },
   {
     'id': 'config_values',
@@ -596,15 +598,15 @@ unit_tests = [
     'id': 'trash',
     # The module is Rust now; this binary is what proves the C ABI in
     # `src/ui/trash.h` still links and behaves.
-    'extra_sources': [],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
+    'extra_sources': [test_stubs],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), layer_shell_dep, rust_lib_dep],
   },
   {
     'id': 'app_actions',
     # The module is Rust now; this binary is what proves the C ABI in
     # `src/ui/app_actions.h` still links and behaves.
-    'extra_sources': [],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
+    'extra_sources': [test_stubs],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), layer_shell_dep, rust_lib_dep],
   },
   {
     # The dock as the X server sees it: the window type that makes a window
