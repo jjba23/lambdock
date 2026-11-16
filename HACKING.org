@@ -344,6 +344,7 @@ lambdock/
 │       │   └── widget_utils.rs # CSS-class toggles
 │       ├── accessibility.rs   # Reduce-motion rules + accessible labels
 │       ├── app_window.rs      # The window records and their ownership rules
+│       ├── dock_item.rs       # DockItem, field for field
 │       ├── dock_registry.rs   # The only owner of the active-dock list
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
@@ -473,7 +474,7 @@ the icon search paths and the six-stage pipeline that turns a name into a
 =GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c=
 alongside it as =rust/src/ui/widget_utils.rs=.
 
-=Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~
+=Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
 (~reduce_motion~ today, more as the port goes). A wrong offset is not a compile
 error, it is a corrupted field two modules away, so the mirror carries a test

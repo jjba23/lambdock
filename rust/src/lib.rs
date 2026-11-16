@@ -14,6 +14,7 @@ pub mod accessibility;
 pub mod app_window;
 pub mod bridge;
 pub mod core;
+pub mod dock_item;
 pub mod dock_registry;
 pub(crate) mod glib;
 pub(crate) mod guile;

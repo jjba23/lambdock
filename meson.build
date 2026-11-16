@@ -262,6 +262,7 @@ rust_sources = files(
   'rust/src/guile.rs',
   'rust/src/logging.rs',
   'rust/src/state.rs',
+  'rust/src/dock_item.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/icon_resolver.rs',
