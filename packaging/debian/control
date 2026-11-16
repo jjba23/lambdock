@@ -3,9 +3,9 @@ Section: x11
 Priority: optional
 Maintainer: Josep Bigorra <jjbigorra@gmail.com>
 Build-Depends: debhelper-compat (= 13),
-               meson (>= 0.63.0),
-               ninja-build,
                pkg-config,
+               wayland-scanner,
+               libglib2.0-bin,
                gettext,
                cargo,
                rustc,

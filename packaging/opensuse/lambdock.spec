@@ -25,8 +25,6 @@ Source0:        %{name}-%{version}.tar.gz
 BuildRequires:  cargo
 BuildRequires:  gcc
 BuildRequires:  gettext
-BuildRequires:  meson
-BuildRequires:  ninja
 BuildRequires:  pkgconfig
 BuildRequires:  pkgconfig(glib-2.0)
 BuildRequires:  pkgconfig(gtk4)
@@ -58,15 +56,14 @@ Wayfire, Niri, and other compatible compositors.
 %autosetup
 
 %build
-%meson
-%meson_build
+%make_build
 
 %install
-%meson_install
+%make_install
 %find_lang %{name}
 
 %check
-%meson_test
+%make check
 
 %files -f %{name}.lang
 %license COPYING

@@ -7,7 +7,7 @@
 #+startup: overview
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
 
-[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/build-meson.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
+[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/lang-rust.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
 [[https://img.shields.io/badge/license-MIT-2ea44f.svg]] [[https://jointhefreeworld.org/ggg/dist/jointhefreeworld-org.svg]] [[https://img.shields.io/badge/CI-Byggsteg%20%7C%20Woodpecker-2ea44f.svg]]
 
 /the map of the territory, for people about to change it./
@@ -70,7 +70,7 @@ way they appear in the source, so ~free_dock_item~ is a C function and
 |-----------------------------------+-------------------------------------------------------------|
 | *Diagrams*                        | The flowcharts are [[https://mermaid.js.org/][Mermaid]] blocks; Emacs will not   |
 |                                   | render them, but GitHub does.                               |
-| *C source of truth*               | =src/lambdock.h= for types, =meson.build= for the build.    |
+| *Source of truth*                 | =rust/src/= for behaviour, =Makefile= for the build.        |
 | *Scheme source of truth*          | =scheme/lambdock/core.scm= for what C may call.             |
 | *Behavioural rules*               | [[#pitfalls][Pitfalls]] -- each one was a real bug once.              |
 |-----------------------------------+-------------------------------------------------------------|

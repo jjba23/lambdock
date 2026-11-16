@@ -6,7 +6,7 @@
 (use-modules (guix packages)
              (guix gexp)
              (guix git-download)
-             (guix build-system meson)
+             (guix build-system gnu)
              ((guix licenses)
               #:prefix license:)
              (gnu packages gtk)
@@ -29,14 +29,26 @@
      (local-file %source-dir
                  #:recursive? #t
                  #:select? (git-predicate %source-dir)))
-    (build-system meson-build-system)
-    (arguments (list #:parallel-build? #t
-                     #:parallel-tests? #t))
+    (build-system gnu-build-system)
+    (arguments
+     (list #:parallel-build? #t
+           #:parallel-tests? #t
+           ;; No configure script: `make' is the whole build, and `make install'
+           ;; places the binary, the desktop entry, the metainfo, the Scheme
+           ;; modules and the catalogues under the prefix.
+           #:phases #~(modify-phases %standard-phases
+                        (delete 'configure)
+                        (replace 'check
+                          (lambda* (#:key tests? #:allow-other-keys)
+                            (when tests?
+                              (invoke "make" "check")))))
+           #:make-flags #~(list (string-append "PREFIX=" #$output))))
     (native-inputs (list (list glib "bin")
                          pkg-config
                          gettext-minimal
-                         ;; `rustc' compiles the ported modules and `cargo'
-                         ;; runs their tests; meson invokes both.
+                         ;; `rustc' and `cargo' build the crate and run the
+                         ;; suite; `wayland-scanner' and `glib:bin' generate the
+                         ;; protocol and the resource bundle.
                          rust
                          (list rust "cargo")))
     (inputs (list gtk

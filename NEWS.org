@@ -248,6 +248,32 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.0 (2026-11-16)
+
+- *The whole implementation is Rust and Scheme.* The C is gone: every module --
+  the configuration layer, the Scheme bridge, both window trackers, the widget
+  layer, the dock's window, the settings window, the launchpad and the
+  application itself -- is ~rust/src/~, with the Guile modules in ~scheme/~.  The
+  port went module by module behind the headers, which is how each one could move
+  without its callers following, and the headers went last.
+- *Meson is gone too.* The build is a =Makefile= over cargo: =make= builds the
+  binary, generating the GResource bundle and the Wayland protocol interfaces in
+  ~rust/build.rs~; =make test= runs a display-free suite of 312 tests; =make
+  check= adds the lints and the Scheme suite; =make install= places the binary
+  with the desktop entry, the AppStream metainfo, the logo, the Scheme modules
+  and the compiled catalogues.
+- *Breaking, and on purpose.* There is no C API to link against any more: the
+  headers are gone, so nothing outside the project could compile against them.
+  A source build needs a Rust toolchain, ~cargo~, ~wayland-scanner~,
+  =glib-compile-resources= and ~make~ -- and no longer meson, ninja or a C
+  compiler for the project's own code.
+- *What the dock does is unchanged*: the layer-shell surface and its slide, the
+  fisheye and the glass shelf, auto-hide and reveal across monitors, the
+  launchpad, the settings window, the folder stacks, the trash, the Scheme REPL
+  and every setting in the settings file.
+
+
+
 ** v1.4.0 (2026-11-15)
 
 - *Per-app menu entries come from the application.* An item that resolves to a

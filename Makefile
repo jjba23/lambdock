@@ -27,6 +27,10 @@ BINARY        := $(TARGETDIR)/release/lambdock
 # The X11 half is a build option: a GTK built for Wayland alone has no Xlib.
 LAMBDOCK_HAVE_X11 ?= 1
 export LAMBDOCK_HAVE_X11
+# Compiled in: where the Scheme modules and the catalogues land, so an installed
+# binary finds them without an environment variable.
+export LAMBDOCK_SCHEME_DIR = $(SCHEMEDIR)
+export LAMBDOCK_LOCALEDIR = $(DATADIR)/locale
 
 .PHONY: all build test check install uninstall i18n clean dist
 

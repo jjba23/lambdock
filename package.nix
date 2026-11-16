@@ -6,7 +6,6 @@
 {
   lib,
   stdenv,
-  meson,
   ninja,
   pkg-config,
   wayland-scanner,
@@ -31,20 +30,29 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "1.4.0";
+  version = "2.0.0";
 
   strictDeps = true;
   __structuredAttrs = true;
 
   src = ./.;
 
+  buildPhase = ''
+    runHook preBuild
+    make build
+    runHook postBuild
+  '';
+
+  installPhase = ''
+    runHook preInstall
+    make install PREFIX=$out
+    runHook postInstall
+  '';
+
   nativeBuildInputs = [
-    meson
-    ninja
     pkg-config
     wayland-scanner
-    # The ported modules: meson calls rustc for the archive and cargo for the
-    # Rust unit tests.
+    # The crate, its suite, and the two generators `build.rs' runs.
     rustc
     cargo
     glib
@@ -59,17 +67,14 @@ stdenv.mkDerivation (finalAttrs: {
     wayland
     wayland-protocols
     wlr-protocols
-    # The optional X11 backend: `gtk4-x11.pc' resolves it, and meson turns the
-    # backend on when it finds it.
+    # The optional X11 backend: `gtk4-x11.pc' resolves it, and the build turns
+    # the backend on when it finds it.
     libx11
   ];
 
   doCheck = true;
 
   nativeCheckInputs = [
-    xvfb-run
-    dbus
-    fontconfig
     hicolor-icon-theme
     adwaita-icon-theme
   ];
@@ -77,26 +82,15 @@ stdenv.mkDerivation (finalAttrs: {
   checkPhase = ''
     runHook preCheck
 
-    # GTK / X11 test environment configuration
+    # The suite is display-free: every test is a decision, so there is no Xvfb
+    # and no accessibility bus to arrange.
     export HOME=$TMPDIR
     export XDG_RUNTIME_DIR=$TMPDIR
     export FONTCONFIG_FILE=${fontconfig.out}/etc/fonts/fonts.conf
     # The dock-item tests resolve `utilities-terminal'; give them the themes.
     export XDG_DATA_DIRS=${hicolor-icon-theme}/share:${adwaita-icon-theme}/share
 
-    # Use GTK's test accessibility backend -- there is no a11y bus here, and the
-    # accessible-name assertions need an AT context -- and force X11 under Xvfb
-    export GTK_A11Y=test
-    export GDK_BACKEND=x11
-    # No EGL under Xvfb: use the software renderer for the GTK window tests.
-    export GSK_RENDERER=cairo
-
-    # Start DBus session bus
-    dbus-daemon --config-file=${dbus}/share/dbus-1/session.conf --fork --print-address 5 5>dbus_address
-    export DBUS_SESSION_BUS_ADDRESS=$(cat dbus_address)
-
-    # Run tests on virtual display
-    xvfb-run -s "-screen 0 1024x768x24" meson test --print-errorlogs
+    make test
 
     runHook postCheck
   '';

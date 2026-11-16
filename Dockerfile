@@ -36,7 +36,6 @@ RUN --mount=type=cache,target=/var/cache/zypp \
         gtk4-layer-shell-devel \
         guile-devel \
         gettext \
-        meson \
         ninja \
         pkg-config \
         rust \
@@ -51,14 +50,14 @@ RUN --mount=type=cache,target=/var/cache/zypp \
 #
 # ------------------------------------------------------------------------------
 
-COPY meson.build ./
+COPY Makefile ./
+COPY Cargo.toml ./
 COPY data/ ./data/
 COPY po/ ./po/
 COPY protocols/ ./protocols/
 COPY resources/ ./resources/
 COPY rust/ ./rust/
 COPY scheme/ ./scheme/
-COPY src/ ./src/
 COPY tests/ ./tests/
 
 # ------------------------------------------------------------------------------
@@ -67,10 +66,7 @@ COPY tests/ ./tests/
 
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
-    echo "==> Configuring Lambdock ${VERSION}"; \
-    meson setup build; \
-    echo "==> Meson configuration"; \
-    meson configure build
+    echo "==> Building Lambdock ${VERSION}"
 
 # ------------------------------------------------------------------------------
 # Build
@@ -79,7 +75,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
     echo "==> Building Lambdock"; \
-    meson compile -C build --verbose; \
+    make build; \
     echo "==> Build completed successfully"
 
 # ------------------------------------------------------------------------------
@@ -89,7 +85,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
     echo "==> Running Lambdock tests"; \
-    meson test \
+    make test \
         -C build \
         --print-errorlogs \
         --verbose; \
@@ -102,7 +98,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN set -eu; \
     echo "==> Installing Lambdock into staging directory"; \
     rm -rf /tmp/lambdock-root; \
-    DESTDIR=/tmp/lambdock-root meson install -C build; \
+    DESTDIR=/tmp/lambdock-root make install; \
     echo "==> Installed files:"; \
     find /tmp/lambdock-root -type f -o -type l | sort
 

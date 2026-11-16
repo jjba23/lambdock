@@ -5,10 +5,9 @@
 
 [package]
 name = "lambdock"
-# The version that ships is `project(version:)` in meson.build, which the
-# packaging and `--version` read. This crate is never published, so it does not
-# keep a second copy to drift out of step.
-version = "0.0.0"
+# The version that ships, and the one the Makefile installs and the packaging
+# reads. The crate is never published, so this is the only place it is written.
+version = "2.0.0"
 edition = "2021"
 publish = false
 license = "MIT"

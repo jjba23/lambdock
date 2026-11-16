@@ -5,4 +5,4 @@
 # Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 %:
-	dh $@ --buildsystem=meson
+	dh $@ --buildsystem=makefile

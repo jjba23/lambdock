@@ -24,8 +24,8 @@ depends=(
 makedepends=(
   'cargo'
   'gettext'
-  'meson'
-  'ninja'
+  'wayland-scanner'
+  'glib2'
   'pkgconf'
   'rust'
   'wayland-protocols'
@@ -37,18 +37,17 @@ sha256sums=('SKIP')
 build() {
   cd "$srcdir/${pkgname}"
 
-  arch-meson . build
-  meson compile -C build
+  make build
 }
 
 check() {
   cd "$srcdir/${pkgname}"
-  meson test -C build --print-errorlogs
+  make check
 }
 
 package() {
   cd "$srcdir/${pkgname}"
 
-  DESTDIR="$pkgdir" meson install -C build
+  make install PREFIX=/usr DESTDIR="$pkgdir"
   install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
