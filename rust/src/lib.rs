@@ -17,6 +17,7 @@ pub mod core;
 pub(crate) mod cstr;
 pub mod dock_item;
 pub mod dock_registry;
+pub mod dock_window;
 pub(crate) mod glib;
 pub(crate) mod guile;
 pub mod logging;

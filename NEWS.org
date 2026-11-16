@@ -167,6 +167,14 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   layer-shell library is declared as FFI and named in ~rust/build.rs~.  With this,
   ~src/ui/~ holds no C source at all: ~dock_window.c~ and ~main.c~ are what is
   left of the port.
+- *The dock's layout half is Rust.* ~update_dock_dimensions~ and everything it
+  needs -- the monitor the dock is measured against, the size requests of the
+  overlay and the capsule, the row's margins and alignment, the room the fisheye
+  spreads into, and the input region that cuts the surface down to the dock so
+  the invisible parts do not swallow clicks -- are ~rust/src/dock_window.rs~.  The
+  arithmetic is still ~core/dock_dims~; what moved is the one job that pushes it
+  into widgets.  ~dock_window.c~ keeps the slide, the hover, the layer surface
+  and the teardown for now.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

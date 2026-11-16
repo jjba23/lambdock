@@ -264,6 +264,7 @@ rust_sources = files(
   'rust/src/state.rs',
   'rust/src/toplevel_tracker.rs',
   'rust/src/dock_item.rs',
+  'rust/src/dock_window.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/app_actions.rs',

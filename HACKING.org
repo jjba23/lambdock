@@ -730,9 +730,20 @@ are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI an
 named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
 stays as the contract the tests call.
 
-Not yet ported: =dock_window.c= and =main.c= -- the window and the application
-that own everything else, so they move when there is nothing below them left to
-call back into.
+=dock_window.c= is half moved: its layout half -- the monitor, the dimensions it
+gives the overlay and the capsule, the row's margins and alignment, the room the
+fisheye spreads into, and the input region that keeps the unseen parts of the
+surface from eating clicks -- is =rust/src/dock_window.rs=. The two helpers the
+rest of the C file calls cross the seam by name (=dock_schedule_input_region=,
+=dock_reserve_hover_room=), and =update_dock_dimensions= is Rust behind the
+header. What is left in C is the slide, the hover, the layer surface, the about
+dialog and the teardown; =main.c= comes last, since it owns everything else.
+
+One thing that half has to say for itself: the dimensions code reads widgets out
+of the state and must *borrow* them, even though a real dock's widgets are
+parented. The test fixtures build a dock out of floating boxes, and an owning
+wrapper sinks one and frees it on the way out -- which is how
+/ui/dock_window/capsule_padding started reading freed widgets.
 
 One thing that moved with them, and is easy to get wrong again: a widget crosses
 the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is

@@ -21,6 +21,11 @@ use std::os::raw::{c_char, c_int};
 pub const REFLECTION_PAINTS: c_int = 5;
 pub const REFLECTION_DRAWS: c_int = 6;
 
+/// A surface resize (a buffer re-allocation and a compositor reconfigure), and
+/// an input region that actually changed (a `wl_region`, a request and a commit).
+pub const SURFACE_RESIZES: c_int = 7;
+pub const INPUT_REGION_SETS: c_int = 8;
+
 /// The counter the header calls `LAMBDOCK_STAT_COUNT`: the C enum is the
 /// contract, and the order below is that enum's order.
 const STAT_COUNT: usize = 10;
