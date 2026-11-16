@@ -310,6 +310,9 @@ rust_env = {'CARGO_HOME': meson.project_build_root() / 'rust-cargo-home'}
 if have_x11
   rust_env += {'LAMBDOCK_HAVE_X11': '1'}
 endif
+# The Scheme search path the C build passed as -D, now compiled into the Rust
+# bridge: it is the same directory the install rule below uses.
+rust_env += {'LAMBDOCK_SCHEME_DIR': scheme_install_path}
 
 rust_lib = custom_target(
   'lambdock-rust',
@@ -377,7 +380,6 @@ inc = include_directories('src')
 sources = files(
   'src/main.c',
   'src/dock_window.c',
-  'src/guile_bridge.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )
@@ -417,7 +419,6 @@ test_stubs = files('tests/test_stubs.c')
 # Shared non-main sources for tests requiring full application context
 full_app_sources = files(
   'src/dock_window.c',
-  'src/guile_bridge.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )

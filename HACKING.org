@@ -657,7 +657,7 @@ What the Scheme boundary costs, learned the hard way:
   header shows as a `#define` means it has to be rebuilt in Rust.
 
 The whole of =src/core/=, =src/ui/= except two panels, and both trackers are Rust.
-=ui/dock_item.c= is gone, and it was the heart of the widget layer: the item's
+=ui/dock_item.c= is gone too, and it was the heart of the widget layer: the item's
 scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
 the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
 stays as the C-side contract the tests and the bridge still call. Its 1922 lines
@@ -668,6 +668,19 @@ thumbnail decision and decode, the two views with their cells and click actions,
 the panel header and the popover that walks folders are all =rust/src/ui/stack.rs=,
 and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
 builder still call.
+
+The Scheme bridge is one module now: =src/guile_bridge.c= is gone, and the reads
+and the writes that were either side of it are both =rust/src/bridge.rs=, with the
+libguile surface in =rust/src/guile.rs=. What used to be a rule -- "no `Scm` is
+stored in Rust" -- is still the rule; the one handle that must outlive its call (a
+poller's procedure) is kept by Guile itself with =scm_gc_protect_object= and held
+as an opaque word in =DockItem.poll_fn=.
+
+Two things about that seam are easy to get wrong and are now written down in the
+code: =scm_c_eval_string()= *evaluates* what it is given, so the empty list is
+="'()"= and not ="()"= (a syntax error), and =scm_reverse_x()= appends its second
+argument as the *tail*, so a list built by pushing is reversed onto the empty list
+rather than onto anything else, or the Scheme side receives an improper list.
 
 Both window trackers are Rust now: =toplevel_tracker.c= (the broadcast and the
 Wayland half) is =rust/src/toplevel_tracker.rs=, and =x11_tracker.c= is

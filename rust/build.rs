@@ -21,6 +21,11 @@ fn main() {
     // The X11 window tracker is a build option, not a runtime one: a GTK built for
     // Wayland alone has no Xlib to link, and meson says so by not setting this.
     println!("cargo:rerun-if-env-changed=LAMBDOCK_HAVE_X11");
+    println!("cargo:rerun-if-env-changed=LAMBDOCK_SCHEME_DIR");
+    // Compiled in, like the -D the C half used: where `(lambdock core)` lives.
+    if let Ok(directory) = std::env::var("LAMBDOCK_SCHEME_DIR") {
+        println!("cargo:rustc-env=LAMBDOCK_SCHEME_DIR={directory}");
+    }
     println!("cargo:rustc-check-cfg=cfg(have_x11)");
     if std::env::var_os("LAMBDOCK_HAVE_X11").is_some() {
         println!("cargo:rustc-cfg=have_x11");

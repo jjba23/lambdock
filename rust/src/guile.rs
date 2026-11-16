@@ -34,6 +34,38 @@ extern "C" {
 
     pub fn scm_call_0(procedure: Scm) -> Scm;
     pub fn scm_call_1(procedure: Scm, argument: Scm) -> Scm;
+    pub fn scm_call_2(procedure: Scm, first: Scm, second: Scm) -> Scm;
+    pub fn scm_call_3(procedure: Scm, first: Scm, second: Scm, third: Scm) -> Scm;
+
+    /// Calls `procedure` with a list of arguments, which is how the layout
+    /// overrides are handed over.
+    pub fn scm_apply_0(procedure: Scm, arguments: Scm) -> Scm;
+
+    pub fn scm_cons(head: Scm, tail: Scm) -> Scm;
+    pub fn scm_list_5(e1: Scm, e2: Scm, e3: Scm, e4: Scm, e5: Scm) -> Scm;
+    pub fn scm_reverse_x(list: Scm, tail: Scm) -> Scm;
+
+    pub fn scm_from_int64(value: i64) -> Scm;
+    pub fn scm_from_double(value: f64) -> Scm;
+    pub fn scm_is_number(value: Scm) -> c_int;
+
+    pub fn scm_string_to_symbol(text: Scm) -> Scm;
+
+    /// Keeps a procedure alive across a collection, and lets it go again. The
+    /// handles are the values themselves: a protected `Scm` does not move.
+    pub fn scm_gc_protect_object(value: Scm) -> Scm;
+    pub fn scm_gc_unprotect_object(value: Scm) -> Scm;
+
+    /// Runs `body` with `body_data` and, if Scheme raises, `handler` with
+    /// `handler_data` -- the one way to call a procedure the dock did not write
+    /// without a Scheme error unwinding through C.
+    pub fn scm_internal_catch(
+        tag: Scm,
+        body: Option<unsafe extern "C" fn(*mut c_void) -> Scm>,
+        body_data: *mut c_void,
+        handler: Option<unsafe extern "C" fn(*mut c_void, Scm, Scm) -> Scm>,
+        handler_data: *mut c_void,
+    ) -> Scm;
 
     pub fn scm_from_utf8_string(text: *const c_char) -> Scm;
     pub fn scm_to_utf8_string(value: Scm) -> *mut c_char;
@@ -64,7 +96,7 @@ extern "C" {
 /// neither the macro nor that constant crosses the FFI: the value is asked of the
 /// interpreter once and then compared word for word. It is an immediate, so it
 /// does not move and the collector has nothing to trace.
-fn false_value() -> Scm {
+pub fn false_value() -> Scm {
     static FALSE: AtomicPtr<ScmOpaque> = AtomicPtr::new(std::ptr::null_mut());
 
     let cached = FALSE.load(Ordering::Relaxed);
@@ -84,6 +116,20 @@ fn false_value() -> Scm {
 /// Guile must be initialized, as it must be for every other call here.
 pub unsafe fn is_true(value: Scm) -> bool {
     value != false_value()
+}
+
+/// `#t`, asked of the interpreter once for the same reason as `#f`.
+pub fn true_value() -> Scm {
+    static TRUE: AtomicPtr<ScmOpaque> = AtomicPtr::new(std::ptr::null_mut());
+
+    let cached = TRUE.load(Ordering::Relaxed);
+    if !cached.is_null() {
+        return cached;
+    }
+
+    let value = unsafe { scm_c_eval_string(c"#t".as_ptr()) };
+    TRUE.store(value, Ordering::Relaxed);
+    value
 }
 
 /// Whether a Scheme value is a symbol.

@@ -134,6 +134,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   used to take an owned wrapper, which sinks a floating reference and releases it
   on the way out, so a box the caller had built and not yet appended was freed while
   the caller still held it. The stack's keyboard navigation test is what caught it.
+- *The Scheme bridge is Rust.* The item builders (one per Scheme item type, plus
+  the poller budget check), the settings reader, the layout-override writes a drag
+  records, the poll procedures a dynamic item calls and the setters the preferences
+  window uses are all ~rust/src/bridge.rs~ now, so ~guile_bridge.c~ is gone and
+  libguile is reached from exactly one place.
 - *Both window trackers are Rust.* The Wayland foreign-toplevel tracker -- the
   registry, the manager, the handles and the broadcast into every dock -- and the
   X11/EWMH one -- the window list, its property events, the activate/minimize/close
