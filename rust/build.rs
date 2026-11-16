@@ -46,6 +46,92 @@ fn main() {
     link("guile-3.0");
     link("wayland-client");
     link("gtk4-layer-shell-0");
+
+    // The two sources the C half used to bring to the link: the GLib resource
+    // bundle (CSS, icons, the About logo) and the Wayland protocol's interface
+    // descriptions. Generating them here is what lets the binary be built by
+    // cargo alone -- meson still drives installation and the packaging, but no
+    // longer contributes an object file.
+    generate("resources");
+
+    println!("cargo:rerun-if-changed=../resources/lambdock.gresource.xml");
+    println!("cargo:rerun-if-changed=../protocols");
+}
+
+/// Compiles the two generated C sources and archives them, so `cargo build`
+/// produces a binary that has its resources and its protocol data.
+fn generate(_what: &str) {
+    let out_dir = std::env::var("OUT_DIR").expect("cargo sets OUT_DIR");
+    let source_root = std::path::Path::new(".");
+
+    let resources = std::path::Path::new(&out_dir).join("lambdock-resources.c");
+    run(
+        "glib-compile-resources",
+        &[
+            "--generate-source",
+            &format!("--target={}", resources.display()),
+            "--sourcedir=../resources",
+            "../resources/lambdock.gresource.xml",
+        ],
+        source_root,
+    );
+
+    let protocol = std::path::Path::new(&out_dir).join("wlr-foreign-toplevel.c");
+    run(
+        "wayland-scanner",
+        &[
+            "private-code",
+            "../protocols/wlr-foreign-toplevel-management-unstable-v1.xml",
+            &protocol.display().to_string(),
+        ],
+        source_root,
+    );
+
+    // One archive, compiled with the flags pkg-config names for the headers
+    // these two files include.
+    let cflags = Command::new("pkg-config")
+        .args(["--cflags", "gio-2.0", "wayland-client"])
+        .output()
+        .expect("pkg-config is needed for the generated sources");
+    let cflags = String::from_utf8(cflags.stdout).expect("pkg-config printed UTF-8");
+    let cflags: Vec<&str> = cflags.split_whitespace().collect();
+
+    let mut objects = Vec::new();
+    for source in [&resources, &protocol] {
+        let object = source.with_extension("o");
+        let mut arguments = vec!["-fPIC", "-c", "-o"];
+        let object_text = object.display().to_string();
+        let source_text = source.display().to_string();
+        arguments.push(&object_text);
+        arguments.push(&source_text);
+        arguments.extend(cflags.iter().copied());
+
+        run("cc", &arguments, source_root);
+        objects.push(object);
+    }
+
+    // Linked as objects, not as an archive: the resource bundle registers
+    // itself from a constructor, and a linker drops an archive member nobody
+    // references -- which is exactly how the CSS went missing the first time.
+    for object in &objects {
+        println!("cargo:rustc-link-arg={}", object.display());
+    }
+}
+
+/// Runs a build-time tool, and fails the build when it does: a missing resource
+/// bundle is not a warning.
+fn run(program: &str, arguments: &[&str], directory: &std::path::Path) {
+    let output = Command::new(program)
+        .current_dir(directory)
+        .args(arguments)
+        .output()
+        .unwrap_or_else(|error| panic!("{program} is needed for the build: {error}"));
+
+    assert!(
+        output.status.success(),
+        "{program} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 /// Asks pkg-config for one package's link flags and hands them to rustc.

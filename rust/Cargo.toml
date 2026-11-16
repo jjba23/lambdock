@@ -19,6 +19,12 @@ name = "lambdock"
 # `cargo test` needs to link the unit tests.
 crate-type = ["staticlib", "rlib"]
 
+[[bin]]
+name = "lambdock"
+# The executable is Rust too: `cargo build` produces it, and the one C file the
+# project had is gone.
+path = "src/main.rs"
+
 [dependencies]
 gtk4 = { version = "0.11.5", features = ["v4_14"] }
 

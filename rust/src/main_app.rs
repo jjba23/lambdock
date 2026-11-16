@@ -1540,6 +1540,25 @@ pub unsafe extern "C" fn lambdock_main(argc: c_int, argv: *mut *mut c_char) -> c
     0
 }
 
+/// Runs the application with the process's own arguments, for the Rust binary.
+///
+/// The C entry point used to hand these over; now `main` does, and the argument
+/// vector is built once here rather than read from a `char **`.
+pub fn run() -> u8 {
+    let arguments: Vec<std::ffi::CString> = std::env::args_os()
+        .map(|argument| cstring(&argument.to_string_lossy()))
+        .collect();
+
+    let mut pointers: Vec<*mut c_char> = arguments
+        .iter()
+        .map(|argument| argument.as_ptr() as *mut c_char)
+        .collect();
+
+    let status = unsafe { lambdock_main(pointers.len() as c_int, pointers.as_mut_ptr()) };
+
+    u8::try_from(status).unwrap_or(1)
+}
+
 #[cfg(test)]
 mod plan_tests {
     use super::*;
