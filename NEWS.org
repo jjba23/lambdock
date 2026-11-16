@@ -55,7 +55,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   as two icons.  That matching is the pure half, so it is tested by name -- every
   spelling a launcher can be written with, the exec-token heuristic and its token
   boundaries, and the second pass through the desktop entry -- while
-  ~test_dock_item~ still checks the ABI end to end.  A test binary that
+  ~test_dock_item~ still checks the ABI end to end.  ~ui/theme_engine.c~ is
+  ~rust/src/ui/theme_engine.rs~: what to load is a value and how to rewrite a
+  selector is a string function, so both are tested without a display -- the
+  `window` element compounded at its boundary and `windowcontrols` left nested,
+  selector lists scoped across line breaks (an unscoped rule applies to every
+  dock), comments and @-rules passing through -- while the appliers only install
+  the providers the value names.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the

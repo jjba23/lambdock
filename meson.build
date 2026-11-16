@@ -271,6 +271,7 @@ rust_sources = files(
   'rust/src/ui/icon_zoom.rs',
   'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
+  'rust/src/ui/theme_engine.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
@@ -348,7 +349,6 @@ sources = files(
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
-  'src/ui/theme_engine.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
@@ -400,7 +400,6 @@ full_app_sources = files(
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
-  'src/ui/theme_engine.c',
   'src/ui/popover_menu.c',
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
@@ -418,7 +417,7 @@ full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_re
 unit_tests = [
   {
     'id': 'theme_engine',
-    'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
+    'extra_sources': [test_stubs, 'src/ui/shelf.c',
                       lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },

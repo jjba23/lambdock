@@ -41,6 +41,17 @@ extern "C" {
     pub fn g_log(domain: *const c_char, level: c_int, format: *const c_char, ...);
 }
 
+/// `g_strdup` of a Rust string, for a `(transfer full)` field that C frees with
+/// `g_free`.
+///
+/// A string with an interior NUL is truncated rather than refused: it is a log
+/// message or a CSS class, never a path.
+pub(crate) fn strdup_string(text: &str) -> *mut c_char {
+    let text = std::ffi::CString::new(text).unwrap_or_default();
+
+    unsafe { g_strdup(text.as_ptr()) }
+}
+
 /// Translate `msgid`, whose literal stays at the call site.
 ///
 /// A `&CStr` is a fat pointer, so handing one to `gettext` would shift every
