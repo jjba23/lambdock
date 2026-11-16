@@ -359,7 +359,6 @@ sources = files(
   'src/ui/dock_item.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/shelf.c',
   'src/ui/preferences.c',
 )
 
@@ -405,7 +404,6 @@ full_app_sources = files(
   'src/ui/dock_item.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
-  'src/ui/shelf.c',
   'src/ui/preferences.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
@@ -413,8 +411,7 @@ full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_re
 unit_tests = [
   {
     'id': 'theme_engine',
-    'extra_sources': [test_stubs, 'src/ui/shelf.c',
-                      lambdock_resources],
+    'extra_sources': [test_stubs, lambdock_resources],
     'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
@@ -454,7 +451,7 @@ unit_tests = [
   },
   {
     'id': 'config_values',
-    'extra_sources': [test_stubs, 'src/ui/shelf.c', lambdock_resources],
+    'extra_sources': [test_stubs, lambdock_resources],
   },
   {
     'id': 'dock_registry',
@@ -472,7 +469,7 @@ unit_tests = [
   },
   {
     'id': 'dock_dims',
-    'extra_sources': [test_stubs, 'src/ui/shelf.c', lambdock_resources],
+    'extra_sources': [test_stubs, lambdock_resources],
   },
   {
     # Click policy: counts and flags in, one enum out. No GTK, no Wayland, and

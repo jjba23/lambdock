@@ -88,9 +88,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   and a configured one.  The frame followed it: its keystone is a matrix written
   out by hand (a shear would slant both sides the same way), the tilt is a 3D
   rotation around the docked edge, and the widget reserves the flare's room and
-  paints the slab through one composed transform.  Only the reflections still
-  paint in C, where the banded mirror, the contact shadow and the running dot
-  live.  A
+  paints the slab through one composed transform.  The reflections followed, so
+  the whole of ~ui/shelf.c~ is ~rust/src/ui/shelf.rs~ now: the banded mirror with
+  its blur and alpha fade, the contact shadow the icon casts on the glass, the
+  running dot as a bar rather than a blob (a 2px bead antialiases away at 48px
+  icons), and the two wrappers that stack an item with its reflection and lay them
+  out for the dock.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

@@ -16,6 +16,11 @@ use std::ffi::{CStr, CString};
 use std::fmt::Write as _;
 use std::os::raw::{c_char, c_int};
 
+/// The two counters the shelf bumps, by the header's enum order: a reflection
+/// repaint and each band it draws inside one.
+pub const REFLECTION_PAINTS: c_int = 5;
+pub const REFLECTION_DRAWS: c_int = 6;
+
 /// The counter the header calls `LAMBDOCK_STAT_COUNT`: the C enum is the
 /// contract, and the order below is that enum's order.
 const STAT_COUNT: usize = 10;
@@ -138,13 +143,19 @@ mod tests {
             return None;
         }
 
-        Some(unsafe { CStr::from_ptr(pointer) }.to_string_lossy().into_owned())
+        Some(
+            unsafe { CStr::from_ptr(pointer) }
+                .to_string_lossy()
+                .into_owned(),
+        )
     }
 
     /// Every test starts from zero; they share one global, so they take it.
     fn reset() -> std::sync::MutexGuard<'static, ()> {
         static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-        let guard = GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let guard = GUARD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         lambdock_stats_reset();
         guard
     }

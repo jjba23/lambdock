@@ -126,7 +126,7 @@ If you read nothing else, read this.
 | Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.h=                      |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
 | Change CSS scoping or theming              | =rust/src/ui/theme_engine.rs=                                  |
-| Change the glass shelf / reflections       | =src/ui/shelf.c= + =resources/css/shelf.css=                    |
+| Change the glass shelf / reflections       | =rust/src/ui/shelf.rs= + =resources/css/shelf.css=               |
 | Change icon lookup                         | =src/ui/icon_resolver.c=                                       |
 | Understand boot, glue or multi-dock        | =src/main.c=                                                   |
 | Add a test                                 | =tests/test_<unit>.c= or =tests/scheme/lambdock_tests.scm=     |
@@ -309,7 +309,7 @@ lambdock/
 │   │   └── x11_rules.h        # EWMH decisions: which windows, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
-│       ├── shelf.c/.h         # Icon reflections still paint in C; the frame and its maths are in rust/src/ui/
+│       ├── shelf.h            # Glass shelf: frame, reflections, wrap + layout (in rust/src/ui/)
 │       ├── shelf_follow.h     # Separators following the shelf's projection (in rust/src/ui/)
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
@@ -1423,7 +1423,7 @@ pointer dies:
 | 3     | =dock_window.c=        | ~LambdockState~ lifecycle, layer shell, margin animation, auto-hide, teardown    |
 | 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
 | 4     | =ui/dock_item_windows.h= | An item's windows: tracking, running styling, app-id lookup (body in Rust)      |
-| 4     | =ui/shelf.h=           | Glass shelf: frame and its maths in Rust; the reflections still in C            |
+| 4     | =ui/shelf.h=           | Glass shelf: frame, reflections, wrap + layout (body in Rust)                    |
 | 4     | =ui/shelf_follow.h=    | Separators that follow the shelf's projection instead of sitting flat (in Rust)  |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |

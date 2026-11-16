@@ -23,16 +23,19 @@
 //! that is exactly the classic `icon + 24px` capsule, the frame is a pass-through
 //! and the reflections stay hidden.
 
+use crate::app_window::GList;
 use crate::core::config_values::{
     lambdock_shelf_params_default, ShelfParams, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP,
-    SHELF_DEFAULT_PERSPECTIVE,
+    SHELF_DEFAULT_PERSPECTIVE, SHELF_DEFAULT_REFLECTION, SHELF_DEFAULT_REFLECTION_BLUR,
+    SHELF_DEFAULT_REFLECTION_INTENSITY,
 };
 use crate::core::dock_dims::ShelfGeometry;
+use crate::dock_item::DockItem;
 use crate::state::LambdockState;
-use gtk4::glib::translate::{from_glib_borrow, IntoGlib, IntoGlibPtr};
+use gtk4::glib::translate::{from_glib_borrow, from_glib_none, IntoGlib, IntoGlibPtr};
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
-use gtk4::{ffi, glib, graphene, gsk};
+use gtk4::{ffi, gdk, glib, graphene, gsk};
 use std::cell::Cell;
 use std::os::raw::{c_double, c_int, c_void};
 
@@ -674,6 +677,903 @@ pub unsafe extern "C" fn shelf_frame_project_point(
     (*point).y = projected.y();
 
     1
+}
+
+// ============================================================================
+// LambdockReflection -- mirrored, blurred, fading icon reflection
+// ============================================================================
+//
+// The widget paints, on the glass in front of one icon:
+//
+//   1. a soft contact shadow where the icon meets the shelf,
+//   2. the icon itself, mirrored across that contact line, squashed into the
+//      reflection band and blurred with a gaussian blur,
+//   3. an alpha falloff (band by band, power curve) so it fades as it recedes,
+//   4. the running-app glow dot near the outer edge of the glass.
+//
+// The fade is drawn as REFLECTION_BANDS stacked semi-transparent bands; the blur
+// pass smooths their boundaries back into a continuous gradient.
+
+/// Whether the band is stacked vertically, which a dock on the top or bottom edge
+/// asks for.
+fn is_vertical_band(edge: c_int) -> bool {
+    edge == EDGE_TOP || edge == EDGE_BOTTOM
+}
+
+/// Height of the reflection band for a given icon size.
+fn band_size(band_ratio: f64, icon_size: i32) -> i32 {
+    let ratio = if band_ratio > 0.0 {
+        band_ratio
+    } else {
+        SHELF_DEFAULT_REFLECTION
+    };
+
+    (f64::from(icon_size) * ratio).round() as i32
+}
+
+/// The artwork a reflection mirrors: the icon itself rather than the widget that
+/// shows it. A widget paintable of a widget that is not mapped and sized yet
+/// latches a zero intrinsic size and then never paints anything.
+fn artwork_for(source: &gtk4::Widget) -> Option<gdk::Paintable> {
+    let image = source.downcast_ref::<gtk4::Image>()?;
+
+    let size = match image.pixel_size() {
+        size if size > 0 => size,
+        _ => DEFAULT_ICON_SIZE,
+    };
+    let scale = source.scale_factor().max(1);
+    let theme = gtk4::IconTheme::for_display(&gdk::Display::default()?);
+
+    match image.storage_type() {
+        gtk4::ImageType::IconName => {
+            let name = image.icon_name().filter(|name| !name.is_empty())?;
+            let paintable = theme.lookup_icon(
+                &name,
+                &[],
+                size,
+                scale,
+                gtk4::TextDirection::None,
+                gtk4::IconLookupFlags::empty(),
+            );
+
+            Some(paintable.upcast())
+        }
+        gtk4::ImageType::Gicon => {
+            let icon = image.gicon()?;
+            let paintable = theme.lookup_by_gicon(
+                &icon,
+                size,
+                scale,
+                gtk4::TextDirection::None,
+                gtk4::IconLookupFlags::empty(),
+            );
+
+            Some(paintable.upcast())
+        }
+        gtk4::ImageType::Paintable => image.paintable(),
+        _ => None,
+    }
+}
+
+/// Appends one elliptical radial gradient: centre and radii in pixels, stops as
+/// fractions of the radius.
+///
+/// Every decoration the band paints goes through here, because Gsk wants the
+/// bounds rectangle and both radii and it is easy to get the axes the wrong way
+/// round by hand.
+fn paint_ellipse(
+    snapshot: &gtk4::Snapshot,
+    cx: f64,
+    cy: f64,
+    rx: f64,
+    ry: f64,
+    stops: &[gsk::ColorStop],
+) {
+    if rx <= 0.0 || ry <= 0.0 || stops.is_empty() {
+        return;
+    }
+
+    let bounds = graphene::Rect::new(
+        (cx - rx) as f32,
+        (cy - ry) as f32,
+        (rx * 2.0) as f32,
+        (ry * 2.0) as f32,
+    );
+    let centre = graphene::Point::new(cx as f32, cy as f32);
+
+    snapshot.append_radial_gradient(&bounds, &centre, rx as f32, ry as f32, 0.0, 1.0, stops);
+}
+
+/// Soft dark pool where the icon meets the glass, so the icon reads as resting on
+/// the shelf instead of floating above it.
+///
+/// The shape is the reference dock's `wviconshadow.png`: a Gaussian pool that
+/// measures 0.40 alpha at the icon's centre, 0.28 at a third of an icon out, 0.06
+/// at three quarters, and nothing past 0.61 icon. Drawing it as a pool centred on
+/// the mirror axis -- rather than a linear band running down the whole band -- is
+/// what keeps it under the icon: it fades out at the icon's sides too instead of
+/// turning the band into the flat grey strip that made this decoration worth
+/// switching off.
+///
+/// The pool follows `reflection-intensity`, since it is part of the same material
+/// as the mirror: at the default 0.55 it peaks at 0.22, and at zero it is gone.
+fn paint_contact_shadow(snapshot: &gtk4::Snapshot, edge: c_int, w: f64, h: f64, intensity: f64) {
+    let vertical = is_vertical_band(edge);
+    let cross = if vertical { w } else { h };
+    let axis_len = if vertical { h } else { w };
+    let peak = 0.45f64.min(0.40 * intensity.max(0.0));
+
+    if cross <= 0.0 || axis_len <= 0.0 || peak <= 0.0 {
+        return;
+    }
+
+    // The icon-side edge of the band is the mirror axis: the top of the band for a
+    // bottom dock, the left for a left dock. The pool is centred there, so the
+    // half the glass can show is the half that fades away from the icon.
+    let mut cx = w / 2.0;
+    let mut cy = h / 2.0;
+
+    if vertical {
+        cy = if edge == EDGE_BOTTOM { 0.0 } else { h };
+    } else {
+        cx = if edge == EDGE_LEFT { 0.0 } else { w };
+    }
+
+    // Across the mirror axis the measured pool spans 0.61 icon; along it the band's
+    // own depth is the extent, so the shadow dies out before the outer edge.
+    let radius_cross = cross * 0.625;
+    let radius_along = axis_len;
+
+    let stops = [
+        gsk::ColorStop::new(0.00, gdk::RGBA::new(0.0, 0.0, 0.0, peak as f32)),
+        gsk::ColorStop::new(0.20, gdk::RGBA::new(0.0, 0.0, 0.0, (peak * 0.79) as f32)),
+        gsk::ColorStop::new(0.40, gdk::RGBA::new(0.0, 0.0, 0.0, (peak * 0.43) as f32)),
+        gsk::ColorStop::new(0.60, gdk::RGBA::new(0.0, 0.0, 0.0, (peak * 0.17) as f32)),
+        gsk::ColorStop::new(0.80, gdk::RGBA::new(0.0, 0.0, 0.0, (peak * 0.04) as f32)),
+        gsk::ColorStop::new(1.00, gdk::RGBA::new(0.0, 0.0, 0.0, 0.0)),
+    ];
+
+    let (rx, ry) = if vertical {
+        (radius_cross, radius_along)
+    } else {
+        (radius_along, radius_cross)
+    };
+
+    paint_ellipse(snapshot, cx, cy, rx, ry, &stops);
+}
+
+/// The small glowing dot the shelf-look dock showed for apps with open windows: a
+/// white bead sitting on a cyan glow.
+///
+/// Two images describe it, and they are not the same shape rotated: the bottom
+/// dock's glow is 54x12 with a 12x3 bead, the side one's 6x16 with a 2x11 bead. In
+/// both cases the bead runs along the row of icons and the glow is stretched that
+/// way too, but the side dock's glow is the tighter of the two.
+///
+/// Three things are drawn on purpose rather than by the reference's proportions
+/// alone, because a 12x3px bead on a 64px tile is 9x2.2px at 48px icons and
+/// antialiases into the glass: the bead is a little larger (and never under 7x3px),
+/// it is painted as a bar with crisp top and bottom edges instead of a radial blob,
+/// and the dark pool under it is tight -- about 2.4 bead widths -- because a wide
+/// pool turns the reflection band into a grey smear that the white bead then has to
+/// be seen against.
+///
+/// The bead is white, and a white bead disappears into a pale slab, so it is drawn
+/// over that pool: on light material the pool reads as the icon's shadow and the
+/// bead stays visible; on dark glass the pool blends in and only the glow shows.
+fn paint_running_dot(snapshot: &gtk4::Snapshot, edge: c_int, w: f64, h: f64) {
+    let vertical = is_vertical_band(edge);
+    let cross = if vertical { w } else { h };
+
+    let bead_cross_ratio = if vertical { 0.20 } else { 0.18 };
+    let bead_along_ratio = if vertical { 0.07 } else { 0.04 };
+    let glow_cross_scale = if vertical { 3.2 } else { 1.6 };
+    let glow_along_scale = 2.6;
+    let pool_cross_scale = if vertical { 2.4 } else { 2.0 };
+    let pool_along_scale = if vertical { 1.9 } else { 3.2 };
+    let edge_lift = 2.5;
+
+    let bead_cross = 7.0f64.max(cross * bead_cross_ratio);
+    let bead_along = 3.0f64.max(cross * bead_along_ratio);
+
+    // Distance from the outer edge to the middle of the bead.
+    let lift = bead_along / 2.0 + edge_lift;
+
+    let mut cx = w / 2.0;
+    let mut cy = h / 2.0;
+
+    if vertical {
+        cy = if edge == EDGE_BOTTOM { h - lift } else { lift };
+    } else {
+        cx = if edge == EDGE_LEFT { w - lift } else { lift };
+    }
+
+    // Which of x and y is the cross axis depends on the band's orientation; the
+    // gradients below take explicit radii, so this is the only place the swap has
+    // to happen.
+    let bead_rx = if vertical {
+        bead_cross / 2.0
+    } else {
+        bead_along / 2.0
+    };
+    let bead_ry = if vertical {
+        bead_along / 2.0
+    } else {
+        bead_cross / 2.0
+    };
+
+    // Three layers, back to front: the pool the bead sits in, the cyan glow, and the
+    // bead.
+    let pool_stops = [
+        gsk::ColorStop::new(0.0, gdk::RGBA::new(0.0, 0.0, 0.0, 0.34)),
+        gsk::ColorStop::new(0.45, gdk::RGBA::new(0.0, 0.0, 0.0, 0.16)),
+        gsk::ColorStop::new(1.0, gdk::RGBA::new(0.0, 0.0, 0.0, 0.0)),
+    ];
+    let (pool_rx, pool_ry) = if vertical {
+        (bead_rx * pool_cross_scale, bead_ry * pool_along_scale)
+    } else {
+        (bead_ry * pool_along_scale, bead_rx * pool_cross_scale)
+    };
+    paint_ellipse(snapshot, cx, cy, pool_rx, pool_ry, &pool_stops);
+
+    // The glow colour is the one the reference image for this orientation uses:
+    // 139/207/255 across, 0/158/250 down the side.
+    let (glow_r, glow_g) = if vertical { (0.55, 0.81) } else { (0.0, 0.62) };
+    let glow_stops = [
+        gsk::ColorStop::new(0.0, gdk::RGBA::new(glow_r, glow_g, 1.0, 0.45)),
+        gsk::ColorStop::new(0.45, gdk::RGBA::new(glow_r, glow_g, 1.0, 0.18)),
+        gsk::ColorStop::new(1.0, gdk::RGBA::new(glow_r, glow_g, 1.0, 0.0)),
+    ];
+    let (glow_rx, glow_ry) = if vertical {
+        (bead_rx * glow_cross_scale, bead_ry * glow_along_scale)
+    } else {
+        (bead_ry * glow_along_scale, bead_rx * glow_cross_scale)
+    };
+    paint_ellipse(snapshot, cx, cy, glow_rx, glow_ry, &glow_stops);
+
+    // The bead itself is a bar, not a radial blob: a gradient that fades along the
+    // row gives it soft ends, and drawing it as a rectangle keeps its two or three
+    // pixels of height crisp instead of smearing them into the glass. That crisp
+    // edge is most of what makes the dot legible.
+    let bead = graphene::Rect::new(
+        (cx - bead_rx) as f32,
+        (cy - bead_ry) as f32,
+        (bead_rx * 2.0) as f32,
+        (bead_ry * 2.0) as f32,
+    );
+    let (from, to) = if vertical {
+        (
+            graphene::Point::new((cx - bead_rx) as f32, cy as f32),
+            graphene::Point::new((cx + bead_rx) as f32, cy as f32),
+        )
+    } else {
+        (
+            graphene::Point::new(cx as f32, (cy - bead_ry) as f32),
+            graphene::Point::new(cx as f32, (cy + bead_ry) as f32),
+        )
+    };
+
+    let white = gdk::RGBA::new(1.0, 1.0, 1.0, 0.99);
+    let bead_stops = [
+        gsk::ColorStop::new(0.00, gdk::RGBA::new(1.0, 1.0, 1.0, 0.0)),
+        gsk::ColorStop::new(0.22, white),
+        gsk::ColorStop::new(0.78, white),
+        gsk::ColorStop::new(1.00, gdk::RGBA::new(1.0, 1.0, 1.0, 0.0)),
+    ];
+
+    snapshot.append_linear_gradient(&bead, &from, &to, &bead_stops);
+}
+
+/// The pixel size of the reflected source, falling back to the configured icon size
+/// while the source widget has not been allocated yet.
+fn source_size(paintable: Option<&gdk::Paintable>, icon_size: i32) -> (f64, f64) {
+    let mut width = paintable.map_or(0.0, |paintable| f64::from(paintable.intrinsic_width()));
+    let mut height = paintable.map_or(0.0, |paintable| f64::from(paintable.intrinsic_height()));
+
+    if width <= 0.0 {
+        width = f64::from(if icon_size > 0 {
+            icon_size
+        } else {
+            DEFAULT_ICON_SIZE
+        });
+    }
+    if height <= 0.0 {
+        height = width;
+    }
+
+    (width, height)
+}
+
+mod reflection_imp {
+    use super::*;
+    use std::cell::RefCell;
+
+    #[derive(Default)]
+    pub struct Reflection {
+        /// The mirrored widget, held weakly: it owns the reflection, not the other
+        /// way round.
+        pub source: RefCell<Option<glib::WeakRef<gtk4::Widget>>>,
+        /// What gets mirrored.
+        pub paintable: RefCell<Option<gdk::Paintable>>,
+        /// False until a lazy (widget) paintable is bound.
+        pub paintable_ready: Cell<bool>,
+        /// Shelf edge: decides the mirror and the fade axis.
+        pub edge: Cell<c_int>,
+        /// Fallback size while the source is unsized.
+        pub icon_size: Cell<i32>,
+        /// Reflection band / icon size.
+        pub band_ratio: Cell<f64>,
+        /// Blur radius / icon size.
+        pub blur_ratio: Cell<f64>,
+        /// Alpha at the icon-side edge of the band.
+        pub intensity: Cell<f64>,
+        /// Draw the running-app glow dot.
+        pub running: Cell<bool>,
+        /// Draw the contact shadow under the icon.
+        pub has_shadow: Cell<bool>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for Reflection {
+        const NAME: &'static str = "LambdockReflection";
+        type Type = super::Reflection;
+        type ParentType = gtk4::Widget;
+    }
+
+    impl ObjectImpl for Reflection {
+        fn constructed(&self) {
+            self.parent_constructed();
+
+            self.edge.set(EDGE_BOTTOM);
+            self.icon_size.set(DEFAULT_ICON_SIZE);
+            self.band_ratio.set(SHELF_DEFAULT_REFLECTION);
+            self.blur_ratio.set(SHELF_DEFAULT_REFLECTION_BLUR);
+            self.intensity.set(SHELF_DEFAULT_REFLECTION_INTENSITY);
+
+            let widget = self.obj();
+            widget.set_can_focus(false);
+            widget.set_can_target(false);
+            widget.set_halign(gtk4::Align::Center);
+            widget.set_valign(gtk4::Align::Center);
+            widget.add_css_class("shelf-reflection");
+        }
+    }
+
+    impl WidgetImpl for Reflection {
+        fn measure(&self, orientation: gtk4::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            let (sw, sh) = source_size(self.paintable.borrow().as_ref(), self.icon_size.get());
+
+            // The band keeps the source's cross size and is band_ratio of it along
+            // the mirror axis.
+            let vertical = is_vertical_band(self.edge.get());
+            let cross = if vertical { sw } else { sh };
+            let band = (if vertical { sh } else { sw }) * self.band_ratio.get();
+
+            let cross_px = cross.round().max(0.0) as i32;
+            let band_px = band.round().max(0.0) as i32;
+
+            let natural = if orientation == gtk4::Orientation::Horizontal {
+                cross_px
+            } else {
+                band_px
+            };
+
+            (0, natural, -1, -1)
+        }
+
+        fn snapshot(&self, snapshot: &gtk4::Snapshot) {
+            let widget = self.obj();
+
+            crate::core::render_stats::lambdock_stats_bump(
+                crate::core::render_stats::REFLECTION_PAINTS,
+            );
+            sync_paintable(self);
+
+            let (w, h) = (f64::from(widget.width()), f64::from(widget.height()));
+            if w <= 0.0 || h <= 0.0 {
+                return;
+            }
+
+            let edge = self.edge.get();
+            let vertical = is_vertical_band(edge);
+
+            if self.has_shadow.get() {
+                paint_contact_shadow(snapshot, edge, w, h, self.intensity.get());
+            }
+
+            let paintable = self.paintable.borrow().clone();
+            let (sw, sh) = source_size(self.paintable.borrow().as_ref(), self.icon_size.get());
+
+            if let Some(paintable) = paintable.filter(|_| sw > 0.0 && sh > 0.0) {
+                // Mirror the artwork at full scale across the edge that touches the
+                // icon and let the glass crop it: a reflection does not shrink, it
+                // just disappears into the surface it fades on. Only the part of the
+                // icon within the band's depth is ever visible, which is what makes
+                // the mirror read as a reflection instead of a squashed copy.
+                let mut sx = (w / sw) as f32;
+                let mut sy = 1.0f32;
+                let mut tx = 0.0f32;
+                let mut ty = 0.0f32;
+
+                if vertical {
+                    if edge == EDGE_BOTTOM {
+                        // Mirror about the icon's bottom edge: the shelf reflects
+                        // downwards.
+                        sy = -1.0;
+                        ty = sh as f32;
+                    }
+                } else if edge == EDGE_LEFT {
+                    // Mirror about the icon's right edge: the shelf reflects
+                    // sideways.
+                    sx = -sx;
+                    tx = sw as f32;
+                }
+
+                let blur_unit = if vertical { w } else { h };
+                let blur = (blur_unit * self.blur_ratio.get()).max(0.5);
+
+                let offset = graphene::Point::new(tx, ty);
+                let mirror = gsk::Transform::new().translate(&offset).scale(sx, sy);
+
+                snapshot.push_blur(blur);
+
+                // The reflection fades as it recedes from the icon: draw the mirrored
+                // artwork once per slice, with a power-curve alpha. Each slice's clip
+                // is pushed *before* the mirror transform, so it is expressed in the
+                // widget's own coordinates.
+                let axis_len = if vertical { h } else { w };
+                let bands = lambdock_reflection_band_count(axis_len);
+                let band_len = axis_len / f64::from(bands);
+
+                for index in 0..bands {
+                    let start = band_len * f64::from(index);
+                    let t = (start + band_len * 0.5) / axis_len; // 0 = icon edge, 1 = far
+
+                    let alpha = self.intensity.get() * (1.0 - t).powf(1.1);
+                    if alpha <= 0.001 {
+                        continue;
+                    }
+
+                    let clip = if vertical {
+                        graphene::Rect::new(0.0, start as f32, w as f32, band_len as f32)
+                    } else {
+                        graphene::Rect::new(start as f32, 0.0, band_len as f32, h as f32)
+                    };
+
+                    snapshot.push_clip(&clip);
+                    snapshot.push_opacity(alpha);
+                    snapshot.save();
+                    snapshot.transform(Some(&mirror));
+                    paintable.snapshot(snapshot, sw, sh);
+                    crate::core::render_stats::lambdock_stats_bump(
+                        crate::core::render_stats::REFLECTION_DRAWS,
+                    );
+                    snapshot.restore();
+                    snapshot.pop(); // opacity
+                    snapshot.pop(); // clip
+                }
+
+                snapshot.pop(); // blur
+            }
+
+            if self.running.get() {
+                paint_running_dot(snapshot, edge, w, h);
+            }
+        }
+    }
+}
+
+/// (Re)binds the widget paintable used as the mirror source.
+///
+/// A widget paintable created before its widget is mapped and sized can latch a zero
+/// intrinsic size and then never paint anything, so the binding happens from the first
+/// snapshot, when the icon certainly has an allocation.
+fn sync_paintable(imp: &reflection_imp::Reflection) {
+    if imp.paintable_ready.get() {
+        return;
+    }
+
+    let Some(source) = imp.source.borrow().as_ref().and_then(|weak| weak.upgrade()) else {
+        return;
+    };
+
+    if !source.is_mapped() || source.width() <= 0 || source.height() <= 0 {
+        return;
+    }
+
+    // Second chance for a widget paintable: once the source is mapped and sized, a
+    // fresh one does paint.
+    *imp.paintable.borrow_mut() = Some(gtk4::WidgetPaintable::new(Some(&source)).upcast());
+    imp.paintable_ready.set(true);
+    imp.obj().queue_resize();
+}
+
+glib::wrapper! {
+    /// A mirrored, blurred, fading copy of an icon, meant for the dock's glass.
+    pub struct Reflection(ObjectSubclass<reflection_imp::Reflection>)
+        @extends gtk4::Widget,
+        @implements gtk4::Accessible, gtk4::Buildable, gtk4::ConstraintTarget;
+}
+
+/// The reflection behind a widget pointer, or `None` when it is not one.
+///
+/// # Safety
+///
+/// `pointer` must be null or a live `GtkWidget`.
+unsafe fn as_reflection(
+    pointer: *mut ffi::GtkWidget,
+) -> Option<glib::translate::Borrowed<Reflection>> {
+    if pointer.is_null() {
+        return None;
+    }
+
+    let widget: glib::translate::Borrowed<gtk4::Widget> = from_glib_borrow(pointer);
+    if !widget.is::<Reflection>() {
+        return None;
+    }
+
+    let widget: gtk4::Widget = widget.into_inner();
+    Some(glib::translate::Borrowed::new(widget.unsafe_cast()))
+}
+
+/// Creates a reflection of `source`, or an empty slot when it is null.
+///
+/// # Safety
+///
+/// `source` must be null or a live widget; the result is `(transfer full)` and the C
+/// callers append it, like the `g_object_new` this replaces.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_new(source: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    let reflection: Reflection = glib::Object::builder().build();
+
+    if !source.is_null() {
+        let source: gtk4::Widget = gtk4::glib::translate::from_glib_none(source);
+        *reflection.imp().source.borrow_mut() = Some(source.downgrade());
+
+        // Mirror the artwork itself, not the widget that shows it: see
+        // artwork_for().
+        match artwork_for(&source) {
+            Some(paintable) => {
+                *reflection.imp().paintable.borrow_mut() = Some(paintable);
+                reflection.imp().paintable_ready.set(true);
+            }
+            None => {
+                *reflection.imp().paintable.borrow_mut() =
+                    Some(gtk4::WidgetPaintable::new(Some(&source)).upcast());
+                reflection.imp().paintable_ready.set(false);
+            }
+        }
+
+        // The contact shadow belongs to this artwork: it is the pool the icon casts on
+        // the glass. An item with nothing to mirror -- a separator, a gauge, a clock --
+        // reserves the band so it lines up with its neighbours, but it must not paint
+        // a shadow of an icon it does not have.
+        reflection.imp().has_shadow.set(true);
+    }
+
+    glib::gobject_ffi::g_object_force_floating(reflection.as_ptr().cast());
+
+    reflection.upcast::<gtk4::Widget>().into_glib_ptr()
+}
+
+/// Sets the shelf edge, the icon size and the mirror's three ratios.
+///
+/// # Safety
+///
+/// `reflection` must be null or a live reflection.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_configure(
+    reflection: *mut ffi::GtkWidget,
+    edge: c_int,
+    icon_size: c_int,
+    band_ratio: c_double,
+    blur_ratio: c_double,
+    intensity: c_double,
+) {
+    let Some(reflection) = as_reflection(reflection) else {
+        return;
+    };
+
+    let imp = reflection.imp();
+    let mut changed = imp.edge.get() != edge;
+
+    imp.edge.set(edge);
+    if icon_size > 0 && icon_size != imp.icon_size.get() {
+        imp.icon_size.set(icon_size);
+        changed = true;
+    }
+    if imp.band_ratio.get() != band_ratio {
+        imp.band_ratio.set(band_ratio);
+        changed = true;
+    }
+    imp.blur_ratio.set(blur_ratio);
+    imp.intensity.set(intensity);
+
+    if changed {
+        reflection.queue_resize();
+    }
+    reflection.queue_draw();
+}
+
+/// Stops mirroring: the widget becomes a plain slot of the band's height.
+///
+/// # Safety
+///
+/// `reflection` must be null or a live reflection.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_clear_source(reflection: *mut ffi::GtkWidget) {
+    let Some(reflection) = as_reflection(reflection) else {
+        return;
+    };
+
+    *reflection.imp().source.borrow_mut() = None;
+    *reflection.imp().paintable.borrow_mut() = None;
+
+    // Nothing left to bind, and nothing that could ever appear again.
+    reflection.imp().paintable_ready.set(true);
+    reflection.queue_draw();
+}
+
+/// Asks for a band of `band_size` across `icon_size`.
+///
+/// # Safety
+///
+/// `reflection` must be null or a live reflection.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_set_extent(
+    reflection: *mut ffi::GtkWidget,
+    icon_size: c_int,
+    band_size: c_int,
+) {
+    let Some(reflection) = as_reflection(reflection) else {
+        return;
+    };
+    if icon_size <= 0 || band_size <= 0 {
+        return;
+    }
+
+    if is_vertical_band(reflection.imp().edge.get()) {
+        reflection.set_size_request(icon_size, band_size);
+    } else {
+        reflection.set_size_request(band_size, icon_size);
+    }
+}
+
+/// Resizes the band for a new icon size, keeping the configured ratio.
+///
+/// # Safety
+///
+/// `reflection` must be null or a live reflection.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_set_icon_size(
+    reflection: *mut ffi::GtkWidget,
+    icon_size: c_int,
+) {
+    let Some(reflection) = as_reflection(reflection) else {
+        return;
+    };
+    if icon_size <= 0 {
+        return;
+    }
+
+    let band = band_size(reflection.imp().band_ratio.get(), icon_size);
+
+    if is_vertical_band(reflection.imp().edge.get()) {
+        reflection.set_size_request(icon_size, band);
+    } else {
+        reflection.set_size_request(band, icon_size);
+    }
+}
+
+/// Toggles the running-app glow dot.
+///
+/// # Safety
+///
+/// `reflection` must be null or a live reflection.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_set_running(
+    reflection: *mut ffi::GtkWidget,
+    running: c_int,
+) {
+    let Some(reflection) = as_reflection(reflection) else {
+        return;
+    };
+
+    if reflection.imp().running.get() == (running != 0) {
+        return;
+    }
+
+    reflection.imp().running.set(running != 0);
+    reflection.queue_draw();
+}
+
+/// Whether `widget` is a reflection.
+///
+/// # Safety
+///
+/// `widget` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_reflection_is_reflection(widget: *mut c_void) -> c_int {
+    c_int::from(as_reflection(widget.cast()).is_some())
+}
+
+/// The size an item's icon is drawn at right now: the magnified size while the
+/// fisheye is scaling it, the resting size otherwise.
+///
+/// # Safety
+///
+/// `item` must be null or a live dock item.
+unsafe fn item_icon_size(item: *const DockItem) -> i32 {
+    if item.is_null() || (*item).button.is_null() {
+        return 0;
+    }
+
+    let button: gtk4::Button =
+        match from_glib_none::<_, gtk4::Widget>((*item).button.cast::<ffi::GtkWidget>())
+            .downcast::<gtk4::Button>()
+        {
+            Ok(button) => button,
+            Err(_) => return 0,
+        };
+
+    let Some(child) = button.child() else {
+        return 0;
+    };
+
+    // App and dynamic items hold their icon inside a zoom container; stacks, the
+    // launchpad and meter items put it straight in the content box.
+    let zoomed = |widget: &gtk4::Widget| -> Option<i32> {
+        if crate::ui::icon_zoom::lambdock_icon_zoom_is_zoom(widget.as_ptr().cast()) != 0 {
+            let size = crate::ui::icon_zoom::lambdock_icon_zoom_target_size(widget.as_ptr().cast());
+            return Some(size);
+        }
+
+        if let Some(image) = widget.downcast_ref::<gtk4::Image>() {
+            if image.pixel_size() > 0 {
+                return Some(image.pixel_size());
+            }
+        }
+
+        None
+    };
+
+    if let Ok(dock_box) = child.clone().downcast::<gtk4::Box>() {
+        let mut each = dock_box.first_child();
+        while let Some(widget) = each {
+            if let Some(size) = zoomed(&widget) {
+                return size;
+            }
+            each = widget.next_sibling();
+        }
+
+        return 0;
+    }
+
+    zoomed(&child).unwrap_or(0)
+}
+
+/// Wraps an item's button and its reflection in the shelf's stack.
+///
+/// The reflection always goes on the outward side of the shelf.
+///
+/// # Safety
+///
+/// `button` must be null or a live widget; `reflection` null or a live widget;
+/// `state` null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn shelf_wrap_item(
+    state: *const LambdockState,
+    button: *mut ffi::GtkWidget,
+    reflection: *mut ffi::GtkWidget,
+) -> *mut ffi::GtkWidget {
+    if button.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    crate::ui::ensure_gtk_initialized();
+
+    // Stack along the dock's cross axis: a bottom dock stacks icons vertically with
+    // the reflection underneath, a side dock stacks them horizontally.
+    let vertical_dock =
+        !state.is_null() && (*state).orientation == gtk4::Orientation::Vertical.into_glib();
+    let stack_orientation = if vertical_dock {
+        gtk4::Orientation::Horizontal
+    } else {
+        gtk4::Orientation::Vertical
+    };
+
+    let container = gtk4::Box::new(stack_orientation, 0);
+    container.add_css_class("shelf-item");
+    container.set_overflow(gtk4::Overflow::Visible);
+    container.set_valign(gtk4::Align::Center);
+    container.set_halign(gtk4::Align::Center);
+
+    let edge = if state.is_null() {
+        EDGE_BOTTOM
+    } else {
+        (*state).edge
+    };
+    let reflection_first = edge == EDGE_TOP || edge == EDGE_RIGHT;
+
+    let button: gtk4::Widget = from_glib_none(button);
+    let reflection: Option<gtk4::Widget> = if reflection.is_null() {
+        None
+    } else {
+        Some(from_glib_none(reflection))
+    };
+
+    if let Some(reflection) = reflection.as_ref().filter(|_| reflection_first) {
+        container.append(reflection);
+    }
+    container.append(&button);
+    if let Some(reflection) = reflection.as_ref().filter(|_| !reflection_first) {
+        container.append(reflection);
+    }
+
+    glib::gobject_ffi::g_object_force_floating(container.as_ptr().cast());
+
+    container.upcast::<gtk4::Widget>().into_glib_ptr()
+}
+
+/// Lays the reflections of every item out for the dock's current shelf.
+///
+/// The band follows the current icon size so fisheye magnification is mirrored
+/// too, but its thickness is tied to the *base* icon size: growing the band would
+/// push the whole row of icons up while hovering.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock.
+#[no_mangle]
+pub unsafe extern "C" fn apply_shelf_layout(state: *mut LambdockState) {
+    if state.is_null() || (*state).dock_items.is_null() {
+        return;
+    }
+
+    let params = lambdock_shelf_params_effective(state);
+    let default_icon = if (*state).icon_size > 0 {
+        (*state).icon_size
+    } else {
+        DEFAULT_ICON_SIZE
+    };
+    let geometry = lambdock_shelf_geometry_for(state, default_icon);
+
+    let mut node = (*state).dock_items.cast::<GList>();
+    while !node.is_null() {
+        let item = (*node).data.cast::<DockItem>();
+
+        if !item.is_null() && !(*item).reflection.is_null() {
+            let reflection = (*item).reflection.cast::<ffi::GtkWidget>();
+
+            if geometry.band_px <= 0 {
+                let widget: gtk4::Widget = from_glib_none(reflection);
+                widget.set_visible(false);
+            } else {
+                let mut icon_px = item_icon_size(item);
+                if icon_px <= 0 {
+                    icon_px = default_icon;
+                }
+
+                shelf_reflection_configure(
+                    reflection,
+                    (*state).edge,
+                    icon_px,
+                    params.reflection_ratio,
+                    params.reflection_blur_ratio,
+                    params.reflection_intensity,
+                );
+                shelf_reflection_set_extent(reflection, icon_px, geometry.band_px);
+                shelf_reflection_set_running(reflection, c_int::from(!(*item).windows.is_null()));
+
+                let widget: gtk4::Widget = from_glib_none(reflection);
+                widget.set_visible(true);
+            }
+        }
+
+        node = (*node).next;
+    }
 }
 
 #[cfg(test)]
