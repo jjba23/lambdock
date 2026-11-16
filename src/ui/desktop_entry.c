@@ -12,79 +12,9 @@
 /* ============================================================================
  * EXEC FIELD CODES
  * ============================================================================
+ * lambdock_exec_strip_field_codes() lives in rust/src/ui/desktop_entry.rs now:
+ * it is a decision about a string, and it is what the launcher asks for by name.
  */
-
-/* Field codes that expand to a file name, URL or an empty string. They have no
- * meaning for a launcher that is not given any argument, so they are dropped.
- * The deprecated %d %D %n %N %v %m codes are dropped as well. */
-static gboolean is_dropped_field_code(char code) {
-  switch (code) {
-  case 'f':
-  case 'F':
-  case 'u':
-  case 'U':
-  case 'i':
-  case 'c':
-  case 'k':
-  case 'd':
-  case 'D':
-  case 'n':
-  case 'N':
-  case 'v':
-  case 'm':
-    return TRUE;
-  default:
-    return FALSE;
-  }
-}
-
-char *lambdock_exec_strip_field_codes(const char *exec) {
-  if (!exec)
-    return NULL;
-
-  GString *out = g_string_new(NULL);
-
-  for (const char *p = exec; *p != '\0'; p++) {
-    if (*p != '%') {
-      g_string_append_c(out, *p);
-      continue;
-    }
-
-    char next = p[1];
-    if (next == '\0')
-      break; /* A lone trailing '%' is not a field code. */
-
-    if (next == '%') {
-      g_string_append_c(out, '%');
-      p++;
-    } else if (is_dropped_field_code(next)) {
-      p++;
-    } else {
-      /* Unknown code: keep it verbatim so nothing silently disappears. */
-      g_string_append_c(out, '%');
-    }
-  }
-
-  /* Dropping %f/%U leaves double spaces behind, which would make the command
-   * line ugly (and, in shell-less spawning, harmless but noisy in logs). */
-  char *raw = g_string_free(out, FALSE);
-  char *collapsed = g_strdup(raw);
-  g_strstrip(collapsed);
-
-  GString *clean = g_string_new(NULL);
-  gboolean previous_space = FALSE;
-  for (const char *p = collapsed; *p != '\0'; p++) {
-    gboolean space = g_ascii_isspace(*p);
-    if (space && previous_space)
-      continue;
-    g_string_append_c(clean, space ? ' ' : *p);
-    previous_space = space;
-  }
-
-  g_free(raw);
-  g_free(collapsed);
-  return g_string_free(clean, FALSE);
-}
 
 /* ============================================================================
  * DESKTOP IDS
@@ -715,102 +645,11 @@ const LambdockDesktopEntry *lambdock_desktop_entry_lookup(const char *app_id) {
 /* ============================================================================
  * NAMES FOR APP IDS
  * ============================================================================
+ * lambdock_app_id_to_name() lives in rust/src/ui/desktop_entry.rs, with the
+ * camel-case splitting and the vendor-prefix rule it is made of. What stays here
+ * is the lookup: an installed entry knows the name the application calls itself,
+ * which beats anything derived from an id.
  */
-
-/* Splits camel case and separators into words: "SystemMonitor" -> "System
- * Monitor", "google-chrome" -> "google chrome", "ZFSManager" -> "ZFS Manager". */
-static GPtrArray *app_id_words(const char *value) {
-  GPtrArray *words = g_ptr_array_new_with_free_func(g_free);
-  if (!value || *value == '\0')
-    return words;
-
-  GString *word = g_string_new(NULL);
-  gunichar previous = 0;
-  const char *p = value;
-
-  while (*p != '\0') {
-    gunichar c = g_utf8_get_char(p);
-    const char *next_p = g_utf8_next_char(p);
-    gunichar next = (*next_p != '\0') ? g_utf8_get_char(next_p) : 0;
-
-    if (c == '-' || c == '_' || c == '.' || c == ' ' || c == '+') {
-      if (word->len > 0) {
-        g_ptr_array_add(words, g_strdup(word->str));
-        g_string_truncate(word, 0);
-      }
-      previous = 0;
-      p = next_p;
-      continue;
-    }
-
-    /* "System|Monitor" (lower then upper) and "ZFS|Manager" (the end of an
-     * acronym) both start a new word. */
-    if (word->len > 0 && previous != 0 && g_unichar_isupper(c) &&
-        (g_unichar_islower(previous) ||
-         (g_unichar_isupper(previous) && next != 0 &&
-          g_unichar_islower(next)))) {
-      g_ptr_array_add(words, g_strdup(word->str));
-      g_string_truncate(word, 0);
-    }
-
-    g_string_append_unichar(word, c);
-    previous = c;
-    p = next_p;
-  }
-
-  if (word->len > 0)
-    g_ptr_array_add(words, g_strdup(word->str));
-
-  g_string_free(word, TRUE);
-  return words;
-}
-
-char *lambdock_app_id_to_name(const char *app_id) {
-  if (!app_id || *app_id == '\0')
-    return NULL;
-
-  /* "org.gnome.SystemMonitor.desktop" is only ever a file name. */
-  char *stem = desktop_entry_stem(app_id);
-
-  /* Reverse-DNS ids carry the vendor, not the application: keep the last
-   * component. Ids without dots are already the application's name. */
-  char *tail = last_component(stem);
-  g_free(stem);
-
-  GPtrArray *words = app_id_words(tail);
-  g_free(tail);
-
-  GString *name = g_string_new(NULL);
-  for (guint i = 0; i < words->len; i++) {
-    const char *word = g_ptr_array_index(words, i);
-    gboolean all_lower = TRUE;
-    for (const char *p = word; *p != '\0'; p++) {
-      if (g_ascii_isupper(*p)) {
-        all_lower = FALSE;
-        break;
-      }
-    }
-
-    if (i > 0)
-      g_string_append_c(name, ' ');
-
-    if (all_lower && g_ascii_islower(word[0])) {
-      g_string_append_c(name, g_ascii_toupper(word[0]));
-      g_string_append(name, word + 1);
-    } else {
-      g_string_append(name, word);
-    }
-  }
-
-  g_ptr_array_unref(words);
-
-  char *result = g_string_free(name, FALSE);
-  if (*result == '\0') {
-    g_free(result);
-    return NULL;
-  }
-  return result;
-}
 
 char *lambdock_app_name_for(const char *app_id) {
   const LambdockDesktopEntry *entry = lambdock_desktop_entry_lookup(app_id);

@@ -10,6 +10,7 @@
 //! borrowed from C as `gtk4::Widget` and never owned here.
 
 pub mod clock;
+pub mod desktop_entry;
 pub mod dock_item_windows;
 pub mod icon_resolver;
 pub mod icon_zoom;

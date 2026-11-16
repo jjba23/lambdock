@@ -61,7 +61,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   `window` element compounded at its boundary and `windowcontrols` left nested,
   selector lists scoped across line breaks (an unscoped rule applies to every
   dock), comments and @-rules passing through -- while the appliers only install
-  the providers the value names.  A test binary that
+  the providers the value names.  The desktop entries are half moved by the same
+  rule: ~lambdock_exec_strip_field_codes~ and ~lambdock_app_id_to_name~ are
+  ~rust/src/ui/desktop_entry.rs~ now -- strings in, strings out, with the
+  field-code table and the camel-case table tested there -- while parsing,
+  scanning and the cache stay in C.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the

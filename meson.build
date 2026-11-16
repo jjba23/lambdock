@@ -266,6 +266,7 @@ rust_sources = files(
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/clock.rs',
+  'rust/src/ui/desktop_entry.rs',
   'rust/src/ui/dock_item_windows.rs',
   'rust/src/ui/icon_resolver.rs',
   'rust/src/ui/icon_zoom.rs',
