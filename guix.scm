@@ -9,6 +9,7 @@
              (guix build-system gnu)
              ((guix licenses)
               #:prefix license:)
+             (gnu packages commencement)
              (gnu packages gtk)
              (gnu packages glib)
              (gnu packages guile)
@@ -38,7 +39,10 @@
            ;; own, which is the whole reason the task crate exists.
            #:phases #~(modify-phases %standard-phases
                         (delete 'configure)
-                        (delete 'build)
+                        (replace 'build
+                          (lambda _
+                            (invoke "cargo" "build" "--offline" "--locked"
+                                    "--release")))
                         (replace 'check
                           (lambda* (#:key tests? #:allow-other-keys)
                             (when tests?

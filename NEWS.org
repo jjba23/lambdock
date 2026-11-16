@@ -248,6 +248,18 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.7 (2026-11-16)
+
+- *Fixes the install step, which is where the Guix build got to before it
+  stopped.* The test phase passed (65 s, green); the install then failed with
+  =could not install ... to gnu/store/.../bin/lambdock=, which was two bugs at
+  once: with an empty =--destdir= the installer stripped the prefix's leading
+  slash and built a *relative* path, and it copied a release binary that no phase
+  had built.  =cargo xtask install= now understands an empty staging directory
+  (the prefix itself) and builds the release binary when it is missing, so the
+  install step no longer depends on somebody having built first.  The Guix recipe
+  also names that build phase explicitly.
+
 ** v2.0.6 (2026-11-16)
 
 - *The build finds the C toolchain a sandbox gives it.* =build.rs= compiled the

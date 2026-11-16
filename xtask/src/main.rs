@@ -85,15 +85,45 @@ fn install_file(source: &Path, destination: &Path) {
     }
 }
 
+/// Where an install lands: the prefix itself, or the prefix under a staging
+/// directory (`DESTDIR`), which is how every packager stages a `$out`. An empty
+/// staging directory means the prefix -- stripping the leading slash off it made
+/// `/gnu/store/...` a relative path, which is how the first Guix build failed.
+fn staged(prefix: &Path, destdir: &Path) -> PathBuf {
+    if destdir.as_os_str().is_empty() {
+        return prefix.to_path_buf();
+    }
+
+    destdir.join(prefix.strip_prefix("/").unwrap_or(prefix))
+}
+
+/// Builds the binary `install` copies, when it is not there yet: `cargo xtask
+/// install` is the whole install step of every recipe, so it cannot assume
+/// somebody built first.
+fn build_binary() {
+    run(
+        "cargo",
+        &[
+            "build".to_owned(),
+            "--offline".to_owned(),
+            "--locked".to_owned(),
+            "--release".to_owned(),
+        ],
+    );
+}
+
 /// Puts the binary, the desktop entry, the metainfo, the logo, the Scheme modules
 /// and the compiled catalogues under the prefix.
 fn install(arguments: &[String]) {
     let prefix = PathBuf::from(flag(arguments, "--prefix", "/usr/local"));
     let destdir = PathBuf::from(flag(arguments, "--destdir", ""));
     let root = root();
-    let target = destdir.join(prefix.strip_prefix("/").unwrap_or(&prefix));
+    let target = staged(&prefix, &destdir);
 
     let binary = root.join("rust/target/release/lambdock");
+    if !binary.is_file() {
+        build_binary();
+    }
     install_file(&binary, &target.join("bin/lambdock"));
 
     let data = target.join("share");
@@ -141,7 +171,7 @@ fn i18n(arguments: &[String]) {
 /// Compiles every `po/*.po` into `<lang>/LC_MESSAGES/lambdock.mo` under the
 /// prefix, which is what both `install` and `i18n` mean by translating.
 fn compile_catalogues(prefix: &Path, destdir: &Path) {
-    let target = destdir.join(prefix.strip_prefix("/").unwrap_or(prefix));
+    let target = staged(prefix, destdir);
     let locale = target.join("share/locale");
     let po = root().join("po");
 
