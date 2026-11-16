@@ -21,4 +21,5 @@ pub(crate) mod glib;
 pub(crate) mod guile;
 pub mod logging;
 pub mod state;
+pub mod toplevel_tracker;
 pub mod ui;

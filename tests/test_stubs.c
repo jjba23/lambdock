@@ -12,6 +12,7 @@
 #include "../src/lambdock.h"
 #include "../src/ui/dock_item.h"
 #include "../src/toplevel_tracker.h"
+#include "../src/x11_tracker.h"
 #include "../src/ui/launchpad.h"
 #include "../src/ui/shelf.h"
 #include "../src/ui/stack.h"
@@ -215,6 +216,28 @@ __attribute__((weak)) void dock_apply_motion_preference(LambdockState *state) {
 
 __attribute__((weak)) void hide_dock(LambdockState *state) {
   (void)state;
+}
+
+/* A window's own backend: the X11 half of the tracker is still x11_tracker.c, and
+ * a binary that links a slice has no X11 tracker. "Nothing to start, nothing to
+ * replay, no window to ask about" is what these answer. */
+__attribute__((weak)) gboolean x11_tracker_start(GError **error) {
+  (void)error;
+  return FALSE;
+}
+
+__attribute__((weak)) void x11_tracker_replay(void) {}
+
+__attribute__((weak)) void x11_tracker_activate(LambdockToplevel *window) {
+  (void)window;
+}
+
+__attribute__((weak)) void x11_tracker_minimize(LambdockToplevel *window) {
+  (void)window;
+}
+
+__attribute__((weak)) void x11_tracker_close(LambdockToplevel *window) {
+  (void)window;
 }
 
 /* An item's menu releases the dock's popover slot when it closes, which is

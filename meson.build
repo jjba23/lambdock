@@ -262,6 +262,7 @@ rust_sources = files(
   'rust/src/guile.rs',
   'rust/src/logging.rs',
   'rust/src/state.rs',
+  'rust/src/toplevel_tracker.rs',
   'rust/src/dock_item.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
@@ -330,15 +331,25 @@ rust_lib = custom_target(
 # is enough for those, and it is what keeps their "links nothing but GLib"
 # property. Everything that reaches the Scheme bridge or a widget needs the whole
 # stack, which is `rust_lib_dep`.
+wayland_client_libdir = wayland_client_dep.get_variable(pkgconfig: 'libdir')
+
 rust_core_dep = declare_dependency(
   sources: rust_lib,
-  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
+  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread',
+    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'],
   dependencies: [dependency('glib-2.0')],
 )
 
 rust_lib_dep = declare_dependency(
   sources: rust_lib,
-  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
+  # `-lwayland-client` rides in `link_args` rather than in `dependencies`: the
+  # tracker's objects reference `wl_proxy_*`, the linker resolves an archive member
+  # by member, and meson places dependencies *before* the archive -- where
+  # `--as-needed` would drop the library as unneeded and never reconsider it. Here
+  # it follows the archive, with `--no-as-needed` so it stays loaded for the
+  # archive meson also appends at the end of the line.
+  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread',
+    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'],
   dependencies: [dependency('glib-2.0'), guile_dep, gtk_dep],
 )
 
@@ -355,7 +366,6 @@ sources = files(
   'src/main.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
-  'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
@@ -397,7 +407,6 @@ test_stubs = files('tests/test_stubs.c')
 full_app_sources = files(
   'src/dock_window.c',
   'src/guile_bridge.c',
-  'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',

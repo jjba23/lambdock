@@ -19,10 +19,12 @@ fn main() {
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR");
 
-    // The crate borrows two libraries' contracts: GLib's allocator and printf for
-    // the strings it hands back, and libguile for the Scheme values it reads.
+    // The crate borrows three libraries' contracts: GLib's allocator and printf
+    // for the strings it hands back, libguile for the Scheme values it reads, and
+    // libwayland-client for the window tracker's registry and proxies.
     link("glib-2.0");
     link("guile-3.0");
+    link("wayland-client");
 }
 
 /// Asks pkg-config for one package's link flags and hands them to rustc.

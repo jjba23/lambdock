@@ -16,12 +16,7 @@
 
 use std::os::raw::{c_int, c_uint, c_void};
 
-/// A dock instance, opaque here: the registry stores and returns pointers and
-/// never looks inside.
-#[repr(C)]
-pub struct LambdockState {
-    _private: [u8; 0],
-}
+pub use crate::state::LambdockState;
 
 /// GLib's array of pointers, which `dock_registry_snapshot` hands to C.
 #[repr(C)]
