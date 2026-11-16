@@ -18,6 +18,7 @@ pub mod icon_zoom;
 pub mod meter;
 pub mod poof;
 pub mod theme_engine;
+pub mod trash;
 pub mod widget_utils;
 
 /// Makes GTK initialized *as far as gtk4-rs is concerned*.

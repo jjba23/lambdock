@@ -274,6 +274,7 @@ rust_sources = files(
   'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
   'rust/src/ui/theme_engine.rs',
+  'rust/src/ui/trash.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
@@ -359,7 +360,6 @@ sources = files(
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
-  'src/ui/trash.c',
 )
 
 # Compiles and links the final binary application executable
@@ -408,7 +408,6 @@ full_app_sources = files(
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
   'src/ui/preferences.c',
-  'src/ui/trash.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
@@ -599,7 +598,9 @@ unit_tests = [
   },
   {
     'id': 'trash',
-    'extra_sources': ['src/ui/trash.c'],
+    # The module is Rust now; this binary is what proves the C ABI in
+    # `src/ui/trash.h` still links and behaves.
+    'extra_sources': [],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {

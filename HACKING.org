@@ -318,7 +318,7 @@ lambdock/
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
 │       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
-│       ├── trash.c/.h         # Freedesktop.org trash: roots, count, empty, open
+│       ├── trash.h            # Freedesktop.org trash: roots, count, empty, open (in rust/src/ui/)
 │       ├── preferences.c/.h   # Settings window + per-dock window registry
 │       ├── theme_engine.h     # GResource CSS loading + selector scoping (in rust/src/ui/)
 │       ├── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
@@ -495,7 +495,11 @@ three file statics. =LambdockDesktopEntry= is mirrored there field for field, so
 the C test still reads it by offset. =src/ui/app_actions.c= is
 =rust/src/ui/app_actions.rs=: what kind of application a set of names describes
 and what command opens another window of it are pure, and the playback controls
-are the one part that talks to the session bus.
+are the one part that talks to the session bus. =src/ui/trash.c= is
+=rust/src/ui/trash.rs=, the one module allowed to touch the filesystem for trash
+purposes: the /proc/mounts walk and the octal escaping of a mount point are
+parsed as values, and the count and the emptying work on the directories the
+specification defines.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1100,7 +1104,7 @@ The key names, their defaults and their meanings are tabulated for users in
    - ~'stack~ → ~create_stack_dock_item(...)~ (folder popover).
    - ~'launchpad~ → ~create_launchpad_dock_item(...)~.
    - ~'trash~ → ~create_trash_dock_item(...)~ (desktop trash, see
-     =ui/trash.c=).
+     =rust/src/ui/trash.rs=).
 3. Each ~create_*~ builds the GTK button/popover, appends it to ~state->box~, and
    appends the ~DockItem*~ to ~state->dock_items~.
 
@@ -1359,7 +1363,7 @@ matters and is the canonical teardown sequence:
   null-check with ~GTK_IS_BUTTON~). ~is_favorite = TRUE~.
 - ~create_trash_dock_item~: an icon item whose artwork follows the trash, plus a
   refresh timer (~trash_timer_id~) that re-counts it. The counting and emptying
-  live in =ui/trash.c=, against the freedesktop.org trash layout; nothing about
+  live in =rust/src/ui/trash.rs=, against the freedesktop.org trash layout; nothing about
   it is desktop-specific.  =ui/dock_dnd.c= gives the item a drop target for
   file lists, which hands each dropped file to ~lambdock_trash_file()~ (GIO's
   ~g_file_trash()~) on a worker thread.
@@ -1427,7 +1431,7 @@ pointer dies:
 | 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
 | 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
 | 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
-| 4     | =ui/trash.c=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files           |
+| 4     | =ui/trash.h=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files (in Rust)|
 | 4     | =ui/preferences.c=     | Settings window: a declarative row table, debounced apply, window registry       |
 | 4     | =ui/theme_engine.h=    | GResource theme load, selector scoping, user ~styles.css~ override (body in Rust)|
 | 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |

@@ -70,7 +70,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   kind of application a set of names describes and the command that opens
   another window of it are pure and tested (each browser family's flag, the
   quoting, the unknown browser that gets no private mode), while the playback
-  controls stay the one part that talks to the session bus.  A test binary that
+  controls stay the one part that talks to the session bus.  ~ui/trash.c~ is
+  ~rust/src/ui/trash.rs~: the `/proc/mounts` walk and the octal escaping of a
+  mount point are parsed as values the tests hand a mount table to, and the count
+  and the emptying work on the directories the specification defines, on
+  throwaway trash roots only.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the
