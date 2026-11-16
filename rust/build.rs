@@ -32,12 +32,14 @@ fn main() {
         link("x11");
     }
 
-    // The crate borrows three libraries' contracts: GLib's allocator and printf
-    // for the strings it hands back, libguile for the Scheme values it reads, and
-    // libwayland-client for the window tracker's registry and proxies.
+    // The crate borrows four libraries' contracts: GLib's allocator and printf
+    // for the strings it hands back, libguile for the Scheme values it reads,
+    // libwayland-client for the window tracker's registry and proxies, and
+    // gtk4-layer-shell for the overlays it puts on the screen.
     link("glib-2.0");
     link("guile-3.0");
     link("wayland-client");
+    link("gtk4-layer-shell-0");
 }
 
 /// Asks pkg-config for one package's link flags and hands them to rustc.

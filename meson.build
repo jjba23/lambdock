@@ -273,6 +273,8 @@ rust_sources = files(
   'rust/src/ui/dock_item_windows.rs',
   'rust/src/ui/icon_resolver.rs',
   'rust/src/ui/icon_zoom.rs',
+  'rust/src/ui/launchpad.rs',
+  'rust/src/ui/layer_shell.rs',
   'rust/src/ui/meter.rs',
   'rust/src/ui/poof.rs',
   'rust/src/ui/stack.rs',
@@ -381,7 +383,6 @@ inc = include_directories('src')
 sources = files(
   'src/main.c',
   'src/dock_window.c',
-  'src/ui/launchpad.c',
 )
 
 # Compiles and links the final binary application executable
@@ -419,7 +420,6 @@ test_stubs = files('tests/test_stubs.c')
 # Shared non-main sources for tests requiring full application context
 full_app_sources = files(
   'src/dock_window.c',
-  'src/ui/launchpad.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
@@ -555,6 +555,8 @@ unit_tests = [
   },
   {
     'id': 'launchpad',
+    # The module is Rust now; this binary is what proves the C ABI in
+    # `ui/launchpad.h` still links and behaves.
     'extra_sources': full_test_sources,
   },
   {

@@ -155,6 +155,18 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   and a control's state is an `Rc` on its widget's data.  Its readers and its
   setters call ~rust/src/bridge.rs~ directly instead of leaving through the C ABI
   and coming back, and the gettext catalogues are untouched.
+- *The launchpad is Rust, and =src/ui/= is finished.* ~ui/launchpad.c~ is
+  ~rust/src/ui/launchpad.rs~: the tiles and the menu that lists an application's
+  other installed copies, the flow box with its arrow keys, the search filter and
+  the column arithmetic, the header, the shelf of stacks and the trash, and the
+  layer-shell overlay that shows and hides it -- built on first use, rescanned on
+  every open, and destroyed on close so a hidden full-screen surface stops holding
+  its buffers.  Two helpers the dock's window owned moved with it, because a
+  ~#[no_mangle]= entry point cannot call into C: ~lambdock_layer_shell_available~
+  and ~is_monitor_valid~ are Rust now (~rust/src/ui/layer_shell.rs~), and the
+  layer-shell library is declared as FFI and named in ~rust/build.rs~.  With this,
+  ~src/ui/~ holds no C source at all: ~dock_window.c~ and ~main.c~ are what is
+  left of the port.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

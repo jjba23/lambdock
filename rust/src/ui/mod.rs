@@ -10,6 +10,7 @@
 //! borrowed from C as `gtk4::Widget` and never owned here.
 
 use gtk4::glib::translate::{from_glib_borrow, Borrowed};
+use gtk4::prelude::ObjectExt;
 
 /// `DEFAULT_ICON_SIZE` in `lambdock.h`: the icon size a dock lays out at when its
 /// settings do not say otherwise, and the answer for a dock that is halfway built.
@@ -22,6 +23,8 @@ pub mod dock_dnd;
 pub mod dock_item_windows;
 pub mod icon_resolver;
 pub mod icon_zoom;
+pub mod launchpad;
+pub mod layer_shell;
 pub mod meter;
 pub mod poof;
 pub mod popover_menu;
@@ -85,9 +88,7 @@ pub(crate) fn button_child(button: &gtk4::Button) -> Option<Borrowed<gtk4::Widge
     use gtk4::glib::translate::ToGlibPtr;
 
     borrow_widget(unsafe { gtk4::ffi::gtk_button_get_child(button.to_glib_none().0) })
-}
-
-/// A widget pointer from C, borrowed and never owned.
+}/// A widget pointer from C, borrowed and never owned.
 fn borrow_widget(pointer: *mut gtk4::ffi::GtkWidget) -> Option<Borrowed<gtk4::Widget>> {
     if pointer.is_null() {
         return None;
@@ -119,6 +120,23 @@ pub(crate) fn is_mapped(widget: &gtk4::Widget) -> bool {
     use gtk4::glib::translate::{from_glib, ToGlibPtr};
 
     unsafe { from_glib(gtk4::ffi::gtk_widget_get_mapped(widget.to_glib_none().0)) }
+}
+
+/// The child of a flow box's wrapper, borrowed: `gtk_flow_box_child_get_child`.
+///
+/// A flow box wraps whatever it is given, so a tile is either the wrapper or the
+/// one widget inside it. See [`parent_of`] for why this is borrowed.
+pub(crate) fn flow_box_child(wrapper: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    if !wrapper.is::<gtk4::FlowBoxChild>() {
+        return None;
+    }
+
+    let pointer: *mut gtk4::ffi::GtkWidget = wrapper.to_glib_none().0;
+    let wrapper = pointer.cast::<gtk4::ffi::GtkFlowBoxChild>();
+
+    borrow_widget(unsafe { gtk4::ffi::gtk_flow_box_child_get_child(wrapper) })
 }
 
 /// A widget borrowed from C for the length of one call.

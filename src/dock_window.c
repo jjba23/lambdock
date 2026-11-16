@@ -1167,31 +1167,6 @@ void dock_apply_exclusive_zone(LambdockState *state) {
 }
 
 /**
- * lambdock_layer_shell_available:
- * Returns: TRUE when the current display is Wayland /and/ the compositor
- * implements the wlr-layer-shell protocol.
- *
- * gtk_layer_is_supported() asserts that the display is a Wayland one, so it
- * cannot be used as the guard on X11 (it logs a critical right there, before it
- * has a chance to answer FALSE). This checks the backend first.
- */
-gboolean lambdock_layer_shell_available(void) {
-  GdkDisplay *display = gdk_display_get_default();
-  if (!display)
-    return FALSE;
-
-#ifdef GDK_WINDOWING_WAYLAND
-  if (!GDK_IS_WAYLAND_DISPLAY(display))
-    return FALSE;
-
-  return gtk_layer_is_supported();
-#else
-  /* A GTK without the Wayland backend cannot ever have layer shell. */
-  return FALSE;
-#endif
-}
-
-/**
  * setup_layer_shell_window:
  * Converts a standard GTK window to a Wayland Layer Shell surface and anchors
  * it to the docked edge.
@@ -1383,33 +1358,6 @@ static GdkMonitor *first_monitor(void) {
     return NULL;
 
   return g_list_model_get_item(monitors, 0);
-}
-
-/**
- * is_monitor_valid:
- * Checks if a given GdkMonitor pointer is currently present in the display's
- * active monitor list.
- */
-gboolean is_monitor_valid(GdkMonitor *mon) {
-  if (!mon)
-    return FALSE;
-
-  GdkDisplay *display = gdk_display_get_default();
-  GListModel *monitors = display ? gdk_display_get_monitors(display) : NULL;
-  if (!monitors)
-    return FALSE;
-
-  guint n_monitors = g_list_model_get_n_items(monitors);
-  for (guint i = 0; i < n_monitors; i++) {
-    g_autoptr(GObject) item = g_list_model_get_item(monitors, i);
-
-    /* Plain pointer comparison on purpose: @mon may be a stale (freed) monitor,
-     * and G_OBJECT() would dereference it to check its type. */
-    if ((gpointer)item == (gpointer)mon)
-      return TRUE;
-  }
-
-  return FALSE;
 }
 
 /** The monitor the dock's surface is on, or NULL before it is realized. */

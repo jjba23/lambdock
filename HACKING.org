@@ -656,7 +656,7 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-The whole of =src/core/=, =src/ui/= except one panel, and both trackers are Rust.
+The whole of =src/core/=, the whole of =src/ui/=, and both trackers are Rust.
 =ui/dock_item.c= is gone too, and it was the heart of the widget layer: the item's
 scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
 the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
@@ -717,11 +717,22 @@ because a =&str='s bytes are not NUL-terminated. The option name is the second
 kind (the tests and any tooling read it as a string), the control and window state
 are the first.
 
-Not yet ported, in the order the rest of the port intends to take them:
-=ui/launchpad.c= (a leaf panel, and the last widget file that is still whole),
-then =dock_window.c= and =main.c= -- the window and the application that own
-everything else, so they move when there is nothing below them left to call back
-into.
+=ui/launchpad.c= is Rust as well, and it was the last whole widget file: the
+tiles and the menu of an application's other installed copies, the flow box with
+the arrow keys, the filtering and the column arithmetic, the header, the shelf of
+stacks and the trash, and the layer-shell overlay that shows and hides the whole
+thing. One launchpad per process, so the model is a thread-local value rather
+than a dock's: built on first use, destroyed on close and rescanned on every
+open. Two functions the dock's window owned moved with it, because a
+=#[no_mangle]= entry point that calls into C is a symbol a =cargo test= binary
+would have to resolve: =lambdock_layer_shell_available= and =is_monitor_valid=
+are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI and
+named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
+stays as the contract the tests call.
+
+Not yet ported: =dock_window.c= and =main.c= -- the window and the application
+that own everything else, so they move when there is nothing below them left to
+call back into.
 
 One thing that moved with them, and is easy to get wrong again: a widget crosses
 the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is
@@ -729,7 +740,11 @@ the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is
 reference and unrefs it on drop -- so a C caller that had built a box and not yet
 appended it got a freed widget back, which is how /accessibility/stack_view_keyboard
 used to abort. The same rule runs the other way when Rust returns a widget: it
-comes back floating, for the caller to sink.
+comes back floating, for the caller to sink -- and a Rust *entry point* that takes
+a widget from C has to borrow it for the same reason, which is what
+=lambdock_launchpad_header_place_close= forgot once: it took the floating header
+with ~from_glib_none~, so the header was finalized when the wrapper dropped and
+the test's next assertion read a dead pointer.
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
