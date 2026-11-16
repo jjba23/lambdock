@@ -314,7 +314,7 @@ lambdock/
 │       ├── icon_zoom.h        # Fisheye by transform, not re-raster (in rust/src/ui/)
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
 │       ├── clock.h            # Analogue face: squircle, ticks, hands (in rust/src/ui/)
-│       ├── dock_item_windows.c/.h # An item's windows: tracking, styling, lookup
+│       ├── dock_item_windows.h # An item's windows: tracking, styling, lookup (in rust/src/ui/)
 │       ├── popover_menu.c/.h  # Right-click/multi-window popover builder
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
 │       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
@@ -483,7 +483,9 @@ to C (see the floating-reference trap below) -- and =src/ui/meter.c= is
 the colour thresholds are plain functions the gauge only paints. =src/ui/clock.c=
 is =rust/src/ui/clock.rs=, the same idea one step further -- the face asks
 =core/clock_face.rs= where the hands point and paints the answer, so the widget
-itself owns no more than the reading it was last given.
+itself owns no more than the reading it was last given. =src/ui/dock_item_windows.c=
+is =rust/src/ui/dock_item_windows.rs=: the window model behind an item, because
+a file about building an icon should not also own which handles an item tracks.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1406,6 +1408,7 @@ pointer dies:
 | 2     | =logger.h=             | ~LOG_C_DEBUG/INFO/WARN/ERROR~ colored logging macros                              |
 | 3     | =dock_window.c=        | ~LambdockState~ lifecycle, layer shell, margin animation, auto-hide, teardown    |
 | 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
+| 4     | =ui/dock_item_windows.h= | An item's windows: tracking, running styling, app-id lookup (body in Rust)      |
 | 4     | =ui/shelf.c=           | Glass shelf: projective 3D frame wrapper and mirrored/blurred icon reflections   |
 | 4     | =ui/shelf_follow.c=    | Separators that follow the shelf's projection instead of sitting flat            |
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |

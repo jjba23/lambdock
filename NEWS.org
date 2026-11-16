@@ -48,7 +48,14 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   gained the C test it never had: the face was only checked through its
   arithmetic, so ~test_clock.c~ now holds the seam -- the wrap into a day, the
   type guards and the icon-sized measure -- while the painting stays a
-  transcription of the same geometry.  A test binary that
+  transcription of the same geometry.  ~ui/dock_item_windows.c~ is
+  ~rust/src/ui/dock_item_windows.rs~, the window model behind an item: which
+  handles it tracks, the running/focused/minimized styling, and the app-id
+  matching that keeps a pinned launcher and the window it opens from showing up
+  as two icons.  That matching is the pure half, so it is tested by name -- every
+  spelling a launcher can be written with, the exec-token heuristic and its token
+  boundaries, and the second pass through the desktop entry -- while
+  ~test_dock_item~ still checks the ABI end to end.  A test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
   reaches the archive through the codegen units it shares, not only through the
