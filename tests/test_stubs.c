@@ -165,6 +165,16 @@ __attribute__((weak)) void lambdock_stack_set_view(DockItem *item, LambdockStack
   (void)view;
 }
 
+/* A stack cell built in Rust walks into a folder by asking the panel above it to
+ * rebuild -- and the panel is still stack.c. A binary that links the archive
+ * without stack.c gets this: a click on a folder that changes nothing. The real
+ * definition wins wherever stack.c is compiled in. */
+__attribute__((weak)) void lambdock_stack_popover_rebuild(DockItem *item,
+                                                          const char *path) {
+  (void)item;
+  (void)path;
+}
+
 __attribute__((weak)) void lambdock_launchpad_show(LambdockState *state) {
   (void)state;
 }

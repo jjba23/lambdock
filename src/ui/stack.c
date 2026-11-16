@@ -29,384 +29,21 @@
  */
 
 /* ============================================================================
- * VIEW MODES
+ * THE VIEWS -- in rust/src/ui/stack.rs
  * ============================================================================
+ * Everything between the listing and the panel is Rust now. The two builders
+ * with their cells, the entry's icon, the click that walks into a folder or
+ * hands a file to the desktop, the accessibility text a cell carries, the
+ * scrolled view that keeps a folder from growing past the screen, and the queue
+ * that decodes a cell's picture one at a time off the main loop: a view is a
+ * decision about entries, so it is tested there with a real directory and a real
+ * PNG.
  *
- * A stack view is a name (the Scheme symbol), a builder, and that is all. Both
- * the name conversion and the factory below walk this table, so adding a third
- * way to lay out a folder is one row here plus one builder function -- no
- * switch statements to keep in sync.
+ * What the panel below uses is two entry points -- lambdock_stack_view_new() for
+ * a detached view and lambdock_stack_view_for_item() for one that walks folders
+ * -- and lambdock_stack_popover_rebuild(), which is what a cell calls when it is
+ * a folder. The rebuild is still here, one step behind the views.
  */
-
-static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
-                                  DockItem *item);
-static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
-                                  DockItem *item);
-
-/* @item is the stack the view belongs to: clicking a folder then walks into it
- * instead of opening a file manager. A detached view (the tests, a custom
- * consumer) passes NULL and keeps the "open it and close the panel" behaviour. */
-typedef GtkWidget *(*StackViewBuildFunc)(GPtrArray *entries, int icon_size,
-                                         DockItem *item);
-
-typedef struct {
-  LambdockStackView view;
-  const char *name; /* the Scheme symbol this view is stored as */
-  StackViewBuildFunc build;
-} LambdockStackViewOps;
-
-static const LambdockStackViewOps STACK_VIEW_OPS[] = {
-    {LAMBDOCK_STACK_VIEW_GRID, "grid", build_grid_view},
-    {LAMBDOCK_STACK_VIEW_LIST, "list", build_list_view},
-};
-
-/** The descriptor of @view; unknown views fall back to the first row. */
-/* The view-name lookups (lambdock_stack_view_from_string / _to_string) are in
- * rust/src/ui/stack.rs; the ops table below is what this file draws with. */
-static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
-  for (gsize i = 0; i < G_N_ELEMENTS(STACK_VIEW_OPS); i++) {
-    if (STACK_VIEW_OPS[i].view == view)
-      return &STACK_VIEW_OPS[i];
-  }
-
-  return &STACK_VIEW_OPS[0];
-}
-
-
-/* ============================================================================
- * ENTRY ICONS
- * ============================================================================
- */
-
-/* The two caps and the decision they feed (lambdock_stack_path_has_thumbnail) are
- * in rust/src/ui/stack.rs, with the rest of the file's arithmetic.
- */
-/* What deserves a thumbnail -- a regular file, under the size cap, an image
- * GdkPixbuf can read, under the pixel cap -- is
- * lambdock_stack_path_has_thumbnail() in rust/src/ui/stack.rs: it is a decision
- * about a file, and it is tested there with a real one-pixel PNG.
- *
- * So is everything that turns it into a picture. The decode and the square
- * centre crop (lambdock_stack_thumbnail_pixbuf), the pixbuf-to-texture step
- * that has to read GdkPixbuf's memory format (lambdock_stack_texture_from_pixbuf),
- * the content-type icon and the sized image built around it
- * (lambdock_stack_entry_image) all live there, because a preview is a decision
- * about pixels and a file name rather than about a widget. What stays here is
- * the queue that decodes them and the views that show them.
- */
-
-/* ============================================================================
- * GRID / LIST THUMBNAILS
- * ============================================================================
- *
- * Grid and list cells are ordinary GtkImages, so a decoded preview is swapped
- * into the image widget. Decoding happens off the main thread
- * and one image at a time; the queue belongs to the view's content box and is
- * emptied when that view is unmapped, so closing a stack stops a large folder
- * from decoding hundreds of pictures in the background.
- */
-
-/* The queue itself -- one decode at a time on a worker thread, the result
- * swapped into its cell on the main loop, and the pending work dropped when the
- * view is unmapped -- is lambdock_stack_thumbnail_attach() and _schedule() in
- * rust/src/ui/stack.rs. What stays here is what the pictures are for: the grid
- * and the list build their cells, attach a queue to the box that holds them, and
- * ask for a preview of every file that might have one.
- */
-
-/* Opens an entry and dismisses the stack popover it was clicked in. The item
- * has been handed off to the desktop, so leaving the panel covering it serves no
- * purpose. */
-static void stack_close_popover(GtkWidget *widget) {
-  GtkWidget *popover = gtk_widget_get_ancestor(widget, GTK_TYPE_POPOVER);
-  if (!popover) {
-    /* A popover's content can report the popover itself as its root rather than
-     * as an ancestor, depending on how GTK parents the child widget. */
-    GtkRoot *root = gtk_widget_get_root(widget);
-    if (root && GTK_IS_POPOVER(root))
-      popover = GTK_WIDGET(root);
-  }
-
-  if (popover && gtk_widget_get_visible(popover))
-    gtk_popover_popdown(GTK_POPOVER(popover));
-}
-
-/* Where a click on an entry should go: into the folder, or out to the desktop. */
-typedef struct {
-  DockItem *item; /* NULL for a detached view */
-  char *path;
-  gboolean is_dir;
-} StackEntryAction;
-
-static void free_entry_action(gpointer data, GClosure *closure) {
-  (void)closure;
-  StackEntryAction *action = (StackEntryAction *)data;
-  g_free(action->path);
-  g_free(action);
-}
-
-/* Rebuilds the open panel at @path; defined with the popover, below. */
-static void stack_popover_rebuild(DockItem *item, const char *path);
-
-static void on_stack_entry_clicked(GtkButton *button, gpointer user_data) {
-  StackEntryAction *action = (StackEntryAction *)user_data;
-  if (!action || !action->path)
-    return;
-
-  /* A folder is a place to go, not a program to start: the panel walks into it
-   * (the file manager is one header button away). */
-  if (action->item && action->is_dir) {
-    stack_popover_rebuild(action->item, action->path);
-    return;
-  }
-
-  if (lambdock_open_path(action->path))
-    stack_close_popover(GTK_WIDGET(button));
-}
-
-/* ============================================================================
- * GRID & LIST VIEWS
- * ============================================================================
- */
-
-/* The stack popover is a panel, not a strip: it gets a real minimum box so a
- * folder with a handful of entries still opens at a size worth looking at, and a
- * ceiling so a folder with hundreds of screenshots scrolls instead of growing
- * past the screen. */
-#define STACK_MIN_WIDTH 560
-#define STACK_MIN_HEIGHT 400
-#define STACK_MAX_HEIGHT 680
-
-/* One grid cell: wide enough for a thumbnail and two lines of name. A cell keeps
- * this width whatever the file is called -- without it a long name stretches the
- * cell (and, because the flow box is homogeneous, every other cell with it) and
- * the panel grows past the screen. */
-#define STACK_CELL_WIDTH 132
-
-static GtkWidget *scrolled_view(GtkWidget *child, int max_height) {
-  GtkWidget *scrolled = gtk_scrolled_window_new();
-  gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrolled), GTK_POLICY_NEVER,
-                                 GTK_POLICY_AUTOMATIC);
-
-  /* The content must not dictate the popover's width: a flow box's natural width
-   * is everything on one line, which is how the stack ended up as a full-width
-   * strip one row tall. The viewport keeps the size the popover gives it and the
-   * grid wraps inside that. */
-  gtk_scrolled_window_set_propagate_natural_width(
-      GTK_SCROLLED_WINDOW(scrolled), FALSE);
-  gtk_scrolled_window_set_min_content_width(GTK_SCROLLED_WINDOW(scrolled),
-                                            STACK_MIN_WIDTH);
-  gtk_scrolled_window_set_min_content_height(GTK_SCROLLED_WINDOW(scrolled),
-                                             STACK_MIN_HEIGHT);
-  gtk_scrolled_window_set_max_content_height(GTK_SCROLLED_WINDOW(scrolled),
-                                             max_height);
-  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scrolled), child);
-  gtk_widget_add_css_class(scrolled, "stack-scroll");
-  return scrolled;
-}
-
-/* ============================================================================
- * STACK KEYBOARD NAVIGATION
- * ============================================================================
- * Tab reaches every entry, but a panel of files is expected to answer the arrow
- * keys: a folder full of screenshots should not force a keyboard user to tab
- * through a hundred cells to reach the one they can see.
- */
-
-/* ============================================================================
- * THE VIEW'S KEYBOARD -- in rust/src/ui/stack.rs
- * ============================================================================
- * Which entry the focus is on, how wide a row of the wrapped grid is, and where one
- * arrow-key step lands: the navigation walks the view's own children, so it is Rust
- * now, with the step arithmetic (one entry sideways, one row down, clamped at the
- * ends) tested there. What stays here is the two views it navigates.
- */
-void lambdock_stack_view_attach_keys(GtkWidget *view);
-
-/* The icon theme of the default display, or NULL while it is starting up. */
-static GtkIconTheme *stack_icon_theme(void) {
-  GdkDisplay *display = gdk_display_get_default();
-
-  return display ? gtk_icon_theme_get_for_display(display) : NULL;
-}
-
-/** What a screen reader says about one entry. */
-static const char *stack_entry_description(const LambdockStackEntry *entry) {
-  return entry->is_dir ? _("Folder. Press Enter to open it.")
-                       : _("File. Press Enter to open it.");
-}
-
-/** Opens (or walks into) @entry when @button is clicked. */
-static void stack_entry_attach_open(GtkWidget *button,
-                                    const LambdockStackEntry *entry,
-                                    DockItem *item) {
-  StackEntryAction *action = g_new0(StackEntryAction, 1);
-  action->item = item;
-  action->path = g_strdup(entry->path);
-  action->is_dir = entry->is_dir;
-
-  g_signal_connect_data(button, "clicked",
-                        G_CALLBACK(on_stack_entry_clicked), action,
-                        free_entry_action, 0);
-}
-
-/** The tooltip and accessibility text every entry button shares. */
-static void stack_entry_label_button(GtkWidget *button,
-                                     const LambdockStackEntry *entry) {
-  gtk_widget_set_tooltip_text(button, entry->name);
-  lambdock_accessible_update(button, entry->name,
-                             stack_entry_description(entry));
-}
-
-static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
-                                  DockItem *item) {
-  GtkIconTheme *theme = stack_icon_theme();
-  GtkWidget *flow = gtk_flow_box_new();
-  lambdock_stack_thumbnail_attach(flow);
-
-  /* A stack is browsed, not skimmed: its icons are drawn considerably larger
-   * than the dock's, and every cell has room for a two-line name. */
-  int cell_icon_size = MAX(56, (int)(icon_size * 1.45));
-
-  gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(flow), GTK_SELECTION_NONE);
-  gtk_flow_box_set_homogeneous(GTK_FLOW_BOX(flow), TRUE);
-  gtk_flow_box_set_min_children_per_line(GTK_FLOW_BOX(flow), 4);
-  gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(flow), 7);
-  gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(flow), 8);
-  gtk_flow_box_set_row_spacing(GTK_FLOW_BOX(flow), 8);
-  gtk_widget_add_css_class(flow, "stack-grid");
-  lambdock_accessible_update(
-      flow, _("Folder contents"),
-      _("Use the arrow keys to choose an entry and Enter to open it."));
-
-  for (guint i = 0; i < entries->len; i++) {
-    LambdockStackEntry *entry = g_ptr_array_index(entries, i);
-
-    GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-    gtk_widget_set_valign(content, GTK_ALIGN_CENTER);
-
-    GtkWidget *image = lambdock_stack_entry_image(
-        theme, entry->name, entry->is_dir, cell_icon_size);
-    if (image) {
-      gtk_box_append(GTK_BOX(content), image);
-      /* The worker decides whether the file really is an image; doing that
-       * check here would put a few hundred header reads on the main thread. */
-      if (!entry->is_dir)
-        lambdock_stack_thumbnail_schedule(flow, image, entry->path,
-                                          cell_icon_size * 2);
-    }
-
-    /* Wrapping is what caps the label's natural width: with it, the cell is as
-     * wide as STACK_CELL_WIDTH and a long name wraps (and then ellipsizes)
-     * instead of stretching the grid. */
-    GtkWidget *label = gtk_label_new(entry->name);
-    gtk_label_set_wrap(GTK_LABEL(label), TRUE);
-    gtk_label_set_wrap_mode(GTK_LABEL(label), PANGO_WRAP_WORD_CHAR);
-    gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_label_set_max_width_chars(GTK_LABEL(label), 16);
-    gtk_label_set_lines(GTK_LABEL(label), 2);
-    gtk_label_set_justify(GTK_LABEL(label), GTK_JUSTIFY_CENTER);
-    gtk_widget_set_hexpand(label, TRUE);
-    gtk_box_append(GTK_BOX(content), label);
-
-    GtkWidget *button = gtk_button_new();
-    gtk_widget_set_size_request(button, STACK_CELL_WIDTH, -1);
-    gtk_widget_add_css_class(button, "flat");
-    gtk_widget_add_css_class(button, "stack-entry");
-    stack_entry_label_button(button, entry);
-    gtk_button_set_child(GTK_BUTTON(button), content);
-    stack_entry_attach_open(button, entry, item);
-
-    gtk_flow_box_append(GTK_FLOW_BOX(flow), button);
-  }
-
-  lambdock_stack_view_attach_keys(flow);
-  return scrolled_view(flow, STACK_MAX_HEIGHT);
-}
-
-static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
-                                  DockItem *item) {
-  GtkIconTheme *theme = stack_icon_theme();
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
-  gtk_widget_add_css_class(box, "stack-list");
-  lambdock_accessible_update(
-      box, _("Folder contents"),
-      _("Use the arrow keys to choose an entry and Enter to open it."));
-  lambdock_stack_thumbnail_attach(box);
-
-  int list_icon_size = MAX(24, (int)(icon_size * 0.7));
-
-  for (guint i = 0; i < entries->len; i++) {
-    LambdockStackEntry *entry = g_ptr_array_index(entries, i);
-
-    GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
-
-    GtkWidget *image = lambdock_stack_entry_image(
-        theme, entry->name, entry->is_dir, list_icon_size);
-    if (image) {
-      gtk_box_append(GTK_BOX(row), image);
-      if (!entry->is_dir)
-        lambdock_stack_thumbnail_schedule(box, image, entry->path,
-                                          list_icon_size * 2);
-    }
-
-    GtkWidget *label = gtk_label_new(entry->name);
-    gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_MIDDLE);
-    gtk_label_set_xalign(GTK_LABEL(label), 0.0f);
-    gtk_widget_set_hexpand(label, TRUE);
-    gtk_box_append(GTK_BOX(row), label);
-
-    GtkWidget *arrow = gtk_image_new_from_icon_name(
-        entry->is_dir ? "go-next-symbolic" : "document-open-symbolic");
-    gtk_image_set_pixel_size(GTK_IMAGE(arrow), 16);
-    gtk_widget_set_opacity(arrow, 0.55);
-    gtk_box_append(GTK_BOX(row), arrow);
-
-    GtkWidget *button = gtk_button_new();
-    gtk_widget_add_css_class(button, "flat");
-    gtk_widget_add_css_class(button, "stack-row");
-    gtk_button_set_child(GTK_BUTTON(button), row);
-    stack_entry_label_button(button, entry);
-    stack_entry_attach_open(button, entry, item);
-
-    gtk_box_append(GTK_BOX(box), button);
-  }
-
-  lambdock_stack_view_attach_keys(box);
-  return scrolled_view(box, STACK_MAX_HEIGHT);
-}
-
-
-/* ============================================================================
- * PUBLIC VIEW FACTORY
- * ============================================================================
- */
-
-GtkWidget *lambdock_stack_view_new(GPtrArray *entries, LambdockStackView view,
-                                   int icon_size) {
-  if (icon_size <= 0)
-    icon_size = DEFAULT_ICON_SIZE;
-
-  if (!entries || entries->len == 0) {
-    GtkWidget *empty = gtk_label_new(_("This folder is empty"));
-    gtk_widget_add_css_class(empty, "dim-label");
-    gtk_widget_set_margin_top(empty, 12);
-    gtk_widget_set_margin_bottom(empty, 12);
-    return empty;
-  }
-
-  return stack_view_ops(view)->build(entries, icon_size, NULL);
-}
-
-/* The same view, wired to the stack it belongs to: folders walk in, files open
- * and close the panel. */
-static GtkWidget *stack_view_for_item(GPtrArray *entries, LambdockStackView view,
-                                      int icon_size, DockItem *item) {
-  if (!entries || entries->len == 0)
-    return lambdock_stack_view_new(entries, view, icon_size);
-
-  return stack_view_ops(view)->build(entries, icon_size, item);
-}
 
 /* ============================================================================
  * THE STACK POPOVER
@@ -576,7 +213,8 @@ GtkWidget *lambdock_stack_panel_new(DockItem *item, const char *path) {
                  stack_panel_header(item, path, count, truncated));
   gtk_box_append(GTK_BOX(vbox), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL));
 
-  GtkWidget *view_widget = stack_view_for_item(entries, view, icon_size, item);
+  GtkWidget *view_widget =
+      lambdock_stack_view_for_item(entries, view, icon_size, item);
   gtk_box_append(GTK_BOX(vbox), view_widget);
   /* Remembered on the panel so opening it can put the keyboard focus straight on
    * the first entry instead of on the panel around it. */
@@ -616,7 +254,7 @@ static void stack_popover_fill(DockItem *item, const char *path) {
 }
 
 /** Rebuilds the open panel at @path and lands the keyboard on its first entry. */
-static void stack_popover_rebuild(DockItem *item, const char *path) {
+void lambdock_stack_popover_rebuild(DockItem *item, const char *path) {
   if (!item || !item->popover)
     return;
 
@@ -634,7 +272,7 @@ static void on_stack_back_clicked(GtkButton *button, gpointer user_data) {
   g_autofree char *parent =
       lambdock_stack_parent_path(nav->path, nav->item->stack_path);
   if (parent)
-    stack_popover_rebuild(nav->item, parent);
+    lambdock_stack_popover_rebuild(nav->item, parent);
 }
 
 /* Adapter: open the folder being shown in the file manager. */
@@ -761,7 +399,7 @@ void lambdock_stack_set_view(DockItem *item, LambdockStackView view) {
   /* If the stack is on screen, redraw it in the new view mode right away --
    * where it is looking, not necessarily at its root. */
   if (item->popover && gtk_widget_get_visible(item->popover))
-    stack_popover_rebuild(item, stack_current_path(item));
+    lambdock_stack_popover_rebuild(item, stack_current_path(item));
 
   LOG_C_INFO("UI", "Stack '%s' now uses the %s view",
              item->name ? item->name : "stack", name);

@@ -149,51 +149,6 @@ GdkPixbuf *lambdock_stack_thumbnail_pixbuf(const char *path, int size);
 GdkTexture *lambdock_stack_texture_from_pixbuf(GdkPixbuf *pixbuf);
 
 /**
- * lambdock_stack_entry_image:
- * @theme: (nullable): the icon theme to look the entry up in.
- * @name: (nullable): the entry's file name, which is what its content type
- *   comes from.
- * @is_dir: TRUE for a folder.
- * @size: Pixel size of the image widget.
- *
- * The icon for one entry of a stack: the folder icon for a folder, the icon of
- * the entry's content type for a file, and the resolver's fallback chain when
- * the theme has neither. The image is given a fixed @size box so that a
- * thumbnail replacing it does not move the grid.
- *
- * Returns: (transfer none) (nullable): a new floating GtkImage.
- */
-GtkWidget *lambdock_stack_entry_image(GtkIconTheme *theme, const char *name,
-                                      gboolean is_dir, int size);
-
-/**
- * lambdock_stack_thumbnail_attach:
- * @view: the box or flow box that holds a view's cells.
- *
- * Gives @view a thumbnail queue. Doing nothing on a second call is deliberate:
- * a rebuilt view keeps the queue it already has, so a rebuild does not start a
- * second worker for the same box.
- *
- * The queue is dropped with the view, and emptied when the view is unmapped: a
- * closed stack must not keep decoding a folder's pictures in the background.
- */
-void lambdock_stack_thumbnail_attach(GtkWidget *view);
-
-/**
- * lambdock_stack_thumbnail_schedule:
- * @view: a view that had lambdock_stack_thumbnail_attach() called on it.
- * @image: the cell's GtkImage, which is replaced when the preview is ready.
- * @path: (nullable): the file to preview.
- * @size: pixel size of the square preview to decode.
- *
- * Asks for @path's preview, decoded off the main thread one picture at a time.
- * Stale requests are safe by construction: @image is held weakly and @view
- * weakly, so a closed panel's results are dropped instead of painted.
- */
-void lambdock_stack_thumbnail_schedule(GtkWidget *view, GtkWidget *image,
-                                       const char *path, int size);
-
-/**
  * lambdock_stack_entry_free:
  * @entry: (nullable): a single entry.
  */
@@ -226,6 +181,34 @@ const char *lambdock_stack_view_to_string(LambdockStackView view);
  */
 GtkWidget *lambdock_stack_view_new(GPtrArray *entries, LambdockStackView view,
                                    int icon_size);
+
+/**
+ * lambdock_stack_view_for_item:
+ * @entries: Entries to show (borrowed, not retained).
+ * @view: Layout to use.
+ * @icon_size: Pixel size for the entry icons.
+ * @item: (nullable): the stack the view belongs to, or NULL for a detached view.
+ *
+ * The same view, wired to the stack it belongs to: clicking a folder walks into
+ * it inside the panel instead of handing it to the file manager, and clicking a
+ * file opens it and closes the panel. A detached view keeps the file-manager
+ * behaviour for folders too.
+ *
+ * Returns: (transfer none): the view widget.
+ */
+GtkWidget *lambdock_stack_view_for_item(GPtrArray *entries,
+                                        LambdockStackView view, int icon_size,
+                                        DockItem *item);
+
+/**
+ * lambdock_stack_popover_rebuild:
+ * @item: A stack dock item.
+ * @path: the folder to show.
+ *
+ * Rebuilds the open panel at @path, keeping the popover where it is, and lands
+ * the keyboard focus on its first entry. A cell calls this when it is a folder.
+ */
+void lambdock_stack_popover_rebuild(DockItem *item, const char *path);
 
 /**
  * lambdock_stack_panel_new:

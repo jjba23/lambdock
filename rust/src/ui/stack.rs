@@ -16,22 +16,28 @@
 //! refuses to step above the folder the stack was given, and the breadcrumb says
 //! only where inside that folder you are.
 
+use crate::dock_item::DockItem;
 use crate::glib::{g_malloc0, strdup_string};
 use crate::log_debug;
 use gtk4::gdk;
 use gtk4::gdk_pixbuf;
 use gtk4::gio;
 use gtk4::glib;
-use gtk4::glib::translate::{from_glib_borrow, Borrowed, IntoGlibPtr};
+use gtk4::glib::translate::{from_glib_borrow, from_glib_none, Borrowed, IntoGlibPtr};
+use gtk4::pango;
 use gtk4::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
 
 /// `LambdockStackView`.
 pub const VIEW_GRID: c_int = 0;
 pub const VIEW_LIST: c_int = 1;
+
+/// `DEFAULT_ICON_SIZE` in `lambdock.h`.
+const DEFAULT_ICON_SIZE: i32 = 48;
 
 /// The two view modes, by their Scheme names.
 const VIEWS: [(&str, c_int); 2] = [("grid", VIEW_GRID), ("list", VIEW_LIST)];
@@ -666,60 +672,41 @@ pub unsafe extern "C" fn lambdock_stack_texture_from_pixbuf(
 /// The image widget for one entry: the entry's own icon when the theme has it,
 /// and the resolver's fallback chain when it does not.
 ///
-/// # Safety
-///
-/// `theme` must be null or a live `GtkIconTheme`; `name` must be null or a C
-/// string. The result is a *floating* widget, exactly like `gtk_image_new_*`,
-/// or null when no image could be built.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_entry_image(
-    theme: *mut gtk4::ffi::GtkIconTheme,
-    name: *const c_char,
-    is_dir: c_int,
-    size: c_int,
-) -> *mut gtk4::ffi::GtkWidget {
-    use gtk4::glib::translate::{from_glib_borrow, ToGlibPtr};
+/// The image is built through the C constructors and owned here, so it arrives
+/// sunk: the box that appends it takes its own reference and this one goes when
+/// the cell is built.
+fn entry_image(
+    theme: Option<&gtk4::IconTheme>,
+    name: &str,
+    is_dir: bool,
+    size: i32,
+) -> gtk4::Widget {
+    let icon = entry_icon(name, is_dir);
 
-    crate::ui::ensure_gtk_initialized();
+    let image = match theme {
+        Some(theme) if theme.has_gicon(&icon) => {
+            let image = unsafe { gtk4::ffi::gtk_image_new_from_gicon(icon.as_ptr().cast()) };
+            unsafe { gtk4::ffi::gtk_image_set_pixel_size(image.cast(), size) };
+            image
+        }
+        // Unknown content type: the resolver runs its own fallback chain.
+        _ => {
+            let fallback = if is_dir { c"folder" } else { c"text-x-generic" };
+            let theme = theme.map_or(std::ptr::null_mut(), |theme| theme.as_ptr().cast());
 
-    let Some(name) = text(name) else {
-        return std::ptr::null_mut();
-    };
-    let is_dir = is_dir != 0;
-
-    let icon = entry_icon(&name, is_dir);
-
-    // A floating image the caller sinks by appending it, which is the contract
-    // `gtk_image_new_*` has: the gtk4-rs constructors sink on the way out, so
-    // the C ones are called and the wrapper only borrows the result.
-    let image = if !theme.is_null()
-        && gtk4::ffi::gtk_icon_theme_has_gicon(theme, icon.to_glib_none().0) != 0
-    {
-        let image = gtk4::ffi::gtk_image_new_from_gicon(icon.to_glib_none().0);
-        gtk4::ffi::gtk_image_set_pixel_size(image.cast(), size);
-        image
-    } else {
-        let fallback = if is_dir {
-            c"folder"
-        } else {
-            c"text-x-generic"
-        };
-        crate::ui::icon_resolver::create_image_for_icon(theme, fallback.as_ptr(), size)
+            unsafe { crate::ui::icon_resolver::create_image_for_icon(theme, fallback.as_ptr(), size) }
+        }
     };
 
-    if image.is_null() {
-        return std::ptr::null_mut();
-    }
+    let image: gtk4::Widget = unsafe { from_glib_none(image) };
 
     // A fixed box keeps the grid and the list steady when a thumbnail replaces
     // the icon, and lets the (larger) preview scale down into its slot.
-    let image_view: Borrowed<gtk4::Widget> = from_glib_borrow(image);
-    image_view.set_valign(gtk4::Align::Center);
-    image_view.set_size_request(size, size);
+    image.set_valign(gtk4::Align::Center);
+    image.set_size_request(size, size);
 
     image
 }
-
 
 // ============================================================================
 // THE VIEW'S THUMBNAIL QUEUE
@@ -858,30 +845,12 @@ fn run_next(view: &gtk4::Widget, queue: &QueueHandle) {
 }
 
 /// Gives `view` a thumbnail queue, and empties it when the view is unmapped.
-///
-/// # Safety
-///
-/// `view` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_thumbnail_attach(view: *mut gtk4::ffi::GtkWidget) {
-    use gtk4::glib::translate::from_glib_borrow;
-
-    if view.is_null() {
+fn thumbnail_attach(view: &gtk4::Widget) {
+    if queue_of(view).is_some() {
         return;
     }
 
-    crate::ui::ensure_gtk_initialized();
-
-    // Borrowed, never owned: the caller hands over the box it has just built and
-    // has not parented yet, so an owned wrapper would drop the floating
-    // reference and finalize the view along with its queue.
-    let view: Borrowed<gtk4::Widget> = from_glib_borrow(view);
-
-    if queue_of(&view).is_some() {
-        return;
-    }
-
-    view.set_data(QUEUE_KEY, Rc::new(Queue::default()));
+    unsafe { view.set_data(QUEUE_KEY, Rc::new(Queue::default())) };
 
     view.connect_unmap(|view| {
         // Whatever is still queued for a view that is off screen will never be
@@ -893,43 +862,373 @@ pub unsafe extern "C" fn lambdock_stack_thumbnail_attach(view: *mut gtk4::ffi::G
 }
 
 /// Queues a preview of `path` for `image`, to be decoded in the background.
-///
-/// # Safety
-///
-/// `view` and `image` must be null or live widgets; `path` must be null or a C
-/// string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_thumbnail_schedule(
-    view: *mut gtk4::ffi::GtkWidget,
-    image: *mut gtk4::ffi::GtkWidget,
-    path: *const c_char,
-    size: c_int,
-) {
-    if view.is_null() || image.is_null() || size <= 0 {
+fn thumbnail_schedule(view: &gtk4::Widget, image: &gtk4::Image, path: &str, size: i32) {
+    if path.is_empty() || size <= 0 {
         return;
     }
 
-    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
-        return;
-    };
-
-    let view: Borrowed<gtk4::Widget> = from_glib_borrow(view);
-    let Some(queue) = queue_of(&view) else {
-        return;
-    };
-
-    let cell: Borrowed<gtk4::Widget> = from_glib_borrow(image);
-    let Some(cell) = cell.as_ref().downcast_ref::<gtk4::Image>() else {
+    let Some(queue) = queue_of(view) else {
         return;
     };
 
     queue.pending.borrow_mut().push_back(Request {
-        image: cell.downgrade(),
-        path,
+        image: image.downgrade(),
+        path: path.to_owned(),
         size,
     });
 
-    run_next(&view, &queue);
+    run_next(view, &queue);
+}
+
+// ============================================================================
+// THE GRID AND THE LIST
+// ============================================================================
+//
+// A folder is drawn two ways: a grid of cards with a picture and two lines of
+// name, and a list of rows with an icon, the name and an arrow where it leads.
+// Both are cut from the same entries, answer the same keys, and each cell does
+// the same thing -- a folder is walked into, a file is handed to the desktop and
+// the panel closes over it.
+
+/// The panel's floor, so a folder with a handful of entries still opens at a
+/// size worth looking at, and its ceiling, so a folder with hundreds of
+/// screenshots scrolls instead of growing past the screen.
+const STACK_MIN_WIDTH: i32 = 560;
+const STACK_MIN_HEIGHT: i32 = 400;
+const STACK_MAX_HEIGHT: i32 = 680;
+
+/// A grid cell keeps this width whatever the file is called. Without it a long
+/// name stretches its cell -- and, because the flow box is homogeneous, every
+/// other cell with it -- until the panel grows past the screen.
+const STACK_CELL_WIDTH: i32 = 132;
+
+/// One entry, as a view needs it: the strings it draws and the flag that says
+/// where a click goes.
+struct Entry {
+    name: String,
+    path: String,
+    is_dir: bool,
+}
+
+/// The entries of a view, copied out of the `GPtrArray` the listing made.
+///
+/// # Safety
+///
+/// `entries` must be null or an array of `StackEntry*`, as
+/// `lambdock_stack_list_directory` returns.
+unsafe fn entries_of(entries: *mut glib::ffi::GPtrArray) -> Vec<Entry> {
+    if entries.is_null() {
+        return Vec::new();
+    }
+
+    let array = &*entries;
+
+    (0..array.len as usize)
+        .filter_map(|index| {
+            let entry = *array.pdata.add(index) as *const StackEntry;
+            if entry.is_null() {
+                return None;
+            }
+
+            Some(Entry {
+                name: text((*entry).name)?,
+                path: text((*entry).path)?,
+                is_dir: (*entry).is_dir != 0,
+            })
+        })
+        .collect()
+}
+
+/// The icon theme of the default display, or `None` while it is starting up.
+fn icon_theme() -> Option<gtk4::IconTheme> {
+    gdk::Display::default().map(|display| gtk4::IconTheme::for_display(&display))
+}
+
+/// Sets a widget's accessible name and description.
+fn accessible(widget: &gtk4::Widget, label: &std::ffi::CStr, description: &std::ffi::CStr) {
+    unsafe {
+        crate::accessibility::lambdock_accessible_update(
+            widget.as_ptr().cast(),
+            label.as_ptr(),
+            description.as_ptr(),
+        )
+    };
+}
+
+/// What a screen reader says about one entry.
+fn entry_description(is_dir: bool) -> String {
+    translated(if is_dir {
+        c"Folder. Press Enter to open it."
+    } else {
+        c"File. Press Enter to open it."
+    })
+}
+
+/// The tooltip and accessibility text every entry button shares.
+fn describe_button(button: &gtk4::Button, entry: &Entry) {
+    button.set_tooltip_text(Some(&entry.name));
+
+    let description = entry_description(entry.is_dir);
+    unsafe {
+        crate::accessibility::lambdock_accessible_update(
+            button.as_ptr().cast(),
+            CString::new(entry.name.as_str()).unwrap_or_default().as_ptr(),
+            CString::new(description).unwrap_or_default().as_ptr(),
+        )
+    };
+}
+
+/// Dismisses the popover `widget` sits in, if it is open.
+fn close_popover(widget: &gtk4::Widget) {
+    let popover = widget
+        .ancestor(gtk4::Popover::static_type())
+        .and_then(|ancestor| ancestor.downcast::<gtk4::Popover>().ok())
+        .or_else(|| {
+            // A popover's content can report the popover itself as its root
+            // rather than as an ancestor, depending on how GTK parents it.
+            let root = widget.root()?;
+            let root: &glib::Object = root.upcast_ref();
+
+            root.clone().downcast::<gtk4::Popover>().ok()
+        });
+
+    if let Some(popover) = popover.filter(|popover| popover.is_visible()) {
+        popover.popdown();
+    }
+}
+
+extern "C" {
+    /// `stack_popover_rebuild` in `src/ui/stack.c`: the panel a view sits in,
+    /// which stays C until its own step.
+    fn lambdock_stack_popover_rebuild(item: *mut DockItem, path: *const c_char);
+}
+
+/// Opens (or walks into) `entry` when `button` is clicked.
+fn attach_open(button: &gtk4::Button, entry: &Entry, item: *mut DockItem) {
+    let path = CString::new(entry.path.as_str()).unwrap_or_default();
+    let is_dir = entry.is_dir;
+
+    button.connect_clicked(move |button| {
+        // A folder is a place to go, not a program to start: the panel walks
+        // into it, and the file manager is one header button away.
+        if !item.is_null() && is_dir {
+            unsafe { lambdock_stack_popover_rebuild(item, path.as_ptr()) };
+            return;
+        }
+
+        // The item has been handed off to the desktop, so leaving the panel
+        // covering it serves no purpose.
+        if unsafe { crate::ui::desktop_entry::lambdock_open_path(path.as_ptr()) } != 0 {
+            close_popover(button.upcast_ref());
+        }
+    });
+}
+
+/// A view of `child`, scrolling instead of growing past the screen.
+fn scrolled_view(child: &gtk4::Widget, max_height: i32) -> gtk4::Widget {
+    let scrolled = gtk4::ScrolledWindow::new();
+    scrolled.set_policy(gtk4::PolicyType::Never, gtk4::PolicyType::Automatic);
+
+    // The content must not dictate the popover's width: a flow box's natural
+    // width is everything on one line, which is how the panel ended up as a
+    // full-width strip one row tall. The viewport keeps the size the popover
+    // gives it, and the grid wraps inside that.
+    scrolled.set_propagate_natural_width(false);
+    scrolled.set_min_content_width(STACK_MIN_WIDTH);
+    scrolled.set_min_content_height(STACK_MIN_HEIGHT);
+    scrolled.set_max_content_height(max_height);
+    scrolled.set_child(Some(child));
+    scrolled.add_css_class("stack-scroll");
+
+    scrolled.upcast()
+}
+
+/// The cards a folder is browsed as.
+fn build_grid_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gtk4::Widget {
+    let flow = gtk4::FlowBox::new();
+    thumbnail_attach(flow.upcast_ref());
+
+    let theme = icon_theme();
+
+    // A stack is browsed, not skimmed: its icons are drawn considerably larger
+    // than the dock's, and every cell has room for a two-line name.
+    let cell_icon_size = (icon_size * 145 / 100).max(56);
+
+    flow.set_selection_mode(gtk4::SelectionMode::None);
+    flow.set_homogeneous(true);
+    flow.set_min_children_per_line(4);
+    flow.set_max_children_per_line(7);
+    flow.set_column_spacing(8);
+    flow.set_row_spacing(8);
+    flow.add_css_class("stack-grid");
+    accessible(
+        flow.upcast_ref(),
+        c"Folder contents",
+        c"Use the arrow keys to choose an entry and Enter to open it.",
+    );
+
+    for entry in entries {
+        let content = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+        content.set_valign(gtk4::Align::Center);
+
+        let image = entry_image(theme.as_ref(), &entry.name, entry.is_dir, cell_icon_size);
+        content.append(&image);
+        // The worker decides whether the file really is an image; asking here
+        // would put a few hundred header reads on the main thread.
+        if let (false, Some(cell)) = (entry.is_dir, image.downcast_ref::<gtk4::Image>()) {
+            thumbnail_schedule(flow.upcast_ref(), cell, &entry.path, cell_icon_size * 2);
+        }
+
+        // Wrapping is what caps the label's natural width: with it the cell is
+        // as wide as STACK_CELL_WIDTH, and a long name wraps (and then
+        // ellipsizes) instead of stretching the grid.
+        let label = gtk4::Label::new(Some(&entry.name));
+        label.set_wrap(true);
+        label.set_wrap_mode(pango::WrapMode::WordChar);
+        label.set_ellipsize(pango::EllipsizeMode::Middle);
+        label.set_max_width_chars(16);
+        label.set_lines(2);
+        label.set_justify(gtk4::Justification::Center);
+        label.set_hexpand(true);
+        content.append(&label);
+
+        let button = gtk4::Button::new();
+        button.set_size_request(STACK_CELL_WIDTH, -1);
+        button.add_css_class("flat");
+        button.add_css_class("stack-entry");
+        button.set_child(Some(&content));
+        describe_button(&button, entry);
+        attach_open(&button, entry, item);
+
+        flow.append(&button);
+    }
+
+    attach_keys(flow.upcast_ref());
+    scrolled_view(flow.upcast_ref(), STACK_MAX_HEIGHT)
+}
+
+/// The rows a folder is skimmed as.
+fn build_list_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gtk4::Widget {
+    let box_ = gtk4::Box::new(gtk4::Orientation::Vertical, 4);
+    box_.add_css_class("stack-list");
+    accessible(
+        box_.upcast_ref(),
+        c"Folder contents",
+        c"Use the arrow keys to choose an entry and Enter to open it.",
+    );
+    thumbnail_attach(box_.upcast_ref());
+
+    let theme = icon_theme();
+    let list_icon_size = (icon_size * 7 / 10).max(24);
+
+    for entry in entries {
+        let row = gtk4::Box::new(gtk4::Orientation::Horizontal, 8);
+
+        let image = entry_image(theme.as_ref(), &entry.name, entry.is_dir, list_icon_size);
+        row.append(&image);
+        if let (false, Some(cell)) = (entry.is_dir, image.downcast_ref::<gtk4::Image>()) {
+            thumbnail_schedule(box_.upcast_ref(), cell, &entry.path, list_icon_size * 2);
+        }
+
+        let label = gtk4::Label::new(Some(&entry.name));
+        label.set_ellipsize(pango::EllipsizeMode::Middle);
+        label.set_xalign(0.0);
+        label.set_hexpand(true);
+        row.append(&label);
+
+        let arrow = gtk4::Image::from_icon_name(if entry.is_dir {
+            "go-next-symbolic"
+        } else {
+            "document-open-symbolic"
+        });
+        arrow.set_pixel_size(16);
+        arrow.set_opacity(0.55);
+        row.append(&arrow);
+
+        let button = gtk4::Button::new();
+        button.add_css_class("flat");
+        button.add_css_class("stack-row");
+        button.set_child(Some(&row));
+        describe_button(&button, entry);
+        attach_open(&button, entry, item);
+
+        box_.append(&button);
+    }
+
+    attach_keys(box_.upcast_ref());
+    scrolled_view(box_.upcast_ref(), STACK_MAX_HEIGHT)
+}
+
+/// One of the two views, or the note that says the folder is empty.
+fn view_for_entries(
+    entries: *mut glib::ffi::GPtrArray,
+    view: c_int,
+    icon_size: c_int,
+    item: *mut DockItem,
+) -> gtk4::Widget {
+    let icon_size = if icon_size <= 0 {
+        DEFAULT_ICON_SIZE
+    } else {
+        icon_size
+    };
+
+    let entries = unsafe { entries_of(entries) };
+    if entries.is_empty() {
+        let empty = gtk4::Label::new(Some(&translated(c"This folder is empty")));
+        empty.add_css_class("dim-label");
+        empty.set_margin_top(12);
+        empty.set_margin_bottom(12);
+        return empty.upcast();
+    }
+
+    if view == VIEW_LIST {
+        build_list_view(&entries, icon_size, item)
+    } else {
+        build_grid_view(&entries, icon_size, item)
+    }
+}
+
+/// A view for C to append to a box, which sinks what it is given: the reference
+/// handed over is floating, exactly like `gtk_*_new`.
+fn into_floating_pointer(widget: gtk4::Widget) -> *mut gtk4::ffi::GtkWidget {
+    unsafe { glib::gobject_ffi::g_object_force_floating(widget.as_ptr().cast()) };
+
+    widget.into_glib_ptr()
+}
+
+/// The widget that renders `entries` in the requested view.
+///
+/// # Safety
+///
+/// `entries` must be null or an array of `StackEntry*`. The result is a
+/// floating widget, or null for no entries at all.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_new(
+    entries: *mut glib::ffi::GPtrArray,
+    view: c_int,
+    icon_size: c_int,
+) -> *mut gtk4::ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    into_floating_pointer(view_for_entries(entries, view, icon_size, std::ptr::null_mut()))
+}
+
+/// The same view, wired to the stack it belongs to: folders walk in, files open
+/// and close the panel.
+///
+/// # Safety
+///
+/// As `lambdock_stack_view_new`, and `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_for_item(
+    entries: *mut glib::ffi::GPtrArray,
+    view: c_int,
+    icon_size: c_int,
+    item: *mut DockItem,
+) -> *mut gtk4::ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    into_floating_pointer(view_for_entries(entries, view, icon_size, item))
 }
 
 // ============================================================================
@@ -1102,26 +1401,13 @@ fn focus_edge(view: &gtk4::Widget, last: bool) -> bool {
 }
 
 /// Installs the view's arrow-key handling, once per view.
-///
-/// # Safety
-///
-/// `view` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::GtkWidget) {
-    if view.is_null() {
-        return;
-    }
-
-    crate::ui::ensure_gtk_initialized();
-
-    let view = crate::ui::widget_from_pointer(view);
-
+fn attach_keys(view: &gtk4::Widget) {
     let keys = gtk4::EventControllerKey::new();
     // Capture: a flow box has its own arrow-key bindings for moving its cursor, and
     // those would otherwise swallow the keys the stack navigation needs.
     keys.set_propagation_phase(gtk4::PropagationPhase::Capture);
 
-    let target: gtk4::Widget = view.as_ref().clone();
+    let target: gtk4::Widget = view.clone();
     keys.connect_key_pressed(move |_, keyval, _, _| {
         let handled = match keyval {
             gdk::Key::Left => focus_step(&target, -1, 0),
@@ -1139,6 +1425,22 @@ pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::G
     });
 
     view.add_controller(keys);
+}
+
+/// Installs the view's arrow-key handling.
+///
+/// # Safety
+///
+/// `view` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::GtkWidget) {
+    if view.is_null() {
+        return;
+    }
+
+    crate::ui::ensure_gtk_initialized();
+
+    attach_keys(&crate::ui::widget_from_pointer(view));
 }
 
 /// Moves the view's focus by one step.
