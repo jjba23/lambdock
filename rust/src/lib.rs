@@ -14,3 +14,4 @@ pub mod bridge;
 pub mod core;
 pub(crate) mod glib;
 pub(crate) mod guile;
+pub mod ui;

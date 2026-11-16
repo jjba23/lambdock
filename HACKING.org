@@ -326,15 +326,19 @@ lambdock/
 │       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
 ├── rust/                      # The Rust side: the archive meson links in
-│   ├── Cargo.toml             # Crate `lambdock`, staticlib + rlib, no deps yet
+│   ├── Cargo.toml             # Crate `lambdock`; gtk4-rs is the only dependency
 │   ├── Cargo.lock
-│   ├── build.rs               # Links GLib and libguile, which the C contract borrows
+│   ├── vendor/                # The crate graph, vendored for offline builds
+│   ├── build.rs               # Links GLib, libguile and GTK
 │   ├── cargo-build.sh         # Puts cargo's archive where meson declares it
 │   └── src/
 │       ├── lib.rs             # Crate root: the modules below, over the C ABI
 │       ├── bridge.rs          # The C→Scheme config readers
 │       ├── glib.rs            # The one place the crate names GLib and gettext
 │       ├── guile.rs           # The libguile surface, and what it costs
+│       ├── ui/                # Layers 3-4, the Rust home of src/ui/
+│       │   ├── mod.rs
+│       │   └── widget_utils.rs # CSS-class toggles
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
 │           ├── clock_face.rs  # Hand positions + the squircle
@@ -448,14 +452,48 @@ To move one module:
    running: it is the only check that the ABI at the seam still matches.
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
-Ported so far: the whole of layer 1, and the config-reading half of the Scheme
-bridge. =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=,
-=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c=, =core/item_text.c=,
-=core/config_values.c=, =core/dock_dims.c=, =core/x11_rules.c= and
-=core/render_stats.c= are now =rust/src/core/*.rs=, and =src/core/= keeps their
-headers as the C-side contract. =rust/src/bridge.rs= holds every getter and the
-load/export calls; =src/guile_bridge.c= keeps the item builders, the layout
-writes and the poll procedures.
+Ported so far: the whole of layer 1, the config-reading half of the Scheme
+bridge, and the first widget module. =core/poll_budget.c=, =core/dock_click.c=,
+=core/tracker_rules.c=, =core/dock_motion.c=, =core/clock_face.c=,
+=core/poof.c=, =core/item_text.c=, =core/config_values.c=, =core/dock_dims.c=,
+=core/x11_rules.c= and =core/render_stats.c= are now =rust/src/core/*.rs=, and
+=src/core/= keeps their headers as the C-side contract. =rust/src/bridge.rs=
+holds every getter and the load/export calls; =src/guile_bridge.c= keeps the item
+builders, the layout writes and the poll procedures. =src/ui/widget_utils.c= is
+=rust/src/ui/widget_utils.rs=, the first module written against =gtk4-rs=.
+
+** GTK from Rust, and why the crates are vendored
+:PROPERTIES:
+:CUSTOM_ID: gtk-from-rust
+:END:
+
+=gtk4-rs= is a real dependency now (=gtk4 0.11= in =rust/Cargo.toml=), so the
+crate has a crate graph and a =Cargo.lock=. Fetching it needs a registry, and a
+Guix or Nix build has no network, so the graph is vendored under =rust/vendor/=
+and =.cargo/config.toml= at the tree root replaces crates.io with it:
+
+#+begin_src sh
+cd rust && cargo vendor          # after changing rust/Cargo.toml
+cargo build --offline --locked   # what meson runs
+#+end_src
+
+The tree is Linux-only, but =Cargo.lock= names every package in the graph
+including the Windows-only ones (=windows-sys= is the largest of the 58 MB), and
+a replaced source has to have them all on disk. The alternative -- leave the
+graph to each packager, with Nix's ~cargoDeps~ and Guix's ~cargo-inputs~ -- buys
+a smaller tree at the cost of every recipe having to know the graph; the vendored
+copy keeps `cargo build --offline` true in every environment and in the sandbox.
+
+A widget module keeps its C header and is reached exactly like a =core/= module,
+except that a widget crosses the seam as a borrowed pointer:
+
+#+begin_src rust
+let widget: Borrowed<Widget> = from_glib_borrow(pointer);  // never owned here
+#+end_src
+
+The behaviour of a widget module is tested by the C suite, which already owns a
+display and real widgets; =cargo test= stays display-free, so a Rust test here
+pins down only what needs no widget (a null pointer, a bad class name).
 
 What the Scheme boundary costs, learned the hard way:
 
@@ -473,8 +511,8 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-Not yet ported: the item builders and layout writes in =guile_bridge.c=, and
-everything GTK and Wayland (layers 2-4).
+Not yet ported: the item builders and layout writes in =guile_bridge.c=, and the
+rest of =src/ui/= and the two trackers (layers 2-4).
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:

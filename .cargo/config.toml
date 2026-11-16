@@ -1,0 +1,20 @@
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# The crate's dependencies are vendored under rust/vendor, so a fresh checkout
+# builds with no network -- which is what a Guix or Nix sandbox and a
+# `cargo build --offline` in this tree both require. `cargo vendor` prints this
+# section; regenerate it after changing rust/Cargo.toml:
+#
+#     cd rust && cargo vendor
+#
+# The tree is a Linux build, but Cargo.lock names every dependency in the graph
+# including the Windows-only ones (windows-sys is the largest), and a replaced
+# source has to have them all on disk.
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "rust/vendor"

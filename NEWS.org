@@ -9,17 +9,23 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-- *The port from C to Rust has started.* Layer 1 is Rust, and so is the config
-  half of the Scheme bridge: ~src/core/dock_click.c~, ~tracker_rules.c~,
-  ~dock_motion.c~, ~clock_face.c~, ~poof.c~, ~item_text.c~,
-  ~config_values.c~, ~dock_dims.c~, ~x11_rules.c~ and ~render_stats.c~ joined
-  ~poll_budget.c~ under ~rust/src/core/~, the getters in ~guile_bridge.c~ moved
-  to ~rust/src/bridge.rs~, and ~src/core/~ keeps only the headers.  Every moved
-  function keeps its C ABI, so the dock behaves exactly as before.  The
+- *The port from C to Rust has started.* Layer 1 is Rust, so is the config half
+  of the Scheme bridge, and the first widget: ~src/core/dock_click.c~,
+  ~tracker_rules.c~, ~dock_motion.c~, ~clock_face.c~, ~poof.c~,
+  ~item_text.c~, ~config_values.c~, ~dock_dims.c~, ~x11_rules.c~ and
+  ~render_stats.c~ joined ~poll_budget.c~ under ~rust/src/core/~, the getters in
+  ~guile_bridge.c~ moved to ~rust/src/bridge.rs~, ~ui/widget_utils.c~ became
+  ~rust/src/ui/widget_utils.rs~, and ~src/core/~ keeps only the headers.  Every
+  moved function keeps its C ABI, so the dock behaves exactly as before.  The
   =tests/test_<module>.c= and =test_guile_bridge= binaries still run -- they are
   what checks the ABI at the seam, structs passed and returned by value, strings
   freed with ~g_free~, Scheme values read through the real Guile API and every
   limit against the header macro included.
+- *gtk4-rs is a build dependency, and the crate graph is vendored.* The widget
+  modules are written against ~gtk4-rs~, which needs a crate registry to fetch;
+  ~rust/vendor/~ plus ~.cargo/config.toml~ make ~cargo build --offline~ work in a
+  sandbox, so a Guix or Nix build needs no extra inputs.  Regenerate with
+  ~cd rust && cargo vendor~ after changing ~rust/Cargo.toml~.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from

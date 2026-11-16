@@ -258,6 +258,8 @@ rust_sources = files(
   'rust/src/bridge.rs',
   'rust/src/glib.rs',
   'rust/src/guile.rs',
+  'rust/src/ui/mod.rs',
+  'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
   'rust/src/core/config_values.rs',
@@ -297,15 +299,15 @@ rust_lib = custom_target(
   console: true,
 )
 
-# The archive carries Rust's `std` and borrows GLib's allocator and libguile's
-# interpreter, so a target that links it links what those need. The archive comes
-# first: a static library has to precede the libraries its objects reference.
-# `sources` is what makes every target that links it wait for the custom command
-# above, instead of racing it.
+# The archive carries Rust's `std` and borrows GLib's allocator, libguile's
+# interpreter and GTK's widgets, so a target that links it links what those need.
+# The archive comes first: a static library has to precede the libraries its
+# objects reference. `sources` is what makes every target that links it wait for
+# the custom command above, instead of racing it.
 rust_lib_dep = declare_dependency(
   sources: rust_lib,
   link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
-  dependencies: [dependency('glib-2.0'), guile_dep],
+  dependencies: [dependency('glib-2.0'), guile_dep, gtk_dep],
 )
 
 lambdock_deps += rust_lib_dep
@@ -327,7 +329,6 @@ sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/theme_engine.c',
-  'src/ui/widget_utils.c',
   'src/ui/icon_resolver.c',
   'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
@@ -389,7 +390,6 @@ full_app_sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/theme_engine.c',
-  'src/ui/widget_utils.c',
   'src/ui/icon_resolver.c',
   'src/ui/icon_zoom.c',
   'src/ui/popover_menu.c',
