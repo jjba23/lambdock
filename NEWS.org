@@ -248,6 +248,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.8 (2026-11-16)
+
+- *The README says what the project is.* Its badges carry Rust and Scheme instead
+  of C, the two paragraphs that described "a small C renderer" and "the rendering
+  core ... is C" describe the Rust core, and a build line says the thing a reader
+  needs: ~cargo build --release~, and ~cargo run -p xtask -- install --prefix
+  /usr/local~ for the binary with its data files, Scheme modules and
+  translations.  There is no C to compile and no Makefile to run.
+
 ** v2.0.7 (2026-11-16)
 
 - *Fixes the install step, which is where the Guix build got to before it
