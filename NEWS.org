@@ -93,7 +93,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   its blur and alpha fade, the contact shadow the icon casts on the glass, the
   running dot as a bar rather than a blob (a 2px bead antialiases away at 48px
   icons), and the two wrappers that stack an item with its reflection and lay them
-  out for the dock.  A
+  out for the dock.  The item menu's keyboard followed: Escape, the arrow keys, Home
+  and End, and where the focus lands when the menu opens are ~rust/src/ui/popover_menu.rs~,
+  walking the popover's own widget tree; what is still C is the menu's content -- the
+  rows and the sections with their callbacks.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

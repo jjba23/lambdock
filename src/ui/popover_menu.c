@@ -58,47 +58,17 @@ static void free_action_data(gpointer data, GClosure *closure) {
 }
 
 /* ============================================================================
- * ESCAPE DISMISSAL
+ * ESCAPE DISMISSAL AND MENU KEYBOARD NAVIGATION -- in rust/src/ui/popover_menu.rs
  * ============================================================================
+ * Escape, the arrow keys, Home and End, and where the focus lands when the menu
+ * opens: all of it walks the popover's widget tree and needs nothing from the dock,
+ * so it is Rust. What stays here is the menu's content -- the rows and the sections
+ * with their callbacks.
  */
 
-static gboolean on_popover_key_pressed(GtkEventControllerKey *controller,
-                                       guint keyval, guint keycode,
-                                       GdkModifierType state,
-                                       gpointer user_data) {
-  (void)controller;
-  (void)keycode;
-  (void)state;
-
-  if (keyval != GDK_KEY_Escape)
-    return FALSE;
-
-  GtkWidget *popover = GTK_WIDGET(user_data);
-  if (popover && gtk_widget_get_visible(popover))
-    gtk_popover_popdown(GTK_POPOVER(popover));
-
-  return TRUE;
-}
-
-void lambdock_popover_close_on_escape(GtkWidget *popover) {
-  if (!popover || !GTK_IS_POPOVER(popover))
-    return;
-
-  /* Called once per popover, at creation: a reload rebuilds menu contents but
-   * reuses the popover widget. */
-  if (g_object_get_data(G_OBJECT(popover), "lambdock-escape-close"))
-    return;
-
-  GtkEventController *keys = gtk_event_controller_key_new();
-  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_popover_key_pressed),
-                   popover);
-  g_object_set_data(G_OBJECT(keys), "lambdock-escape-close",
-                    GINT_TO_POINTER(1));
-  gtk_widget_add_controller(popover, keys);
-  g_object_set_data(G_OBJECT(popover), "lambdock-escape-close",
-                    GINT_TO_POINTER(1));
-}
+/* Class of the popover child this file builds, which is how the navigation below
+ * tells an item menu from a stack panel. */
+#define POPOVER_MENU_CLASS "popover-menu"
 
 /* ============================================================================
  * MENU ROWS
@@ -169,146 +139,6 @@ static const char *app_action_icon(LambdockAppAction action) {
   default:
     return NULL;
   }
-}
-
-/* -------------------------------------------------------------------------
- * MENU KEYBOARD NAVIGATION
- * -------------------------------------------------------------------------
- * A context menu is expected to answer the arrow keys, and to have somewhere
- * sensible to start: the focus lands on the first row when the menu opens.
- *
- * The controller lives on the popover (which is also how Escape reaches it),
- * but it only acts when the popover is showing an *item menu*: a stack panel
- * reuses the same popover and has its own arrow handling in its view, so a
- * menu-level handler there would swallow the keys it needs.
- * ------------------------------------------------------------------------- */
-
-/** Every sensitive, focusable button of the menu, in top-to-bottom order. */
-static void menu_collect_rows(GtkWidget *widget, GPtrArray *out) {
-  for (GtkWidget *child = gtk_widget_get_first_child(widget); child != NULL;
-       child = gtk_widget_get_next_sibling(child)) {
-    if (GTK_IS_BUTTON(child) && gtk_widget_get_sensitive(child) &&
-        gtk_widget_get_focusable(child))
-      g_ptr_array_add(out, child);
-
-    menu_collect_rows(child, out);
-  }
-}
-
-static GPtrArray *menu_rows(GtkWidget *popover) {
-  GPtrArray *rows = g_ptr_array_new();
-
-  GtkWidget *child = gtk_popover_get_child(GTK_POPOVER(popover));
-  if (child && gtk_widget_has_css_class(child, POPOVER_MENU_CLASS))
-    menu_collect_rows(child, rows);
-
-  return rows;
-}
-
-/** Index of the row that holds the focus, or -1. */
-static int menu_focused_row(GtkWidget *popover, GPtrArray *rows) {
-  GtkRoot *root = gtk_widget_get_root(popover);
-  GtkWidget *focus = (root && GTK_IS_WINDOW(root))
-                         ? gtk_window_get_focus(GTK_WINDOW(root))
-                         : NULL;
-  if (!focus)
-    return -1;
-
-  for (guint i = 0; i < rows->len; i++) {
-    GtkWidget *row = g_ptr_array_index(rows, i);
-    for (GtkWidget *w = focus; w != NULL; w = gtk_widget_get_parent(w)) {
-      if (w == row)
-        return (int)i;
-      if (w == popover)
-        break;
-    }
-  }
-
-  return -1;
-}
-
-static gboolean menu_focus_row(GtkWidget *popover, int index) {
-  GPtrArray *rows = menu_rows(popover);
-  gboolean focused = FALSE;
-
-  if (rows->len > 0) {
-    int target = CLAMP(index, 0, (int)rows->len - 1);
-    gtk_widget_grab_focus(g_ptr_array_index(rows, target));
-    focused = TRUE;
-  }
-
-  g_ptr_array_unref(rows);
-  return focused;
-}
-
-/** Moves the focus by @delta rows from wherever it is. */
-static gboolean menu_focus_step(GtkWidget *popover, int delta) {
-  GPtrArray *rows = menu_rows(popover);
-  if (rows->len == 0) {
-    g_ptr_array_unref(rows);
-    return FALSE;
-  }
-
-  int current = menu_focused_row(popover, rows);
-  int next = (current < 0) ? (delta > 0 ? 0 : (int)rows->len - 1)
-                           : CLAMP(current + delta, 0, (int)rows->len - 1);
-  g_ptr_array_unref(rows);
-
-  return menu_focus_row(popover, next);
-}
-
-static gboolean on_menu_key_pressed(GtkEventControllerKey *controller,
-                                    guint keyval, guint keycode,
-                                    GdkModifierType state, gpointer user_data) {
-  (void)controller;
-  (void)keycode;
-  (void)state;
-
-  GtkWidget *popover = GTK_WIDGET(user_data);
-
-  switch (keyval) {
-  case GDK_KEY_Down:
-    return menu_focus_step(popover, 1);
-  case GDK_KEY_Up:
-    return menu_focus_step(popover, -1);
-  case GDK_KEY_Home:
-    return menu_focus_row(popover, 0);
-  case GDK_KEY_End: {
-    GPtrArray *rows = menu_rows(popover);
-    gboolean focused =
-        rows->len > 0 && menu_focus_row(popover, (int)rows->len - 1);
-    g_ptr_array_unref(rows);
-    return focused;
-  }
-  default:
-    return FALSE;
-  }
-}
-
-void lambdock_popover_menu_keys(GtkWidget *popover) {
-  if (!popover || !GTK_IS_POPOVER(popover))
-    return;
-
-  /* Once per popover: a rebuild replaces the contents, not the widget. */
-  if (g_object_get_data(G_OBJECT(popover), "lambdock-menu-keys"))
-    return;
-
-  GtkEventController *keys = gtk_event_controller_key_new();
-  gtk_event_controller_set_propagation_phase(keys, GTK_PHASE_CAPTURE);
-  g_signal_connect(keys, "key-pressed", G_CALLBACK(on_menu_key_pressed),
-                   popover);
-  gtk_widget_add_controller(popover, keys);
-  g_object_set_data(G_OBJECT(popover), "lambdock-menu-keys",
-                    GINT_TO_POINTER(1));
-}
-
-void lambdock_popover_menu_focus_first(GtkWidget *popover) {
-  if (!popover || !GTK_IS_POPOVER(popover))
-    return;
-
-  /* Only an item menu has rows to land on; a stack panel focuses its first
-   * entry itself, in lambdock_stack_show(). */
-  menu_focus_row(popover, 0);
 }
 
 /* ============================================================================
