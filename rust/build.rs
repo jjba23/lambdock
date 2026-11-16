@@ -19,14 +19,22 @@ fn main() {
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR");
 
+    // The crate borrows two libraries' contracts: GLib's allocator and printf for
+    // the strings it hands back, and libguile for the Scheme values it reads.
+    link("glib-2.0");
+    link("guile-3.0");
+}
+
+/// Asks pkg-config for one package's link flags and hands them to rustc.
+fn link(package: &str) {
     let output = Command::new("pkg-config")
-        .args(["--libs", "glib-2.0"])
+        .args(["--libs", package])
         .output()
-        .expect("pkg-config is needed to place GLib's libraries");
+        .unwrap_or_else(|error| panic!("pkg-config is needed for {package}: {error}"));
 
     assert!(
         output.status.success(),
-        "pkg-config --libs glib-2.0 failed: {}",
+        "pkg-config --libs {package} failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
 

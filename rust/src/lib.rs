@@ -10,5 +10,7 @@
 //! that its header under `src/` declares, which is what lets the port go one
 //! module at a time: from C's point of view nothing moved.
 
+pub mod bridge;
 pub mod core;
 pub(crate) mod glib;
+pub(crate) mod guile;

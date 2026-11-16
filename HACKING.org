@@ -187,7 +187,9 @@ expensive, because the state they move is widgets.
   outwards -- =core/dock_dims.h= includes =ui/shelf.h= and =core/config_values.h=
   includes =lambdock.h= -- which is where the value structs are declared; moving
   them into =core/= would close the loop.
-- *Only three files touch Guile's C API:* =guile_bridge.c= (all config reads),
+- *Four files touch Guile's C API,* and only one is still C: =rust/src/bridge.rs=
+  (every config read and the load/export calls), =guile_bridge.c= (the item
+  builders, the layout writes and the stored poll procedures),
   =ui/dock_item.c= (calling a stored poll procedure) and =main.c= (starting the
   REPL). Anything else that needs Scheme asks the bridge.
 - *Everything is on the GTK main thread, except the REPL*, which hops over with
@@ -326,11 +328,13 @@ lambdock/
 ├── rust/                      # The Rust side: the archive meson links in
 │   ├── Cargo.toml             # Crate `lambdock`, staticlib + rlib, no deps yet
 │   ├── Cargo.lock
-│   ├── build.rs               # Links GLib, which the C contract hands strings to
+│   ├── build.rs               # Links GLib and libguile, which the C contract borrows
 │   ├── cargo-build.sh         # Puts cargo's archive where meson declares it
 │   └── src/
 │       ├── lib.rs             # Crate root: the modules below, over the C ABI
+│       ├── bridge.rs          # The C→Scheme config readers
 │       ├── glib.rs            # The one place the crate names GLib and gettext
+│       ├── guile.rs           # The libguile surface, and what it costs
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
 │           ├── clock_face.rs  # Hand positions + the squircle
@@ -444,13 +448,33 @@ To move one module:
    running: it is the only check that the ABI at the seam still matches.
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
-Ported so far: the whole of layer 1. =core/poll_budget.c=, =core/dock_click.c=,
-=core/tracker_rules.c=, =core/dock_motion.c=, =core/clock_face.c=,
-=core/poof.c=, =core/item_text.c=, =core/config_values.c=, =core/dock_dims.c=,
-=core/x11_rules.c= and =core/render_stats.c= are now =rust/src/core/*.rs=, and
-=src/core/= keeps their headers as the C-side contract. Each still has the
-=tests/test_<module>.c= that checks its ABI. Not yet ported: everything GTK,
-Wayland and Guile (layers 2-4).
+Ported so far: the whole of layer 1, and the config-reading half of the Scheme
+bridge. =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=,
+=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c=, =core/item_text.c=,
+=core/config_values.c=, =core/dock_dims.c=, =core/x11_rules.c= and
+=core/render_stats.c= are now =rust/src/core/*.rs=, and =src/core/= keeps their
+headers as the C-side contract. =rust/src/bridge.rs= holds every getter and the
+load/export calls; =src/guile_bridge.c= keeps the item builders, the layout
+writes and the poll procedures.
+
+What the Scheme boundary costs, learned the hard way:
+
+- *No `Scm` is ever stored in Rust.* A value is converted the moment it arrives
+  (see =rust/src/guile.rs=), so the collector never has to trace a Rust-side
+  owner. The one Scheme value that must outlive its call -- a stored poll
+  procedure -- still lives in C, with =scm_gc_protect_object=.
+- *Two allocators meet here.* =scm_to_utf8_string= returns `malloc`'ed memory
+  (freed with `free`); everything that leaves the bridge is `g_strdup`'ed and
+  freed with `g_free`. The conversion stays inside =bridge.rs= so no caller has
+  to remember which is which.
+- *Some of Guile's API is macros, not symbols.* =scm_is_true= and
+  =scm_is_symbol= never appear in the library, so =guile.rs= asks the
+  interpreter for `#f` once and compares, and uses =scm_symbol_p= for the type
+  test. The linker is what tells you: an undefined reference to a name that the
+  header shows as a `#define` means it has to be rebuilt in Rust.
+
+Not yet ported: the item builders and layout writes in =guile_bridge.c=, and
+everything GTK and Wayland (layers 2-4).
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
@@ -1225,7 +1249,7 @@ pointer dies:
 | 1     | =core/item_text.h=     | All item wording: labels, tooltips, gauges, plurals -- in Rust                |
 | 1     | =core/tracker_rules.h= | Window-tracking decisions: own app id, stale item, hide/reveal -- in Rust        |
 | 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
-| 2     | =guile_bridge.c=       | The only Scheme config reader; table-driven item builders; exclusion checks      |
+| 2     | =guile_bridge.c=       | Table-driven item builders, layout writes, stored poll procedures (readers: Rust) |
 | 2     | =toplevel_tracker.c=   | Wayland manager/handle listeners; owns the proxies; one visitor per event        |
 | 2     | =dock_registry.c=      | The only owner of the active-dock list; snapshot + typed ~foreach~               |
 | 2     | =app_window.c=         | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |

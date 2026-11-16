@@ -14,21 +14,6 @@
  * BUILT-IN PARAMETERS
  * ============================================================================ */
 
-LambdockShelfParams lambdock_shelf_params_default(void) {
-  LambdockShelfParams params;
-
-  params.tilt_deg = SHELF_DEFAULT_TILT;
-  params.perspective = SHELF_DEFAULT_PERSPECTIVE;
-  params.margin_px = SHELF_DEFAULT_MARGIN_PX;
-  params.front_px = SHELF_DEFAULT_FRONT_PX;
-  params.reflection_ratio = SHELF_DEFAULT_REFLECTION;
-  params.reflection_intensity = SHELF_DEFAULT_REFLECTION_INTENSITY;
-  params.reflection_blur_ratio = SHELF_DEFAULT_REFLECTION_BLUR;
-  params.flare_px = SHELF_DEFAULT_FLARE_PX;
-
-  return params;
-}
-
 /**
  * lambdock_shelf_params_effective:
  * Returns the shelf parameters that should be used for @state.

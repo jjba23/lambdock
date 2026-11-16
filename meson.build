@@ -255,7 +255,9 @@ cargo = find_program('cargo')
 rust_sources = files(
   'rust/build.rs',
   'rust/src/lib.rs',
+  'rust/src/bridge.rs',
   'rust/src/glib.rs',
+  'rust/src/guile.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
   'rust/src/core/config_values.rs',
@@ -295,13 +297,15 @@ rust_lib = custom_target(
   console: true,
 )
 
-# The archive carries Rust's `std`, so the C link needs what `std` needs. The
-# archive comes first: a static library has to precede the libraries its objects
-# reference. `sources` is what makes every target that links it wait for the
-# custom command above, instead of racing it.
+# The archive carries Rust's `std` and borrows GLib's allocator and libguile's
+# interpreter, so a target that links it links what those need. The archive comes
+# first: a static library has to precede the libraries its objects reference.
+# `sources` is what makes every target that links it wait for the custom command
+# above, instead of racing it.
 rust_lib_dep = declare_dependency(
   sources: rust_lib,
   link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
+  dependencies: [dependency('glib-2.0'), guile_dep],
 )
 
 lambdock_deps += rust_lib_dep
@@ -411,7 +415,7 @@ unit_tests = [
     'id': 'theme_engine',
     'extra_sources': [test_stubs, 'src/ui/theme_engine.c', 'src/ui/shelf.c',
                       'src/ui/icon_zoom.c', lambdock_resources],
-    'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep],
+    'deps': [gtk_dep, guile_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
     'id': 'popover_menu',
@@ -424,12 +428,12 @@ unit_tests = [
   {
     'id': 'icon_resolver',
     'extra_sources': ['src/ui/icon_resolver.c', lambdock_resources],
-    'deps': [gtk_dep, libm_dep],
+    'deps': [gtk_dep, libm_dep, rust_lib_dep],
   },
   {
     'id': 'icon_zoom',
     'extra_sources': ['src/ui/icon_zoom.c'],
-    'deps': [gtk_dep, libm_dep],
+    'deps': [gtk_dep, libm_dep, rust_lib_dep],
   },
   {
     'id': 'dock_window',
@@ -442,7 +446,7 @@ unit_tests = [
   {
     'id': 'desktop_entry',
     'extra_sources': ['src/ui/desktop_entry.c'],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {
     'id': 'config_values',
@@ -581,12 +585,12 @@ unit_tests = [
   {
     'id': 'trash',
     'extra_sources': ['src/ui/trash.c'],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {
     'id': 'app_actions',
     'extra_sources': ['src/ui/app_actions.c', 'src/ui/desktop_entry.c'],
-    'deps': [dependency('gio-2.0'), dependency('glib-2.0')],
+    'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {
     # The dock as the X server sees it: the window type that makes a window

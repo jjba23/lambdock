@@ -53,6 +53,16 @@ pub const SHELF_REFLECTION_RATIO_MAX: f64 = 2.0;
 pub const SHELF_REFLECTION_BLUR_MAX: f64 = 0.25;
 pub const SHELF_FLARE_MAX_PX: c_int = 80;
 
+/// `SHELF_DEFAULT_*` in `core/shelf_params.h`: the classic flat capsule.
+pub const SHELF_DEFAULT_TILT: f64 = 0.0;
+pub const SHELF_DEFAULT_PERSPECTIVE: f64 = 400.0;
+pub const SHELF_DEFAULT_MARGIN_PX: c_int = 24;
+pub const SHELF_DEFAULT_FRONT_PX: c_int = 0;
+pub const SHELF_DEFAULT_REFLECTION: f64 = 0.0;
+pub const SHELF_DEFAULT_REFLECTION_INTENSITY: f64 = 0.55;
+pub const SHELF_DEFAULT_REFLECTION_BLUR: f64 = 0.05;
+pub const SHELF_DEFAULT_FLARE_PX: c_int = 0;
+
 /// `GtkLayerShellEdge`: LEFT, RIGHT, TOP, BOTTOM.
 pub const EDGE_LEFT: c_int = 0;
 pub const EDGE_RIGHT: c_int = 1;
@@ -227,6 +237,21 @@ pub extern "C" fn lambdock_launchpad_columns_sanitize(raw: f64) -> c_int {
         LAUNCHPAD_COLUMNS_MIN,
         LAUNCHPAD_COLUMNS_MAX,
     )
+}
+
+/// The built-in shelf parameters: the classic flat capsule.
+#[no_mangle]
+pub extern "C" fn lambdock_shelf_params_default() -> ShelfParams {
+    ShelfParams {
+        tilt_deg: SHELF_DEFAULT_TILT,
+        perspective: SHELF_DEFAULT_PERSPECTIVE,
+        margin_px: SHELF_DEFAULT_MARGIN_PX,
+        front_px: SHELF_DEFAULT_FRONT_PX,
+        reflection_ratio: SHELF_DEFAULT_REFLECTION,
+        reflection_intensity: SHELF_DEFAULT_REFLECTION_INTENSITY,
+        reflection_blur_ratio: SHELF_DEFAULT_REFLECTION_BLUR,
+        flare_px: SHELF_DEFAULT_FLARE_PX,
+    }
 }
 
 /// A fully validated shelf parameter set.
@@ -414,16 +439,7 @@ mod tests {
 
     /// The header's `SHELF_DEFAULT_*`: the classic flat capsule.
     fn shelf_defaults() -> ShelfParams {
-        ShelfParams {
-            tilt_deg: 0.0,
-            perspective: 400.0,
-            margin_px: 24,
-            front_px: 0,
-            reflection_ratio: 0.0,
-            reflection_intensity: 0.55,
-            reflection_blur_ratio: 0.05,
-            flare_px: 0,
-        }
+        lambdock_shelf_params_default()
     }
 
     // ======================================================================
