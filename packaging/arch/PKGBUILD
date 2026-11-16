@@ -37,6 +37,7 @@ sha256sums=('SKIP')
 build() {
   cd "$srcdir/${pkgname}"
 
+  # The Makefile shims cargo: build, test and the `xtask' install.
   make build
 }
 

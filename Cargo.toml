@@ -1,0 +1,17 @@
+# lambdock -- hyper-hackable desktop dock for Wayland
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+
+# The workspace: the dock, and `xtask` -- the Rust answer to a Makefile, for the
+# three things cargo does not do on its own (installing data files, compiling the
+# translation catalogues, writing the source archive).
+[workspace]
+members = ["rust", "xtask"]
+resolver = "2"
+
+# One codegen unit per module, so a test that only calls a decision function does
+# not drag the widget code (and GTK) into its link. Profiles belong to the
+# workspace, not to a member.
+[profile.release]
+codegen-units = 256

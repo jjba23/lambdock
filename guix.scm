@@ -33,16 +33,21 @@
     (arguments
      (list #:parallel-build? #t
            #:parallel-tests? #t
-           ;; No configure script: `make' is the whole build, and `make install'
-           ;; places the binary, the desktop entry, the metainfo, the Scheme
-           ;; modules and the catalogues under the prefix.
+           ;; cargo builds, `cargo xtask' installs: the data files, the Scheme
+           ;; modules and the compiled catalogues have no cargo target of their
+           ;; own, which is the whole reason the task crate exists.
            #:phases #~(modify-phases %standard-phases
                         (delete 'configure)
+                        (delete 'build)
                         (replace 'check
                           (lambda* (#:key tests? #:allow-other-keys)
                             (when tests?
-                              (invoke "make" "check")))))
-           #:make-flags #~(list (string-append "PREFIX=" #$output))))
+                              (invoke "cargo" "test" "--offline" "--locked"))))
+                        (replace 'install
+                          (lambda _
+                            (invoke "cargo" "run" "--offline" "--locked"
+                                    "-p" "xtask" "--" "install"
+                                    "--prefix" #$output))))))
     (native-inputs (list (list glib "bin")
                          pkg-config
                          gettext-minimal

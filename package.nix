@@ -39,13 +39,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildPhase = ''
     runHook preBuild
-    make build
+    cargo build --offline --locked --release
     runHook postBuild
   '';
 
   installPhase = ''
     runHook preInstall
-    make install PREFIX=$out
+    cargo run --offline --locked -p xtask -- install --prefix $out
     runHook postInstall
   '';
 
@@ -90,7 +90,7 @@ stdenv.mkDerivation (finalAttrs: {
     # The dock-item tests resolve `utilities-terminal'; give them the themes.
     export XDG_DATA_DIRS=${hicolor-icon-theme}/share:${adwaita-icon-theme}/share
 
-    make test
+    cargo test --offline --locked
 
     runHook postCheck
   '';

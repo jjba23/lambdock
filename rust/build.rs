@@ -114,7 +114,7 @@ fn generate(_what: &str) {
     // itself from a constructor, and a linker drops an archive member nobody
     // references -- which is exactly how the CSS went missing the first time.
     for object in &objects {
-        println!("cargo:rustc-link-arg={}", object.display());
+        println!("cargo:rustc-link-arg-bins={}", object.display());
     }
 }
 

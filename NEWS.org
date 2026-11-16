@@ -248,7 +248,26 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
-** v2.0.1 (2026-11-16)
+** v2.0.2 (2026-11-16)
+
+- *The build is a cargo workspace, and the Makefile is a five-line shim.* The
+  tree is one workspace: the dock in =rust/= and =xtask/=, a dependency-free
+  crate for the three jobs cargo has no target for -- installing the data files,
+  the Scheme modules and the compiled catalogues (=cargo xtask install
+  --prefix=), compiling the translations (=cargo xtask i18n=) and writing the
+  source archive (=cargo xtask dist=).  =make= still works, for the recipes and
+  the habits that type it, and does nothing but call those.
+- *The Scheme suite is a cargo test.* =tests/run_scheme_tests.sh= is gone; the
+  Guile modules' 342 assertions run from =rust/tests/scheme.rs=, which finds an
+  interpreter (or skips, as the script did by exiting 77) and loads the modules
+  from source.  =cargo test= is now the whole suite: the Rust tests and the
+  Scheme ones.
+- *The packaging recipes build it the way a developer does.* Guix replaces the
+  build and install phases with =cargo build= and =cargo xtask install --prefix
+  $output=; Nix's =buildRustPackage= keeps the vendored crates and runs the same
+  two commands; the Dockerfile and the Flatpak manifest do too.
+
+
 
 - *Every recipe builds with =make=.* The Dockerfile, the Debian rules, the
   openSUSE spec, the Arch PKGBUILD and the Flatpak manifest lost their meson

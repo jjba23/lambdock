@@ -7,7 +7,7 @@
 name = "lambdock"
 # The version that ships, and the one the Makefile installs and the packaging
 # reads. The crate is never published, so this is the only place it is written.
-version = "2.0.1"
+version = "2.0.2"
 edition = "2021"
 publish = false
 license = "MIT"
@@ -40,9 +40,3 @@ rust_2018_idioms = { level = "deny", priority = -2 }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
-
-# One codegen unit per module, so a C test that only calls a decision function
-# does not drag the widget code (and GTK) into its link: the linker only pulls
-# the objects a target references.
-[profile.release]
-codegen-units = 256

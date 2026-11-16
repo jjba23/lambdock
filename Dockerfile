@@ -52,6 +52,7 @@ RUN --mount=type=cache,target=/var/cache/zypp \
 
 COPY Makefile ./
 COPY Cargo.toml ./
+COPY Cargo.toml ./
 COPY data/ ./data/
 COPY po/ ./po/
 COPY protocols/ ./protocols/
@@ -75,7 +76,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
     echo "==> Building Lambdock"; \
-    make build; \
+    cargo build --offline --locked --release; \
     echo "==> Build completed successfully"
 
 # ------------------------------------------------------------------------------
@@ -85,7 +86,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
     echo "==> Running Lambdock tests"; \
-    make test \
+    cargo test --offline --locked \
         -C build \
         --print-errorlogs \
         --verbose; \
@@ -98,7 +99,7 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN set -eu; \
     echo "==> Installing Lambdock into staging directory"; \
     rm -rf /tmp/lambdock-root; \
-    DESTDIR=/tmp/lambdock-root make install; \
+    cargo run --offline --locked -p xtask -- install --prefix /usr/local --destdir /tmp/lambdock-root; \
     echo "==> Installed files:"; \
     find /tmp/lambdock-root -type f -o -type l | sort
 
