@@ -248,7 +248,19 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
-** v2.0.3 (2026-11-16)
+** v2.0.4 (2026-11-16)
+
+- *The Makefile is gone.* The build is cargo, in full: =cargo build --release=,
+  =cargo test= (Rust and Scheme), =cargo clippy --all-targets=, and =cargo run -p
+  xtask -- install --prefix DIR [--destdir DIR]= for the data files, the Scheme
+  modules and the compiled catalogues.  Every recipe calls those directly now --
+  Debian's =rules= overrides its three phases, Arch's =PKGBUILD= and openSUSE's
+  spec do the same, and the Flatpak manifest runs the two commands -- so there is
+  one way to build the project and no shim between the recipes and it.
+- *Verified end to end again*: the staged install carries twenty files and the
+  installed binary boots from that root and builds the dock's 25 items.
+
+
 
 - *The recipes are verified against a staged install.* =make install
   DESTDIR=…= (and therefore =cargo xtask install --destdir=) was run into an

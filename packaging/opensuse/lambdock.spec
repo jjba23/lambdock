@@ -56,14 +56,14 @@ Wayfire, Niri, and other compatible compositors.
 %autosetup
 
 %build
-%make_build
+cargo build --offline --locked --release
 
 %install
-%make_install
+cargo run --offline --locked -p xtask -- install --prefix /usr --destdir %{buildroot}
 %find_lang %{name}
 
 %check
-%make check
+cargo test --offline --locked
 
 %files -f %{name}.lang
 %license COPYING

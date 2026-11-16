@@ -50,7 +50,6 @@ RUN --mount=type=cache,target=/var/cache/zypp \
 #
 # ------------------------------------------------------------------------------
 
-COPY Makefile ./
 COPY Cargo.toml ./
 COPY Cargo.toml ./
 COPY data/ ./data/

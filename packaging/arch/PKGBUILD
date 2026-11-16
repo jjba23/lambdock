@@ -37,18 +37,18 @@ sha256sums=('SKIP')
 build() {
   cd "$srcdir/${pkgname}"
 
-  # The Makefile shims cargo: build, test and the `xtask' install.
-  make build
+  cargo build --offline --locked --release
 }
 
 check() {
   cd "$srcdir/${pkgname}"
-  make check
+
+  cargo test --offline --locked
 }
 
 package() {
   cd "$srcdir/${pkgname}"
 
-  make install PREFIX=/usr DESTDIR="$pkgdir"
+  cargo run --offline --locked -p xtask -- install --prefix /usr --destdir "$pkgdir"
   install -Dm644 COPYING "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

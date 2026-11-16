@@ -5,4 +5,15 @@
 # Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 %:
-	dh $@ --buildsystem=makefile
+	dh $@
+
+# cargo builds the crate; `cargo xtask' installs the binary with the data files,
+# the Scheme modules and the compiled catalogues, which cargo has no target for.
+override_dh_auto_build:
+	cargo build --offline --locked --release
+
+override_dh_auto_test:
+	cargo test --offline --locked
+
+override_dh_auto_install:
+	cargo run --offline --locked -p xtask -- install --prefix /usr --destdir debian/lambdock
