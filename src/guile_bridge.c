@@ -129,8 +129,8 @@ static double get_guile_number_for(const char *func_name, const char *path,
   return fallback;
 }
 
-/* Clamping and name->value rules live in src/core/config_values.c, where they
- * are pure and unit tested without a Guile interpreter or a display. */
+/* Clamping and name->value rules live in rust/src/core/config_values.rs, where
+ * they are pure and unit tested without a Guile interpreter or a display. */
 
 /* =================================================================================
  * PUBLIC BRIDGE API

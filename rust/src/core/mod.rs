@@ -10,6 +10,7 @@
 //! Rust tests and need nothing but the compiler.
 
 pub mod clock_face;
+pub mod config_values;
 pub mod dock_click;
 pub mod dock_motion;
 pub mod item_text;

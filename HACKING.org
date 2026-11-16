@@ -184,12 +184,12 @@ expensive, because the state they move is widgets.
   =core/dock_dims.h= includes =ui/shelf.h= (for =LambdockShelfGeometry=), and
   =core/config_values.h= includes =lambdock.h= (for =LambdockShelfParams=).
   The modules in =rust/src/core/= (=dock_click=, =dock_motion=,
-  =tracker_rules=, =clock_face=, =poof=, =poll_budget=, =item_text=) are
-  genuinely GTK-free and their test binaries link nothing but GLib and the Rust
-  archive;
-  =config_values= and =dock_dims= are pure in content but typed against the
-  central header, so their tests link GTK. Moving the shelf/dock value structs
-  into =core/= would close the loop.
+  =tracker_rules=, =clock_face=, =poof=, =poll_budget=, =item_text=,
+  =config_values=) are genuinely GTK-free and their test binaries link nothing
+  but GLib and the Rust archive;
+  =dock_dims= is pure in content but typed against =ui/shelf.h=, so its test
+  links GTK. Moving the remaining dock value struct into =core/= would close the
+  loop.
 - *Only three files touch Guile's C API:* =guile_bridge.c= (all config reads),
   =ui/dock_item.c= (calling a stored poll procedure) and =main.c= (starting the
   REPL). Anything else that needs Scheme asks the bridge.
@@ -304,7 +304,6 @@ lambdock/
 │   ├── dock_window.h          # Public window API (plus guile_bridge.h, toplevel_tracker.h, ...)
 │   ├── logger.h               # LOG_C_* colored logging macros
 │   ├── core/                  # Layer 1: decisions from values, no widgets
-│   │   ├── config_values.c/.h # Clamps/sanitisers + name→enum rules (edges, dock mode)
 │   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
 │   │   └── x11_rules.c/.h     # EWMH decisions: which windows to list, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
@@ -336,6 +335,7 @@ lambdock/
 │       └── core/              # Layer 1, the Rust home of the decisions above
 │           ├── mod.rs
 │           ├── clock_face.rs  # Hand positions + the squircle
+│           ├── config_values.rs # Clamps/sanitisers + name→value rules
 │           ├── dock_click.rs  # What a left click does
 │           ├── dock_motion.rs # Easing, slide, auto-hide margin, fisheye
 │           ├── item_text.rs   # All item wording: labels, tooltips, gauges, plurals
@@ -444,8 +444,9 @@ To move one module:
 
 Ported so far, each with the same cases as the =tests/test_<module>.c= that still
 runs against it: =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=,
-=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c= and =core/item_text.c=.
-Not yet ported: everything GTK, Wayland and Guile.
+=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c=, =core/item_text.c= and
+=core/config_values.c=. Not yet ported: =core/dock_dims.c=, =core/x11_rules.c=,
+=core/render_stats.c= and everything GTK, Wayland and Guile.
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
@@ -1213,7 +1214,7 @@ pointer dies:
 
 | Layer | File                   | Responsibility                                                                 |
 |-------+------------------------+--------------------------------------------------------------------------------+
-| 1     | =core/config_values.c= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf params, edges) |
+| 1     | =core/config_values.h= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf, edges) -- Rust |
 | 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
 | 1     | =core/dock_click.h=    | Click policy: launch, minimize, restore, list -- GTK-free, in Rust               |
 | 1     | =core/dock_motion.h=   | Easing and slide/fisheye arithmetic -- GTK-free, in Rust                         |
