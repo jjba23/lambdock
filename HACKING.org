@@ -656,7 +656,7 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-The whole of =src/core/=, =src/ui/= except two panels, and both trackers are Rust.
+The whole of =src/core/=, =src/ui/= except one panel, and both trackers are Rust.
 =ui/dock_item.c= is gone too, and it was the heart of the widget layer: the item's
 scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
 the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
@@ -700,14 +700,28 @@ and hands none out, and this backend is built on =PropertyNotify= on the root
 window. One extra socket, watched with =g_unix_fd_add_full=, keeps the tracker out
 of GDK's event path entirely.
 
+=ui/preferences.c= is Rust too, and it is the port's first *window*: the form is a
+table of rows (one per card, each naming its reader and the kind of value it
+edits), the debounced apply is unchanged, and =src/ui/preferences.h= stays as the
+contract =main.c= and the test call. Two things the C did by hand are now the
+language's: the registry of open windows is a thread-local map of weak references
+-- a destroyed window is simply absent, not a pointer to type-check before use --
+and a control's state is an =Rc= hanging off its widget's data. Its readers and
+its setters call =rust/src/bridge.rs= directly rather than leaving through the C
+ABI and coming back.
+
+The one trap that file has of its own: gtk-rs's =ObjectExt::set_data= and =data=
+take a =&str= and key it as a =GQuark=, which is the same table =g_object_get_data=
+reads -- but =g_object_set_data_full= is an FFI call and needs a real =&CStr=,
+because a =&str='s bytes are not NUL-terminated. The option name is the second
+kind (the tests and any tooling read it as a string), the control and window state
+are the first.
+
 Not yet ported, in the order the rest of the port intends to take them:
-=ui/launchpad.c= and =ui/preferences.c= (leaf panels, and the last two widget
-files that are still whole), then the two trackers (=toplevel_tracker.c= over
-=zwlr_foreign_toplevel_v1= and =x11_tracker.c= over Xlib, both of which need an
-FFI surface of their own), then what is left of =guile_bridge.c= (the item
-builders and layout writes), and last =dock_window.c= and =main.c= -- the window
-and the application that own everything else, so they move when there is nothing
-below them left to call back into.
+=ui/launchpad.c= (a leaf panel, and the last widget file that is still whole),
+then =dock_window.c= and =main.c= -- the window and the application that own
+everything else, so they move when there is nothing below them left to call back
+into.
 
 One thing that moved with them, and is easy to get wrong again: a widget crosses
 the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is

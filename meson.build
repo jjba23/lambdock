@@ -277,6 +277,7 @@ rust_sources = files(
   'rust/src/ui/poof.rs',
   'rust/src/ui/stack.rs',
   'rust/src/ui/popover_menu.rs',
+  'rust/src/ui/preferences.rs',
   'rust/src/ui/shelf.rs',
   'rust/src/ui/shelf_follow.rs',
   'rust/src/ui/theme_engine.rs',
@@ -381,7 +382,6 @@ sources = files(
   'src/main.c',
   'src/dock_window.c',
   'src/ui/launchpad.c',
-  'src/ui/preferences.c',
 )
 
 # Compiles and links the final binary application executable
@@ -420,7 +420,6 @@ test_stubs = files('tests/test_stubs.c')
 full_app_sources = files(
   'src/dock_window.c',
   'src/ui/launchpad.c',
-  'src/ui/preferences.c',
 )
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
@@ -608,6 +607,8 @@ unit_tests = [
   },
   {
     'id': 'preferences',
+    # The module is Rust now; this binary is what proves the C ABI in
+    # `src/ui/preferences.h` still links and behaves.
     'extra_sources': full_test_sources,
   },
   {

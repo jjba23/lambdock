@@ -145,6 +145,16 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   requests and the dock's own struts -- moved to ~rust/src/~, with their protocol
   surfaces declared as FFI rather than vendoring a crate for them.  The X11 half
   stays a build option: without Xlib, the no-op half is compiled instead.
+- *The preferences window is Rust.* ~ui/preferences.c~ is
+  ~rust/src/ui/preferences.rs~, and it is the port's first window: the form is
+  still data (one table of rows per card, each naming the reader and the kind of
+  value it edits) and an edit is still the debounced apply into `(lambdock prefs)`,
+  so the generated settings file is still left alone.  Two things the C did by hand
+  are now the language's: the open windows are a thread-local map of weak
+  references, so a destroyed window is absent rather than a pointer to type-check,
+  and a control's state is an `Rc` on its widget's data.  Its readers and its
+  setters call ~rust/src/bridge.rs~ directly instead of leaving through the C ABI
+  and coming back, and the gettext catalogues are untouched.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

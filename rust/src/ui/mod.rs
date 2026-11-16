@@ -25,6 +25,7 @@ pub mod icon_zoom;
 pub mod meter;
 pub mod poof;
 pub mod popover_menu;
+pub mod preferences;
 pub mod shelf;
 pub mod shelf_follow;
 pub mod stack;
