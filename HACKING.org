@@ -531,6 +531,13 @@ pinning the size and the offsets of the fields Rust reads -- numbers taken from
   (~into_glib_ptr~). Without that, the box's sink would leave one reference
   behind per icon -- an invisible leak that only valgrind reports.
 
+=The crate's lints live in its manifest.= ~rust/Cargo.toml~ declares ~clippy::all~
+and ~rust_2018_idioms~ as denies in a ~[lints]~ table, which applies them to every
+target the crate builds -- library, unit tests, doc tests. ~meson.build~ runs
+~cargo clippy~ as =rust_clippy= when the toolchain has clippy, so a warning is a
+failing test rather than a suggestion; a toolchain without it still builds, because
+a packager should not need the lint component to ship the dock.
+
 =GTK 4.14 or newer= is the floor now: the Rust half enables =gtk4-rs='s =v4_14=
 feature for ~Accessible::announce~, where the C code compiled that call out below
 4.14 with =GTK_CHECK_VERSION=. The

@@ -130,6 +130,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   used to take an owned wrapper, which sinks a floating reference and releases it
   on the way out, so a box the caller had built and not yet appended was freed while
   the caller still held it. The stack's keyboard navigation test is what caught it.
+- *The Rust half is lint-clean, and stays that way.* The crate declares
+  ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
+  ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same
+  "look for it, do not require it" rule as the desktop entry and AppStream checks,
+  so a minimal toolchain still builds.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from
