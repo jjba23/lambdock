@@ -106,8 +106,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   two view names are ~rust/src/ui/stack.rs~, tested as string arithmetic, and the
   listing followed: reading a directory, hiding dot files, capping it one name past
   the limit so the panel can say the folder has more, and sorting folders first with
-  a locale-aware comparison. What is still C is the thumbnails and the two views
-  that draw the result.  A
+  a locale-aware comparison.  The pictures followed too: the decode into a box twice
+  the target size, the largest square cut out of the middle, the pixbuf's own bytes
+  handed to GDK in the format GdkPixbuf stores them in, the content-type icon a name
+  earns, and the queue that decodes a folder's previews one at a time on a worker
+  thread and paints each into its cell from the main loop -- all
+  ~rust/src/ui/stack.rs~. What is still C is the two views that draw the result and
+  the popover above them.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
@@ -115,6 +120,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   function the test calls.  The release profile builds one codegen unit per
   module, so a C test that only calls a decision function still links nothing but
   GLib instead of dragging GTK and Guile into its link line.
+- *A widget handed to Rust comes back as it went in.* A widget now crosses the
+  seam borrowed (~from_glib_borrow~) in both directions: `lambdock_stack_view_focus_step`
+  used to take an owned wrapper, which sinks a floating reference and releases it
+  on the way out, so a box the caller had built and not yet appended was freed while
+  the caller still held it. The stack's keyboard navigation test is what caught it.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from

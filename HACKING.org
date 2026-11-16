@@ -499,7 +499,10 @@ are the one part that talks to the session bus. =src/ui/trash.c= is
 =rust/src/ui/trash.rs=, the one module allowed to touch the filesystem for trash
 purposes: the /proc/mounts walk and the octal escaping of a mount point are
 parsed as values, and the count and the emptying work on the directories the
-specification defines.
+specification defines. =src/ui/stack.c= is half =rust/src/ui/stack.rs=: the path
+arithmetic, the folder listing, the thumbnail decision, the decode and its crop,
+the pixbuf-to-texture step, the call that reads GdkPixbuf's memory format, the
+entry icons and the worker queue that decodes previews one at a time.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -637,8 +640,30 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-Not yet ported: the item builders and layout writes in =guile_bridge.c=, and the
-rest of =src/ui/= and the two trackers (layers 2-4).
+=ui/stack.c= is the furthest along of the big files: the path arithmetic, the
+folder listing, the thumbnail decision, the decode and its centre crop, the
+texture, the entry icons and the worker queue that feeds them are all Rust. What
+is left of it is the widget tree -- =build_grid_view= and =build_list_view=, the
+entry buttons with their click actions, and the popover above them, which is
+where the C still decides what a cell looks like and what a click means.
+
+Not yet ported, in the order the rest of the port intends to take them:
+=ui/dock_item.c= (the item widget everything else is built around), then
+=ui/launchpad.c= and =ui/preferences.c= (leaf panels, and the last two widget
+files that are still whole), then the two trackers (=toplevel_tracker.c= over
+=zwlr_foreign_toplevel_v1= and =x11_tracker.c= over Xlib, both of which need an
+FFI surface of their own), then what is left of =guile_bridge.c= (the item
+builders and layout writes), and last =dock_window.c= and =main.c= -- the window
+and the application that own everything else, so they move when there is nothing
+below them left to call back into.
+
+One thing that moved with them, and is easy to get wrong again: a widget crosses
+the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is
+~from_glib_borrow~, not ~from_glib_none~, because the latter sinks a floating
+reference and unrefs it on drop -- so a C caller that had built a box and not yet
+appended it got a freed widget back, which is how /accessibility/stack_view_keyboard
+used to abort. The same rule runs the other way when Rust returns a widget: it
+comes back floating, for the caller to sink.
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
