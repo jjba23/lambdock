@@ -358,7 +358,6 @@ sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/dock_item.c',
-  'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )
@@ -402,7 +401,6 @@ full_app_sources = files(
   'src/toplevel_tracker.c',
   'src/x11_tracker.c',
   'src/ui/dock_item.c',
-  'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )

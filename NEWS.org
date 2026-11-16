@@ -110,9 +110,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   the target size, the largest square cut out of the middle, the pixbuf's own bytes
   handed to GDK in the format GdkPixbuf stores them in, the content-type icon a name
   earns, and the queue that decodes a folder's previews one at a time on a worker
-  thread and paints each into its cell from the main loop -- all
-  ~rust/src/ui/stack.rs~. What is still C is the two views that draw the result and
-  the popover above them.  A
+  thread and paints each into its cell from the main loop.  The two views followed,
+  and so did the panel above them: ~ui/stack.c~ is gone, and a stack -- grid or
+  list, the header that walks back out, the view toggle and the popover that stays
+  where it is looking -- is ~rust/src/ui/stack.rs~.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

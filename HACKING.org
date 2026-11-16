@@ -121,7 +121,7 @@ If you read nothing else, read this.
 | Add a widget (CPU, clock, ...)             | =scheme/lambdock/items.scm=                                    |
 | Change how an item is drawn                | =src/ui/dock_item.c=                                           |
 | Change the window popover                  | =rust/src/ui/popover_menu.rs=                                  |
-| Change the stack panel (browsing, header)  | =src/ui/stack.c=                                               |
+| Change the stack panel (browsing, header)  | =rust/src/ui/stack.rs=                                         |
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
 | Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.h=                      |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
@@ -229,7 +229,6 @@ Repeated cases are data, not switches. If you add a case, add a row:
 |--------------------------------------+---------------------+------------------------------------------|
 | =ITEM_KIND_OPS=                      | =ui/dock_item.c=    | one kind of dock item (app, stack, …)     |
 | =DOCK_ITEM_BUILDERS=                 | =guile_bridge.c=    | one Scheme item type                     |
-| =STACK_VIEW_OPS=                     | =ui/stack.c=        | one stack view (grid / list)              |
 | =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
 | =k_*_actions=                        | =ui/preferences.c=  | one "do something" row (e.g. add a widget) |
 | =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.h= | one "do this to every dock" action (Rust) |
@@ -499,10 +498,11 @@ are the one part that talks to the session bus. =src/ui/trash.c= is
 =rust/src/ui/trash.rs=, the one module allowed to touch the filesystem for trash
 purposes: the /proc/mounts walk and the octal escaping of a mount point are
 parsed as values, and the count and the emptying work on the directories the
-specification defines. =src/ui/stack.c= is half =rust/src/ui/stack.rs=: the path
-arithmetic, the folder listing, the thumbnail decision, the decode and its crop,
-the pixbuf-to-texture step, the call that reads GdkPixbuf's memory format, the
-entry icons and the worker queue that decodes previews one at a time.
+specification defines. =src/ui/stack.c= is gone, and the whole of it is
+=rust/src/ui/stack.rs=: the path arithmetic, the folder listing, the thumbnail
+decision, the decode and its crop, the pixbuf-to-texture step, the entry icons and
+the worker queue that decodes them one at a time, the two views with their cells
+and click actions, and the panel and popover above them.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -640,12 +640,11 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-=ui/stack.c= is the furthest along of the big files: the path arithmetic, the
-folder listing, the thumbnail decision, the decode and its centre crop, the
-texture, the entry icons and the worker queue that feeds them are all Rust. What
-is left of it is the widget tree -- =build_grid_view= and =build_list_view=, the
-entry buttons with their click actions, and the popover above them, which is
-where the C still decides what a cell looks like and what a click means.
+=ui/stack.c= is gone -- the first widget file to be finished. Its listing, the
+thumbnail decision and decode, the two views with their cells and click actions,
+the panel header and the popover that walks folders are all =rust/src/ui/stack.rs=,
+and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
+builder still call.
 
 Not yet ported, in the order the rest of the port intends to take them:
 =ui/dock_item.c= (the item widget everything else is built around), then
@@ -1454,7 +1453,7 @@ pointer dies:
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
 | 4     | =ui/clock.h=           | Analogue clock face: squircle body, ticks, hands, glass (body in Rust)             |
 | 4     | =ui/popover_menu.h=    | Dynamic popover building, focus/close/launch/close-all callbacks (in Rust)      |
-| 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
+| 4     | =ui/stack.h=           | Folder stacks: directory listing, grid/list views, popover (body in Rust)        |
 | 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
 | 4     | =ui/trash.h=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files (in Rust)|
 | 4     | =ui/preferences.c=     | Settings window: a declarative row table, debounced apply, window registry       |
@@ -1530,8 +1529,10 @@ callback needs more than one clause, it belongs in =core/= with a name.
   =lambdock_stack_parent_path= and =lambdock_stack_breadcrumb= -- so the browsing
   rules are unit tested without a display; =lambdock_stack_panel_new()= builds
   the panel for any folder, and the popover only remembers *where* it is.
-- A stack view is one row of =STACK_VIEW_OPS= in =ui/stack.c= (settings symbol +
-  builder), which is also where the symbol mapping lives.
+- A stack view is one arm of =view_for_entries()= in =rust/src/ui/stack.rs=, next
+  to the two builders it chooses between; the symbol mapping is the =VIEWS= table
+  above them. There were never enough views to justify a table of function
+  pointers.
 
 ** Strings that leave the bridge are GLib strings
 =guile_bridge.c= converts ~SCM~ values with ~scm_to_utf8_string()~ and copies them

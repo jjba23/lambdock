@@ -142,6 +142,17 @@ __attribute__((weak)) void dock_layout_set_order(const char *config_path, GList 
   (void)keys;
 }
 
+/* A stack remembers its view mode through the layout overrides, and those live
+ * in guile_bridge.c. A binary that links a slice has no bridge, and "nothing to
+ * remember" is what this double says. */
+__attribute__((weak)) void dock_layout_set_view(const char *config_path,
+                                                const char *key,
+                                                const char *view) {
+  (void)config_path;
+  (void)key;
+  (void)view;
+}
+
 /* The item menu and the stack's view reach into the item builder, the tracker and
  * the launchpad for the actions they offer. A binary that links a slice has none of
  * them, and "no title, no window to focus, no view to switch" is what those doubles
@@ -163,16 +174,6 @@ __attribute__((weak)) void close_toplevel_window(LambdockToplevel *window) {
 __attribute__((weak)) void lambdock_stack_set_view(DockItem *item, LambdockStackView view) {
   (void)item;
   (void)view;
-}
-
-/* A stack cell built in Rust walks into a folder by asking the panel above it to
- * rebuild -- and the panel is still stack.c. A binary that links the archive
- * without stack.c gets this: a click on a folder that changes nothing. The real
- * definition wins wherever stack.c is compiled in. */
-__attribute__((weak)) void lambdock_stack_popover_rebuild(DockItem *item,
-                                                          const char *path) {
-  (void)item;
-  (void)path;
 }
 
 __attribute__((weak)) void lambdock_launchpad_show(LambdockState *state) {

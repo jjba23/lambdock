@@ -19,6 +19,8 @@
 use crate::dock_item::DockItem;
 use crate::glib::{g_malloc0, strdup_string};
 use crate::log_debug;
+use crate::log_info;
+use crate::log_warn;
 use gtk4::gdk;
 use gtk4::gdk_pixbuf;
 use gtk4::gio;
@@ -38,6 +40,9 @@ pub const VIEW_LIST: c_int = 1;
 
 /// `DEFAULT_ICON_SIZE` in `lambdock.h`.
 const DEFAULT_ICON_SIZE: i32 = 48;
+
+/// `POPOVER_VBOX_MARGIN` in `lambdock.h`.
+const POPOVER_VBOX_MARGIN: i32 = 8;
 
 /// The two view modes, by their Scheme names.
 const VIEWS: [(&str, c_int); 2] = [("grid", VIEW_GRID), ("list", VIEW_LIST)];
@@ -509,19 +514,6 @@ pub fn path_has_thumbnail(path: &std::path::Path) -> bool {
     i64::from(width) * i64::from(height) <= THUMBNAIL_MAX_PIXELS
 }
 
-/// Whether the file at `path` is worth decoding into a thumbnail.
-///
-/// # Safety
-///
-/// `path` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_path_has_thumbnail(path: *const c_char) -> c_int {
-    match text(path).filter(|path| !path.is_empty()) {
-        Some(path) => c_int::from(path_has_thumbnail(std::path::Path::new(&path))),
-        None => 0,
-    }
-}
-
 /// The largest square that fits in the middle of `width` by `height`.
 fn centre_crop(width: i32, height: i32) -> (i32, i32, i32) {
     let side = width.min(height);
@@ -944,13 +936,13 @@ fn icon_theme() -> Option<gtk4::IconTheme> {
     gdk::Display::default().map(|display| gtk4::IconTheme::for_display(&display))
 }
 
-/// Sets a widget's accessible name and description.
-fn accessible(widget: &gtk4::Widget, label: &std::ffi::CStr, description: &std::ffi::CStr) {
+/// Sets a widget's accessible name and, when it has one, its description.
+fn accessible(widget: &gtk4::Widget, label: &std::ffi::CStr, description: Option<&std::ffi::CStr>) {
     unsafe {
         crate::accessibility::lambdock_accessible_update(
             widget.as_ptr().cast(),
             label.as_ptr(),
-            description.as_ptr(),
+            description.map_or(std::ptr::null(), |description| description.as_ptr()),
         )
     };
 }
@@ -997,12 +989,6 @@ fn close_popover(widget: &gtk4::Widget) {
     }
 }
 
-extern "C" {
-    /// `stack_popover_rebuild` in `src/ui/stack.c`: the panel a view sits in,
-    /// which stays C until its own step.
-    fn lambdock_stack_popover_rebuild(item: *mut DockItem, path: *const c_char);
-}
-
 /// Opens (or walks into) `entry` when `button` is clicked.
 fn attach_open(button: &gtk4::Button, entry: &Entry, item: *mut DockItem) {
     let path = CString::new(entry.path.as_str()).unwrap_or_default();
@@ -1012,7 +998,8 @@ fn attach_open(button: &gtk4::Button, entry: &Entry, item: *mut DockItem) {
         // A folder is a place to go, not a program to start: the panel walks
         // into it, and the file manager is one header button away.
         if !item.is_null() && is_dir {
-            unsafe { lambdock_stack_popover_rebuild(item, path.as_ptr()) };
+            let path = path.to_string_lossy();
+            unsafe { popover_rebuild(item, Some(path.as_ref())) };
             return;
         }
 
@@ -1064,7 +1051,7 @@ fn build_grid_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gt
     accessible(
         flow.upcast_ref(),
         c"Folder contents",
-        c"Use the arrow keys to choose an entry and Enter to open it.",
+        Some(c"Use the arrow keys to choose an entry and Enter to open it."),
     );
 
     for entry in entries {
@@ -1114,7 +1101,7 @@ fn build_list_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gt
     accessible(
         box_.upcast_ref(),
         c"Folder contents",
-        c"Use the arrow keys to choose an entry and Enter to open it.",
+        Some(c"Use the arrow keys to choose an entry and Enter to open it."),
     );
     thumbnail_attach(box_.upcast_ref());
 
@@ -1218,9 +1205,9 @@ pub unsafe extern "C" fn lambdock_stack_view_new(
 ///
 /// # Safety
 ///
-/// As `lambdock_stack_view_new`, and `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_for_item(
+/// `entries` must be null or an array of `StackEntry*`, and `item` must be null
+/// or a live `DockItem`. The result is a floating widget.
+pub unsafe fn lambdock_stack_view_for_item(
     entries: *mut glib::ffi::GPtrArray,
     view: c_int,
     icon_size: c_int,
@@ -1229,6 +1216,599 @@ pub unsafe extern "C" fn lambdock_stack_view_for_item(
     crate::ui::ensure_gtk_initialized();
 
     into_floating_pointer(view_for_entries(entries, view, icon_size, item))
+}
+
+// ============================================================================
+// THE STACK PANEL AND ITS POPOVER
+// ============================================================================
+//
+// The panel is a small file browser, not a printout: it opens on the stack's own
+// folder, walks into any folder below it, walks back out, and flips between the
+// grid and the list from its own header. Where it is looking is stored on the
+// popover, so a rebuild -- a view switch, a walk in or out -- stays in place.
+//
+// The file manager is still one button away, on the folder being shown.
+
+/// Where the panel keeps the folder it is looking at, and the view it built, so
+/// a rebuild and the focus-on-open do not have to re-derive them.
+///
+/// Both are plain GLib object data -- a `g_strdup`ed path and a borrowed widget --
+/// because that is what the C tests and any tooling read them as.
+const PATH_KEY: &std::ffi::CStr = c"lambdock-stack-path";
+const VIEW_KEY: &std::ffi::CStr = c"lambdock-stack-view";
+
+/// The folder the panel is looking at, as the popover remembers it.
+///
+/// # Safety
+///
+/// `popover` must be a live `GtkPopover`.
+unsafe fn stored_path(popover: &gtk4::Popover) -> Option<String> {
+    let stored = glib::gobject_ffi::g_object_get_data(popover.as_ptr().cast(), PATH_KEY.as_ptr());
+
+    text(stored.cast())
+}
+
+/// Remembers the folder the panel is looking at on the popover that holds it.
+///
+/// # Safety
+///
+/// `popover` must be a live `GtkPopover`.
+unsafe fn store_path(popover: &gtk4::Popover, path: &str) {
+    glib::gobject_ffi::g_object_set_data_full(
+        popover.as_ptr().cast(),
+        PATH_KEY.as_ptr(),
+        strdup_string(path).cast(),
+        Some(crate::glib::g_free),
+    );
+}
+
+/// Remembers the view widget on the panel, for the focus-on-open.
+///
+/// # Safety
+///
+/// `panel` must be a live `GtkWidget` that already holds `view` as a descendant.
+unsafe fn store_view(panel: &gtk4::Widget, view: &gtk4::Widget) {
+    glib::gobject_ffi::g_object_set_data(
+        panel.as_ptr().cast(),
+        VIEW_KEY.as_ptr(),
+        view.as_ptr().cast(),
+    );
+}
+
+/// The view the panel recorded, when it is still there.
+///
+/// # Safety
+///
+/// `panel` must be a live `GtkWidget`.
+unsafe fn stored_view(panel: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
+    let view = glib::gobject_ffi::g_object_get_data(panel.as_ptr().cast(), VIEW_KEY.as_ptr());
+    if view.is_null() {
+        return None;
+    }
+
+    Some(from_glib_borrow(view.cast::<gtk4::ffi::GtkWidget>()))
+}
+
+extern "C" {
+    /// `dock_item_key` in `src/ui/dock_item.c`: the identity a layout override
+    /// remembers an item under.
+    fn dock_item_key(item: *const DockItem) -> *mut c_char;
+
+    /// `dock_layout_set_view` in `src/guile_bridge.c`: remembers a stack's view
+    /// mode so it survives a restart.
+    fn dock_layout_set_view(config_path: *const c_char, key: *const c_char, view: *const c_char);
+}
+
+/// The view a name stands for; unknown names are the grid.
+fn view_from_name(name: Option<&str>) -> c_int {
+    let Some(name) = name else {
+        return VIEW_GRID;
+    };
+
+    VIEWS
+        .iter()
+        .find(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+        .map_or(VIEW_GRID, |(_, view)| *view)
+}
+
+/// The Scheme name of a view.
+fn view_name(view: c_int) -> &'static str {
+    VIEWS
+        .iter()
+        .find(|(_, candidate)| *candidate == view)
+        .map_or(VIEWS[0].0, |(name, _)| name)
+}
+
+/// The item's popover, when it has one.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn popover_of(item: *mut DockItem) -> Option<gtk4::Popover> {
+    if item.is_null() {
+        return None;
+    }
+
+    let popover = (*item).popover;
+    if popover.is_null() {
+        return None;
+    }
+
+    // `(transfer none)`: the item owns the popover, so this only adds a ref.
+    Some(from_glib_none(popover.cast::<gtk4::ffi::GtkPopover>()))
+}
+
+/// `format` with one number in it, formatted by `g_strdup_printf`.
+///
+/// A translated sentence with a substitution is formatted by C, not by
+/// `format!`, because a translation may put the placeholder anywhere.
+///
+/// # Safety
+///
+/// `format` must be a format string carrying exactly one `%u`.
+unsafe fn printf_count(format: *const c_char, count: u32) -> String {
+    let text = crate::glib::g_strdup_printf(format, count);
+    if text.is_null() {
+        return String::new();
+    }
+
+    let formatted = std::ffi::CStr::from_ptr(text)
+        .to_string_lossy()
+        .into_owned();
+    crate::glib::g_free(text.cast());
+
+    formatted
+}
+
+/// "300+" when the folder holds more than the panel will list, "12 items" when
+/// it does not.
+unsafe fn count_text(count: u32, truncated: bool) -> String {
+    if truncated {
+        return printf_count(crate::glib::tr(c"%u+ items"), count);
+    }
+
+    printf_count(
+        crate::glib::trn(c"%u item", c"%u items", count),
+        count,
+    )
+}
+
+/// The folder the open panel is showing; the stack's own when it never moved.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn current_path(item: *mut DockItem) -> Option<String> {
+    if item.is_null() {
+        return None;
+    }
+
+    let stored = popover_of(item).and_then(|popover| stored_path(&popover));
+
+    match stored.filter(|path| !path.is_empty()) {
+        Some(path) => Some(path),
+        None => text((*item).stack_path),
+    }
+}
+
+/// One small icon-only header button.
+fn header_button(icon_name: &str, label: &str, description: &str) -> gtk4::Button {
+    let button = gtk4::Button::from_icon_name(icon_name);
+
+    button.add_css_class("flat");
+    button.add_css_class("stack-header-button");
+    button.set_tooltip_text(Some(label));
+    unsafe {
+        crate::accessibility::lambdock_accessible_update(
+            button.as_ptr().cast(),
+            CString::new(label).unwrap_or_default().as_ptr(),
+            CString::new(description).unwrap_or_default().as_ptr(),
+        )
+    };
+
+    button
+}
+
+/// Header: back (inside a folder), where we are, how much, and the controls.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn panel_header(
+    item: *mut DockItem,
+    path: Option<&str>,
+    count: u32,
+    truncated: bool,
+) -> gtk4::Widget {
+    let header = gtk4::Box::new(gtk4::Orientation::Horizontal, 6);
+    header.add_css_class("stack-header");
+
+    let root = text((*item).stack_path);
+    let here = CString::new(path.unwrap_or_default()).unwrap_or_default();
+
+    if parent_path(path, root.as_deref()).is_some() {
+        let back = header_button(
+            "go-previous-symbolic",
+            &translated(c"Back"),
+            &translated(c"Goes back up one folder, without leaving the panel."),
+        );
+        back.add_css_class("stack-back");
+
+        // What the handler needs is where the panel *is*, not where back goes:
+        // it asks for the parent, so it never walks out of the stack by accident.
+        let here = here.clone();
+        back.connect_clicked(move |_| {
+            let root = unsafe { text((*item).stack_path) };
+            if let Some(parent) = parent_path(here.to_str().ok(), root.as_deref()) {
+                if let Ok(parent) = CString::new(parent) {
+                    popover_rebuild(item, Some(parent.to_string_lossy().as_ref()));
+                }
+            }
+        });
+        header.append(&back);
+    }
+
+    let crumb = breadcrumb(path, root.as_deref(), text((*item).name).as_deref());
+    let title = gtk4::Label::new(Some(&crumb));
+    title.add_css_class("title");
+    title.add_css_class("stack-title");
+    title.set_ellipsize(pango::EllipsizeMode::Middle);
+    title.set_max_width_chars(32);
+    header.append(&title);
+
+    let count_label = gtk4::Label::new(Some(&count_text(count, truncated)));
+    count_label.add_css_class("dim-label");
+    count_label.add_css_class("stack-count");
+    header.append(&count_label);
+
+    let spacer = gtk4::Box::new(gtk4::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    header.append(&spacer);
+
+    // Flip the panel between the grid and the list without going back to the
+    // dock's context menu: it is the same choice, and it persists.
+    let view = view_from_name(text((*item).stack_view).as_deref());
+    let listing = view == VIEW_LIST; // what a click would switch to
+    let toggle = header_button(
+        if listing {
+            "view-grid-symbolic"
+        } else {
+            "view-list-symbolic"
+        },
+        &translated(if listing {
+            c"View content as a grid"
+        } else {
+            c"View content as a list"
+        }),
+        &translated(c"Changes how this folder is laid out, and remembers it."),
+    );
+    toggle.add_css_class("stack-view-toggle");
+    toggle.connect_clicked(move |_| {
+        let current = unsafe { view_from_name(text((*item).stack_view).as_deref()) };
+        set_view(
+            item,
+            if current == VIEW_LIST {
+                VIEW_GRID
+            } else {
+                VIEW_LIST
+            },
+        );
+    });
+    header.append(&toggle);
+
+    let open = header_button(
+        "folder-open-symbolic",
+        &translated(c"Open folder"),
+        &translated(c"Opens this folder in the file manager."),
+    );
+    open.add_css_class("stack-open");
+    let here = CString::new(path.unwrap_or_default()).unwrap_or_default();
+    open.connect_clicked(move |_| {
+        if unsafe { crate::ui::desktop_entry::lambdock_open_path(here.as_ptr()) } == 0 {
+            log_warn!(
+                "UI",
+                "Could not open the folder '{}'",
+                here.to_string_lossy()
+            );
+        }
+    });
+    header.append(&open);
+
+    header.upcast()
+}
+
+/// The panel: the header, a separator, the view, and the note that says a folder
+/// holds more entries than the panel will list.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`; `path` must be null or a C string.
+unsafe fn panel_new(item: *mut DockItem, path: Option<&str>) -> Option<gtk4::Widget> {
+    if item.is_null() {
+        return None;
+    }
+
+    let state = (*item).state;
+    let icon_size = if !state.is_null() && (*state).icon_size > 0 {
+        (*state).icon_size
+    } else {
+        DEFAULT_ICON_SIZE
+    };
+
+    let root = text((*item).stack_path);
+    let listing = path.map(str::to_owned).or(root.clone());
+    let view = view_from_name(text((*item).stack_view).as_deref());
+
+    let mut truncated: c_int = 0;
+    let entries = match &listing {
+        Some(path) => {
+            let path = CString::new(path.as_str()).unwrap_or_default();
+            lambdock_stack_list_directory_limited(path.as_ptr(), MAX_ENTRIES, &mut truncated)
+        }
+        None => lambdock_stack_list_directory_limited(
+            std::ptr::null(),
+            MAX_ENTRIES,
+            &mut truncated,
+        ),
+    };
+    let count = if entries.is_null() { 0 } else { (*entries).len };
+
+    let vbox = gtk4::Box::new(gtk4::Orientation::Vertical, 6);
+    // Focusable so the popover can take the keyboard when it opens: Escape then
+    // arrives at the popover's controller instead of being lost to the dock.
+    vbox.set_focusable(true);
+    vbox.set_margin_start(POPOVER_VBOX_MARGIN);
+    vbox.set_margin_end(POPOVER_VBOX_MARGIN);
+    vbox.set_margin_top(POPOVER_VBOX_MARGIN);
+    vbox.set_margin_bottom(POPOVER_VBOX_MARGIN);
+    vbox.add_css_class("stack-popover");
+    accessible(vbox.upcast_ref(), c"Folder contents", None);
+
+    vbox.append(&panel_header(item, path, count, truncated != 0));
+    vbox.append(&gtk4::Separator::new(gtk4::Orientation::Horizontal));
+
+    // The view comes back floating, and appending it is what sinks it.
+    let view_widget: gtk4::Widget =
+        from_glib_none(lambdock_stack_view_for_item(entries, view, icon_size, item));
+    vbox.append(&view_widget);
+
+    // Remembered on the panel, so opening it can put the keyboard focus straight
+    // on the first entry instead of on the panel around it.
+    store_view(vbox.upcast_ref(), &view_widget);
+
+    if truncated != 0 {
+        let note = printf_count(
+            crate::glib::tr(c"Only the first %u entries are shown."),
+            MAX_ENTRIES,
+        );
+        let label = gtk4::Label::new(Some(&note));
+        label.add_css_class("dim-label");
+        label.add_css_class("stack-note");
+        label.set_halign(gtk4::Align::Start);
+        vbox.append(&label);
+    }
+
+    lambdock_stack_entries_free(entries);
+
+    Some(vbox.upcast())
+}
+
+/// Builds the panel for `path` and installs it in the item's popover.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn popover_fill(item: *mut DockItem, path: Option<&str>) {
+    let Some(popover) = popover_of(item) else {
+        return;
+    };
+    let Some(panel) = panel_new(item, path) else {
+        return;
+    };
+
+    store_path(&popover, path.unwrap_or_default());
+    // The item's popover is also the right-click menu, so the stack panel has to
+    // say who it is: the themes style this panel differently from the HUD menus,
+    // and popover_menu.rs takes the class off again when it installs a menu.
+    popover.add_css_class("stack-panel");
+    popover.set_child(Some(&panel));
+}
+
+/// Rebuilds the open panel at `path` and lands the keyboard on its first entry.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn popover_rebuild(item: *mut DockItem, path: Option<&str>) {
+    if item.is_null() {
+        return;
+    }
+
+    popover_fill(item, path);
+
+    if let Some(popover) = popover_of(item) {
+        popover_focus(&popover);
+    }
+}
+
+/// The first focusable entry of a view: a grid cell's button, or a list row.
+fn first_entry(view: &gtk4::Widget) -> Option<gtk4::Widget> {
+    let mut child = view.first_child();
+
+    while let Some(each) = child {
+        if let Some(cell) = each.downcast_ref::<gtk4::FlowBoxChild>() {
+            if let Some(inner) = cell.child().filter(|inner| inner.is_focusable()) {
+                return Some(inner);
+            }
+        } else if each.is_focusable() {
+            return Some(each);
+        }
+
+        child = each.next_sibling();
+    }
+
+    None
+}
+
+/// Moves the keyboard focus into an open stack popover. Without it the focus can
+/// stay on the dock icon, and Escape reaches the dock window instead of the
+/// popover covering it.
+///
+/// The first entry is the useful place to land, so a keyboard user can start
+/// walking the folder immediately; the panel itself is only the fallback for an
+/// empty folder. Escape still bubbles from the entry to the popover's controller.
+fn popover_focus(popover: &gtk4::Popover) {
+    let Some(child) = popover.child() else {
+        return;
+    };
+
+    let view = unsafe { stored_view(&child) };
+
+    let target = view.and_then(|view| {
+        let view: &gtk4::Widget = view.as_ref();
+        if let Some(flow) = view.downcast_ref::<gtk4::FlowBox>() {
+            // A grid cell is a flow box child wrapping the button.
+            return flow.child_at_index(0).map(|first| {
+                first
+                    .child()
+                    .unwrap_or_else(|| first.clone().upcast::<gtk4::Widget>())
+            });
+        }
+
+        if let Some(scrolled) = view.downcast_ref::<gtk4::ScrolledWindow>() {
+            // The grid and the list come wrapped in a scrolled window.
+            let mut inner = scrolled.child();
+            if inner
+                .as_ref()
+                .is_some_and(|child| child.is::<gtk4::Viewport>())
+            {
+                inner = inner
+                    .and_then(|child| child.downcast::<gtk4::Viewport>().ok())
+                    .and_then(|viewport| viewport.child());
+            }
+
+            return inner.and_then(|inner| first_entry(&inner));
+        }
+
+        if view.is::<gtk4::Box>() {
+            return first_entry(view);
+        }
+
+        // A custom view is a single focusable widget.
+        Some(view.clone())
+    });
+
+    let target = target
+        .filter(gtk4::prelude::WidgetExt::is_focusable)
+        .unwrap_or(child);
+
+    if target.is_focusable() {
+        target.grab_focus();
+    }
+}
+
+/// Shows the panel for `item`'s own folder, and pops it up.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_show(item: *mut DockItem) {
+    if item.is_null() {
+        return;
+    }
+
+    let Some(popover) = popover_of(item) else {
+        return;
+    };
+
+    let root = text((*item).stack_path);
+    popover_fill(item, root.as_deref());
+
+    let state = (*item).state;
+    if !popover.is_visible() && !state.is_null() {
+        (*state).active_popovers += 1;
+    }
+
+    popover.popup();
+    popover_focus(&popover);
+}
+
+/// Switches the stack's view mode, remembers it, and redraws an open panel.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_set_view(item: *mut DockItem, view: c_int) {
+    if item.is_null() {
+        return;
+    }
+
+    set_view(item, view);
+}
+
+/// The work behind [`lambdock_stack_set_view`].
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn set_view(item: *mut DockItem, view: c_int) {
+    let name = view_name(view);
+    if text((*item).stack_view).as_deref() == Some(name) {
+        return;
+    }
+
+    let old = (*item).stack_view;
+    (*item).stack_view = strdup_string(name);
+    if !old.is_null() {
+        crate::glib::g_free(old.cast());
+    }
+
+    let state = (*item).state;
+    if !state.is_null() {
+        let key = dock_item_key(item);
+        if !key.is_null() {
+            let name_c = CString::new(name).unwrap_or_default();
+            dock_layout_set_view((*state).config_path, key, name_c.as_ptr());
+            crate::glib::g_free(key.cast());
+        }
+    }
+
+    // If the stack is on screen, redraw it in the new view mode right away --
+    // where it is looking, not necessarily at its root.
+    if let Some(popover) = popover_of(item) {
+        if popover.is_visible() {
+            let path = current_path(item);
+            popover_rebuild(item, path.as_deref());
+        }
+    }
+
+    log_info!(
+        "UI",
+        "Stack '{}' now uses the {name} view",
+        text((*item).name).unwrap_or_else(|| String::from("stack"))
+    );
+}
+
+/// Builds the stack panel: header, view, and the note that a folder holds more
+/// entries than the panel will list.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`; `path` must be null or a C string.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_panel_new(
+    item: *mut DockItem,
+    path: *const c_char,
+) -> *mut gtk4::ffi::GtkWidget {
+    crate::ui::ensure_gtk_initialized();
+
+    let path = text(path);
+    match panel_new(item, path.as_deref()) {
+        Some(panel) => into_floating_pointer(panel),
+        None => std::ptr::null_mut(),
+    }
 }
 
 // ============================================================================
@@ -1425,22 +2005,6 @@ fn attach_keys(view: &gtk4::Widget) {
     });
 
     view.add_controller(keys);
-}
-
-/// Installs the view's arrow-key handling.
-///
-/// # Safety
-///
-/// `view` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_attach_keys(view: *mut gtk4::ffi::GtkWidget) {
-    if view.is_null() {
-        return;
-    }
-
-    crate::ui::ensure_gtk_initialized();
-
-    attach_keys(&crate::ui::widget_from_pointer(view));
 }
 
 /// Moves the view's focus by one step.

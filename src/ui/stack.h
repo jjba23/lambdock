@@ -13,8 +13,8 @@
  * =========================================================================
  * List a folder, render it as a grid or a list, and open its entries.
  *
- * View behaviour is a row of STACK_VIEW_OPS in the .c file, which is also where
- * the settings symbol mapping lives.
+ * The bodies are rust/src/ui/stack.rs; this header is the C-side contract the
+ * tests and the item builder still reach through.
  */
 
 /* A stack never renders more than this many entries: a folder with 10k files
@@ -181,34 +181,6 @@ const char *lambdock_stack_view_to_string(LambdockStackView view);
  */
 GtkWidget *lambdock_stack_view_new(GPtrArray *entries, LambdockStackView view,
                                    int icon_size);
-
-/**
- * lambdock_stack_view_for_item:
- * @entries: Entries to show (borrowed, not retained).
- * @view: Layout to use.
- * @icon_size: Pixel size for the entry icons.
- * @item: (nullable): the stack the view belongs to, or NULL for a detached view.
- *
- * The same view, wired to the stack it belongs to: clicking a folder walks into
- * it inside the panel instead of handing it to the file manager, and clicking a
- * file opens it and closes the panel. A detached view keeps the file-manager
- * behaviour for folders too.
- *
- * Returns: (transfer none): the view widget.
- */
-GtkWidget *lambdock_stack_view_for_item(GPtrArray *entries,
-                                        LambdockStackView view, int icon_size,
-                                        DockItem *item);
-
-/**
- * lambdock_stack_popover_rebuild:
- * @item: A stack dock item.
- * @path: the folder to show.
- *
- * Rebuilds the open panel at @path, keeping the popover where it is, and lands
- * the keyboard focus on its first entry. A cell calls this when it is a folder.
- */
-void lambdock_stack_popover_rebuild(DockItem *item, const char *path);
 
 /**
  * lambdock_stack_panel_new:
