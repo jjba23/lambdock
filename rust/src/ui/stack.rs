@@ -17,8 +17,12 @@
 //! only where inside that folder you are.
 
 use crate::glib::{g_malloc0, strdup_string};
-use gtk4::glib;
+use crate::log_debug;
 use gtk4::gdk;
+use gtk4::gdk_pixbuf;
+use gtk4::gio;
+use gtk4::glib;
+use gtk4::glib::translate::{Borrowed, IntoGlibPtr};
 use gtk4::prelude::*;
 use std::os::raw::{c_char, c_int};
 
@@ -507,6 +511,210 @@ pub unsafe extern "C" fn lambdock_stack_path_has_thumbnail(path: *const c_char) 
         Some(path) => c_int::from(path_has_thumbnail(std::path::Path::new(&path))),
         None => 0,
     }
+}
+
+/// The largest square that fits in the middle of `width` by `height`.
+fn centre_crop(width: i32, height: i32) -> (i32, i32, i32) {
+    let side = width.min(height);
+
+    ((width - side) / 2, (height - side) / 2, side)
+}
+
+/// Decodes `path` into a square, centre-cropped preview, or `None`.
+///
+/// Scaled into a box twice the target size first, so the square crop still has
+/// enough pixels even for a picture far wider than it is tall, and with the
+/// aspect ratio preserved so the crop is a crop and never a squash.
+fn thumbnail(path: &std::path::Path, size: i32) -> Option<gdk_pixbuf::Pixbuf> {
+    if size <= 0 || !path_has_thumbnail(path) {
+        return None;
+    }
+
+    let scaled = match gdk_pixbuf::Pixbuf::from_file_at_scale(path, size * 2, size * 2, true) {
+        Ok(scaled) => scaled,
+        Err(error) => {
+            log_debug!(
+                "UI",
+                "No thumbnail for {}: {error}",
+                path.to_string_lossy()
+            );
+            return None;
+        }
+    };
+
+    let (x, y, side) = centre_crop(scaled.width(), scaled.height());
+    if side <= 0 {
+        return None;
+    }
+
+    Some(scaled.new_subpixbuf(x, y, side, side))
+}
+
+/// The pixbuf's pixels as a texture GTK can draw.
+///
+/// The pixels go across as they are, in the order GdkPixbuf stores them, so the
+/// only decision is whether there is an alpha byte per pixel.
+fn texture_from_pixbuf(pixbuf: &gdk_pixbuf::Pixbuf) -> gdk::Texture {
+    use gtk4::glib::translate::{from_glib_full, IntoGlib, ToGlibPtr};
+
+    let format = if pixbuf.has_alpha() {
+        gdk::MemoryFormat::R8g8b8a8
+    } else {
+        gdk::MemoryFormat::R8g8b8
+    };
+    let pixels = pixbuf.read_pixel_bytes();
+
+    // `gdk::MemoryTexture::new` asserts that GTK is initialized, which a headless
+    // test can never satisfy, and the constructor itself needs no display: so it
+    // is called directly and the wrapper borrowed on the way back.
+    unsafe {
+        let texture = gdk::ffi::gdk_memory_texture_new(
+            pixbuf.width(),
+            pixbuf.height(),
+            format.into_glib(),
+            pixels.to_glib_none().0,
+            pixbuf.rowstride() as usize,
+        );
+
+        from_glib_full(texture.cast())
+    }
+}
+
+/// The icon for one entry of a folder.
+///
+/// A folder is always a folder; a file is whatever its name says it is, and a
+/// type nothing knows still gets the generic document icon.
+fn entry_icon(name: &str, is_dir: bool) -> gio::Icon {
+    if is_dir {
+        return gio::ThemedIcon::new("folder").upcast();
+    }
+
+    let (content_type, _) = gio::content_type_guess(Some(name), None);
+    if content_type.is_empty() {
+        return gio::ThemedIcon::new("text-x-generic").upcast();
+    }
+
+    gio::content_type_get_icon(&content_type)
+}
+
+/// A square, centre-cropped preview of `path`, or null when it has none.
+///
+/// # Safety
+///
+/// `path` must be null or NUL-terminated; the result is `(transfer full)`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_thumbnail_for_path(
+    path: *const c_char,
+    size: c_int,
+) -> *mut gdk::ffi::GdkPaintable {
+    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
+        return std::ptr::null_mut();
+    };
+
+    match thumbnail(std::path::Path::new(&path), size) {
+        Some(pixbuf) => texture_from_pixbuf(&pixbuf)
+            .upcast::<gdk::Paintable>()
+            .into_glib_ptr(),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// The decoded, cropped preview as a pixbuf, for the worker thread that runs off
+/// the main loop.
+///
+/// # Safety
+///
+/// `path` must be null or NUL-terminated; the result is `(transfer full)`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_thumbnail_pixbuf(
+    path: *const c_char,
+    size: c_int,
+) -> *mut gdk_pixbuf::ffi::GdkPixbuf {
+    let Some(path) = text(path).filter(|path| !path.is_empty()) else {
+        return std::ptr::null_mut();
+    };
+
+    match thumbnail(std::path::Path::new(&path), size) {
+        Some(pixbuf) => pixbuf.into_glib_ptr(),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// A texture over `pixbuf`'s pixels, or null for a null pixbuf.
+///
+/// # Safety
+///
+/// `pixbuf` must be null or a live `GdkPixbuf`; the result is `(transfer full)`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_texture_from_pixbuf(
+    pixbuf: *mut gdk_pixbuf::ffi::GdkPixbuf,
+) -> *mut gdk::ffi::GdkTexture {
+    use gtk4::glib::translate::from_glib_borrow;
+
+    if pixbuf.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let pixbuf: Borrowed<gdk_pixbuf::Pixbuf> = from_glib_borrow(pixbuf);
+
+    texture_from_pixbuf(&pixbuf).into_glib_ptr()
+}
+
+/// The image widget for one entry: the entry's own icon when the theme has it,
+/// and the resolver's fallback chain when it does not.
+///
+/// # Safety
+///
+/// `theme` must be null or a live `GtkIconTheme`; `name` must be null or a C
+/// string. The result is a *floating* widget, exactly like `gtk_image_new_*`,
+/// or null when no image could be built.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_entry_image(
+    theme: *mut gtk4::ffi::GtkIconTheme,
+    name: *const c_char,
+    is_dir: c_int,
+    size: c_int,
+) -> *mut gtk4::ffi::GtkWidget {
+    use gtk4::glib::translate::{from_glib_borrow, ToGlibPtr};
+
+    crate::ui::ensure_gtk_initialized();
+
+    let Some(name) = text(name) else {
+        return std::ptr::null_mut();
+    };
+    let is_dir = is_dir != 0;
+
+    let icon = entry_icon(&name, is_dir);
+
+    // A floating image the caller sinks by appending it, which is the contract
+    // `gtk_image_new_*` has: the gtk4-rs constructors sink on the way out, so
+    // the C ones are called and the wrapper only borrows the result.
+    let image = if !theme.is_null()
+        && gtk4::ffi::gtk_icon_theme_has_gicon(theme, icon.to_glib_none().0) != 0
+    {
+        let image = gtk4::ffi::gtk_image_new_from_gicon(icon.to_glib_none().0);
+        gtk4::ffi::gtk_image_set_pixel_size(image.cast(), size);
+        image
+    } else {
+        let fallback = if is_dir {
+            c"folder"
+        } else {
+            c"text-x-generic"
+        };
+        crate::ui::icon_resolver::create_image_for_icon(theme, fallback.as_ptr(), size)
+    };
+
+    if image.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // A fixed box keeps the grid and the list steady when a thumbnail replaces
+    // the icon, and lets the (larger) preview scale down into its slot.
+    let image_view: Borrowed<gtk4::Widget> = from_glib_borrow(image);
+    image_view.set_valign(gtk4::Align::Center);
+    image_view.set_size_request(size, size);
+
+    image
 }
 
 
@@ -1095,5 +1303,114 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A card is square, so a preview is cut from the middle of the scaled
+    /// artwork -- the largest square that fits, never a squash.
+    #[test]
+    fn a_crop_is_the_largest_square_in_the_middle() {
+        // A wide picture: the square is the height, and the sides are trimmed.
+        assert_eq!(centre_crop(40, 20), (10, 0, 20));
+        // A tall one: the square is the width, and top and bottom are trimmed.
+        assert_eq!(centre_crop(20, 40), (0, 10, 20));
+        // Already square: nothing is trimmed at all.
+        assert_eq!(centre_crop(30, 30), (0, 0, 30));
+        assert_eq!(centre_crop(1, 1), (0, 0, 1));
+    }
+
+    /// A real wide picture decodes to a square preview, and a file that is not
+    /// one does not decode at all.
+    #[test]
+    fn a_wide_picture_decodes_to_a_square_preview() {
+        let root = std::env::temp_dir().join("lambdock-stack-preview");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("dir");
+
+        let wide = root.join("wide.png");
+        wide_png(&wide);
+
+        let preview = thumbnail(&wide, 8).expect("decoded");
+        assert_eq!(
+            (preview.width(), preview.height()),
+            (preview.width(), preview.width()),
+            "a preview is square"
+        );
+        // The box is twice the target size, so the crop is at most that.
+        assert!(preview.width() > 0 && preview.width() <= 16);
+
+        // Not an image, not there, not a file, and no size to make.
+        let note = root.join("notes.txt");
+        std::fs::write(&note, "not an image").expect("write");
+        assert!(thumbnail(&note, 8).is_none());
+        assert!(thumbnail(&root.join("missing.png"), 8).is_none());
+        assert!(thumbnail(&root, 8).is_none());
+        assert!(thumbnail(&wide, 0).is_none());
+        assert!(thumbnail(&wide, -8).is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The texture carries the pixbuf's size, which is all the image widget needs
+    /// to draw it.
+    #[test]
+    fn a_texture_keeps_the_size_of_its_pixbuf() {
+        use gtk4::gdk_pixbuf::{Colorspace, Pixbuf};
+
+        let rgba = Pixbuf::new(Colorspace::Rgb, true, 8, 3, 2).expect("pixbuf");
+        let texture = texture_from_pixbuf(&rgba);
+        assert_eq!((texture.width(), texture.height()), (3, 2));
+
+        // An opaque picture has three channels, and the format says so.
+        let rgb = Pixbuf::new(Colorspace::Rgb, false, 8, 5, 4).expect("pixbuf");
+        let texture = texture_from_pixbuf(&rgb);
+        assert_eq!((texture.width(), texture.height()), (5, 4));
+    }
+
+    /// A folder is a folder; everything else is whatever its name says it is,
+    /// with an icon always coming back.
+    #[test]
+    fn a_folder_gets_the_folder_icon() {
+        let icon = entry_icon("Downloads", true);
+        let icon = icon.downcast::<gio::ThemedIcon>().expect("a folder is themed");
+        assert_eq!(
+            icon.names().first().map(|name| name.as_str()),
+            Some("folder"),
+            "a folder looks like a folder"
+        );
+
+        // A file's icon comes from its name's content type, and it is never
+        // empty -- an unknown type still has a generic icon.
+        for name in ["shot.png", "notes.txt", "something.zzzz", "noextension"] {
+            let icon = entry_icon(name, false);
+            let names = icon
+                .clone()
+                .downcast::<gio::ThemedIcon>()
+                .map(|icon| icon.names())
+                .unwrap_or_default();
+            assert!(
+                !names.is_empty() || icon.to_string().is_some(),
+                "{name} has an icon"
+            );
+        }
+    }
+
+    /// A 40x20 PNG: 40 wide so the crop has something to trim, and three bands
+    /// of colour so a preview cannot be confused with a squashed copy.
+    fn wide_png(path: &std::path::Path) {
+        use gtk4::gdk_pixbuf::{Colorspace, Pixbuf};
+
+        let pixbuf = Pixbuf::new(Colorspace::Rgb, true, 8, 40, 20).expect("pixbuf");
+        for x in 0..40u32 {
+            let (red, green, blue) = match x {
+                0..=12 => (255, 0, 0),
+                13..=26 => (0, 255, 0),
+                _ => (0, 0, 255),
+            };
+            for y in 0..20u32 {
+                pixbuf.put_pixel(x, y, red, green, blue, 255);
+            }
+        }
+
+        pixbuf.savev(path, "png", &[]).expect("save png");
     }
 }

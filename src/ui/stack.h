@@ -124,6 +124,49 @@ char *lambdock_stack_breadcrumb(const char *path, const char *root,
 GdkPaintable *lambdock_stack_thumbnail_for_path(const char *path, int size);
 
 /**
+ * lambdock_stack_thumbnail_pixbuf:
+ * @path: A local file path.
+ * @size: Target width/height of the square preview, in pixels.
+ *
+ * The same decode as lambdock_stack_thumbnail_for_path(), one step earlier: the
+ * preview itself, for the worker that decodes off the main thread. A
+ * `GdkTexture` may only be built on the main thread, a `GdkPixbuf` may be built
+ * anywhere.
+ *
+ * Returns: (transfer full) (nullable): a square preview, or NULL.
+ */
+GdkPixbuf *lambdock_stack_thumbnail_pixbuf(const char *path, int size);
+
+/**
+ * lambdock_stack_texture_from_pixbuf:
+ * @pixbuf: (nullable): a decoded preview.
+ *
+ * Wraps @pixbuf's pixels, unchanged in the format GdkPixbuf stores them in, in a
+ * texture GTK can draw: RGBA when it has an alpha byte and RGB when it does not.
+ *
+ * Returns: (transfer full) (nullable): a texture over @pixbuf's pixels, or NULL.
+ */
+GdkTexture *lambdock_stack_texture_from_pixbuf(GdkPixbuf *pixbuf);
+
+/**
+ * lambdock_stack_entry_image:
+ * @theme: (nullable): the icon theme to look the entry up in.
+ * @name: (nullable): the entry's file name, which is what its content type
+ *   comes from.
+ * @is_dir: TRUE for a folder.
+ * @size: Pixel size of the image widget.
+ *
+ * The icon for one entry of a stack: the folder icon for a folder, the icon of
+ * the entry's content type for a file, and the resolver's fallback chain when
+ * the theme has neither. The image is given a fixed @size box so that a
+ * thumbnail replacing it does not move the grid.
+ *
+ * Returns: (transfer none) (nullable): a new floating GtkImage.
+ */
+GtkWidget *lambdock_stack_entry_image(GtkIconTheme *theme, const char *name,
+                                      gboolean is_dir, int size);
+
+/**
  * lambdock_stack_entry_free:
  * @entry: (nullable): a single entry.
  */

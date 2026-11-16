@@ -84,106 +84,16 @@ static const LambdockStackViewOps *stack_view_ops(LambdockStackView view) {
 /* What deserves a thumbnail -- a regular file, under the size cap, an image
  * GdkPixbuf can read, under the pixel cap -- is
  * lambdock_stack_path_has_thumbnail() in rust/src/ui/stack.rs: it is a decision
- * about a file, and it is tested there with a real one-pixel PNG. What stays here
- * is the decode and the worker queue around it.
+ * about a file, and it is tested there with a real one-pixel PNG.
+ *
+ * So is everything that turns it into a picture. The decode and the square
+ * centre crop (lambdock_stack_thumbnail_pixbuf), the pixbuf-to-texture step
+ * that has to read GdkPixbuf's memory format (lambdock_stack_texture_from_pixbuf),
+ * the content-type icon and the sized image built around it
+ * (lambdock_stack_entry_image) all live there, because a preview is a decision
+ * about pixels and a file name rather than about a widget. What stays here is
+ * the queue that decodes them and the views that show them.
  */
-int lambdock_stack_path_has_thumbnail(const char *path);
-
-/* Decodes one square, centre-cropped preview. Safe to call off the main thread:
- * it only touches GdkPixbuf and the file system. */
-static GdkPixbuf *stack_thumbnail_pixbuf(const char *path, int size) {
-  if (!lambdock_stack_path_has_thumbnail(path) || size <= 0)
-    return NULL;
-
-  /* Scale into a box twice the target size (so the square crop keeps enough
-   * pixels even for a wide image) and let GdkPixbuf preserve the aspect ratio. */
-  GError *error = NULL;
-  GdkPixbuf *scaled = gdk_pixbuf_new_from_file_at_scale(
-      path, size * 2, size * 2, TRUE, &error);
-  if (!scaled) {
-    LOG_C_DEBUG("UI", "No thumbnail for %s: %s", path,
-                error ? error->message : "unknown error");
-    g_clear_error(&error);
-    return NULL;
-  }
-
-  /* Cards are square: crop the centre out of the scaled image instead of
-   * squashing it. */
-  int scaled_w = gdk_pixbuf_get_width(scaled);
-  int scaled_h = gdk_pixbuf_get_height(scaled);
-  int side = MIN(scaled_w, scaled_h);
-  GdkPixbuf *square = gdk_pixbuf_new_subpixbuf(
-      scaled, (scaled_w - side) / 2, (scaled_h - side) / 2, side, side);
-  g_object_unref(scaled);
-
-  return square;
-}
-
-/* gdk_texture_new_for_pixbuf() is deprecated; hand GTK the pixels directly.
- * GdkPixbuf stores 8-bit RGB or RGBA in memory in exactly the order these
- * memory formats describe. */
-static GdkTexture *stack_texture_from_pixbuf(GdkPixbuf *pixbuf) {
-  int width = gdk_pixbuf_get_width(pixbuf);
-  int height = gdk_pixbuf_get_height(pixbuf);
-  int rowstride = gdk_pixbuf_get_rowstride(pixbuf);
-  gsize length = (gsize)rowstride * (gsize)height;
-  GBytes *pixels = g_bytes_new(gdk_pixbuf_read_pixels(pixbuf), length);
-  GdkMemoryFormat format = gdk_pixbuf_get_has_alpha(pixbuf)
-                               ? GDK_MEMORY_R8G8B8A8
-                               : GDK_MEMORY_R8G8B8;
-  GdkTexture *texture =
-      gdk_memory_texture_new(width, height, format, pixels, rowstride);
-  g_bytes_unref(pixels);
-
-  return texture;
-}
-
-GdkPaintable *lambdock_stack_thumbnail_for_path(const char *path, int size) {
-  GdkPixbuf *pixbuf = stack_thumbnail_pixbuf(path, size);
-  if (!pixbuf)
-    return NULL;
-
-  GdkTexture *texture = stack_texture_from_pixbuf(pixbuf);
-  g_object_unref(pixbuf);
-  return GDK_PAINTABLE(texture);
-}
-
-static GIcon *icon_for_entry(const LambdockStackEntry *entry) {
-  if (entry->is_dir)
-    return g_themed_icon_new("folder");
-
-  char *content_type = g_content_type_guess(entry->name, NULL, 0, NULL);
-  GIcon *icon = content_type ? g_content_type_get_icon(content_type) : NULL;
-  g_free(content_type);
-
-  return icon ? icon : g_themed_icon_new("text-x-generic");
-}
-
-static GtkWidget *image_for_entry(GtkIconTheme *theme,
-                                  const LambdockStackEntry *entry,
-                                  int size) {
-  GIcon *icon = icon_for_entry(entry);
-  GtkWidget *image = NULL;
-
-  if (theme && gtk_icon_theme_has_gicon(theme, icon)) {
-    image = gtk_image_new_from_gicon(icon);
-    gtk_image_set_pixel_size(GTK_IMAGE(image), size);
-  } else {
-    /* Unknown content type: let the resolver run its own fallback chain. */
-    image = entry->is_dir ? create_image_for_icon(theme, "folder", size)
-                          : create_image_for_icon(theme, "text-x-generic", size);
-  }
-  g_object_unref(icon);
-
-  if (image) {
-    /* A fixed box keeps the grid and list steady when a thumbnail replaces the
-     * icon, and lets the image scale the (larger) preview down to its slot. */
-    gtk_widget_set_valign(image, GTK_ALIGN_CENTER);
-    gtk_widget_set_size_request(image, size, size);
-  }
-
-  return image;
-}
 
 /* ============================================================================
  * GRID / LIST THUMBNAILS
@@ -236,7 +146,7 @@ static void view_thumbnail_thread(GTask *task, gpointer source_object,
   (void)source_object;
   (void)cancellable;
   ViewThumbnailJob *job = (ViewThumbnailJob *)task_data;
-  GdkPixbuf *pixbuf = stack_thumbnail_pixbuf(job->path, job->size);
+  GdkPixbuf *pixbuf = lambdock_stack_thumbnail_pixbuf(job->path, job->size);
 
   g_task_return_pointer(task, pixbuf, pixbuf ? g_object_unref : NULL);
 }
@@ -285,7 +195,7 @@ static void on_view_thumbnail_ready(GObject *source_object,
 
     if (queue) {
       if (pixbuf && job->image && GTK_IS_IMAGE(job->image)) {
-        GdkTexture *texture = stack_texture_from_pixbuf(pixbuf);
+        GdkTexture *texture = lambdock_stack_texture_from_pixbuf(pixbuf);
         gtk_image_set_from_paintable(GTK_IMAGE(job->image),
                                     GDK_PAINTABLE(texture));
         g_object_unref(texture);
@@ -528,7 +438,8 @@ static GtkWidget *build_grid_view(GPtrArray *entries, int icon_size,
     GtkWidget *content = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
     gtk_widget_set_valign(content, GTK_ALIGN_CENTER);
 
-    GtkWidget *image = image_for_entry(theme, entry, cell_icon_size);
+    GtkWidget *image = lambdock_stack_entry_image(
+        theme, entry->name, entry->is_dir, cell_icon_size);
     if (image) {
       gtk_box_append(GTK_BOX(content), image);
       /* The worker decides whether the file really is an image; doing that
@@ -583,7 +494,8 @@ static GtkWidget *build_list_view(GPtrArray *entries, int icon_size,
 
     GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
 
-    GtkWidget *image = image_for_entry(theme, entry, list_icon_size);
+    GtkWidget *image = lambdock_stack_entry_image(
+        theme, entry->name, entry->is_dir, list_icon_size);
     if (image) {
       gtk_box_append(GTK_BOX(row), image);
       if (!entry->is_dir)
