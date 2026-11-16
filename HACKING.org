@@ -337,10 +337,12 @@ lambdock/
 │       ├── glib.rs            # The one place the crate names GLib and gettext
 │       ├── guile.rs           # The libguile surface, and what it costs
 │       ├── logging.rs         # src/logger.h, tagged [R:SUB]
+│       ├── state.rs           # LambdockState, field for field
 │       ├── ui/                # Layers 3-4, the Rust home of src/ui/
 │       │   ├── mod.rs         # + ensure_gtk_initialized()
 │       │   ├── icon_resolver.rs # Icon search paths + the six-stage pipeline
 │       │   └── widget_utils.rs # CSS-class toggles
+│       ├── accessibility.rs   # Reduce-motion rules + accessible labels
 │       ├── app_window.rs      # The window records and their ownership rules
 │       ├── dock_registry.rs   # The only owner of the active-dock list
 │       └── core/              # Layer 1, the Rust home of the decisions above
@@ -465,10 +467,35 @@ bridge, the dock registry, and the first widget module. =core/poll_budget.c=,
 contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
 =src/guile_bridge.c= keeps the item builders, the layout writes and the poll
 procedures. =rust/src/dock_registry.rs= owns the live-dock list, =rust/src/app_window.rs=
-owns the window records, and the whole of =src/ui/icon_resolver.c= -- the icon
-search paths and the six-stage pipeline that turns a name into a =GtkImage= -- is
-=rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c= alongside it as
-=rust/src/ui/widget_utils.rs=. The
+owns the window records, =rust/src/accessibility.rs= decides whether the dock may
+animate and pushes accessible labels, and the whole of =src/ui/icon_resolver.c= --
+the icon search paths and the six-stage pipeline that turns a name into a
+=GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c=
+alongside it as =rust/src/ui/widget_utils.rs=.
+
+=Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~
+field for field, because Rust now has modules that read a dock's fields
+(~reduce_motion~ today, more as the port goes). A wrong offset is not a compile
+error, it is a corrupted field two modules away, so the mirror carries a test
+pinning the size and the offsets of the fields Rust reads -- numbers taken from
+~offsetof~ in C. When =lambdock.h= grows a field, that test fails and says so.
+
+=GTK from Rust has two traps=, both found by tests:
+
+- *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
+  leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
+  ~assert_initialized_main_thread!~ aborts with "GTK has not been initialized".
+  ~ui::ensure_gtk_initialized()~ calls ~gtk4::init()~ at each entry point, and a
+  module that only needs the settings object uses ~gtk_settings_get_default~ and
+  ~from_glib_borrow~ instead of the asserting ~Settings::default()~.
+- *A widget returned to C keeps its floating reference.* ~gtk_image_new_*~ hands
+  back a floating reference and the C callers sink it by appending the widget to a
+  box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
+  through the C constructors and only borrows the wrapper type on the way in.
+
+=GTK 4.14 or newer= is the floor now: the Rust half enables =gtk4-rs='s =v4_14=
+feature for ~Accessible::announce~, where the C code compiled that call out below
+4.14 with =GTK_CHECK_VERSION=. The
 diagnostics those modules write come from =rust/src/logging.rs=, which mirrors
 =src/logger.h= but tags its lines =[R:SUB]= instead of =[C:SUB]=, so a log says
 which side of the port emitted it.

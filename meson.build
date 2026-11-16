@@ -255,11 +255,13 @@ cargo = find_program('cargo')
 rust_sources = files(
   'rust/build.rs',
   'rust/src/lib.rs',
+  'rust/src/accessibility.rs',
   'rust/src/app_window.rs',
   'rust/src/bridge.rs',
   'rust/src/glib.rs',
   'rust/src/guile.rs',
   'rust/src/logging.rs',
+  'rust/src/state.rs',
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/icon_resolver.rs',
@@ -336,7 +338,6 @@ inc = include_directories('src')
 # List of all C source code files needed to build the project
 sources = files(
   'src/main.c',
-  'src/accessibility.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',
@@ -394,7 +395,6 @@ test_stubs = files('tests/test_stubs.c')
 
 # Shared non-main sources for tests requiring full application context
 full_app_sources = files(
-  'src/accessibility.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
   'src/toplevel_tracker.c',

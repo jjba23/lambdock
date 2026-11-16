@@ -20,7 +20,7 @@ name = "lambdock"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-gtk4 = "0.11.5"
+gtk4 = { version = "0.11.5", features = ["v4_14"] }
 
 # One codegen unit per module, so a C test that only calls a decision function
 # does not drag the widget code (and GTK) into its link: the linker only pulls

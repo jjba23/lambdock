@@ -10,6 +10,7 @@
 //! that its header under `src/` declares, which is what lets the port go one
 //! module at a time: from C's point of view nothing moved.
 
+pub mod accessibility;
 pub mod app_window;
 pub mod bridge;
 pub mod core;
@@ -17,4 +18,5 @@ pub mod dock_registry;
 pub(crate) mod glib;
 pub(crate) mod guile;
 pub mod logging;
+pub mod state;
 pub mod ui;

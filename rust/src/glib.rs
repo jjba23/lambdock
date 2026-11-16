@@ -26,6 +26,9 @@ extern "C" {
     pub fn g_free(memory: *mut c_void);
     pub fn g_malloc0(size: usize) -> *mut c_void;
 
+    /// Compares two C strings, with NULL equal to NULL.
+    pub fn g_strcmp0(left: *const c_char, right: *const c_char) -> c_int;
+
     /// The XDG data directories, which the icon search path is built from.
     pub fn g_get_system_data_dirs() -> *const *const c_char;
     pub fn g_get_home_dir() -> *const c_char;
