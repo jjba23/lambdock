@@ -322,7 +322,7 @@ lambdock/
 │       ├── preferences.c/.h   # Settings window + per-dock window registry
 │       ├── theme_engine.h     # GResource CSS loading + selector scoping (in rust/src/ui/)
 │       ├── icon_resolver.c/.h # 6-stage icon fallback pipeline + icon theme setup
-│       ├── desktop_entry.c/.h # .desktop parsing + app-id alias cache (string rules in rust/src/ui/)
+│       ├── desktop_entry.h    # .desktop parsing + app-id alias cache (in rust/src/ui/)
 │       ├── app_actions.c/.h   # Launch/close/MPRIS actions behind the popover
 │       ├── dock_dnd.c/.h      # Drag and drop: reorder, add, drop on stack/trash
 │       └── widget_utils.c/.h  # CSS-class toggles for state-driven styling
@@ -488,11 +488,11 @@ is =rust/src/ui/dock_item_windows.rs=: the window model behind an item, because
 a file about building an icon should not also own which handles an item tracks.
 =src/ui/theme_engine.c= is =rust/src/ui/theme_engine.rs=, split the same way: the
 theme request and the selector scoping are values and string functions, and only
-the appliers touch GTK. =src/ui/desktop_entry.c= is half moved, by that same
-rule: =lambdock_exec_strip_field_codes= and =lambdock_app_id_to_name= are
-=rust/src/ui/desktop_entry.rs= now -- decisions about strings, with the
-field-code table and the camel-case table tested there -- while parsing,
-scanning and the cache stay in C until that half moves too.
+the appliers touch GTK. =src/ui/desktop_entry.c= is =rust/src/ui/desktop_entry.rs=
+too, parsing and cache included: the field-code and camel-case tables are the
+sharp end of the tests, and the cache is a single value behind a mutex instead of
+three file statics. =LambdockDesktopEntry= is mirrored there field for field, so
+the C test still reads it by offset.
 
 =Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
 field for field, because Rust now has modules that read a dock's fields
@@ -1428,7 +1428,7 @@ pointer dies:
 | 4     | =ui/preferences.c=     | Settings window: a declarative row table, debounced apply, window registry       |
 | 4     | =ui/theme_engine.h=    | GResource theme load, selector scoping, user ~styles.css~ override (body in Rust)|
 | 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
-| 4     | =ui/desktop_entry.c/h= | =.desktop= parsing + cache in C; the exec field codes and the app-id wording in Rust |
+| 4     | =ui/desktop_entry.h=   | =.desktop= parsing, exec field codes, app-id alias cache (body in Rust)          |
 | 4     | =ui/app_actions.c=     | App actions: launch commands, MPRIS/D-Bus calls, command building                |
 | 4     | =ui/dock_dnd.c=        | Drag and drop: reorder, add favourites, drop onto stack/trash                    |
 | 4     | =ui/widget_utils.c=    | CSS-class toggles for state-driven styling (the "is it a taskbar" decisions)      |

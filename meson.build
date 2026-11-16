@@ -354,7 +354,6 @@ sources = files(
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
   'src/ui/app_actions.c',
-  'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
@@ -405,7 +404,6 @@ full_app_sources = files(
   'src/ui/dock_item.c',
   'src/ui/dock_dnd.c',
   'src/ui/app_actions.c',
-  'src/ui/desktop_entry.c',
   'src/ui/stack.c',
   'src/ui/launchpad.c',
   'src/ui/shelf.c',
@@ -452,7 +450,9 @@ unit_tests = [
   },
   {
     'id': 'desktop_entry',
-    'extra_sources': ['src/ui/desktop_entry.c'],
+    # The module is Rust now; this binary is what proves the C ABI in
+    # `src/ui/desktop_entry.h` still links and behaves.
+    'extra_sources': [],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {
@@ -605,7 +605,7 @@ unit_tests = [
   },
   {
     'id': 'app_actions',
-    'extra_sources': ['src/ui/app_actions.c', 'src/ui/desktop_entry.c'],
+    'extra_sources': ['src/ui/app_actions.c'],
     'deps': [dependency('gio-2.0'), dependency('glib-2.0'), rust_lib_dep],
   },
   {

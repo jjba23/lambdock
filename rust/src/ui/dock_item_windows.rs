@@ -18,6 +18,7 @@
 use crate::app_window::{AppWindow, GList, LambdockToplevel};
 use crate::dock_item::DockItem;
 use crate::state::LambdockState;
+use crate::ui::desktop_entry::DesktopEntry;
 use std::os::raw::{c_char, c_int, c_void};
 
 /// The names a dock item is known by, borrowed from the C struct that holds them.
@@ -41,20 +42,6 @@ pub struct EntryNames<'a> {
     pub stem: Option<&'a str>,
     pub icon: Option<&'a str>,
     pub exec: Option<&'a str>,
-}
-
-/// The leading `char*` fields of `LambdockDesktopEntry`, in the header's order.
-///
-/// Only the fields the matcher reads are mirrored; the offset test pins them to
-/// the header, so a field added *before* them fails that test instead of silently
-/// shifting a read.
-#[repr(C)]
-pub struct DesktopEntryNames {
-    pub id: *mut c_char,
-    pub stem: *mut c_char,
-    pub name: *mut c_char,
-    pub exec: *mut c_char,
-    pub icon: *mut c_char,
 }
 
 /// Whether `app_id` appears in `exec` as a whole token, ignoring case.
@@ -197,7 +184,7 @@ extern "C" {
     fn reveal_dock(state: *mut LambdockState);
 
     /// The desktop entry a reported app id resolves to (`desktop_entry.c`).
-    fn lambdock_desktop_entry_lookup(app_id: *const c_char) -> *const DesktopEntryNames;
+    fn lambdock_desktop_entry_lookup(app_id: *const c_char) -> *const DesktopEntry;
 
     fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
     fn g_list_free(list: *mut GList);
@@ -804,19 +791,5 @@ mod tests {
             assert!(!any_window_focused(unfocused));
             free_windows(unfocused);
         }
-    }
-
-    /// The entry mirror reads the header's leading fields, so it is a prefix of
-    /// `LambdockDesktopEntry`: id, stem, name, exec, icon, in that order.
-    #[test]
-    fn the_entry_mirror_matches_the_header_prefix() {
-        use std::mem::{offset_of, size_of};
-
-        assert_eq!(size_of::<DesktopEntryNames>(), 5 * size_of::<*mut c_char>());
-        assert_eq!(offset_of!(DesktopEntryNames, id), 0);
-        assert_eq!(offset_of!(DesktopEntryNames, stem), 8);
-        assert_eq!(offset_of!(DesktopEntryNames, name), 16);
-        assert_eq!(offset_of!(DesktopEntryNames, exec), 24);
-        assert_eq!(offset_of!(DesktopEntryNames, icon), 32);
     }
 }
