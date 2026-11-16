@@ -384,7 +384,6 @@ inc = include_directories('src')
 # List of all C source code files needed to build the project
 sources = files(
   'src/main.c',
-  'src/dock_window.c',
 )
 
 # Compiles and links the final binary application executable
@@ -420,9 +419,7 @@ test_env.set('XDG_CONFIG_HOME',
 test_stubs = files('tests/test_stubs.c')
 
 # Shared non-main sources for tests requiring full application context
-full_app_sources = files(
-  'src/dock_window.c',
-)
+full_app_sources = files()
 full_test_sources = [test_stubs, full_app_sources, wl_proto_sources, lambdock_resources]
 
 unit_tests = [

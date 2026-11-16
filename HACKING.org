@@ -730,58 +730,27 @@ are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI an
 named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
 stays as the contract the tests call.
 
-=dock_window.c= is most of the way moved. In =rust/src/dock_window.rs= now: the
-layout half (the monitor, the dimensions it gives the overlay and the capsule,
-the row's margins and alignment, the room the fisheye spreads into, and the input
-region that keeps the unseen parts of the surface from eating clicks), the pure
-surface policy (which edges to anchor and how much desktop to reserve, returned
-by value as a mirrored struct), the slide (its frame callback, the settling
-window that tells an echo apart from a real crossing, and the reduced-motion
-shortcut), the row-at-rest reset, auto-hide with reveal, the mode CSS classes and
-the shelf's shape, the layer-shell surface itself (the two branches, the keyboard
-mode, the monitor, the anchors and the exclusive zone), the mode refresh, the
-first hide, the backdrop menu, and the fisheye (the cached item centres, the
-per-frame sizes, the reflection that grows with its icon), the About dialog and the teardown
-(one named step per kind of resource, with the re-entrancy guard the C had).
+=dock_window.c= is gone. One dock's window is =rust/src/dock_window.rs= end to
+end: the layer shell and both of its branches, the layout and the input region,
+the slide and its settling window, auto-hide and reveal, the fisheye, the
+backdrop menu, the pointer callbacks, the About dialog and the teardown. The
+header, =src/dock_window.h=, stays as the contract the rest of the C and the
+tests call, which is the seam rule the whole port has followed.
 
-What is left in C is 380 lines: the four motion callbacks that hand the pointer
-to the fisheye, the surface-signal wiring, the motion controller that installs
-both, and the declarations of everything above. =main.c= is the last file.
+Two things that file taught, both now written down where they bit:
 
-Two things that moved with them and are worth knowing: the about dialog's
-version comes from meson (=LAMBDOCK_VERSION= through =rust/build.rs=), so there
-is still one version string in the project; and teardown disconnects handlers
-through =g_signal_handlers_disconnect_matched=, because
-=g_signal_handlers_disconnect_by_data= is a macro in gobject's headers and not
-an exported symbol.
+- A widget read out of a dock's state is *borrowed*. The fixtures build a dock
+  out of floating boxes, and an owning wrapper sinks one and frees it on the way
+  out; the layout code pays for a `&*` at the two call sites that want a
+  reference, which is cheaper than a dead pointer.
+- `g_signal_handlers_disconnect_by_data` is a macro in gobject's headers, not an
+  exported symbol, so teardown calls `g_signal_handlers_disconnect_matched` with
+  `G_SIGNAL_MATCH_DATA`. The handlers a dock connects to its *surface* are kept
+  by id in a thread-local instead: the state mirror has no room for ids, and the
+  surface outlives the state it reports to.
 
-The hover path keeps the C's two measurements, which is what
-=test_render_budget= asserts: a pointer that moves less than
-=FISHEYE_POINTER_STEP_PX= is dropped before it touches a widget, and the
-magnified layout sizes are coarsened to =FISHEYE_LAYOUT_STEP_PX= so the row
-re-measures about half as often as the pointer moves -- while the icon itself
-follows the pointer continuously, because it is painted through a transform.
-
-The surface-signal wiring (=on_window_map= and the two =GdkSurface= handlers)
-deliberately stays in C: they connect handlers with `state` as their signal data,
-which is exactly what =detach_window_handlers= disconnects by on teardown, and a
-Rust closure has no user data to disconnect by.
-
-A dozen of those are called from the C half by name, so the file now opens with
-the seam: the declaration list is what is Rust, and reading it is reading the
-port's progress.
-
-The rule those two halves taught, and it is the one to keep: a widget read out of
-a dock's state is *borrowed*. The fixtures build a dock out of floating boxes,
-and an owning wrapper sinks one and frees it on the way out. The layout code pays
-for that with a `&*` at the two call sites that want a reference, which is
-cheaper than a dead pointer.
-
-One thing that half has to say for itself: the dimensions code reads widgets out
-of the state and must *borrow* them, even though a real dock's widgets are
-parented. The test fixtures build a dock out of floating boxes, and an owning
-wrapper sinks one and frees it on the way out -- which is how
-/ui/dock_window/capsule_padding started reading freed widgets.
+=main.c= is the last file: the application -- dock discovery, monitors, the REPL
+socket, the file watchers, the menu actions and startup.
 
 One thing that moved with them, and is easy to get wrong again: a widget crosses
 the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is

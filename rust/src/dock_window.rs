@@ -19,6 +19,7 @@ use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::{from_glib_borrow, from_glib_full, from_glib_none, Borrowed, IntoGlib};
 use gtk4::prelude::*;
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
@@ -29,8 +30,8 @@ use crate::core::dock_dims::{
 };
 use crate::core::dock_motion::{
     lambdock_dock_needs_full_input, lambdock_fisheye_scale, lambdock_hide_margin,
-    lambdock_scaled_size, lambdock_settling, lambdock_size_step, lambdock_slide_position,
-    lambdock_slide_progress,
+    lambdock_points_differ, lambdock_scaled_size, lambdock_settling, lambdock_size_step,
+    lambdock_slide_position, lambdock_slide_progress,
 };
 use crate::core::render_stats::{
     lambdock_stats_add, lambdock_stats_bump, GEOMETRY_REFRESHES, HOVER_FRAMES, HOVER_SKIPS, HOVER_US,
@@ -2378,11 +2379,13 @@ unsafe fn detach_window_handlers(dock: &mut LambdockState) {
     // last signal has been emitted for it, and a `layout` or a resize during
     // that teardown reaches the handler with a dangling state. Dropping the
     // handlers here is why the X11 placement does not need a liveness check.
+    let handlers = take_surface_handlers(dock as *const LambdockState);
     if !dock.x11_surface.is_null() {
-        disconnect_handlers_by_data(
-            dock.x11_surface,
-            (dock as *mut LambdockState).cast(),
-        );
+        let surface: gdk::Surface = from_glib_none(dock.x11_surface.cast::<gdk::ffi::GdkSurface>());
+        for handler in handlers {
+            surface.disconnect(handler);
+        }
+
         dock.x11_surface = std::ptr::null_mut();
     }
 }
@@ -2600,6 +2603,263 @@ pub unsafe extern "C" fn dock_window_set_tracker_connected(
             window.add_css_class("tracker-disconnected");
         }
     }
+}
+
+// ===========================================================================
+// THE POINTER
+// ===========================================================================
+//
+// The callbacks here are adapters: read a pointer position, call one helper,
+// return. The decisions they encode are documented where they are made.
+
+/// `AUTOHIDE_LEAVE_DELAY_MS` in `lambdock.h`: how long the pointer has to be
+/// away before the hide countdown starts.
+const AUTOHIDE_LEAVE_DELAY_MS: u32 = 600;
+
+thread_local! {
+    /// The `GdkSurface` handlers each dock connected, keyed by the dock's
+    /// address.
+    ///
+    /// The state mirror has no room for signal ids, and the surface outlives the
+    /// state it reports to -- GTK destroys it after the last signal has been
+    /// emitted for it -- so teardown has to be able to drop these by name.
+    static SURFACE_HANDLERS: RefCell<Vec<(usize, Vec<glib::SignalHandlerId>)>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Remembers the handlers connected to a dock's surface.
+fn store_surface_handlers(state: *const LambdockState, ids: Vec<glib::SignalHandlerId>) {
+    SURFACE_HANDLERS.with_borrow_mut(|handlers| handlers.push((state as usize, ids)));
+}
+
+/// Takes a dock's surface handlers back, so teardown can disconnect them.
+fn take_surface_handlers(state: *const LambdockState) -> Vec<glib::SignalHandlerId> {
+    SURFACE_HANDLERS.with_borrow_mut(|handlers| {
+        handlers
+            .iter()
+            .position(|(key, _)| *key == state as usize)
+            .map(|index| handlers.remove(index).1)
+            .unwrap_or_default()
+    })
+}
+
+/// The pointer entered the dock: whatever was queued is stale, and the dock has
+/// to be revealed.
+unsafe fn on_motion_enter(state: *mut LambdockState, x: f64, y: f64) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    trace(&format!(
+        "enter at {x:.1},{y:.1} (hidden {}, margin {})",
+        dock.is_hidden, dock.current_margin
+    ));
+
+    dock.pointer_applied = 0;
+
+    // Make room for the spread before it starts: sizing the surface now, with
+    // the row still at rest, is what keeps the hover itself free of resizes.
+    dock_reserve_hover_room(state);
+    reveal_dock(state);
+}
+
+/// The newest pointer position, applied to the fisheye once per frame.
+///
+/// Motion events can arrive several times per frame (high-rate mice, libinput
+/// batching, a compositor that coalesces late), and every one of them used to
+/// resize the whole row of icons and repaint the dock. Applying only the latest
+/// position keeps the work proportional to the frame rate instead of to the
+/// event rate, and it does so right before the frame is laid out, so the icons
+/// are never a frame behind the pointer.
+unsafe fn on_hover_tick(state: *mut LambdockState) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    // One-shot: the next motion schedules the next one.
+    dock.pointer_tick_id = 0;
+
+    // Nothing moved since the last frame (the pointer can repeat a position),
+    // so the icons are already where they belong.
+    if dock.pointer_applied != 0
+        && lambdock_points_differ(
+            dock.pointer_x,
+            dock.pointer_y,
+            dock.applied_pointer_x,
+            dock.applied_pointer_y,
+            1.0,
+        ) == 0
+    {
+        return;
+    }
+
+    dock.applied_pointer_x = dock.pointer_x;
+    dock.applied_pointer_y = dock.pointer_y;
+    dock.pointer_applied = 1;
+
+    let (x, y) = (dock.pointer_x, dock.pointer_y);
+    dock_apply_hover_at(state, x, y);
+}
+
+/// Adapter: GLib wants a frame-clock callback, this module wants a dock.
+unsafe extern "C" fn hover_tick(
+    _widget: *mut gtk4::ffi::GtkWidget,
+    _clock: *mut gdk::ffi::GdkFrameClock,
+    user_data: *mut c_void,
+) -> c_int {
+    on_hover_tick(user_data.cast());
+
+    glib::ffi::GFALSE
+}
+
+/// The pointer left the dock: stop magnifying, and start the hide countdown.
+unsafe fn on_motion_leave(state: *mut LambdockState) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    // Not every leave means the pointer went anywhere. The dock slides out from
+    // under a pointer that is not moving -- the window moves, the pointer does
+    // not -- and compositors report a crossing that follows from that, which is
+    // what used to bounce the dock at its screen edge: a leave hides it, the
+    // revealing strip comes back under the pointer, an enter reveals it, and
+    // round it goes. Those echoes all arrive while the dock is moving, or within
+    // a frame or two of it stopping, so the settle window tells them apart.
+    //
+    // It used to also require that the pointer had moved since it entered, on
+    // the reasoning that a pointer that has not moved cannot have left. It can:
+    // a pointer that touches the edge to reveal the dock and then moves away has
+    // been still for the whole reveal, and its leave was thrown away with it, so
+    // the dock stayed out until the pointer came back and did the whole thing
+    // again -- auto-hide that quietly stops hiding.
+    if dock_is_settling(state) != 0 {
+        trace("leave ignored: the dock is sliding, or just stopped");
+        return;
+    }
+
+    trace(&format!("leave: hiding in {AUTOHIDE_LEAVE_DELAY_MS} ms"));
+
+    stop_pointer_tick_inner(dock);
+    dock.pointer_applied = 0;
+
+    if dock.hover_animate != 0 {
+        reset_dock_items_scale_inner(dock);
+    }
+
+    if dock.auto_hide != 0 {
+        schedule_hide_timer(state, AUTOHIDE_LEAVE_DELAY_MS);
+    }
+}
+
+/// Records where the pointer is; the frame clock does the magnifying.
+///
+/// It is also the dock's *reveal* trigger, which is the one thing about it that
+/// is not obvious. A pointer only has to cross into the dock once to be inside
+/// it, and a hidden dock is on screen only as the trigger strip: a pointer that
+/// rests on the strip while the surface slides away underneath it never leaves
+/// -- the compositor keeps sending it motion, not a crossing -- so it can never
+/// cross back in. Motion inside the surface while the dock is away means the
+/// same thing an enter would: the pointer is on the strip, and the dock belongs
+/// on screen.
+unsafe fn on_motion_notify(state: *mut LambdockState, x: f64, y: f64) {
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+
+    if dock.is_hidden != 0 {
+        trace(&format!("motion at {x:.0},{y:.0} on the strip: revealing"));
+        reveal_dock(state);
+        return;
+    }
+
+    if dock.hover_animate == 0 || dock.tick_cb_id != 0 || dock.current_margin != 0 {
+        return;
+    }
+
+    dock.pointer_x = x;
+    dock.pointer_y = y;
+
+    if dock.pointer_tick_id == 0 {
+        if let Some(window) = widget_of(dock.window) {
+            dock.pointer_tick_id = gtk4::ffi::gtk_widget_add_tick_callback(
+                window.as_ptr().cast(),
+                Some(hover_tick),
+                (dock as *mut LambdockState).cast(),
+                None,
+            );
+        }
+    }
+}
+
+/// Applies the input region whenever the dock window (re)appears, and wires the
+/// surface's own size signals the first time it does.
+unsafe fn on_window_map(state: *mut LambdockState) {
+    dock_schedule_input_region(state);
+
+    // The window id only exists once the surface is realised, so this is the
+    // first moment an X11 dock can be typed, moved and given its strut. On
+    // Wayland the placement is the compositor's, and this changes nothing.
+    let surface = state
+        .as_ref()
+        .filter(|dock| dock.x11_surface.is_null())
+        .and_then(|dock| widget_of(dock.window))
+        .and_then(|window| surface_of(&window));
+
+    if let Some(surface) = surface {
+        // `layout` is the surface telling us it was laid out; the size
+        // notifications cover a resize that arrives without a layout.
+        let pointer = state;
+        let layout = surface.connect_layout(move |_, _, _| lambdock_x11_dock_apply(pointer));
+
+        let pointer = state;
+        let width = surface.connect_width_notify(move |_| lambdock_x11_dock_apply(pointer));
+
+        let pointer = state;
+        let height = surface.connect_height_notify(move |_| lambdock_x11_dock_apply(pointer));
+
+        store_surface_handlers(state, vec![layout, width, height]);
+
+        if let Some(dock) = state.as_mut() {
+            dock.x11_surface = surface.as_ptr().cast();
+        }
+    }
+
+    lambdock_x11_dock_apply(state);
+}
+
+/// Attaches a motion controller to the dock's window: entry, leave and motion.
+///
+/// # Safety
+///
+/// `state` must be null or a live dock with its window built.
+#[no_mangle]
+pub unsafe extern "C" fn setup_dock_motion_controller(state: *mut LambdockState) {
+    let Some(dock) = state.as_ref() else {
+        return;
+    };
+    let Some(window) = widget_of(dock.window) else {
+        return;
+    };
+
+    let motion = gtk4::EventControllerMotion::new();
+
+    let pointer = state;
+    motion.connect_enter(move |_, x, y| on_motion_enter(pointer, x, y));
+
+    let pointer = state;
+    motion.connect_leave(move |_| on_motion_leave(pointer));
+
+    let pointer = state;
+    motion.connect_motion(move |_, x, y| on_motion_notify(pointer, x, y));
+
+    window.add_controller(motion);
+
+    // The surface is bigger than the dock, so its clickable area has to be cut
+    // down to the dock every time the window appears.
+    let pointer = state;
+    window.connect_map(move |_| on_window_map(pointer));
+
+    dock_schedule_input_region(state);
 }
 
 #[cfg(test)]

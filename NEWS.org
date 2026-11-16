@@ -199,7 +199,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   measurements that keep a hover from relaying out the row -- is
   ~rust/src/dock_window.rs~.  What is left of ~dock_window.c~ is 708 lines: the
   four motion callbacks, the surface-signal wiring and the motion controller --
-  380 lines of adapters and declarations.  The About dialog and the whole
+  380 lines of adapters and declarations.
+- *~dock_window.c~ is gone: one dock's window is Rust end to end.* The pointer
+  callbacks and the motion controller that installs them moved last, with the
+  surface's own size signals kept by handler id (the state has no room for them,
+  and a surface outlives the state it reports to).  What is left of the C in this
+  project is ~main.c~ and the headers: every module below the application is
+  ~rust/src/~.  The About dialog and the whole
   teardown moved with it, so a dock's whole life -- from its window to the last
   `g_free` -- is Rust now, with the About dialog's version still coming from
   meson so there is one version string in the project.
