@@ -349,138 +349,11 @@ static void dock_item_set_poller(DockItem *item, void *poll_fn) {
   item->poll_fn = lambdock_poll_fn_protect(poll_fn);
 }
 
-/** Whether the item still has a callable Scheme poller. */
-static gboolean dynamic_item_has_poller(const DockItem *item) {
-  return item && lambdock_poll_fn_is_callable(item->poll_fn);
-}
-
-/**
- * apply_meter_reading:
- * Draws a numeric reading on the item's gauge.
- *
- * Returns: TRUE when the item is a meter and @value was a number.
- */
-static gboolean apply_meter_reading(DockItem *item,
-                                    const LambdockReading *value) {
-  if (!item->meter || !value || value->kind != LAMBDOCK_READING_NUMBER)
-    return FALSE;
-
-  double reading = value->number;
-  g_autofree char *text =
-      lambdock_meter_reading_text(reading, item->meter_unit);
-
-  lambdock_meter_set_value(
-      item->meter,
-      lambdock_meter_reading_fraction(reading, item->meter_max), text);
-
-  g_autofree char *tooltip =
-      g_strdup_printf("%s: %s", item->name ? item->name : "", text);
-  gtk_widget_set_tooltip_text(item->button, tooltip);
-  dock_item_update_accessible(item);
-
-  return TRUE;
-}
-
-/** Writes a text reading into the item's label and tooltip. */
-static void apply_text_reading(DockItem *item, const char *text) {
-  if (!item || !text)
-    return;
-
-  if (item->label && GTK_IS_LABEL(item->label))
-    gtk_label_set_text(GTK_LABEL(item->label), text);
-
-  gtk_widget_set_tooltip_text(item->button, text);
-  dock_item_update_accessible(item);
-}
-
-/** Points the item's clock face at the current local time. */
-static void apply_clock_time(DockItem *item) {
-  GDateTime *now = g_date_time_new_now_local();
-  if (!now)
-    return;
-
-  int seconds = g_date_time_get_hour(now) * 3600 +
-                g_date_time_get_minute(now) * 60 + g_date_time_get_second(now);
-  g_date_time_unref(now);
-
-  lambdock_clock_set_time(item->clock, seconds);
-}
-
-/** Polls the item once and applies whatever the poller returned. */
-static void refresh_dynamic_item(DockItem *item) {
-  /* An item whose Scheme side gave it no procedure has nothing to poll. Calling
-   * it anyway would apply #f -- "Wrong type to apply" raised on the GTK thread,
-   * where Guile has no handler, which aborts the process. */
-  if (!dynamic_item_has_poller(item))
-    return;
-
-  LambdockReading value = {0};
-  gboolean have_value = lambdock_poll_fn_call(item->poll_fn, &value);
-
-  /* A clock's hands come from the system clock, not from the Scheme value: the
-   * poller only formats the reading the tooltip and the screen reader announce. */
-  if (item->clock)
-    apply_clock_time(item);
-
-  if (have_value && !apply_meter_reading(item, &value))
-    apply_text_reading(item, value.text);
-
-  g_free(value.text);
-}
-
-/** TRUE when this item's dock is not on screen (hidden, unmapped or going away). */
-static gboolean dock_is_off_screen(const DockItem *item) {
-  if (!item || !item->state)
-    return FALSE;
-
-  const LambdockState *state = item->state;
-  if (state->is_hidden || state->is_destroying)
-    return TRUE;
-
-  if (!state->window || !gtk_widget_get_mapped(state->window))
-    return TRUE;
-
-  return FALSE;
-}
-
-static gboolean on_dynamic_item_poll(gpointer user_data) {
-  DockItem *item = (DockItem *)user_data;
-
-  if (!dynamic_item_has_poller(item)) {
-    /* The source is gone once we return: forget its id so teardown does not try
-     * to remove it (and cannot remove an unrelated source that reused it). */
-    if (item)
-      item->poll_timer_id = 0;
-    return G_SOURCE_REMOVE;
-  }
-
-  /* A hidden dock with a clock, a CPU gauge and a trash count would wake the
-   * process several times a second to update widgets nobody can see. Skip the
-   * work; dock_items_refresh_polls() catches every item up the moment the dock
-   * comes back, so the values are current when they are visible again. */
-  if (dock_is_off_screen(item))
-    return G_SOURCE_CONTINUE;
-
-  refresh_dynamic_item(item);
-  return G_SOURCE_CONTINUE;
-}
-
-void dock_items_refresh_polls(LambdockState *state) {
-  if (!state)
-    return;
-
-  for (GList *node = state->dock_items; node != NULL; node = node->next) {
-    DockItem *item = node->data;
-    if (!item)
-      continue;
-
-    if (dynamic_item_has_poller(item))
-      refresh_dynamic_item(item);
-
-    if (item->trash_timer_id != 0)
-      dock_item_refresh_trash(item);
-  }
-}
+/* Whether an item still has a Scheme poller, polling it once, applying a meter, a
+ * text or a clock reading, and skipping the work while the dock is off screen are
+ * rust/src/dock_item.rs now: what a reading means is a decision about a number and
+ * a widget, and it is tested there. What stays here is the timer that calls into it
+ * and the builder that sets it up. */
 
 /* ============================================================================
  * DOCK ITEM LIFECYCLE (CREATION & DESTRUCTION)
@@ -833,12 +706,11 @@ DockItem *create_dynamic_dock_item(LambdockState *state, const char *name,
   item->poll_interval = interval_ms;
 
   /* Paint the first reading now instead of after the first interval. */
-  if (dynamic_item_has_poller(item))
-    refresh_dynamic_item(item);
+  dock_item_refresh_readings(item);
 
-  if (interval_ms > 0 && dynamic_item_has_poller(item)) {
+  if (interval_ms > 0 && dock_item_has_poller(item)) {
     item->poll_timer_id =
-        g_timeout_add(interval_ms, on_dynamic_item_poll, item);
+        g_timeout_add(interval_ms, (GSourceFunc)lambdock_dock_item_poll, item);
   }
 
   dock_item_update_accessible(item);
@@ -908,7 +780,7 @@ void dock_item_enable_meter(DockItem *item, const char *unit,
   /* Paint the first reading now instead of after the first interval. This is the
    * explicit read, not the timer callback, so it is not skipped when the dock is
    * still unmapped (startup, tests). */
-  refresh_dynamic_item(item);
+  dock_item_refresh_readings(item);
 }
 
 /**
@@ -940,7 +812,7 @@ void dock_item_enable_clock(DockItem *item) {
   /* Point the hands now instead of after the first interval, so a dock that is
    * unmapped at startup (tests, or a dock on another workspace) still shows the
    * right time when it appears. */
-  refresh_dynamic_item(item);
+  dock_item_refresh_readings(item);
 }
 
 /** Stops the item's polling timers. */
@@ -1299,9 +1171,9 @@ static gboolean on_trash_refresh(gpointer user_data) {
   if (!item)
     return G_SOURCE_REMOVE;
 
-  /* Same rule as on_dynamic_item_poll(): do not scan the trash directories for a
-   * dock nobody can see. */
-  if (dock_is_off_screen(item))
+  /* Same rule as the poll timer: do not scan the trash directories for a dock
+   * nobody can see. */
+  if (dock_item_off_screen(item))
     return G_SOURCE_CONTINUE;
 
   dock_item_refresh_trash(item);

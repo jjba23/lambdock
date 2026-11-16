@@ -153,6 +153,22 @@ __attribute__((weak)) void dock_layout_set_view(const char *config_path,
   (void)view;
 }
 
+/* A dynamic item polls a Scheme procedure, and the procedure handles live in
+ * guile_bridge.c. A binary that links a slice has no interpreter at all, so
+ * "there is no poller" is the honest answer -- and the timer that would call one
+ * is never installed. */
+__attribute__((weak)) gboolean lambdock_poll_fn_is_callable(void *poll_fn) {
+  (void)poll_fn;
+  return FALSE;
+}
+
+__attribute__((weak)) gboolean lambdock_poll_fn_call(void *poll_fn,
+                                                     LambdockReading *out) {
+  (void)poll_fn;
+  (void)out;
+  return FALSE;
+}
+
 /* The item menu and the stack's view reach into the item builder, the tracker and
  * the launchpad for the actions they offer. A binary that links a slice has none of
  * them, and "no title, no window to focus, no view to switch" is what those doubles

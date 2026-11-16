@@ -107,6 +107,44 @@ void clear_favorite_dock_items(LambdockState *state);
 void dock_items_refresh_polls(LambdockState *state);
 
 /**
+ * dock_item_has_poller:
+ * @item: (nullable): a dock item.
+ *
+ * Whether the item still has a callable Scheme procedure to poll. The bridge can
+ * lose one (a reload, a failed load), and an item without one has nothing to read.
+ */
+gboolean dock_item_has_poller(const DockItem *item);
+
+/**
+ * dock_item_refresh_readings:
+ * @item: (nullable): a dock item.
+ *
+ * Polls the item once and applies what came back: a number to its gauge, text to
+ * its label, the system clock to its face. Does nothing for an item with no poller.
+ */
+void dock_item_refresh_readings(DockItem *item);
+
+/**
+ * dock_item_off_screen:
+ * @item: (nullable): a dock item.
+ *
+ * Whether the item's dock is hidden, being destroyed or not mapped -- the state in
+ * which polling is skipped, since nobody can see the result.
+ */
+gboolean dock_item_off_screen(const DockItem *item);
+
+/**
+ * lambdock_dock_item_poll:
+ * @user_data: a `DockItem`.
+ *
+ * The `GSourceFunc` behind a dynamic item's timer: polls unless the dock is off
+ * screen, and removes itself once the item has no poller left.
+ *
+ * Returns: `G_SOURCE_CONTINUE`, or `G_SOURCE_REMOVE`.
+ */
+gboolean lambdock_dock_item_poll(gpointer user_data);
+
+/**
  * create_separator_dock_item:
  * Instantiates layout divider bar items.
  */

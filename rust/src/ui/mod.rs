@@ -54,6 +54,18 @@ pub(crate) fn is_shown(widget: &gtk4::Widget) -> bool {
     unsafe { from_glib(gtk4::ffi::gtk_widget_get_visible(widget.to_glib_none().0)) }
 }
 
+/// Whether `widget` is mapped, on its own flag.
+///
+/// The same distinction as [`is_shown`]: `WidgetExt::is_mapped()` also asks the
+/// ancestors. For the toplevel a dock polls for, both answers agree -- but a
+/// helper that says which one it means is a helper that cannot become a bug when
+/// somebody passes a child widget.
+pub(crate) fn is_mapped(widget: &gtk4::Widget) -> bool {
+    use gtk4::glib::translate::{from_glib, ToGlibPtr};
+
+    unsafe { from_glib(gtk4::ffi::gtk_widget_get_mapped(widget.to_glib_none().0)) }
+}
+
 /// A widget borrowed from C for the length of one call.
 ///
 /// `from_glib_borrow`, never `from_glib_none`: the latter sinks a floating

@@ -1314,6 +1314,301 @@ mod key_tests {
     }
 }
 
+
+// ============================================================================
+// DYNAMIC ITEMS: THE POLLER AND THE READINGS
+// ============================================================================
+//
+// A dynamic item -- a clock, a CPU gauge, a RAM meter -- is a widget plus a
+// Scheme procedure: the procedure answers with a number or a string and the
+// widget shows it. Polling is the one place the dock wakes itself up, so it is
+// also the one place that asks whether anybody is looking.
+
+/// `LambdockReadingKind`, from `guile_bridge.h`.
+const READING_NUMBER: c_int = 1;
+
+/// One poll's answer, as the bridge hands it over.
+#[repr(C)]
+pub struct Reading {
+    pub kind: c_int,
+    pub number: f64,
+    /// GLib's copy of the text: freed once it has been shown.
+    pub text: *mut c_char,
+}
+
+/// What a `GSourceFunc` answers: run again, or stop and be forgotten.
+const SOURCE_REMOVE: c_int = 0;
+const SOURCE_CONTINUE: c_int = 1;
+
+extern "C" {
+    /// `guile_bridge.h`: whether the handle is still a callable procedure.
+    fn lambdock_poll_fn_is_callable(poll_fn: *mut c_void) -> c_int;
+
+    /// `guile_bridge.h`: calls the procedure once, turning a Scheme error into
+    /// `LAMBDOCK_READING_NONE`.
+    fn lambdock_poll_fn_call(poll_fn: *mut c_void, out: *mut Reading) -> c_int;
+
+    /// `src/ui/dock_item.c`: re-counts the trash and swaps its artwork.
+    fn dock_item_refresh_trash(item: *mut DockItem);
+}
+
+/// Whether `item` still has a callable Scheme poller.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn has_poller(item: &DockItem) -> bool {
+    !item.poll_fn.is_null() && lambdock_poll_fn_is_callable(item.poll_fn) != 0
+}
+
+/// Whether a dock is off screen: hidden, being destroyed, or never mapped.
+fn off_screen(hidden: bool, destroying: bool, mapped: bool) -> bool {
+    hidden || destroying || !mapped
+}
+
+/// The same rule, asked of a dock's state and its window.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn state_is_off_screen(state: &LambdockState) -> bool {
+    let mapped = widget_of(state.window).is_some_and(|window| crate::ui::is_mapped(&window));
+
+    off_screen(state.is_hidden != 0, state.is_destroying != 0, mapped)
+}
+
+/// Draws a numeric reading on the item's gauge, and says so in the tooltip.
+///
+/// Returns whether the item is a meter and the reading was a number.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn apply_meter_reading(item: &DockItem, reading: &Reading) -> bool {
+    if item.meter.is_null() || reading.kind != READING_NUMBER {
+        return false;
+    }
+
+    let printed_pointer =
+        crate::core::item_text::lambdock_meter_reading_text(reading.number, item.meter_unit);
+    let printed = crate::cstr::text_or_empty(printed_pointer);
+    if !printed_pointer.is_null() {
+        // `(transfer full)`: the reading's text is ours once it has been read.
+        crate::glib::g_free(printed_pointer.cast());
+    }
+
+    let fraction =
+        crate::core::item_text::lambdock_meter_reading_fraction(reading.number, item.meter_max);
+    let printed_c = crate::cstr::cstring(&printed);
+    crate::ui::meter::lambdock_meter_set_value(item.meter.cast(), fraction, printed_c.as_ptr());
+
+    let name = crate::cstr::text_or_empty(item.name);
+    if let Some(button) = widget_of(item.button) {
+        button.set_tooltip_text(Some(&format!("{name}: {printed}")));
+    }
+
+    dock_item_update_accessible(item as *const DockItem as *mut DockItem);
+
+    true
+}
+
+/// Writes a text reading into the item's label and tooltip.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`; `text` must be null or NUL-terminated.
+unsafe fn apply_text_reading(item: &DockItem, text: *const c_char) {
+    let Some(text) = crate::cstr::text(text) else {
+        return;
+    };
+
+    if let Some(label) = widget_of(item.label) {
+        if let Some(label) = label.as_ref().downcast_ref::<gtk4::Label>() {
+            label.set_text(&text);
+        }
+    }
+    if let Some(button) = widget_of(item.button) {
+        button.set_tooltip_text(Some(&text));
+    }
+
+    dock_item_update_accessible(item as *const DockItem as *mut DockItem);
+}
+
+/// Points the item's clock face at the current local time.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn apply_clock_time(item: &DockItem) {
+    let Ok(now) = glib::DateTime::now_local() else {
+        return;
+    };
+
+    let seconds = now.hour() * 3600 + now.minute() * 60 + now.second();
+    crate::ui::clock::lambdock_clock_set_time(item.clock.cast(), seconds);
+}
+
+/// Polls `item` once and applies whatever the poller returned.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+unsafe fn refresh(item: *mut DockItem) {
+    let Some(item_ref) = item.as_ref() else {
+        return;
+    };
+
+    // An item whose Scheme side gave it no procedure has nothing to poll. Calling
+    // it anyway would apply `#f` -- a "Wrong type to apply" raised on the GTK
+    // thread, where Guile has no handler, which aborts the process.
+    if !has_poller(item_ref) {
+        return;
+    }
+
+    let mut reading = Reading {
+        kind: 0,
+        number: 0.0,
+        text: std::ptr::null_mut(),
+    };
+    let have_value = lambdock_poll_fn_call(item_ref.poll_fn, &mut reading) != 0;
+
+    // A clock's hands come from the system clock, not from the Scheme value: the
+    // poller only formats the reading the tooltip and the screen reader announce.
+    if !item_ref.clock.is_null() {
+        apply_clock_time(item_ref);
+    }
+
+    if have_value && !apply_meter_reading(item_ref, &reading) {
+        apply_text_reading(item_ref, reading.text);
+    }
+
+    if !reading.text.is_null() {
+        crate::glib::g_free(reading.text.cast());
+    }
+}
+
+/// Whether `item` still has a Scheme poller.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_has_poller(item: *const DockItem) -> c_int {
+    c_int::from(item.as_ref().is_some_and(|item| has_poller(item)))
+}
+
+/// Whether the dock `item` belongs to is off screen.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_off_screen(item: *const DockItem) -> c_int {
+    let Some(state) = item.as_ref().and_then(|item| item.state.as_ref()) else {
+        return 0;
+    };
+
+    c_int::from(state_is_off_screen(state))
+}
+
+/// Polls `item` once and applies the reading.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_refresh_readings(item: *mut DockItem) {
+    refresh(item);
+}
+
+/// The timer behind a dynamic item.
+///
+/// # Safety
+///
+/// `user_data` must be null or a live `DockItem` that outlives the source.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_poll(user_data: *mut c_void) -> c_int {
+    let item = user_data.cast::<DockItem>();
+
+    let pollable = item.as_ref().is_some_and(|item| has_poller(item));
+    if !pollable {
+        // The source goes away once this returns: forget its id, so teardown does
+        // not try to remove it -- and cannot remove an unrelated source that has
+        // reused the number.
+        if let Some(item) = item.as_mut() {
+            item.poll_timer_id = 0;
+        }
+
+        return SOURCE_REMOVE;
+    }
+
+    // A hidden dock with a clock, a CPU gauge and a trash count would wake the
+    // process several times a second to update widgets nobody can see, so the
+    // work is skipped. `lambdock_dock_items_refresh_polls` catches every item up
+    // the moment the dock comes back, so the values are current when they show.
+    if item
+        .as_ref()
+        .and_then(|item| item.state.as_ref())
+        .is_some_and(|state| state_is_off_screen(state))
+    {
+        return SOURCE_CONTINUE;
+    }
+
+    refresh(item);
+
+    SOURCE_CONTINUE
+}
+
+/// Catches every polled item up, and re-counts every trash, in one pass.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_items_refresh_polls(state: *mut LambdockState) {
+    let Some(state_ref) = state.as_ref() else {
+        return;
+    };
+
+    let mut link = state_ref.dock_items.cast::<GList>();
+    while let Some(entry) = link.as_ref() {
+        link = entry.next;
+
+        let item = entry.data.cast::<DockItem>();
+        let Some(item_ref) = item.as_ref() else {
+            continue;
+        };
+
+        if has_poller(item_ref) {
+            refresh(item);
+        }
+        if item_ref.trash_timer_id != 0 {
+            dock_item_refresh_trash(item);
+        }
+    }
+}
+
+#[cfg(test)]
+mod poll_tests {
+    use super::*;
+
+    /// A dock nobody can see is not worth refreshing: hidden, going away, or not
+    /// mapped at all. Everything a hidden dock would do -- a clock, a CPU gauge, a
+    /// trash count -- is work for a widget that is not on screen.
+    #[test]
+    fn a_dock_nobody_can_see_is_off_screen() {
+        assert!(off_screen(false, false, false), "not mapped");
+        assert!(off_screen(true, false, true), "hidden");
+        assert!(off_screen(false, true, true), "going away");
+
+        // Hidden wins over everything: the flags are not exclusive in practice.
+        assert!(off_screen(true, false, false));
+
+        // The one answer that means "refresh it".
+        assert!(!off_screen(false, false, true));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
