@@ -171,6 +171,19 @@ __attribute__((weak)) void close_toplevel_window(LambdockToplevel *window) {
   (void)window;
 }
 
+/* A left click on an item minimizes the focused window, or opens the item's menu
+ * when several are running. Both live in files a slice binary does not compile:
+ * the tracker owns the window, dock_item.c owns the menu. "Nothing to minimize,
+ * nothing to show" is what these answer, and each real definition wins wherever
+ * its file is compiled in. */
+__attribute__((weak)) void minimize_toplevel_window(LambdockToplevel *window) {
+  (void)window;
+}
+
+__attribute__((weak)) void lambdock_dock_item_popup_menu(DockItem *item) {
+  (void)item;
+}
+
 __attribute__((weak)) void lambdock_stack_set_view(DockItem *item, LambdockStackView view) {
   (void)item;
   (void)view;

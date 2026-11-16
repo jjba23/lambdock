@@ -62,81 +62,10 @@ static GtkWidget *wrap_icon_for_zoom(GtkWidget *image, int base_size) {
  * ============================================================================
  */
 
-void dock_item_activate_stack(DockItem *item);
-void dock_item_activate_launchpad(DockItem *item);
-void dock_item_activate_trash(DockItem *item);
-
-/* The per-kind accessible text; see ITEM_KIND_OPS. Each one only reads the item
- * and hands plain values to rust/src/core/item_text.rs, which owns the
- * wording. */
-static LambdockItemText describe_app_item(const DockItem *item);
-static LambdockItemText describe_dynamic_item(const DockItem *item);
-static LambdockItemText describe_stack_item(const DockItem *item);
-static LambdockItemText describe_launchpad_item(const DockItem *item);
-static LambdockItemText describe_trash_item(const DockItem *item);
-
-/**
- * LambdockItemKindOps:
- * Everything the rest of the file needs to know about one kind of dock item.
- *
- * The dock used to answer "what is this kind?" in four separate switches (key
- * name, CSS class, click behaviour, accessibility text). Adding a kind meant
- * finding all four. Now a kind is one row of `ITEM_KIND_OPS`, and the switches
- * are gone: the table is the single place where a kind is defined.
- */
-typedef struct {
-  const char *key_name; /* stable identity prefix, e.g. "app" */
-  const char *css_class; /* extra CSS class, NULL for none */
-  void (*activate)(DockItem *item); /* NULL means "app behaviour" */
-  LambdockItemText (*describe)(const DockItem *item);
-} LambdockItemKindOps;
-
-static const LambdockItemKindOps ITEM_KIND_OPS[] = {
-    [LAMBDOCK_ITEM_APP] = {"app", NULL, NULL, describe_app_item},
-    [LAMBDOCK_ITEM_DYNAMIC] = {"dynamic", "dynamic-item", NULL,
-                               describe_dynamic_item},
-    [LAMBDOCK_ITEM_SEPARATOR] = {"separator", NULL, NULL, NULL},
-    [LAMBDOCK_ITEM_STACK] = {"stack", "stack-item", dock_item_activate_stack,
-                             describe_stack_item},
-    [LAMBDOCK_ITEM_LAUNCHPAD] = {"launchpad", "launchpad-item",
-                                 dock_item_activate_launchpad,
-                                 describe_launchpad_item},
-    [LAMBDOCK_ITEM_TRASH] = {"trash", "trash-item", dock_item_activate_trash,
-                             describe_trash_item},
-};
-
-/** The descriptor of @kind; unknown kinds behave like a plain application. */
-static const LambdockItemKindOps *kind_ops(LambdockItemKind kind) {
-  gsize index = (gsize)kind;
-
-  if (index >= G_N_ELEMENTS(ITEM_KIND_OPS) || !ITEM_KIND_OPS[index].key_name)
-    return &ITEM_KIND_OPS[LAMBDOCK_ITEM_APP];
-
-  return &ITEM_KIND_OPS[index];
-}
-
-const char *dock_item_kind_to_string(LambdockItemKind kind) {
-  return kind_ops(kind)->key_name;
-}
-
-char *dock_item_key(const DockItem *item) {
-  if (!item)
-    return NULL;
-  return g_strdup_printf("%s:%s", dock_item_kind_to_string(item->kind),
-                         item->name ? item->name : "");
-}
-
-const char *lambdock_item_title(const DockItem *item, const char *fallback) {
-  if (item) {
-    if (item->name && *item->name != '\0')
-      return item->name;
-    if (item->app_id && *item->app_id != '\0')
-      return item->app_id;
-  }
-
-  return fallback;
-}
-
+/* What an item *is* -- its kind's name, the key a layout override remembers it
+ * by, the title a menu shows and the text a screen reader gets -- is
+ * rust/src/dock_item.rs now: identity is a table of six rows over a value, tested
+ * there per kind and per fallback. What stays here is the widget the item is. */
 
 /* The key deferred callbacks use to get from a widget back to its item. */
 #define DOCK_ITEM_DATA_KEY "lambdock-item"
@@ -189,47 +118,10 @@ DockItem *dock_item_from_widget(GtkWidget *widget) {
  * whole dock can be used without a pointer.
  */
 
-/* What a screen reader should say about each kind of item. The wording itself
- * lives in rust/src/core/item_text.rs; these only extract the inputs from the
- * item. */
-static LambdockItemText describe_app_item(const DockItem *item) {
-  return lambdock_item_text_app(item->name, g_list_length(item->windows));
-}
+/* What a screen reader says about an item is rust/src/dock_item.rs's too: the
+ * per-kind wording is core/item_text.rs's, and dock_item_update_accessible()
+ * reads the values the item carries and pushes the result. */
 
-static LambdockItemText describe_dynamic_item(const DockItem *item) {
-  /* The item's tooltip already carries the latest reading (meter readings are
-   * written as "name: reading"), so that is the value to describe. */
-  return lambdock_item_text_dynamic(item->name,
-                                    gtk_widget_get_tooltip_text(item->button));
-}
-
-static LambdockItemText describe_stack_item(const DockItem *item) {
-  return lambdock_item_text_stack(item->name);
-}
-
-static LambdockItemText describe_launchpad_item(const DockItem *item) {
-  return lambdock_item_text_launchpad(item->name);
-}
-
-static LambdockItemText describe_trash_item(const DockItem *item) {
-  return lambdock_item_text_trash(item->name, item->trash_count);
-}
-
-void dock_item_update_accessible(DockItem *item) {
-  if (!item || !item->button || item->kind == LAMBDOCK_ITEM_SEPARATOR)
-    return;
-
-  const LambdockItemKindOps *ops = kind_ops(item->kind);
-  if (!ops->describe)
-    return;
-
-  LambdockItemText text = ops->describe(item);
-  lambdock_accessible_update(item->button, text.label, text.description);
-  lambdock_item_text_clear(&text);
-}
-
-/* Separators are decoration: they must not take focus, and they have no
- * keyboard actions. */
 static gboolean item_is_keyboard_reachable(const DockItem *item) {
   return item && item->button && item->kind != LAMBDOCK_ITEM_SEPARATOR;
 }
@@ -394,7 +286,7 @@ gboolean lambdock_dock_item_move(LambdockState *state, DockItem *item,
 }
 
 /** The shared "show the popover" path: used by clicks, keys and menus. */
-static void dock_item_popup_menu(DockItem *item) {
+void lambdock_dock_item_popup_menu(DockItem *item) {
   if (!item || !item->popover || !item->state)
     return;
 
@@ -419,7 +311,7 @@ void lambdock_dock_item_show_menu(DockItem *item) {
     return;
   }
 
-  dock_item_popup_menu(item);
+  lambdock_dock_item_popup_menu(item);
 }
 
 gboolean lambdock_dock_items_close_popovers(LambdockState *state) {
@@ -667,86 +559,15 @@ void apply_dock_item_alignment(DockItem *item) {
  * If 0 windows open    -> Execute the application launcher command
  * (`item->exec`).
  */
-void dock_item_activate_stack(DockItem *item) { lambdock_stack_show(item); }
-
-void dock_item_activate_launchpad(DockItem *item) {
-  lambdock_launchpad_show(item->state);
-}
-
-void dock_item_activate_trash(DockItem *item) {
-  (void)item;
-  if (!lambdock_trash_open())
-    LOG_C_WARN("UI", "Could not open the trash");
-}
-
-/** Runs @command, reporting a failure without taking the dock down. */
-static void launch_command(const char *command) {
-  GError *error = NULL;
-
-  if (!g_spawn_command_line_async(command, &error)) {
-    LOG_C_WARN("UI", "Failed to launch '%s': %s", command,
-               (error && error->message) ? error->message : "unknown");
-    g_clear_error(&error);
-  }
-}
-
-/**
- * activate_app_item:
- * What a left click on an application item does.
- *
- * The decision is rust/src/core/dock_click.rs's -- "launch, minimize, restore or
- * list" -- and this only applies it, so the policy stays testable without a
- * compositor.
- * Clicking the icon of the focused app minimizes it (minimize to dock);
- * clicking an icon whose window is minimized or behind another brings it
- * forward.
- */
-static void activate_app_item(DockItem *item) {
-  AppWindow *only_window = (item->windows && item->windows->next == NULL)
-                               ? (AppWindow *)item->windows->data
-                               : NULL;
-
-  LambdockClickAction action =
-      lambdock_click_action_for(g_list_length(item->windows),
-                                only_window && only_window->minimized,
-                                only_window && only_window->activated,
-                                item->exec);
-
-  switch (action) {
-  case LAMBDOCK_CLICK_MINIMIZE:
-    if (only_window)
-      minimize_toplevel_window(only_window->handle);
-    return;
-  case LAMBDOCK_CLICK_ACTIVATE:
-    if (only_window)
-      activate_toplevel_window(only_window->handle);
-    return;
-  case LAMBDOCK_CLICK_MENU:
-    /* Several windows: let the user pick one from the menu. */
-    dock_item_popup_menu(item);
-    return;
-  case LAMBDOCK_CLICK_LAUNCH:
-    launch_command(item->exec);
-    return;
-  case LAMBDOCK_CLICK_NOTHING:
-    return;
-  }
-}
+/* What a click on a kind of item *means* is rust/src/dock_item.rs too: the
+ * launch/minimize/restore/list decision was already core/dock_click.rs's, and the
+ * switch that applied it, the launch itself and the three per-kind
+ * activations went with it. dock_item_activate() is the one entry point. */
 
 static void on_dock_item_left_click(GtkButton *btn, gpointer user_data) {
   (void)btn;
 
-  DockItem *item = (DockItem *)user_data;
-  if (!item)
-    return;
-
-  void (*activate)(DockItem *) = kind_ops(item->kind)->activate;
-  if (activate) {
-    activate(item);
-    return;
-  }
-
-  activate_app_item(item);
+  dock_item_activate((DockItem *)user_data);
 }
 
 /**
@@ -770,7 +591,7 @@ static void on_dock_item_right_click(GtkGestureClick *gesture, gint n_press,
 
   DockItem *item = (DockItem *)user_data;
 
-  dock_item_popup_menu(item);
+  lambdock_dock_item_popup_menu(item);
 }
 
 /* ============================================================================
@@ -1040,7 +861,7 @@ static GtkWidget *dock_item_begin_content(DockItem *item, int spacing) {
   gtk_widget_add_css_class(item->button, "dock-item");
   gtk_widget_add_css_class(item->button, "flat");
 
-  const char *kind_class = kind_ops(item->kind)->css_class;
+  const char *kind_class = dock_item_kind_css_class(item->kind);
   if (kind_class)
     gtk_widget_add_css_class(item->button, kind_class);
 

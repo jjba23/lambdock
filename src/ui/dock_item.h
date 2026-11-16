@@ -178,9 +178,36 @@ char *dock_item_key(const DockItem *item);
 /**
  * dock_item_kind_to_string:
  * The Scheme-side name of @kind ("app", "dynamic", "separator", "stack",
- * "launchpad").
+ * "launchpad", "trash"). An unknown kind answers "app".
  */
 const char *dock_item_kind_to_string(LambdockItemKind kind);
+
+/**
+ * dock_item_kind_css_class:
+ * The extra CSS class an item of @kind wears, or NULL when it needs none.
+ */
+const char *dock_item_kind_css_class(LambdockItemKind kind);
+
+/**
+ * dock_item_activate:
+ * @item: (nullable): the item that was clicked.
+ *
+ * What a left click on @item does: the kind's own behaviour when it has one (a
+ * stack opens its folder, the trash opens, the launchpad shows), and the
+ * application behaviour otherwise -- launch, focus, minimize or list, which is
+ * the decision `core/dock_click.h` makes.
+ */
+void dock_item_activate(DockItem *item);
+
+/**
+ * lambdock_dock_item_popup_menu:
+ * @item: (nullable): a dock item.
+ *
+ * Populates and pops up the item's menu. This is the "show it" half of a
+ * right-click, shared by the click handler, the keyboard and the several-windows
+ * case of a left click.
+ */
+void lambdock_dock_item_popup_menu(DockItem *item);
 
 /**
  * lambdock_item_title:
