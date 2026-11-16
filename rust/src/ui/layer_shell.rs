@@ -34,12 +34,14 @@ pub const KEYBOARD_MODE_EXCLUSIVE: c_int = 1;
 
 extern "C" {
     fn gtk_layer_is_supported() -> c_int;
+    fn gtk_layer_is_layer_window(window: *mut gtk4::ffi::GtkWindow) -> c_int;
     fn gtk_layer_init_for_window(window: *mut gtk4::ffi::GtkWindow);
     fn gtk_layer_set_namespace(window: *mut gtk4::ffi::GtkWindow, namespace: *const std::os::raw::c_char);
     fn gtk_layer_set_layer(window: *mut gtk4::ffi::GtkWindow, layer: c_int);
     fn gtk_layer_set_exclusive_zone(window: *mut gtk4::ffi::GtkWindow, zone: c_int);
     fn gtk_layer_set_keyboard_mode(window: *mut gtk4::ffi::GtkWindow, mode: c_int);
     fn gtk_layer_set_anchor(window: *mut gtk4::ffi::GtkWindow, edge: c_int, anchored: c_int);
+    fn gtk_layer_set_margin(window: *mut gtk4::ffi::GtkWindow, edge: c_int, margin: c_int);
     fn gtk_layer_set_monitor(
         window: *mut gtk4::ffi::GtkWindow,
         monitor: *mut gdk::ffi::GdkMonitor,
@@ -149,4 +151,38 @@ pub unsafe fn set_anchor(window: &gtk4::Window, edge: c_int, anchored: bool) {
 /// `monitor` must be valid (see [`is_monitor_valid`]).
 pub unsafe fn set_monitor(window: &gtk4::Window, monitor: *mut gdk::ffi::GdkMonitor) {
     gtk_layer_set_monitor(window.as_ptr().cast(), monitor);
+}
+
+/// Whether `widget` is a layer surface (a window whose surface layer shell
+/// owns).
+///
+/// The library's own predicate takes a `GtkWindow *`, so the window check comes
+/// first: the dock's state holds widgets, not windows.
+///
+/// # Safety
+///
+/// `widget` must be a live widget.
+pub unsafe fn is_layer_window(widget: &gtk4::Widget) -> bool {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    if !widget.is::<gtk4::Window>() {
+        return false;
+    }
+
+    let pointer: *mut gtk4::ffi::GtkWidget = widget.to_glib_none().0;
+
+    gtk_layer_is_layer_window(pointer.cast()) != 0
+}
+
+/// The margin between `edge` and the screen edge, which is what the slide moves.
+///
+/// # Safety
+///
+/// `widget` must be a live widget that is already a layer surface.
+pub unsafe fn set_margin(widget: &gtk4::Widget, edge: c_int, margin: c_int) {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    let pointer: *mut gtk4::ffi::GtkWidget = widget.to_glib_none().0;
+
+    gtk_layer_set_margin(pointer.cast(), edge, margin);
 }

@@ -730,14 +730,26 @@ are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI an
 named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
 stays as the contract the tests call.
 
-=dock_window.c= is half moved: its layout half -- the monitor, the dimensions it
-gives the overlay and the capsule, the row's margins and alignment, the room the
-fisheye spreads into, and the input region that keeps the unseen parts of the
-surface from eating clicks -- is =rust/src/dock_window.rs=. The two helpers the
-rest of the C file calls cross the seam by name (=dock_schedule_input_region=,
-=dock_reserve_hover_room=), and =update_dock_dimensions= is Rust behind the
-header. What is left in C is the slide, the hover, the layer surface, the about
-dialog and the teardown; =main.c= comes last, since it owns everything else.
+=dock_window.c= is two-thirds moved. In =rust/src/dock_window.rs= now: the
+layout half (the monitor, the dimensions it gives the overlay and the capsule,
+the row's margins and alignment, the room the fisheye spreads into, and the input
+region that keeps the unseen parts of the surface from eating clicks), the pure
+surface policy (which edges to anchor and how much desktop to reserve, returned
+by value as a mirrored struct), the slide (its frame callback, the settling
+window that tells an echo apart from a real crossing, and the reduced-motion
+shortcut), the row-at-rest reset, and auto-hide with reveal. What is left in C is
+the fisheye itself, the layer-surface setup and mode classes, the about dialog,
+the teardown, and =main.c= -- which comes last, since it owns everything else.
+
+A dozen of those are called from the C half by name, so the file now opens with
+the seam: the declaration list is what is Rust, and reading it is reading the
+port's progress.
+
+The rule those two halves taught, and it is the one to keep: a widget read out of
+a dock's state is *borrowed*. The fixtures build a dock out of floating boxes,
+and an owning wrapper sinks one and frees it on the way out. The layout code pays
+for that with a `&*` at the two call sites that want a reference, which is
+cheaper than a dead pointer.
 
 One thing that half has to say for itself: the dimensions code reads widgets out
 of the state and must *borrow* them, even though a real dock's widgets are

@@ -175,6 +175,16 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   arithmetic is still ~core/dock_dims~; what moved is the one job that pushes it
   into widgets.  ~dock_window.c~ keeps the slide, the hover, the layer surface
   and the teardown for now.
+- *The dock's surface policy and its slide are Rust.* Which layer-shell edges the
+  dock anchors and how much desktop it reserves, the frame callback that slides
+  it off screen and back, the settling window that tells an echo of that slide
+  apart from the pointer really moving, the row reset behind reduced motion, and
+  auto-hide with reveal: all ~rust/src/dock_window.rs~ now, with the pure parts
+  (the policy, the edge names and leans, the cross-axis rule) tested without a
+  display.  Sliding, hiding and revealing were checked against a live dock with
+  ~LAMBDOCK_DEBUG=1~: the trace still reports the margin, the strip and the
+  arrival, and the input region still flips to the whole surface while the dock
+  is away.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same
