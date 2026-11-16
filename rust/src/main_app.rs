@@ -22,10 +22,13 @@ use gtk4::glib::translate::{from_glib_none, IntoGlibPtr};
 use gtk4::glib::variant::ToVariant;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::prelude::*;
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::cell::RefCell;
+use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 
 use crate::cstr::{cstring, text_or_empty, translated};
+use crate::ui::preferences::on_preferences_action;
 use crate::dock_window::{
+    on_about_action, on_quit_action,
     apply_dock_mode_classes, destroy_dock_instance, dock_apply_motion_preference,
     dock_window_set_tracker_connected, hide_dock, on_popover_closed, on_right_click,
     orientation_of, schedule_initial_autohide, setup_dock_motion_controller,
@@ -33,6 +36,10 @@ use crate::dock_window::{
 };
 use crate::state::LambdockState;
 use crate::ui::layer_shell::{self, EDGE_LEFT, EDGE_RIGHT};
+
+/// `CONFIG_RELOAD_DEBOUNCE_MS` in `lambdock.h`: a write is several file events on
+/// some backends, so the reload waits for them to stop.
+const CONFIG_RELOAD_DEBOUNCE_MS: u32 = 150;
 
 /// The names a settings file can have: `settings.scm`, and the per-dock
 /// `settings-<name>.scm`.
@@ -1054,6 +1061,483 @@ pub unsafe extern "C" fn sync_docks_with_disk(app: *mut gtk4::ffi::GtkApplicatio
     for file in &files {
         reconcile_settings_file(&app, file);
     }
+}
+
+// ===========================================================================
+// THE GUILES SUBRS
+// ===========================================================================
+//
+// The REPL runs on its own thread, so every subr here marshals to the GTK thread
+// with an idle and hands it a value it owns.
+
+extern "C" {
+    fn scm_c_resolve_module(name: *const c_char) -> *mut c_void;
+    fn scm_set_current_module(module: *mut c_void) -> *mut c_void;
+    fn scm_c_use_module(name: *const c_char);
+    fn scm_c_define_gsubr(
+        name: *const c_char,
+        required: c_int,
+        optional: c_int,
+        rest: c_int,
+        function: *mut c_void,
+    ) -> *mut c_void;
+    fn scm_c_export(name: *const c_char, ...);
+    fn scm_boot_guile(
+        argc: c_int,
+        argv: *mut *mut c_char,
+        main: extern "C" fn(*mut c_void, c_int, *mut *mut c_char),
+        data: *mut c_void,
+    );
+
+    fn setlocale(category: c_int, locale: *const c_char) -> *mut c_char;
+    fn bindtextdomain(domain: *const c_char, directory: *const c_char) -> *mut c_char;
+    fn bind_textdomain_codeset(domain: *const c_char, codeset: *const c_char) -> *mut c_char;
+    fn textdomain(domain: *const c_char) -> *mut c_char;
+}
+
+/// `LC_ALL`.
+const LC_ALL: c_int = 6;
+
+/// Guile's "nothing to return" value.
+///
+/// It is `SCM_UNSPECIFIED`, a word with its own flag bits, so it is asked of the
+/// interpreter once rather than spelled as zero -- zero is a valid SCM and not
+/// this one.
+fn unspecified() -> *mut c_void {
+    static UNSPECIFIED: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+    let value = *UNSPECIFIED.get_or_init(|| unsafe {
+        crate::guile::scm_c_eval_string(c"(if #f #f)".as_ptr()) as usize
+    });
+
+    value as *mut c_void
+}
+
+/// `(reload-dock!)`: redraws the docks from the in-memory configuration.
+extern "C" fn scm_reload_dock() -> *mut c_void {
+    unsafe { glib::ffi::g_idle_add(Some(reload_idle), std::ptr::null_mut()) };
+
+    unspecified()
+}
+
+/// `(show-launchpad!)`: shows the launchpad of the first active dock.
+extern "C" fn scm_show_launchpad() -> *mut c_void {
+    unsafe { glib::ffi::g_idle_add(Some(show_launchpad_idle), std::ptr::null_mut()) };
+
+    unspecified()
+}
+
+/// `(hide-launchpad!)`.
+extern "C" fn scm_hide_launchpad() -> *mut c_void {
+    unsafe { glib::ffi::g_idle_add(Some(hide_launchpad_idle), std::ptr::null_mut()) };
+
+    unspecified()
+}
+
+/// `(launchpad-search! query)`: types into the launchpad's search field.
+extern "C" fn scm_launchpad_search(query: *mut c_void) -> *mut c_void {
+    // The idle owns this copy of the string.
+    let text = unsafe { crate::guile::scm_to_utf8_string(query.cast()) };
+    if text.is_null() {
+        return unspecified();
+    }
+
+    let text: *mut c_void = text.cast();
+    unsafe { glib::ffi::g_idle_add(Some(launchpad_search_idle), text) };
+
+    unspecified()
+}
+
+/// The idle that redraws every dock.
+extern "C" fn reload_idle(_data: *mut c_void) -> c_int {
+    crate::log_info!("Main", "Redrawing UI from in-memory state...");
+
+    unsafe {
+        crate::dock_registry::dock_registry_foreach(Some(redraw_visitor), std::ptr::null_mut())
+    };
+
+    glib::ffi::GFALSE
+}
+
+extern "C" fn redraw_visitor(state: *mut LambdockState, _data: *mut c_void) {
+    unsafe { crate::dock_item::reload_dock_instance(state) };
+}
+
+extern "C" fn show_launchpad_idle(_data: *mut c_void) -> c_int {
+    if let Some(first) = registry_snapshot().first() {
+        unsafe { crate::ui::launchpad::lambdock_launchpad_show(*first) };
+    }
+
+    glib::ffi::GFALSE
+}
+
+extern "C" fn hide_launchpad_idle(_data: *mut c_void) -> c_int {
+    crate::ui::launchpad::lambdock_launchpad_hide();
+
+    glib::ffi::GFALSE
+}
+
+/// `data` is the interpreter's copy of the query, owned and freed here.
+extern "C" fn launchpad_search_idle(data: *mut c_void) -> c_int {
+    unsafe {
+        let query = crate::cstr::text_or_empty(data.cast());
+        crate::ui::launchpad::lambdock_launchpad_set_query(cstring(&query).as_ptr());
+        crate::glib::g_free(data);
+    }
+
+    glib::ffi::GFALSE
+}
+
+/// Exposes the subrs to Scheme, inside `(lambdock core)`.
+///
+/// `scm_c_use_module` only imports that module into the current one, so defining
+/// without switching first would put `reload-dock!` in `(guile-user)`, where the
+/// setters -- which resolve it with `module-ref` on `(lambdock core)` -- would
+/// never find it and the dock would not redraw after `(set-dock-...!)`.
+fn setup_guile_primitives() {
+    unsafe {
+        let module = scm_c_resolve_module(c"lambdock core".as_ptr());
+        let previous = scm_set_current_module(module);
+
+        let define = |name: *const c_char, required: c_int, function: *const c_void| {
+            scm_c_define_gsubr(name, required, 0, 0, function as *mut c_void);
+        };
+
+        define(
+            c"reload-dock!".as_ptr(),
+            0,
+            scm_reload_dock as *const () as *const c_void,
+        );
+        define(
+            c"show-launchpad!".as_ptr(),
+            0,
+            scm_show_launchpad as *const () as *const c_void,
+        );
+        define(
+            c"hide-launchpad!".as_ptr(),
+            0,
+            scm_hide_launchpad as *const () as *const c_void,
+        );
+        define(
+            c"launchpad-search!".as_ptr(),
+            1,
+            scm_launchpad_search as *const () as *const c_void,
+        );
+
+        scm_c_export(
+            c"reload-dock!".as_ptr(),
+            c"show-launchpad!".as_ptr(),
+            c"hide-launchpad!".as_ptr(),
+            c"launchpad-search!".as_ptr(),
+            std::ptr::null::<c_char>(),
+        );
+
+        scm_set_current_module(previous);
+    }
+}
+
+// ===========================================================================
+// WATCHERS, MONITOR HOTPLUG AND STARTUP
+// ===========================================================================
+
+thread_local! {
+    /// The two debounce timers and the pending monitor-sync idle: the
+    /// process-wide source ids, in one place so their ownership is one thing to
+    /// look at.
+    static TIMERS: RefCell<Timers> = const { RefCell::new(Timers {
+        config_reload: 0,
+        state_reload: 0,
+        monitor_sync: 0,
+    }) };
+}
+
+struct Timers {
+    config_reload: c_uint,
+    state_reload: c_uint,
+    monitor_sync: c_uint,
+}
+
+/// Restarts one timer: a write is several file events on some backends.
+fn restart_timer(slot: impl Fn(&mut Timers) -> &mut c_uint, delay: u32, callback: extern "C" fn(*mut c_void) -> c_int, data: *mut c_void) {
+    let previous = TIMERS.with_borrow_mut(|timers| std::mem::replace(slot(timers), 0));
+
+    unsafe {
+        if previous != 0 {
+            glib::ffi::g_source_remove(previous);
+        }
+
+        let id = glib::ffi::g_timeout_add(delay, Some(callback), data);
+        TIMERS.with_borrow_mut(|timers| *slot(timers) = id);
+    }
+}
+
+/// Debounced: a settings directory that changed is reconciled once it settles.
+extern "C" fn on_config_reload_timeout(app: *mut c_void) -> c_int {
+    TIMERS.with_borrow_mut(|timers| timers.config_reload = 0);
+    unsafe { sync_docks_with_disk(app.cast()) };
+
+    glib::ffi::GFALSE
+}
+
+/// Debounced: a local-state file changed, so every dock re-reads its settings and
+/// redraws. A local-state file is not a settings file -- it is replayed *on top
+/// of* one by the Scheme loader -- so reading the settings file again is what
+/// makes the new preferences or layout visible.
+extern "C" fn on_state_reload_timeout(_data: *mut c_void) -> c_int {
+    TIMERS.with_borrow_mut(|timers| timers.state_reload = 0);
+    unsafe {
+        crate::dock_registry::dock_registry_foreach(Some(state_reload_visitor), std::ptr::null_mut())
+    };
+
+    glib::ffi::GFALSE
+}
+
+extern "C" fn state_reload_visitor(state: *mut LambdockState, _data: *mut c_void) {
+    let Some(path) = (unsafe { state.as_ref() })
+        .and_then(|dock| unsafe { crate::cstr::non_empty_text(dock.config_path) })
+    else {
+        return;
+    };
+
+    unsafe {
+        crate::bridge::load_dock_config_scm(cstring(&path).as_ptr());
+        crate::dock_item::reload_dock_instance(state);
+    }
+}
+
+extern "C" fn on_file_changed(_monitor: *mut c_void, _file: *mut c_void, _other: *mut c_void, _event: c_int, app: *mut c_void) {
+    restart_timer(
+        |timers| &mut timers.config_reload,
+        CONFIG_RELOAD_DEBOUNCE_MS,
+        on_config_reload_timeout,
+        app,
+    );
+}
+
+extern "C" fn on_state_changed(_monitor: *mut c_void, _file: *mut c_void, _other: *mut c_void, _event: c_int, _data: *mut c_void) {
+    restart_timer(
+        |timers| &mut timers.state_reload,
+        CONFIG_RELOAD_DEBOUNCE_MS,
+        on_state_reload_timeout,
+        std::ptr::null_mut(),
+    );
+}
+
+/// Watches `~/.config/lambdock` for settings files and `~/.local/state/lambdock`
+/// for the state they are layered with.
+///
+/// Both, for the same reason: what the dock draws is the settings file *plus* the
+/// preferences and layout overrides, and a change to either half is something the
+/// user expects to see. The state directory is created first, since a dock that
+/// has never been edited has not made one yet.
+///
+/// The monitors are deliberately kept: they are process-lifetime objects whose
+/// signal is the only thing that keeps them doing their job.
+unsafe fn setup_config_file_monitors(app: &gtk4::Application) {
+    let app_pointer: *mut c_void = app.as_ptr().cast();
+
+    for (directory, label, callback) in [
+        (config_dir(), "config", on_file_changed as extern "C" fn(_, _, _, _, _)),
+        (state_dir(), "local state", on_state_changed as extern "C" fn(_, _, _, _, _)),
+    ] {
+        if label == "local state" {
+            let _ = std::fs::create_dir_all(&directory);
+        }
+
+        let monitor = gtk4::gio::File::for_path(&directory)
+            .monitor_directory(gtk4::gio::FileMonitorFlags::NONE, None::<&gtk4::gio::Cancellable>);
+
+        match monitor {
+            Ok(monitor) => {
+                monitor.connect_changed(move |_, _, _, _| {
+                    callback(
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        0,
+                        app_pointer,
+                    )
+                });
+                std::mem::forget(monitor);
+                crate::log_info!(
+                    "Main",
+                    "Watching directory for {label} changes: {}",
+                    directory.display()
+                );
+            }
+            Err(error) => {
+                crate::log_warn!("Main", "Could not watch {}: {error}", directory.display());
+            }
+        }
+    }
+}
+
+/// The pending monitor reconcile, deferred to an idle.
+///
+/// Creating and destroying layer surfaces (and walking the monitor model in
+/// `is_monitor_valid`) while the `GListModel` is still emitting `items-changed`
+/// is reentrancy-prone, so the work waits for the signal to finish.
+extern "C" fn on_monitors_changed_idle(app: *mut c_void) -> c_int {
+    TIMERS.with_borrow_mut(|timers| timers.monitor_sync = 0);
+
+    crate::log_info!("Main", "MONITORS CHANGED: reconciling docks");
+    unsafe { sync_docks_with_disk(app.cast()) };
+    crate::log_info!("Main", "MONITORS CHANGED: reconciliation done");
+
+    glib::ffi::GFALSE
+}
+
+/// Hooks the display's monitor model, so a hotplug reconciles the docks.
+fn setup_monitor_listeners(app: &gtk4::Application) {
+    let Some(display) = gdk::Display::default() else {
+        return;
+    };
+    let monitors = display.monitors();
+
+    let app_pointer: *mut c_void = app.as_ptr().cast();
+    monitors.connect_items_changed(move |_, position, removed, added| {
+        crate::log_info!(
+            "Main",
+            "MONITORS CHANGED: position={position} removed={removed} added={added}"
+        );
+
+        let pending = TIMERS.with_borrow(|timers| timers.monitor_sync);
+        if pending == 0 {
+            let id = unsafe { glib::ffi::g_idle_add(Some(on_monitors_changed_idle), app_pointer) };
+            TIMERS.with_borrow_mut(|timers| timers.monitor_sync = id);
+        }
+    });
+
+    crate::log_info!("Main", "Registered listener for display monitor hotplug events.");
+}
+
+/// The theme-independent overlay stylesheet: stack popovers, the launchpad and
+/// drag feedback. Overlays are not part of any dock capsule, so they must not be
+/// scoped to a theme class.
+fn load_overlay_css() {
+    let Some(display) = gdk::Display::default() else {
+        return;
+    };
+
+    let provider = gtk4::CssProvider::new();
+    provider.load_from_resource("/org/jointhefreeworld/lambdock/css/overlays.css");
+
+    gtk4::style_context_add_provider_for_display(
+        &display,
+        &provider,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+}
+
+/// Adds one application action and connects it to `handler`.
+fn add_action(
+    app: &gtk4::Application,
+    name: &str,
+    parameter_type: Option<&glib::VariantTy>,
+    handler: unsafe extern "C" fn(*mut gtk4::gio::ffi::GSimpleAction, *mut glib::ffi::GVariant, *mut c_void),
+) {
+    let action = gtk4::gio::SimpleAction::new(name, parameter_type);
+
+    let app_pointer: *mut c_void = app.as_ptr().cast();
+    action.connect_activate(move |action, parameter| unsafe {
+        let parameter: *mut glib::ffi::GVariant = match parameter {
+            Some(parameter) => parameter.as_ptr(),
+            None => std::ptr::null_mut(),
+        };
+        let action_pointer: *mut gtk4::gio::ffi::GSimpleAction = action.as_ptr();
+
+        handler(action_pointer, parameter, app_pointer);
+    });
+
+    app.add_action(&action);
+}
+
+/// The application's setup: Guile, the actions, the docks and the watchers.
+fn activate(app: &gtk4::Application) {
+    crate::log_info!("Main", "Initializing Guile engine & multi-monitor manager...");
+
+    unsafe {
+        crate::bridge::setup_guile_load_path();
+        scm_c_use_module(c"lambdock core".as_ptr());
+    }
+    setup_guile_primitives();
+
+    crate::ui::icon_resolver::setup_icon_theme();
+    load_overlay_css();
+
+    // Follow the desktop's reduced-motion setting while the dock runs.
+    unsafe {
+        crate::accessibility::lambdock_watch_system_motion(
+            on_system_motion_changed as *mut c_void,
+            std::ptr::null_mut(),
+        )
+    };
+
+    // The global menu actions. Preferences and Save settings take the dock's
+    // settings path as a string target; the action map holds its own reference.
+    add_action(app, "about", None, on_about_action);
+    add_action(app, "quit", None, on_quit_action);
+    add_action(app, "preferences", Some(glib::VariantTy::STRING), on_preferences_action);
+    add_action(app, "export-settings", Some(glib::VariantTy::STRING), on_export_settings_action);
+
+    unsafe {
+        sync_docks_with_disk(app.as_ptr().cast());
+        setup_config_file_monitors(app);
+    }
+    setup_monitor_listeners(app);
+}
+
+/// Releases the preferences windows as the application tears down.
+fn on_app_shutdown(_app: &gtk4::Application) {
+    crate::ui::preferences::lambdock_preferences_shutdown();
+}
+
+// ===========================================================================
+// THE PROGRAM ENTRY POINT
+// ===========================================================================
+
+/// Runs inside Guile's boot: the application is created and run here, so the
+/// interpreter is ready before the first dock reads its settings.
+extern "C" fn inner_main(_data: *mut c_void, argc: c_int, argv: *mut *mut c_char) {
+    let app = gtk4::Application::new(
+        Some("org.jointhefreeworld.lambdock"),
+        gtk4::gio::ApplicationFlags::empty(),
+    );
+
+    app.connect_activate(activate);
+    app.connect_shutdown(on_app_shutdown);
+
+    // Blocks until the application exits.
+    let arguments: Vec<String> = (0..argc)
+        .map(|index| unsafe { crate::cstr::text_or_empty(*argv.add(index as usize)) })
+        .collect();
+
+    app.run_with_args(&arguments);
+}
+
+/// The binary's entry point: environment, i18n, Guile, then GTK.
+///
+/// # Safety
+///
+/// `argv` must be the process's own argument vector.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
+    // The renderer can be pinned at build time.
+    if let Some(renderer) = option_env!("DEFAULT_GSK_RENDERER") {
+        glib::ffi::g_setenv(c"GSK_RENDERER".as_ptr(), cstring(renderer).as_ptr(), 0);
+    }
+
+    setlocale(LC_ALL, c"".as_ptr());
+    if let Some(locale_dir) = option_env!("LAMBDOCK_LOCALEDIR") {
+        bindtextdomain(c"lambdock".as_ptr(), cstring(locale_dir).as_ptr());
+    }
+    bind_textdomain_codeset(c"lambdock".as_ptr(), c"UTF-8".as_ptr());
+    textdomain(c"lambdock".as_ptr());
+
+    // Boots the interpreter, runs the callback, and returns when GTK is done.
+    scm_boot_guile(argc, argv, inner_main, std::ptr::null_mut());
+
+    0
 }
 
 #[cfg(test)]

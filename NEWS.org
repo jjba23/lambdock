@@ -223,6 +223,16 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   over owning its reference, which is what the teardown unrefs.  Writing that down
   found two bugs the C had carried: the overlay was being built twice, and the
   menu's per-dock action targets came from a hand-built `GMenuItem`.
+- *The port from C to Rust is finished.* ~src/main.c~ is nineteen lines: ~main~
+  and a call to ~lambdock_main~, because the C runtime needs a ~main~ symbol and
+  the Rust standard library is started by one.  Everything else is Rust -- the
+  application's startup, its menu actions, the Guile subrs and their idles, the
+  file watchers with their debounce, the monitor hotplug listener, dock discovery
+  and reconciliation, every dock's whole life, and all of the widget layer.  The
+  headers stay as the contract the C tests call through, which is how each module
+  could move without its callers following.  Meson still drives the build --
+  GResource, the Wayland protocol, the translation catalogues and installation --
+  but it no longer builds any C.
 - *The Rust half is lint-clean, and stays that way.* The crate declares
   ~clippy::all~ and ~rust_2018_idioms~ as denies in ~rust/Cargo.toml~, and
   ~meson test~ runs ~cargo clippy~ when the toolchain carries it -- the same

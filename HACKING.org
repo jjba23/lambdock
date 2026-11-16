@@ -749,8 +749,51 @@ Two things that file taught, both now written down where they bit:
   by id in a thread-local instead: the state mirror has no room for ids, and the
   surface outlives the state it reports to.
 
-=main.c= is the last file: the application -- dock discovery, monitors, the REPL
-socket, the file watchers, the menu actions and startup.
+The port is done: =src/main.c= is nineteen lines of C, and there is nothing else.
+It holds =main= and a call to =lambdock_main=, because the C runtime needs a
+=main= symbol and the Rust standard library is started by one -- a
+=#[no_mangle] main= inside a static library would run before std is initialized,
+which works until the first thread or the first =env= access. Everything else --
+the application's startup, its actions, the Guile subrs and their idles, the file
+watchers, the monitor hotplug listener, dock discovery and reconciliation, and
+every dock's whole life -- is =rust/src/=.
+
+The headers stay. =src/*.h= are the contract the C tests and the Scheme-facing
+half call through, and they are the reason a module could move without its callers
+following: the test binaries still link only the slice they exercise and still
+assert the ABI they were written against.
+
+Reconciling the docks is the clearest example of what the port did to the C's
+shape. It is two steps, and the first one is a value: =plan_for_file= turns (the
+settings file, its monitor policy, the registered docks, the live monitors) into
+a =FilePlan= -- which docks to destroy, which to reload, where to spawn -- and
+=apply_plan= carries it out. The plan has no widgets in it, so the three monitor
+policies are unit-tested without a display, including the documented fallback for
+a connector that does not exist.
+
+*What still needs meson, and what a pure-Cargo build would take.* The build is
+Meson today, and the reason is not the Rust: it is everything around it. A
+Cargo-only build would have to take these over in =rust/build.rs=, and each one
+is a real piece of work rather than a line of glue:
+
+- *the GResource bundle* (=gresource.xml= compiled by =glib-compile-resources=,
+  which carries the CSS, the icons and the About logo). A build script can run
+  it -- =glib-compile-resources --generate-source --target ...= -- and hand the
+  generated C to a =cc= crate, or export it as a bundle the binary loads.
+- *the Wayland protocol* (=wayland-scanner= over
+  =wlr-foreign-toplevel-management-unstable-v1.xml= and =xdg-shell=). The Rust
+  half already declares those interfaces itself and only needs the generated
+  =*_interface= data symbols, so this is the smallest of the four.
+- *translations*: =msgfmt= over =po/= into =/usr/share/locale=, plus
+  =xgettext= to keep the catalogues in step (the crate's =tr:= keyword is
+  already annotated for it).
+- *installation*: the binary, the =.desktop= file, the AppStream metainfo, the
+  Scheme modules and the GResource. =meson install= does all of it, and the
+  packaging recipes (Guix, Nix, the Flatpak manifest) are written against it.
+
+So meson earns its place for now, but it no longer builds any C: =sources= is the
+one shim file, =rust_sources= is the crate, and =cargo-build.sh= is what produces
+the archive meson links.
 
 One thing that moved with them, and is easy to get wrong again: a widget crosses
 the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is
