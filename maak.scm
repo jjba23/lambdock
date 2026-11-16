@@ -269,6 +269,17 @@ tests are the ones that match the checked out sources."
                         (~ "docker.io/jjba23/~a:~a" project-name latest-tag))
                   #:verbose? #t)))
 
+(define (vendor)
+  "Regenerate rust/vendor/ after changing rust/Cargo.toml.
+
+The crate graph is vendored so `cargo build --offline` works in a sandbox: the
+Guix and Nix recipes both build with no network, and `.cargo/config.toml` at the
+tree root points at rust/vendor. `cargo vendor` rewrites both, and the Cargo.lock
+it resolves has to be committed with them."
+  (dsl:run (list "cargo" "vendor" "--manifest-path" "rust/Cargo.toml"
+                 "rust/vendor")
+           #:verbose? #t))
+
 (define (i18n-update)
   "Update .pot and .po files based on the source code."
   ;; Three steps of the same build, each run where it happens rather than as

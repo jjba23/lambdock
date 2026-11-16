@@ -463,7 +463,10 @@ contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
 =src/guile_bridge.c= keeps the item builders, the layout writes and the poll
 procedures. =rust/src/dock_registry.rs= owns the live-dock list, and
 =src/ui/widget_utils.c= is =rust/src/ui/widget_utils.rs=, the first module
-written against =gtk4-rs=.
+written against =gtk4-rs=. The icon search paths (=lambdock_icon_search_paths_*=)
+are =rust/src/ui/icon_resolver.rs=; the pipeline that builds a =GtkImage= from
+them is still C, because it needs the display's icon theme, a GSettings lookup
+and the colourised =LOG_C_*= diagnostics, none of which has a Rust home yet.
 
 ** GTK from Rust, and why the crates are vendored
 :PROPERTIES:
@@ -476,16 +479,44 @@ Guix or Nix build has no network, so the graph is vendored under =rust/vendor/=
 and =.cargo/config.toml= at the tree root replaces crates.io with it:
 
 #+begin_src sh
-cd rust && cargo vendor          # after changing rust/Cargo.toml
+maak vendor                      # after changing rust/Cargo.toml
 cargo build --offline --locked   # what meson runs
 #+end_src
 
-The tree is Linux-only, but =Cargo.lock= names every package in the graph
-including the Windows-only ones (=windows-sys= is the largest of the 58 MB), and
-a replaced source has to have them all on disk. The alternative -- leave the
-graph to each packager, with Nix's ~cargoDeps~ and Guix's ~cargo-inputs~ -- buys
-a smaller tree at the cost of every recipe having to know the graph; the vendored
-copy keeps `cargo build --offline` true in every environment and in the sandbox.
+What it costs, measured rather than guessed: 58 MB and 3697 files in the working
+tree, but only *9.5 MiB* in =.git= -- vendored source compresses about six to
+one, and that is the number a clone pays. The tree is Linux-only, yet the lock
+file names every package in the graph including the Windows-only ones
+(=windows-sys= is the largest single directory at 18 MB), and a replaced source
+has to have them all on disk.
+
+The alternative -- leave the graph to each packager, with Nix's ~cargoDeps~ and
+Guix's ~cargo-inputs~ -- buys a smaller tree at the cost of every recipe having to
+know the graph, and Guix has no ~cargo-inputs~ story for =meson-build-system= at
+all. To undo it instead: ~git rm -r rust/vendor .cargo~, drop ~--offline~ from
+=rust/cargo-build.sh= and the =rust_unit_tests= target, and give =package.nix= a
+~cargoDeps~.
+
+** One codegen unit per module, and two link dependencies
+:PROPERTIES:
+:CUSTOM_ID: rust-link-boundary
+:END:
+
+=rust/Cargo.toml= sets ~codegen-units = 256~ for the release profile. Without it
+the crate compiles to a single object, so every C test binary that touched the
+archive had to resolve the GTK and libguile symbols the widget and bridge code
+reference -- even a test that only calls ~lambdock_tracker_should_hide()~. With
+one object per module the linker pulls in only what a target references, and
+=meson.build= has the two dependencies that go with it:
+
+- ~rust_core_dep~ -- the archive and GLib. For the decision modules, whose tests
+  keep the property the project cares about: they link nothing but GLib
+  (~ldd build/test_tracker_rules~ names neither GTK nor Guile).
+- ~rust_lib_dep~ -- the archive, GLib, libguile and GTK. For anything that
+  reaches the bridge or a widget.
+
+A new module needs no thinking here: reach for ~rust_core_dep~ only while its test
+uses neither Guile nor a widget, and ~rust_lib_dep~ otherwise.
 
 A widget module keeps its C header and is reached exactly like a =core/= module,
 except that a widget crosses the seam as a borrowed pointer:

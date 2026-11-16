@@ -182,44 +182,6 @@ GtkWidget *create_image_for_icon(GtkIconTheme *theme, const char *icon,
  * ensures a valid GTK icon theme name is configured (falling back to
  * GSettings/dconf only if necessary).
  */
-char **lambdock_icon_search_paths_build(const char *const *system_data_dirs,
-                                        const char *home) {
-  GPtrArray *paths = g_ptr_array_new_with_free_func(g_free);
-
-  /* Order matters: the first directory an icon is found in wins, and a user's
-   * own icons should shadow the system's, so they come last. */
-  for (int i = 0; system_data_dirs && system_data_dirs[i] != NULL; i++) {
-    char *icons_dir = g_build_filename(system_data_dirs[i], "icons", NULL);
-    if (g_file_test(icons_dir, G_FILE_TEST_IS_DIR))
-      g_ptr_array_add(paths, icons_dir);
-    else
-      g_free(icons_dir);
-  }
-
-  if (home && *home != '\0') {
-    char *user_icons = g_build_filename(home, ".local", "share", "icons", NULL);
-    if (g_file_test(user_icons, G_FILE_TEST_IS_DIR))
-      g_ptr_array_add(paths, user_icons);
-    else
-      g_free(user_icons);
-
-    char *legacy_icons = g_build_filename(home, ".icons", NULL);
-    if (g_file_test(legacy_icons, G_FILE_TEST_IS_DIR))
-      g_ptr_array_add(paths, legacy_icons);
-    else
-      g_free(legacy_icons);
-  }
-
-  /* NULL-terminated, the way GtkIconTheme's API wants a list. */
-  g_ptr_array_add(paths, NULL);
-
-  return (char **)g_ptr_array_free(paths, FALSE);
-}
-
-char **lambdock_icon_search_paths_new(void) {
-  return lambdock_icon_search_paths_build(g_get_system_data_dirs(),
-                                          g_get_home_dir());
-}
 
 void setup_icon_theme(void) {
   GdkDisplay *display = gdk_display_get_default();

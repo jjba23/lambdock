@@ -25,8 +25,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 - *gtk4-rs is a build dependency, and the crate graph is vendored.* The widget
   modules are written against ~gtk4-rs~, which needs a crate registry to fetch;
   ~rust/vendor/~ plus ~.cargo/config.toml~ make ~cargo build --offline~ work in a
-  sandbox, so a Guix or Nix build needs no extra inputs.  Regenerate with
-  ~cd rust && cargo vendor~ after changing ~rust/Cargo.toml~.
+  sandbox, so a Guix or Nix build needs no extra inputs.  That is 58 MB of
+  checkout (9.5 MiB in git) for a graph whose Windows-only half is dead weight on
+  Linux; ~maak vendor~ regenerates it after changing ~rust/Cargo.toml~.
+- *Rust owns a share of the widget layer now.* ~ui/widget_utils.c~ and the icon
+  search paths moved to ~rust/src/ui/~, and the release profile builds one
+  codegen unit per module, so a C test that only calls a decision function still
+  links nothing but GLib instead of dragging GTK and Guile into its link line.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from

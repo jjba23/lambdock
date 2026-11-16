@@ -300,11 +300,22 @@ rust_lib = custom_target(
   console: true,
 )
 
-# The archive carries Rust's `std` and borrows GLib's allocator, libguile's
-# interpreter and GTK's widgets, so a target that links it links what those need.
-# The archive comes first: a static library has to precede the libraries its
-# objects reference. `sources` is what makes every target that links it wait for
-# the custom command above, instead of racing it.
+# The archive carries Rust's `std` and borrows GLib's allocator, so a target that
+# links it links what those need. The archive comes first: a static library has to
+# precede the libraries its objects reference. `sources` is what makes every
+# target that links it wait for the custom command above, instead of racing it.
+#
+# The release profile builds one codegen unit per module, so a target that only
+# calls a decision function pulls only the objects it references: `rust_core_dep`
+# is enough for those, and it is what keeps their "links nothing but GLib"
+# property. Everything that reaches the Scheme bridge or a widget needs the whole
+# stack, which is `rust_lib_dep`.
+rust_core_dep = declare_dependency(
+  sources: rust_lib,
+  link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
+  dependencies: [dependency('glib-2.0')],
+)
+
 rust_lib_dep = declare_dependency(
   sources: rust_lib,
   link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread'],
@@ -454,6 +465,8 @@ unit_tests = [
   },
   {
     'id': 'dock_registry',
+    # `lambdock.h` holds widgets, so this test's header needs GTK's include path;
+    # the registry's own code is in Rust and touches only GLib.
     'extra_sources': [],
   },
   {
@@ -462,7 +475,7 @@ unit_tests = [
     # proves the C ABI in `src/core/tracker_rules.h` still links and behaves.
     'id': 'tracker_rules',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), rust_lib_dep],
+    'deps': [dependency('glib-2.0'), rust_core_dep],
   },
   {
     'id': 'dock_dims',
@@ -474,7 +487,7 @@ unit_tests = [
     # the enum values are the header's, which is what this binary checks.
     'id': 'dock_click',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), rust_lib_dep],
+    'deps': [dependency('glib-2.0'), rust_core_dep],
   },
   {
     # What an X11 window means and where the dock puts itself on an X11 screen:
@@ -491,14 +504,14 @@ unit_tests = [
     # display.
     'id': 'poof',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_core_dep],
   },
   {
     # Deliberately no GTK here: the motion arithmetic is pure, and the test
     # binary proves it by linking nothing but GLib and the Rust archive.
     'id': 'dock_motion',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_core_dep],
   },
   {
     # The poller budget: intervals in, polls per second out. The Scheme thunks
@@ -508,7 +521,7 @@ unit_tests = [
     # `src/core/poll_budget.h` links against the archive.
     'id': 'poll_budget',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), rust_lib_dep],
+    'deps': [dependency('glib-2.0'), rust_core_dep],
   },
   {
     # Same deal for the item wording: strings in, strings out, no widgets. The
@@ -516,7 +529,7 @@ unit_tests = [
     # binary checks.
     'id': 'item_text',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_core_dep],
   },
   {
     'id': 'stack',
@@ -549,7 +562,7 @@ unit_tests = [
     # returns by value.
     'id': 'clock_face',
     'extra_sources': [],
-    'deps': [dependency('glib-2.0'), libm_dep, rust_lib_dep],
+    'deps': [dependency('glib-2.0'), libm_dep, rust_core_dep],
   },
   {
     'id': 'meter',
@@ -651,4 +664,7 @@ rust_test_env.set('CARGO_HOME', meson.project_build_root() / 'rust-cargo-home')
 test('rust_unit_tests', cargo,
      args: ['test', '--locked', '--offline', '--quiet',
             '--manifest-path', meson.project_source_root() / 'rust' / 'Cargo.toml'],
-     env: rust_test_env)
+     env: rust_test_env,
+     # A cold run compiles the crate's graph (gtk4-rs included) in the test
+     # profile, which is well past meson's 30-second default.
+     timeout: 600)

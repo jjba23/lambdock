@@ -24,6 +24,11 @@ extern "C" {
     pub fn g_strdup(text: *const c_char) -> *mut c_char;
     pub fn g_strdup_printf(format: *const c_char, ...) -> *mut c_char;
     pub fn g_free(memory: *mut c_void);
+    pub fn g_malloc0(size: usize) -> *mut c_void;
+
+    /// The XDG data directories, which the icon search path is built from.
+    pub fn g_get_system_data_dirs() -> *const *const c_char;
+    pub fn g_get_home_dir() -> *const c_char;
 }
 
 /// Translate `msgid`, whose literal stays at the call site.

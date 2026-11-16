@@ -9,4 +9,5 @@
 //! callers do not move; what changes is who implements the body. Widgets are
 //! borrowed from C as `gtk4::Widget` and never owned here.
 
+pub mod icon_resolver;
 pub mod widget_utils;
