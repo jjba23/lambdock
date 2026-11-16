@@ -95,8 +95,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   icons), and the two wrappers that stack an item with its reflection and lay them
   out for the dock.  The item menu's keyboard followed: Escape, the arrow keys, Home
   and End, and where the focus lands when the menu opens are ~rust/src/ui/popover_menu.rs~,
-  walking the popover's own widget tree; what is still C is the menu's content -- the
-  rows and the sections with their callbacks.  A
+  walking the popover's own widget tree.  The menu's content followed, so
+  ~ui/popover_menu.c~ is gone: the window rows with their current/minimized state,
+  the app-specific actions behind the browser and player sections, the desktop
+  entry's own launchers, the inspector that answers "why is this item here?", and
+  the two long jobs -- emptying the trash and the deferred removal -- which keep the
+  C's rule that a widget is not destroyed from inside its own handler.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

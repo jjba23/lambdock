@@ -551,12 +551,12 @@ unsafe fn text(pointer: *const c_char) -> String {
 /// -- the same lifetime the C kept with `g_object_ref`/`g_object_unref`. It is only
 /// ever dereferenced on the main thread, which is where the unsafe impl's promise
 /// is kept.
-struct SendRef(*mut c_void);
+pub(crate) struct SendRef(*mut c_void);
 
 unsafe impl Send for SendRef {}
 
 impl SendRef {
-    fn new(widget: &gtk4::Widget) -> Self {
+    pub(crate) fn new(widget: &gtk4::Widget) -> Self {
         let pointer: *mut ffi::GtkWidget = widget.to_glib_full();
         Self(pointer.cast())
     }
@@ -566,7 +566,7 @@ impl SendRef {
     /// # Safety
     ///
     /// Main thread only, and only once.
-    unsafe fn take(&self) -> gtk4::Widget {
+    pub(crate) unsafe fn take(&self) -> gtk4::Widget {
         from_glib_full(self.0.cast::<ffi::GtkWidget>())
     }
 }

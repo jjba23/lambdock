@@ -120,7 +120,7 @@ If you read nothing else, read this.
 | Add or retune a whole-dock look recipe     | =scheme/lambdock/looks.scm=                                    |
 | Add a widget (CPU, clock, ...)             | =scheme/lambdock/items.scm=                                    |
 | Change how an item is drawn                | =src/ui/dock_item.c=                                           |
-| Change the window popover                  | =src/ui/popover_menu.c=                                        |
+| Change the window popover                  | =rust/src/ui/popover_menu.rs=                                  |
 | Change the stack panel (browsing, header)  | =src/ui/stack.c=                                               |
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
 | Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.h=                      |
@@ -315,7 +315,7 @@ lambdock/
 │       ├── meter.h            # Circular gauge widget for meter items (in rust/src/ui/)
 │       ├── clock.h            # Analogue face: squircle, ticks, hands (in rust/src/ui/)
 │       ├── dock_item_windows.h # An item's windows: tracking, styling, lookup (in rust/src/ui/)
-│       ├── popover_menu.c/.h  # Right-click/multi-window popover builder (keyboard in rust/src/ui/)
+│       ├── popover_menu.h     # Right-click/multi-window popover builder (in rust/src/ui/)
 │       ├── stack.c/.h         # Folder stacks: listing, grid/list views, popover
 │       ├── launchpad.c/.h     # Full-screen application grid, tiles and search
 │       ├── trash.h            # Freedesktop.org trash: roots, count, empty, open (in rust/src/ui/)
@@ -1428,7 +1428,7 @@ pointer dies:
 | 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
 | 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
 | 4     | =ui/clock.h=           | Analogue clock face: squircle body, ticks, hands, glass (body in Rust)             |
-| 4     | =ui/popover_menu.c=    | Dynamic popover building, focus/close/launch/close-all callbacks                 |
+| 4     | =ui/popover_menu.h=    | Dynamic popover building, focus/close/launch/close-all callbacks (in Rust)      |
 | 4     | =ui/stack.c=           | Folder stacks: directory listing, grid/list views, popover                       |
 | 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
 | 4     | =ui/trash.h=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files (in Rust)|

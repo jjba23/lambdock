@@ -443,7 +443,7 @@ fn mpris_method(action: c_int) -> Option<&'static str> {
 }
 
 /// The bus name of the MPRIS player behind this application, when one is running.
-fn music_player_find(app_id: Option<&str>, name: Option<&str>) -> Option<String> {
+pub fn music_player_find(app_id: Option<&str>, name: Option<&str>) -> Option<String> {
     if app_id.is_none_or(|app_id| app_id.is_empty()) && name.is_none_or(|name| name.is_empty()) {
         return None;
     }
