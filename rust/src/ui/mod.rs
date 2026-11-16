@@ -18,6 +18,7 @@ pub mod icon_resolver;
 pub mod icon_zoom;
 pub mod meter;
 pub mod poof;
+pub mod shelf;
 pub mod shelf_follow;
 pub mod theme_engine;
 pub mod trash;

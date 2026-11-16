@@ -81,7 +81,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   ~ui/dock_dnd.c~ is ~rust/src/ui/dock_dnd.rs~: the drop index and the list move
   are pure and tested, the gestures are gtk-rs's own drag sources and drop
   targets, and trashing dropped files runs on a worker thread that comes back to
-  the main loop holding the button reference it took before it started.  A
+  the main loop holding the button reference it took before it started.  The
+  glass shelf is half moved the same way: what it *measures* -- the parameters in
+  force, whether the shelf look is on, the capsule's band and overhang, and the
+  per-repaint band budget -- is ~rust/src/ui/shelf.rs~, tested from a zeroed dock
+  and a configured one, while the frame and the reflections still paint in C.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module

@@ -12,63 +12,12 @@
 
 /* ============================================================================
  * BUILT-IN PARAMETERS
- * ============================================================================ */
-
-/**
- * lambdock_shelf_params_effective:
- * Returns the shelf parameters that should be used for @state.
- *
- * A zero-initialised state (a partially built dock, a unit test) carries no
- * shelf configuration at all; it is treated as the plain dock rather than as a
- * capsule with zero margin, which would collapse the layout.
+ * ============================================================================
+ * lambdock_shelf_params_effective(), lambdock_shelf_active() and
+ * lambdock_shelf_geometry_for() live in rust/src/ui/shelf.rs: what the shelf
+ * *measures* is a pure value, and it is what the rest of the dock asks it for.
+ * What stays here is the glass itself -- the frame and the reflections.
  */
-LambdockShelfParams lambdock_shelf_params_effective(const LambdockState *state) {
-  if (!state)
-    return lambdock_shelf_params_default();
-
-  LambdockShelfParams params = state->shelf;
-
-  if (params.margin_px == 0 && params.front_px == 0 &&
-      params.reflection_ratio == 0.0 && params.tilt_deg == 0.0 &&
-      params.flare_px == 0)
-    return lambdock_shelf_params_default();
-
-  return params;
-}
-
-gboolean lambdock_shelf_active(const LambdockState *state) {
-  if (!state)
-    return FALSE;
-
-  LambdockShelfParams defaults = lambdock_shelf_params_default();
-  LambdockShelfParams params = lambdock_shelf_params_effective(state);
-
-  return params.tilt_deg != defaults.tilt_deg ||
-         params.margin_px != defaults.margin_px ||
-         params.front_px != defaults.front_px ||
-         params.flare_px != defaults.flare_px ||
-         params.reflection_ratio > defaults.reflection_ratio;
-}
-
-LambdockShelfGeometry lambdock_shelf_geometry_for(const LambdockState *state,
-                                                  int icon_size) {
-  LambdockShelfParams params = lambdock_shelf_params_effective(state);
-  int icon = (icon_size > 0) ? icon_size : DEFAULT_ICON_SIZE;
-
-  LambdockShelfGeometry geometry;
-  geometry.band_px = (int)round((double)icon * params.reflection_ratio);
-  if (geometry.band_px < 0)
-    geometry.band_px = 0;
-
-  geometry.outer_px = MAX(params.front_px, geometry.band_px);
-  geometry.capsule_px = icon + params.margin_px + geometry.outer_px;
-  if (geometry.capsule_px < 0)
-    geometry.capsule_px = 0;
-
-  geometry.overhang_px = MAX(0, -params.margin_px);
-
-  return geometry;
-}
 
 /* ============================================================================
  * LambdockReflection — mirrored, blurred, fading icon reflection
@@ -1020,14 +969,8 @@ static GdkPaintable *reflection_artwork_for(GtkWidget *source) {
   return NULL;
 }
 
-int lambdock_reflection_band_count(double axis_len) {
-  if (!(axis_len > 0.0))
-    return SHELF_REFLECTION_BANDS;
-
-  int bands = (int)round(axis_len);
-
-  return CLAMP(bands, 6, SHELF_REFLECTION_BANDS);
-}
+/* lambdock_reflection_band_count() is in rust/src/ui/shelf.rs with the rest of the
+ * shelf's measurement: it is the per-repaint budget, and a budget is a value. */
 
 GtkWidget *shelf_reflection_new(GtkWidget *source) {
   LambdockReflection *self = g_object_new(LAMBDOCK_TYPE_REFLECTION, NULL);
