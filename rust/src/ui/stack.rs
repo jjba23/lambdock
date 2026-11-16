@@ -905,11 +905,6 @@ unsafe fn entries_of(entries: *mut glib::ffi::GPtrArray) -> Vec<Entry> {
         .collect()
 }
 
-/// The icon theme of the default display, or `None` while it is starting up.
-fn icon_theme() -> Option<gtk4::IconTheme> {
-    gdk::Display::default().map(|display| gtk4::IconTheme::for_display(&display))
-}
-
 /// Sets a widget's accessible name and, when it has one, its description.
 fn accessible(widget: &gtk4::Widget, label: &std::ffi::CStr, description: Option<&std::ffi::CStr>) {
     unsafe {
@@ -1009,7 +1004,7 @@ fn build_grid_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gt
     let flow = gtk4::FlowBox::new();
     thumbnail_attach(flow.upcast_ref());
 
-    let theme = icon_theme();
+    let theme = crate::ui::icon_theme();
 
     // A stack is browsed, not skimmed: its icons are drawn considerably larger
     // than the dock's, and every cell has room for a two-line name.
@@ -1079,7 +1074,7 @@ fn build_list_view(entries: &[Entry], icon_size: i32, item: *mut DockItem) -> gt
     );
     thumbnail_attach(box_.upcast_ref());
 
-    let theme = icon_theme();
+    let theme = crate::ui::icon_theme();
     let list_icon_size = (icon_size * 7 / 10).max(24);
 
     for entry in entries {

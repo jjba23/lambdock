@@ -24,6 +24,7 @@ use crate::core::item_text::{
     lambdock_item_text_app, lambdock_item_text_clear, lambdock_item_text_dynamic,
     lambdock_item_text_launchpad, lambdock_item_text_stack, lambdock_item_text_trash, ItemText,
 };
+use crate::log_info;
 use crate::log_warn;
 use crate::state::LambdockState;
 use crate::ui::DEFAULT_ICON_SIZE;
@@ -31,6 +32,7 @@ use gtk4::gdk;
 use gtk4::glib;
 use gtk4::glib::translate::{FromGlib, IntoGlib};
 use gtk4::glib::translate::{from_glib_borrow, Borrowed};
+use gtk4::pango;
 use gtk4::prelude::*;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
@@ -158,13 +160,6 @@ const ITEM_KIND_OPS: [KindOps; 6] = [
 ];
 
 extern "C" {
-    /// `dock_item_from_widget` in `src/ui/dock_item.c`: the widget back pointer.
-    fn dock_item_from_widget(widget: *mut gtk4::ffi::GtkWidget) -> *mut DockItem;
-
-    /// `lambdock_dock_item_show_menu` in `src/ui/dock_item.c`: the toggle half of
-    /// the keyboard's right click.
-    fn lambdock_dock_item_show_menu(item: *mut DockItem);
-
     /// `dock_dnd_persist_order` in `src/guile_bridge.c`: remembers the new order.
     fn dock_dnd_persist_order(state: *mut LambdockState);
 
@@ -174,10 +169,6 @@ extern "C" {
 
     /// `lambdock_launchpad_show` in `src/ui/launchpad.c`.
     fn lambdock_launchpad_show(state: *mut LambdockState);
-
-    /// `lambdock_dock_item_popup_menu` in `src/ui/dock_item.c`: the shared "show
-    /// the menu" path, which the several-windows click lands on.
-    fn lambdock_dock_item_popup_menu(item: *mut DockItem);
 
     /// `src/toplevel_tracker.c`: what a click does to one window.
     fn activate_toplevel_window(window: *mut LambdockToplevel);
@@ -831,7 +822,7 @@ unsafe fn focused_item(state: *mut LambdockState) -> *mut DockItem {
             break;
         }
 
-        focus = widget.parent();
+        focus = crate::ui::parent_of(widget.as_ref()).map(|parent| parent.as_ref().clone());
     }
 
     std::ptr::null_mut()
@@ -1724,21 +1715,21 @@ unsafe fn centre_button_content(button: &gtk4::Widget) {
     let Some(button) = button.downcast_ref::<gtk4::Button>() else {
         return;
     };
-    let Some(child) = button.child() else {
+    let Some(child) = crate::ui::button_child(button) else {
         return;
     };
 
     child.set_halign(gtk4::Align::Center);
     child.set_valign(gtk4::Align::Center);
 
-    if !child.is::<gtk4::Box>() {
+    if !child.as_ref().is::<gtk4::Box>() {
         return;
     }
 
-    let mut widget = child.first_child();
+    let mut widget = crate::ui::first_child_of(child.as_ref());
     while let Some(each) = widget {
         each.set_valign(gtk4::Align::Center);
-        widget = each.next_sibling();
+        widget = crate::ui::next_sibling_of(each.as_ref());
     }
 }
 
@@ -2057,6 +2048,1290 @@ mod trash_tests {
         );
     }
 }
+
+// ============================================================================
+// THE ITEM'S SHELL
+// ============================================================================
+//
+// Every kind of item is the same GTK scaffold around different content:
+//
+//   button -> content box -> [icon, label?] -> glass reflection
+//          -> shelf container -> the dock row
+//
+// That scaffold used to be copy-pasted into three constructors of fifty lines
+// each, so touching the popover, the gestures or the drop targets meant touching
+// all three. A constructor now builds only its content and calls `mount`.
+//
+// The widgets are built through the C constructors, as the rest of the port does:
+// a floating reference is what the container that appends it expects, and the item
+// itself owns no reference at all -- it holds the pointers, and the widget tree
+// holds the widgets. That is what makes `free_item_widgets` a matter of taking them
+// out of their parents.
+
+/// `WINDOW_TITLE_MAX_CHARS`, `SEPARATOR_MARGIN_PX`, `FISHEYE_MAX_SCALE` and
+/// `TRASH_REFRESH_INTERVAL_MS` from the headers.
+const WINDOW_TITLE_MAX_CHARS: i32 = 28;
+const SEPARATOR_MARGIN_PX: i32 = 4;
+const FISHEYE_MAX_SCALE: f64 = 1.45;
+const TRASH_REFRESH_INTERVAL_MS: u32 = 2000;
+
+/// Where deferred callbacks find the item behind a widget.
+///
+/// A `&CStr`, not a `&str`: the key is handed to `g_object_set_data` as a plain
+/// `const char *`, and a `&str`'s bytes are not NUL-terminated.
+const ITEM_DATA_KEY: &std::ffi::CStr = c"lambdock-item";
+
+/// Where a teardown finds the handlers it has to disconnect first: a signal that
+/// fires after its item is gone would read freed memory.
+const CLICKED_HANDLER_KEY: &str = "lambdock-item-clicked-handler";
+const CLOSED_HANDLER_KEY: &str = "lambdock-item-closed-handler";
+
+extern "C" {
+    /// `src/dock_window.c`: releases the dock's popover slot when a menu closes.
+    fn on_popover_closed(popover: *mut gtk4::ffi::GtkPopover, user_data: *mut c_void);
+
+    /// `guile_bridge.h`: the Scheme poller handle, and its protection from the GC.
+    fn lambdock_poll_fn_protect(procedure: *mut c_void) -> *mut c_void;
+    fn lambdock_poll_fn_release(poll_fn: *mut c_void);
+
+    /// `src/toplevel_tracker.c`: drops the dock references the trackers hold.
+    fn clear_window_tracker_dock_references(state: *mut LambdockState);
+}
+
+/// What a constructor tells the shared scaffold about the item it is building.
+struct Shell<'a> {
+    state: *mut LambdockState,
+    kind: c_int,
+    name: Option<&'a str>,
+    icon: Option<&'a str>,
+    exec: Option<&'a str>,
+    app_id: Option<&'a str>,
+    is_favorite: bool,
+    hover_animate: bool,
+}
+
+/// An item allocated the way C allocates one, so `free_dock_item` can hand it back
+/// to `g_free`.
+unsafe fn new_item(shell: &Shell<'_>) -> *mut DockItem {
+    let item = crate::glib::g_malloc0(std::mem::size_of::<DockItem>()).cast::<DockItem>();
+    let item_ref = &mut *item;
+
+    item_ref.state = shell.state;
+    item_ref.kind = shell.kind;
+    item_ref.name = shell.name.map_or(std::ptr::null_mut(), crate::glib::strdup_string);
+    item_ref.icon = shell.icon.map_or(std::ptr::null_mut(), crate::glib::strdup_string);
+    item_ref.exec = shell.exec.map_or(std::ptr::null_mut(), crate::glib::strdup_string);
+    item_ref.app_id = shell.app_id.map_or(std::ptr::null_mut(), crate::glib::strdup_string);
+    item_ref.is_favorite = c_int::from(shell.is_favorite);
+    item_ref.hover_animate = c_int::from(shell.hover_animate);
+
+    item
+}
+
+/// The button an item is clicked through, and the empty content box inside it:
+/// the classes every item shares, plus the one its kind adds.
+unsafe fn begin_content(item: &mut DockItem, spacing: i32) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::IntoGlib;
+
+    let button = gtk4::ffi::gtk_button_new();
+    item.button = button.cast();
+
+    let button_view: Borrowed<gtk4::Widget> = from_glib_borrow(button);
+    button_view.add_css_class("dock-item");
+    button_view.add_css_class("flat");
+    if let Some(class) = kind_ops(item.kind).css_class {
+        button_view.add_css_class(&class.to_string_lossy());
+    }
+    // A magnified icon is drawn outside the box it was allocated.
+    button_view.set_overflow(gtk4::Overflow::Visible);
+
+    let content = gtk4::ffi::gtk_box_new(gtk4::Orientation::Horizontal.into_glib(), spacing);
+    item.cell = content.cast();
+
+    let content_view: Borrowed<gtk4::Widget> = from_glib_borrow(content);
+    content_view.set_valign(gtk4::Align::Center);
+
+    // The button owns its child from here on, which is what sinks the box.
+    gtk4::ffi::gtk_button_set_child(button.cast(), content);
+
+    Some(content_view)
+}
+
+/// Appends `child` to `box_`, which is the box's own `gtk_box_append`: a widget is
+/// what the item keeps, and the cast to `GtkBox` is the one thing the container
+/// knows that the item does not.
+///
+/// # Safety
+///
+/// `box_` must be a live `GtkBox`; `child` a live, unparented widget.
+unsafe fn box_append(box_: &gtk4::Widget, child: *mut gtk4::ffi::GtkWidget) {
+    gtk4::ffi::gtk_box_append(box_.as_ptr().cast(), child);
+}
+
+/// An item's artwork from the icon theme, at the dock's icon size.
+unsafe fn load_icon(state: *const LambdockState, icon: *const c_char) -> *mut gtk4::ffi::GtkWidget {
+    let theme = crate::ui::icon_theme();
+
+    crate::ui::icon_resolver::create_image_for_icon(
+        theme.map_or(std::ptr::null_mut(), |theme| theme.as_ptr().cast()),
+        icon,
+        icon_size(state.as_ref()),
+    )
+}
+
+/// Wraps `image` so the fisheye can magnify it by painting a transform instead of
+/// re-resolving the artwork at every pixel size.
+///
+/// # Safety
+///
+/// `image` must be null or a live, unparented `GtkWidget`.
+unsafe fn wrap_icon_for_zoom(
+    image: *mut gtk4::ffi::GtkWidget,
+    base_size: i32,
+) -> *mut gtk4::ffi::GtkWidget {
+    if image.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    let base_size = if base_size <= 0 {
+        DEFAULT_ICON_SIZE
+    } else {
+        base_size
+    };
+    let max_size = (f64::from(base_size) * FISHEYE_MAX_SCALE).ceil() as i32;
+
+    crate::ui::icon_zoom::lambdock_icon_zoom_new(image, base_size, max_size)
+}
+
+/// Appends `image` to the content box, wrapped so the fisheye can scale it.
+///
+/// # Safety
+///
+/// `image` must be null or a live, unparented `GtkWidget`.
+unsafe fn append_icon(content: &gtk4::Widget, image: *mut gtk4::ffi::GtkWidget, icon_size: i32) {
+    if image.is_null() {
+        return;
+    }
+
+    if let Some(image) = widget_of(image.cast()) {
+        image.set_overflow(gtk4::Overflow::Visible);
+    }
+
+    let zoom = wrap_icon_for_zoom(image, icon_size);
+    if !zoom.is_null() {
+        box_append(content, zoom);
+    }
+}
+
+/// The item's glass-shelf reflection slot.
+///
+/// Every item gets one, including the ones with nothing to mirror -- a gauge, a
+/// separator, an item whose icon did not load. The band the slot reserves is part
+/// of the cell's height, so dropping it would leave those items a band lower than
+/// the icons next to them on a shelf theme.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn attach_reflection(item: &mut DockItem, image: *mut gtk4::ffi::GtkWidget) {
+    item.reflection = crate::ui::shelf::shelf_reflection_new(image).cast();
+
+    if let Some(reflection) = widget_of(item.reflection) {
+        reflection.set_visible(false);
+    }
+}
+
+/// The item's own context popover, parented to its button.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem` with a button.
+unsafe fn install_popover(item: &mut DockItem) {
+    let popover = gtk4::ffi::gtk_popover_new();
+    item.popover = popover.cast();
+
+    let popover_widget: Borrowed<gtk4::Widget> = from_glib_borrow(popover);
+    if let Some(popover_view) = popover_widget.as_ref().downcast_ref::<gtk4::Popover>() {
+        popover_view.set_has_arrow(false);
+    }
+
+    if let Some(button) = widget_of(item.button) {
+        // Takes ownership of the floating reference the constructor returned.
+        gtk4::ffi::gtk_widget_set_parent(popover, button.as_ptr().cast());
+    }
+
+    crate::ui::popover_menu::lambdock_popover_close_on_escape(popover.cast());
+
+    // `on_popover_closed()` releases the dock's popover slot, so it is only
+    // connected for items that belong to a dock -- and remembered, because a
+    // teardown has to disconnect it before the popover is taken down.
+    if let Some(popover_view) = popover_widget.as_ref().downcast_ref::<gtk4::Popover>() {
+        if !item.state.is_null() {
+            let state = item.state.cast();
+            let closed = popover_view.connect_closed(move |popover| {
+                on_popover_closed(popover.as_ptr().cast(), state);
+            });
+            popover_view.set_data(CLOSED_HANDLER_KEY, closed);
+        }
+    }
+}
+
+/// Left click activates the item, right click opens its context menu.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem` with a button.
+unsafe fn install_gestures(item: *mut DockItem) {
+    let Some(button) = widget_of((*item).button) else {
+        return;
+    };
+    let button_ref: &gtk4::Widget = button.as_ref();
+
+    if let Some(button_view) = button_ref.downcast_ref::<gtk4::Button>() {
+        let clicked = button_view.connect_clicked(move |_| dock_item_activate(item));
+        button_ref.set_data(CLICKED_HANDLER_KEY, clicked);
+    }
+
+    let right_click = gtk4::GestureClick::new();
+    right_click.set_button(gdk::BUTTON_SECONDARY);
+    right_click.connect_pressed(move |_, _, _, _| lambdock_dock_item_popup_menu(item));
+    button_ref.add_controller(right_click);
+}
+
+/// Finishes an item once its content exists: the glass-shelf container, its
+/// alignment, the tooltip, the context menu, drag and drop, and its place in the
+/// dock row.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem` with its widgets built.
+unsafe fn mount(item: *mut DockItem) -> *mut DockItem {
+    let item_ref = &mut *item;
+    let state = item_ref.state;
+
+    item_ref.container = crate::ui::shelf::shelf_wrap_item(
+        state,
+        item_ref.button.cast(),
+        item_ref.reflection.cast(),
+    )
+    .cast();
+
+    if !state.is_null() {
+        apply_dock_item_alignment(item);
+    }
+
+    if let (Some(name), Some(button)) = (crate::cstr::non_empty_text(item_ref.name), widget_of(item_ref.button)) {
+        button.set_tooltip_text(Some(&name));
+    }
+
+    install_gestures(item);
+    install_popover(item_ref);
+
+    // The container goes into the row before drag and drop looks it up: the bar
+    // sinks the floating reference a constructor hands over, and a reader that
+    // arrives first would sink it itself and let it go.
+    if let Some(state) = state.as_mut() {
+        if let Some(dock_box) = widget_of(state.box_).and_then(|dock_box| {
+            dock_box.as_ref().downcast_ref::<gtk4::Box>().map(|dock_box| dock_box.as_ptr())
+        }) {
+            let child = if item_ref.container.is_null() {
+                item_ref.button
+            } else {
+                item_ref.container
+            };
+            if !child.is_null() {
+                gtk4::ffi::gtk_box_append(dock_box, child.cast());
+            }
+        }
+
+        state.dock_items = glib::ffi::g_list_append(state.dock_items.cast(), item.cast()).cast();
+        // A new item moves every centre after it.
+        state.centres_dirty = 1;
+    }
+
+    crate::ui::dock_dnd::dock_dnd_setup_item(item);
+
+    attach_data(item);
+    dock_item_update_accessible(item);
+
+    item
+}
+
+/// Stores `owner` (or, with null, clears it) on every widget of the item that a
+/// deferred callback may hold on to.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn set_backpointers(item: &DockItem, owner: *mut DockItem) {
+    for widget in [item.button, item.container] {
+        if !widget.is_null() {
+            glib::gobject_ffi::g_object_set_data(
+                widget.cast(),
+                ITEM_DATA_KEY.as_ptr(),
+                owner.cast(),
+            );
+        }
+    }
+}
+
+/// Stores the item on its own widgets, so a drag callback can find it.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn attach_data(item: *mut DockItem) {
+    set_backpointers(&*item, item);
+}
+
+/// Clears the back pointers, so deferred callbacks see "no item".
+///
+/// The widget survives a hot reload -- the drag machinery references it -- but the
+/// data becomes null, so the callback bails out instead of touching freed memory.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn detach_data(item: &DockItem) {
+    set_backpointers(item, std::ptr::null_mut());
+}
+
+/// The item behind a widget, or null when there is none.
+///
+/// # Safety
+///
+/// `widget` must be null or a live `GtkWidget`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_from_widget(widget: *mut gtk4::ffi::GtkWidget) -> *mut DockItem {
+    if widget.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    glib::gobject_ffi::g_object_get_data(widget.cast(), ITEM_DATA_KEY.as_ptr()).cast()
+}
+
+/// The app-item label that taskbar mode shows a running window's title in.
+fn add_window_title_label(item: &mut DockItem, content: &gtk4::Widget) {
+    let label = unsafe { gtk4::ffi::gtk_label_new(std::ptr::null()) };
+    item.label = label.cast();
+    item.window_title_label = 1;
+
+    let label_view: Borrowed<gtk4::Widget> = unsafe { from_glib_borrow(label) };
+    label_view.add_css_class("window-title-label");
+    label_view.set_valign(gtk4::Align::Center);
+    label_view.set_visible(false);
+
+    if let Some(label) = label_view.as_ref().downcast_ref::<gtk4::Label>() {
+        label.set_ellipsize(pango::EllipsizeMode::End);
+        label.set_max_width_chars(WINDOW_TITLE_MAX_CHARS);
+        label.set_single_line_mode(true);
+    }
+
+    unsafe { box_append(content, label) };
+}
+
+/// The label a dynamic item writes its polled reading into.
+fn add_dynamic_label(item: &mut DockItem, content: &gtk4::Widget, name: &str) {
+    let name = crate::cstr::cstring(name);
+    let label = unsafe { gtk4::ffi::gtk_label_new(name.as_ptr()) };
+    item.label = label.cast();
+
+    let label_view: Borrowed<gtk4::Widget> = unsafe { from_glib_borrow(label) };
+    label_view.add_css_class("dynamic-item-label");
+    label_view.set_valign(gtk4::Align::Center);
+
+    if let Some(label) = label_view.as_ref().downcast_ref::<gtk4::Label>() {
+        label.set_yalign(0.5);
+    }
+
+    unsafe { box_append(content, label) };
+}
+
+/// The desktop entry an item's launcher refers to.
+///
+/// The exec line is the most reliable hint (it is what the entry itself runs),
+/// then the icon (entries name their icon after the app), then the app id.
+///
+/// # Safety
+///
+/// The candidates must be null or NUL-terminated.
+unsafe fn resolve_desktop_entry(
+    exec: *const c_char,
+    icon: *const c_char,
+    app_id: *const c_char,
+) -> *const crate::ui::desktop_entry::DesktopEntry {
+    for candidate in [exec, icon, app_id] {
+        let Some(candidate) = crate::cstr::non_empty_text(candidate) else {
+            continue;
+        };
+
+        let key = crate::cstr::cstring(&candidate);
+        let entry = crate::ui::desktop_entry::lambdock_desktop_entry_lookup(key.as_ptr());
+        if !entry.is_null() && !(*entry).stem.is_null() {
+            return entry;
+        }
+    }
+
+    std::ptr::null()
+}
+
+/// Whether an icon name will draw: a resource, a file on disk, an icon in the
+/// theme, or its symbolic sibling.
+///
+/// It mirrors the first stages of `create_image_for_icon`, and is only used to
+/// decide whether a desktop entry's icon is a better bet than a configured one.
+fn icon_is_resolvable(theme: Option<&gtk4::IconTheme>, icon: Option<&str>) -> bool {
+    let Some(icon) = icon.filter(|icon| !icon.is_empty()) else {
+        return false;
+    };
+
+    if icon.starts_with("resource://") || std::path::Path::new(icon).exists() {
+        return true;
+    }
+
+    theme.is_some_and(|theme| theme.has_icon(icon) || theme.has_icon(&format!("{icon}-symbolic")))
+}
+
+/// Gives an application item the desktop entry behind it: its canonical id (what
+/// keeps a pinned launcher and the window it opens one icon) and, when the
+/// configured icon is not in the theme, the entry's icon.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn apply_desktop_entry_identity(item: &mut DockItem) {
+    let entry = resolve_desktop_entry(item.exec, item.icon, item.app_id);
+    if entry.is_null() {
+        return;
+    }
+    let entry = &*entry;
+
+    if !entry.stem.is_null() {
+        item.desktop_id = crate::glib::strdup_string(&crate::cstr::text_or_empty(entry.stem));
+    }
+
+    // A preset may name "pavucontrol" while the icon lives under
+    // "org.pulseaudio.pavucontrol".
+    let Some(entry_icon) = crate::cstr::non_empty_text(entry.icon) else {
+        return;
+    };
+
+    let theme = crate::ui::icon_theme();
+    let configured = crate::cstr::text(item.icon);
+
+    if icon_is_resolvable(theme.as_ref(), configured.as_deref())
+        || !icon_is_resolvable(theme.as_ref(), Some(&entry_icon))
+    {
+        return;
+    }
+
+    log_info!(
+        "UI",
+        "Icon '{}' is not in the icon theme; using '{entry_icon}' from {}",
+        configured.as_deref().unwrap_or(""),
+        crate::cstr::text_or_empty(entry.id)
+    );
+
+    crate::glib::g_free(item.icon.cast());
+    item.icon = crate::glib::strdup_string(&entry_icon);
+}
+
+// ============================================================================
+// THE CONSTRUCTORS
+// ============================================================================
+
+/// Creates an item with its widgets. Nothing is shown until `mount` has run.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem` whose kind shows an icon; `image` is the
+/// artwork, or null when the icon did not load.
+unsafe fn build_icon_content(item: &mut DockItem, image: *mut gtk4::ffi::GtkWidget, spacing: i32) {
+    let Some(content) = begin_content(item, spacing) else {
+        return;
+    };
+
+    // Kept so an item whose artwork depends on state (the trash) can swap it.
+    item.icon_image = image.cast();
+
+    append_icon(content.as_ref(), image, icon_size(item.state.as_ref()));
+    attach_reflection(item, image);
+}
+
+/// An application item: its icon and an (initially hidden) window-title label.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+#[no_mangle]
+pub unsafe extern "C" fn create_dock_item(
+    state: *mut LambdockState,
+    name: *const c_char,
+    icon: *const c_char,
+    exec: *const c_char,
+    app_id: *const c_char,
+    is_favorite: c_int,
+    hover_animate: c_int,
+) -> *mut DockItem {
+    crate::ui::ensure_gtk_initialized();
+
+    let name = crate::cstr::text(name);
+    let icon = crate::cstr::text(icon);
+    let exec = crate::cstr::text(exec);
+    let app_id = crate::cstr::text(app_id);
+
+    // A launcher with no app id is known by its icon.
+    let app_id = app_id.as_deref().or(icon.as_deref());
+
+    let item = new_item(&Shell {
+        state,
+        kind: ITEM_APP,
+        name: name.as_deref(),
+        icon: icon.as_deref(),
+        exec: exec.as_deref(),
+        app_id,
+        is_favorite: is_favorite != 0,
+        hover_animate: hover_animate != 0,
+    });
+
+    apply_desktop_entry_identity(&mut *item);
+
+    let Some(content) = begin_content(&mut *item, 6) else {
+        return item;
+    };
+    let image = load_icon(state, (*item).icon);
+    append_icon(content.as_ref(), image, icon_size(state.as_ref()));
+    add_window_title_label(&mut *item, content.as_ref());
+    attach_reflection(&mut *item, image);
+
+    mount(item)
+}
+
+/// A dynamic item: an icon, a label the polled reading goes into, and a Scheme
+/// procedure that produces it.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+#[no_mangle]
+pub unsafe extern "C" fn create_dynamic_dock_item(
+    state: *mut LambdockState,
+    name: *const c_char,
+    icon: *const c_char,
+    exec: *const c_char,
+    poll_fn: *mut c_void,
+    interval_ms: u32,
+    hover_animate: c_int,
+) -> *mut DockItem {
+    crate::ui::ensure_gtk_initialized();
+
+    let name_text = crate::cstr::text(name);
+    let icon_text = crate::cstr::text(icon);
+    let exec_text = crate::cstr::text(exec);
+
+    let item = new_item(&Shell {
+        state,
+        kind: ITEM_DYNAMIC,
+        name: name_text.as_deref(),
+        icon: icon_text.as_deref(),
+        exec: exec_text.as_deref(),
+        // Dynamic items are known by their name.
+        app_id: name_text.as_deref(),
+        is_favorite: true,
+        hover_animate: hover_animate != 0,
+    });
+
+    // The bridge protects the procedure from the GC; this module never sees an SCM
+    // value, only the handle.
+    if !poll_fn.is_null() {
+        (*item).poll_fn = lambdock_poll_fn_protect(poll_fn);
+    }
+
+    if let Some(content) = begin_content(&mut *item, 6) {
+        let image = if (*item).icon.is_null() || *(*item).icon == 0 {
+            std::ptr::null_mut()
+        } else {
+            load_icon(state, (*item).icon)
+        };
+        append_icon(content.as_ref(), image, icon_size(state.as_ref()));
+        add_dynamic_label(&mut *item, content.as_ref(), name_text.as_deref().unwrap_or(""));
+        attach_reflection(&mut *item, image);
+    }
+
+    mount(item);
+
+    (*item).poll_interval = interval_ms;
+
+    // Paint the first reading now instead of after the first interval.
+    dock_item_refresh_readings(item);
+
+    if interval_ms > 0 && dock_item_has_poller(item) != 0 {
+        (*item).poll_timer_id =
+            glib::ffi::g_timeout_add(interval_ms, Some(lambdock_dock_item_poll), item.cast());
+    }
+
+    dock_item_update_accessible(item);
+
+    item
+}
+
+/// A separator: a line in the same icon-sized cell every other item's content
+/// sits in, so it is centred on the row instead of hanging at its bottom edge.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn create_separator_dock_item(
+    state: *mut LambdockState,
+    orientation: c_int,
+) -> *mut DockItem {
+    use gtk4::glib::translate::IntoGlib;
+
+    crate::ui::ensure_gtk_initialized();
+
+    let item = new_item(&Shell {
+        state,
+        kind: ITEM_SEPARATOR,
+        name: None,
+        icon: None,
+        exec: None,
+        app_id: None,
+        is_favorite: true,
+        hover_animate: false,
+    });
+    let item_ref = &mut *item;
+
+    let vertical = orientation == gtk4::Orientation::Vertical.into_glib();
+
+    // A separator is a widget, not a button: it is drawn, never pressed.
+    let line = gtk4::ffi::gtk_separator_new(orientation);
+    item_ref.button = line.cast();
+
+    let line_view: Borrowed<gtk4::Widget> = from_glib_borrow(line);
+    line_view.add_css_class("dock-separator");
+    if vertical {
+        line_view.set_margin_start(SEPARATOR_MARGIN_PX);
+        line_view.set_margin_end(SEPARATOR_MARGIN_PX);
+    } else {
+        line_view.set_margin_top(SEPARATOR_MARGIN_PX);
+        line_view.set_margin_bottom(SEPARATOR_MARGIN_PX);
+    }
+
+    // Along the cell's own axis the line has to claim the spare room; across it
+    // the cell is exactly as wide as the line plus its margins.
+    line_view.set_vexpand(vertical);
+    line_view.set_hexpand(!vertical);
+
+    let cell = gtk4::ffi::gtk_box_new(orientation, 0);
+    item_ref.cell = cell.cast();
+
+    let cell_view: Borrowed<gtk4::Widget> = from_glib_borrow(cell);
+    cell_view.set_halign(gtk4::Align::Center);
+    cell_view.set_valign(gtk4::Align::Center);
+    gtk4::ffi::gtk_box_append(cell_view.as_ptr().cast(), line);
+
+    // A separator stands *on* the shelf, so it follows the slab's projection: on
+    // a keystoned or tilted dock it leans with the glass instead of standing
+    // upright in front of it. On a flat capsule the follower is a pass-through.
+    let mut body = cell;
+    if let Some(state) = state.as_ref() {
+        if !state.bg_shelf.is_null() {
+            body = crate::ui::shelf_follow::shelf_follow_new(cell, state.bg_shelf.cast(), state.bg_capsule.cast());
+            item_ref.separator_follow = body.cast();
+        }
+    }
+
+    // Nothing to mirror, but the slot still reserves the shelf's band, which is
+    // what keeps the line level with the icons.
+    attach_reflection(item_ref, std::ptr::null_mut());
+    item_ref.container = crate::ui::shelf::shelf_wrap_item(state, body.cast(), item_ref.reflection.cast()).cast();
+
+    if !state.is_null() {
+        // After the cell exists: the size request goes to the cell, not the line.
+        apply_dock_item_alignment(item);
+    }
+
+    if let Some(state) = state.as_mut() {
+        if !state.box_.is_null() {
+            let child = if item_ref.container.is_null() {
+                item_ref.cell
+            } else {
+                item_ref.container
+            };
+            gtk4::ffi::gtk_box_append(state.box_.cast(), child.cast());
+        }
+
+        state.dock_items = glib::ffi::g_list_append(state.dock_items.cast(), item.cast()).cast();
+        state.centres_dirty = 1;
+    }
+
+    attach_data(item);
+
+    item
+}
+
+/// The shell shared by the icon-only kinds: an icon, no label, and the kind's own
+/// CSS class.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+unsafe fn create_icon_dock_item(
+    state: *mut LambdockState,
+    kind: c_int,
+    name: Option<&str>,
+    icon: Option<&str>,
+    hover_animate: bool,
+) -> *mut DockItem {
+    let item = new_item(&Shell {
+        state,
+        kind,
+        name,
+        icon,
+        exec: Some(""),
+        app_id: name,
+        is_favorite: true,
+        hover_animate,
+    });
+
+    let image = load_icon(state, (*item).icon);
+    build_icon_content(&mut *item, image, 0);
+
+    mount(item)
+}
+
+/// A stack: a folder shown as an icon.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+#[no_mangle]
+pub unsafe extern "C" fn create_stack_dock_item(
+    state: *mut LambdockState,
+    name: *const c_char,
+    icon: *const c_char,
+    path: *const c_char,
+    view: *const c_char,
+    hover_animate: c_int,
+) -> *mut DockItem {
+    crate::ui::ensure_gtk_initialized();
+
+    let name = crate::cstr::text(name);
+    let icon = crate::cstr::non_empty_text(icon);
+    let path = crate::cstr::text_or_empty(path);
+    let view = crate::cstr::non_empty_text(view);
+
+    let item = create_icon_dock_item(
+        state,
+        ITEM_STACK,
+        name.as_deref(),
+        Some(icon.as_deref().unwrap_or("folder")),
+        hover_animate != 0,
+    );
+
+    (*item).stack_path = crate::glib::strdup_string(&path);
+    (*item).stack_view = crate::glib::strdup_string(view.as_deref().unwrap_or("grid"));
+
+    log_info!(
+        "UI",
+        "Created stack item: {} ({path}, {} view)",
+        crate::cstr::text_or_empty((*item).name),
+        crate::cstr::text_or_empty((*item).stack_view)
+    );
+
+    item
+}
+
+/// The launchpad: every installed application, in a grid.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+#[no_mangle]
+pub unsafe extern "C" fn create_launchpad_dock_item(
+    state: *mut LambdockState,
+    name: *const c_char,
+    icon: *const c_char,
+    hover_animate: c_int,
+) -> *mut DockItem {
+    crate::ui::ensure_gtk_initialized();
+
+    let name = crate::cstr::text(name);
+    let icon = crate::cstr::non_empty_text(icon);
+
+    let item = create_icon_dock_item(
+        state,
+        ITEM_LAUNCHPAD,
+        name.as_deref(),
+        Some(icon.as_deref().unwrap_or("view-app-grid-symbolic")),
+        hover_animate != 0,
+    );
+
+    log_info!(
+        "UI",
+        "Created launchpad item: {}",
+        crate::cstr::text_or_empty((*item).name)
+    );
+
+    item
+}
+
+/// The trash, which counts itself on a timer.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`; the strings are C strings.
+#[no_mangle]
+pub unsafe extern "C" fn create_trash_dock_item(
+    state: *mut LambdockState,
+    name: *const c_char,
+    icon: *const c_char,
+    hover_animate: c_int,
+) -> *mut DockItem {
+    crate::ui::ensure_gtk_initialized();
+
+    let name = crate::cstr::text(name);
+    let icon = crate::cstr::non_empty_text(icon);
+
+    let item = create_icon_dock_item(
+        state,
+        ITEM_TRASH,
+        name.as_deref(),
+        Some(icon.as_deref().unwrap_or("user-trash")),
+        hover_animate != 0,
+    );
+
+    // The trash is changed by every other program on the desktop, so the item
+    // counts it again on a timer instead of waiting for a signal nobody sends.
+    (*item).trash_timer_id = glib::ffi::g_timeout_add(
+        TRASH_REFRESH_INTERVAL_MS,
+        Some(lambdock_dock_item_trash_poll),
+        item.cast(),
+    );
+    dock_item_refresh_trash(item);
+
+    log_info!(
+        "UI",
+        "Created trash item: {}",
+        crate::cstr::text_or_empty((*item).name)
+    );
+    item
+}
+
+/// Replaces a dynamic item's text form (its icon and label) with one widget that
+/// carries the reading itself: a gauge, a clock face.
+///
+/// The label goes with it -- it would otherwise keep a stale reading next to the
+/// widget -- and the reflection slot stays, cleared of artwork: the band that slot
+/// reserves is what holds the row at one height.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`; `widget` a live, unparented widget.
+unsafe fn replace_dynamic_content(
+    item: &mut DockItem,
+    widget: *mut gtk4::ffi::GtkWidget,
+) -> bool {
+    if item.button.is_null() || widget.is_null() {
+        return false;
+    }
+
+    let Some(button) = widget_of(item.button) else {
+        return false;
+    };
+    let Some(button) = button.as_ref().downcast_ref::<gtk4::Button>() else {
+        return false;
+    };
+    let Some(content) = crate::ui::button_child(button) else {
+        return false;
+    };
+    let content_ref: &gtk4::Widget = content.as_ref();
+
+    item.label = std::ptr::null_mut();
+    while let Some(child) = crate::ui::first_child_of(content_ref) {
+        gtk4::ffi::gtk_box_remove(content_ref.as_ptr().cast(), child.as_ptr().cast());
+    }
+
+    crate::ui::shelf::shelf_reflection_clear_source(item.reflection.cast());
+    box_append(content_ref, widget);
+
+    true
+}
+
+/// Turns a dynamic item into a gauge: one widget that is both the "icon" and the
+/// reading, instead of an icon next to a changing string.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_enable_meter(
+    item: *mut DockItem,
+    unit: *const c_char,
+    max_value: f64,
+) {
+    let Some(item_ref) = item.as_mut() else {
+        return;
+    };
+    if item_ref.button.is_null() {
+        return;
+    }
+
+    let meter = crate::ui::meter::lambdock_meter_new();
+    crate::ui::meter::lambdock_meter_set_icon_size(meter, icon_size(item_ref.state.as_ref()));
+
+    if !replace_dynamic_content(item_ref, meter) {
+        // Never adopted: hand the floating reference back.
+        glib::gobject_ffi::g_object_ref_sink(meter.cast());
+        glib::gobject_ffi::g_object_unref(meter.cast());
+        return;
+    }
+
+    item_ref.meter = meter.cast();
+    crate::glib::g_free(item_ref.meter_unit.cast());
+    item_ref.meter_unit = crate::glib::strdup_string(&crate::cstr::text_or_empty(unit));
+    item_ref.meter_max = if max_value > 0.0 { max_value } else { 100.0 };
+
+    if let Some(button) = widget_of(item_ref.button) {
+        button.add_css_class("dynamic-meter");
+    }
+
+    // Paint the first reading now instead of after the first interval. This is the
+    // explicit read, not the timer callback, so it is not skipped when the dock is
+    // still unmapped (startup, tests).
+    dock_item_refresh_readings(item);
+}
+
+/// Turns a dynamic item into an analogue clock face.
+///
+/// The text form goes the same way as a meter's: a face in an icon slot reads as
+/// part of the row, where a string of digits pushes everything after it out of
+/// line. The item keeps its Scheme poller -- its reading is the face's tooltip and
+/// accessible name ("Thu Oct 29 13:07") -- and the hands are set from the system
+/// clock on every poll.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_enable_clock(item: *mut DockItem) {
+    let Some(item_ref) = item.as_mut() else {
+        return;
+    };
+    if item_ref.button.is_null() || !item_ref.clock.is_null() {
+        return;
+    }
+
+    let clock = crate::ui::clock::lambdock_clock_new();
+    crate::ui::clock::lambdock_clock_set_icon_size(clock, icon_size(item_ref.state.as_ref()));
+
+    if !replace_dynamic_content(item_ref, clock) {
+        glib::gobject_ffi::g_object_ref_sink(clock.cast());
+        glib::gobject_ffi::g_object_unref(clock.cast());
+        return;
+    }
+
+    item_ref.clock = clock.cast();
+
+    if let Some(button) = widget_of(item_ref.button) {
+        button.add_css_class("dynamic-clock");
+    }
+
+    // Point the hands now instead of after the first interval, so a dock that is
+    // unmapped at startup still shows the right time when it appears.
+    dock_item_refresh_readings(item);
+}
+
+
+// ============================================================================
+// THE ITEM MENU
+// ============================================================================
+//
+// An item's popover is both its right-click menu and (for a stack) its folder
+// panel, so opening it is one path: fill it, count it against the dock's popover
+// slot, pop it up, and put the keyboard on its first row.
+
+/// Pops the item's menu up.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_popup_menu(item: *mut DockItem) {
+    let Some(item_ref) = item.as_ref() else {
+        return;
+    };
+    let Some(popover) = popover_of(item_ref.popover) else {
+        return;
+    };
+    if item_ref.state.is_null() {
+        return;
+    }
+
+    crate::ui::popover_menu::populate_popover_menu(item);
+
+    if !crate::ui::is_shown(popover.as_ref().upcast_ref()) {
+        (*item_ref.state).active_popovers += 1;
+    }
+
+    gtk4::ffi::gtk_popover_popup(popover.as_ptr().cast());
+
+    // Put the keyboard on the menu's first row, so the arrow keys work from the
+    // moment it opens (a stack panel focuses its own first entry instead).
+    crate::ui::popover_menu::lambdock_popover_menu_focus_first(item_ref.popover.cast());
+}
+
+/// Pops the item's menu up, or down when it is already open.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_dock_item_show_menu(item: *mut DockItem) {
+    let Some(item_ref) = item.as_ref() else {
+        return;
+    };
+    let Some(popover) = popover_of(item_ref.popover) else {
+        return;
+    };
+    if item_ref.state.is_null() {
+        return;
+    }
+
+    if crate::ui::is_shown(popover.as_ref().upcast_ref()) {
+        gtk4::ffi::gtk_popover_popdown(popover.as_ptr().cast());
+        return;
+    }
+
+    lambdock_dock_item_popup_menu(item);
+}
+
+// ============================================================================
+// TEARDOWN
+// ============================================================================
+
+/// Stops the item's timers.
+///
+/// `g_clear_handle_id` only removes a source that is still alive, so a timer that
+/// already fired cannot make us remove an unrelated (recycled) id.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn free_item_timers(item: &mut DockItem) {
+    if item.poll_timer_id != 0 {
+        glib::ffi::g_source_remove(item.poll_timer_id);
+        item.poll_timer_id = 0;
+    }
+    if item.trash_timer_id != 0 {
+        glib::ffi::g_source_remove(item.trash_timer_id);
+        item.trash_timer_id = 0;
+    }
+}
+
+/// Releases the Scheme poller's GC protection.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn free_item_poller(item: &mut DockItem) {
+    if item.poll_fn.is_null() {
+        return;
+    }
+
+    lambdock_poll_fn_release(item.poll_fn);
+    item.poll_fn = std::ptr::null_mut();
+}
+
+/// Unparents the item's context menu.
+///
+/// A popover torn down while it is still open never emits "closed", so the dock's
+/// popover slot is released here; otherwise `active_popovers` stays above zero and
+/// the dock can never auto-hide again. The handler is disconnected first, because
+/// unparenting an open popover *does* emit "closed" -- and that would release the
+/// slot a second time.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn free_item_popover(item: &mut DockItem) {
+    let Some(popover) = widget_of(item.popover) else {
+        return;
+    };
+    let popover_ref: &gtk4::Widget = popover.as_ref();
+
+    if let Some(closed) = popover_ref.steal_data::<glib::SignalHandlerId>(CLOSED_HANDLER_KEY) {
+        popover_ref.disconnect(closed);
+    }
+
+    if crate::ui::is_shown(popover_ref) {
+        if let Some(state) = item.state.as_mut() {
+            if state.active_popovers > 0 {
+                state.active_popovers -= 1;
+            }
+        }
+    }
+
+    if crate::ui::parent_of(popover_ref).is_some() {
+        popover_ref.unparent();
+    }
+
+    item.popover = std::ptr::null_mut();
+}
+
+/// Detaches the button from the dock, then the container that held it.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn free_item_widgets(item: &mut DockItem) {
+    if let Some(button) = widget_of(item.button) {
+        let button_ref: &gtk4::Widget = button.as_ref();
+
+        // The drag machinery can hold the button after it leaves the row, so the
+        // click handler goes with the item rather than waiting to be finalized.
+        if let Some(clicked) = button_ref.steal_data::<glib::SignalHandlerId>(CLICKED_HANDLER_KEY) {
+            button_ref.disconnect(clicked);
+        }
+
+        if let Some(parent) = crate::ui::parent_of(button_ref)
+            .and_then(|parent| parent.as_ref().downcast_ref::<gtk4::Box>().map(|parent| parent.as_ptr()))
+        {
+            gtk4::ffi::gtk_box_remove(parent, button_ref.as_ptr().cast());
+        }
+    }
+    item.button = std::ptr::null_mut();
+
+    // The reflection (if any) is owned by the container and dies with it, so the
+    // pointer is dropped before the container goes.
+    item.reflection = std::ptr::null_mut();
+
+    let Some(container) = widget_of(item.container) else {
+        return;
+    };
+    let container_ref: &gtk4::Widget = container.as_ref();
+
+    // Removing it from the box drops the box's reference; this one keeps it alive
+    // until the removal has finished.
+    glib::gobject_ffi::g_object_ref(container_ref.as_ptr().cast());
+
+    if let Some(parent) = crate::ui::parent_of(container_ref)
+        .and_then(|parent| parent.as_ref().downcast_ref::<gtk4::Box>().map(|parent| parent.as_ptr()))
+    {
+        gtk4::ffi::gtk_box_remove(parent, container_ref.as_ptr().cast());
+    }
+
+    glib::gobject_ffi::g_object_unref(container_ref.as_ptr().cast());
+    item.container = std::ptr::null_mut();
+}
+
+/// Frees the item's strings.
+///
+/// # Safety
+///
+/// `item` must be a live `DockItem`.
+unsafe fn free_item_strings(item: &mut DockItem) {
+    for pointer in [
+        &mut item.name,
+        &mut item.icon,
+        &mut item.exec,
+        &mut item.app_id,
+        &mut item.stack_path,
+        &mut item.stack_view,
+        &mut item.meter_unit,
+        &mut item.desktop_id,
+        &mut item.poll_name,
+    ] {
+        if !pointer.is_null() {
+            crate::glib::g_free((*pointer).cast());
+            *pointer = std::ptr::null_mut();
+        }
+    }
+}
+
+/// Remembers the Scheme-side name of the item's poller.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`; `name` a C string.
+#[no_mangle]
+pub unsafe extern "C" fn dock_item_set_poll_name(item: *mut DockItem, name: *const c_char) {
+    let Some(item) = item.as_mut() else {
+        return;
+    };
+
+    crate::glib::g_free(item.poll_name.cast());
+    item.poll_name = name.cast_mut();
+}
+
+/// Frees one item: its timers, its Scheme handle, its widgets and its strings.
+///
+/// # Safety
+///
+/// `item` must be null or a live `DockItem`, and no longer used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn free_dock_item(item: *mut DockItem) {
+    let Some(item_ref) = item.as_mut() else {
+        return;
+    };
+
+    // The row is about to lose an item: every centre after it moves.
+    if let Some(state) = item_ref.state.as_mut() {
+        state.centres_dirty = 1;
+    }
+
+    free_item_timers(item_ref);
+
+    // Back pointers go before anything is unparented: deferred drag callbacks may
+    // still hold the widgets, and must see "no item" instead of a freed one.
+    detach_data(item_ref);
+
+    free_item_poller(item_ref);
+    free_item_popover(item_ref);
+    free_item_widgets(item_ref);
+
+    crate::app_window::app_windows_free(item_ref.windows);
+    item_ref.windows = std::ptr::null_mut();
+
+    free_item_strings(item_ref);
+    crate::glib::g_free(item.cast());
+}
+
+/// Frees the pinned launchers while keeping the running-window tracking alive.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn clear_favorite_dock_items(state: *mut LambdockState) {
+    let Some(state_ref) = state.as_mut() else {
+        return;
+    };
+    if state_ref.dock_items.is_null() {
+        return;
+    }
+
+    clear_window_tracker_dock_references(state);
+
+    let mut list = state_ref.dock_items.cast::<GList>();
+    let mut link = list;
+
+    while let Some(entry) = link.as_ref() {
+        let next = entry.next;
+        let item = entry.data.cast::<DockItem>();
+
+        if item.as_ref().is_some_and(|item| item.is_favorite != 0) {
+            list = glib::ffi::g_list_delete_link(list.cast(), link.cast()).cast();
+            free_dock_item(item);
+        }
+
+        link = next;
+    }
+
+    state_ref.dock_items = list.cast();
+}
+
 
 #[cfg(test)]
 mod tests {

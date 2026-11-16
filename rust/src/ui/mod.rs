@@ -9,7 +9,7 @@
 //! callers do not move; what changes is who implements the body. Widgets are
 //! borrowed from C as `gtk4::Widget` and never owned here.
 
-use gtk4::glib::translate::Borrowed;
+use gtk4::glib::translate::{from_glib_borrow, Borrowed};
 
 /// `DEFAULT_ICON_SIZE` in `lambdock.h`: the icon size a dock lays out at when its
 /// settings do not say otherwise, and the answer for a dock that is halfway built.
@@ -43,6 +43,56 @@ pub mod widget_utils;
 /// Main thread only, like everything else that touches a widget.
 pub(crate) fn ensure_gtk_initialized() {
     let _ = gtk4::init();
+}
+
+/// The icon theme of the default display, or `None` while it is starting up or
+/// when there is no display at all.
+pub(crate) fn icon_theme() -> Option<gtk4::IconTheme> {
+    gtk4::gdk::Display::default().map(|display| gtk4::IconTheme::for_display(&display))
+}
+
+/// A widget's parent, borrowed rather than owned.
+///
+/// gtk-rs's `WidgetExt::parent()` returns an *owned* wrapper, which goes through
+/// `from_glib_none`: that sinks a floating reference and releases it when the
+/// wrapper drops, so asking a floating widget for its parent destroys it. A box a
+/// constructor has built but not appended yet is exactly that, and the dock's own
+/// row is a widget somebody may not have sunk yet -- which is how it disappeared
+/// in a test before this existed.
+pub(crate) fn parent_of(widget: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    borrow_widget(unsafe { gtk4::ffi::gtk_widget_get_parent(widget.to_glib_none().0) })
+}
+
+/// The first child of `widget`, borrowed. See [`parent_of`].
+pub(crate) fn first_child_of(widget: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    borrow_widget(unsafe { gtk4::ffi::gtk_widget_get_first_child(widget.to_glib_none().0) })
+}
+
+/// The next sibling of `widget`, borrowed. See [`parent_of`].
+pub(crate) fn next_sibling_of(widget: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    borrow_widget(unsafe { gtk4::ffi::gtk_widget_get_next_sibling(widget.to_glib_none().0) })
+}
+
+/// The child of `button`, borrowed: `gtk_button_get_child`.
+pub(crate) fn button_child(button: &gtk4::Button) -> Option<Borrowed<gtk4::Widget>> {
+    use gtk4::glib::translate::ToGlibPtr;
+
+    borrow_widget(unsafe { gtk4::ffi::gtk_button_get_child(button.to_glib_none().0) })
+}
+
+/// A widget pointer from C, borrowed and never owned.
+fn borrow_widget(pointer: *mut gtk4::ffi::GtkWidget) -> Option<Borrowed<gtk4::Widget>> {
+    if pointer.is_null() {
+        return None;
+    }
+
+    Some(unsafe { from_glib_borrow(pointer) })
 }
 
 /// Whether `widget` is shown, on its own.

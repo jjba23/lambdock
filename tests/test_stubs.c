@@ -162,6 +162,34 @@ __attribute__((weak)) gboolean lambdock_poll_fn_is_callable(void *poll_fn) {
   return FALSE;
 }
 
+/* The other half of the poller contract: the bridge protects a procedure from the
+ * GC and releases it again when the item goes. A slice binary has no interpreter,
+ * so the handle is null and nothing is protected. */
+__attribute__((weak)) void *lambdock_poll_fn_protect(void *procedure) {
+  (void)procedure;
+  return NULL;
+}
+
+__attribute__((weak)) void lambdock_poll_fn_release(void *poll_fn) {
+  (void)poll_fn;
+}
+
+/* Freeing the pinned launchers tells the trackers to forget the docks they point
+ * at. A slice binary has no tracker compiled in, and the answer there is that
+ * there is nothing to forget. */
+__attribute__((weak)) void clear_window_tracker_dock_references(
+    LambdockState *state) {
+  (void)state;
+}
+
+/* An item's menu releases the dock's popover slot when it closes, which is
+ * dock_window.c's business. A slice binary has no dock window. */
+__attribute__((weak)) void on_popover_closed(GtkPopover *popover,
+                                             gpointer user_data) {
+  (void)popover;
+  (void)user_data;
+}
+
 __attribute__((weak)) gboolean lambdock_poll_fn_call(void *poll_fn,
                                                      LambdockReading *out) {
   (void)poll_fn;

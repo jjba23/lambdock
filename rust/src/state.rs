@@ -98,6 +98,24 @@ pub struct LambdockState {
     pub user_css_provider: *mut c_void,
 }
 
+    /// The C offsets, measured with `offsetof` against `lambdock.h`. A wrong one is
+    /// not a compile error: it is a write into the neighbouring field.
+    #[test]
+    fn the_state_mirror_matches_the_header() {
+        use std::mem::{offset_of, size_of};
+
+        assert_eq!(size_of::<LambdockState>(), 512);
+        assert_eq!(offset_of!(LambdockState, box_), 40);
+        assert_eq!(offset_of!(LambdockState, centres_dirty), 376);
+        assert_eq!(offset_of!(LambdockState, orientation), 236);
+        assert_eq!(offset_of!(LambdockState, is_hidden), 184);
+        assert_eq!(offset_of!(LambdockState, is_destroying), 216);
+        assert_eq!(offset_of!(LambdockState, dock_items), 456);
+        assert_eq!(offset_of!(LambdockState, active_popovers), 280);
+        assert_eq!(offset_of!(LambdockState, config_path), 208);
+        assert_eq!(offset_of!(LambdockState, icon_size), 168);
+    }
+
 #[cfg(test)]
 mod tests {
     use super::*;

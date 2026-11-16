@@ -511,7 +511,7 @@ error, it is a corrupted field two modules away, so the mirror carries a test
 pinning the size and the offsets of the fields Rust reads -- numbers taken from
 ~offsetof~ in C. When =lambdock.h= grows a field, that test fails and says so.
 
-=GTK from Rust has three traps=, all found by tests:
+=GTK from Rust has four traps=, all found by tests:
 
 - *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
   leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
@@ -523,6 +523,15 @@ pinning the size and the offsets of the fields Rust reads -- numbers taken from
   back a floating reference and the C callers sink it by appending the widget to a
   box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
   through the C constructors and only borrows the wrapper type on the way in.
+- *A getter returns an owned wrapper, and owning a floating widget means sinking
+  it.* ~widget.parent()~, ~widget.first_child()~, ~button.child()~ and their
+  siblings go through ~from_glib_none~: for a widget that is still floating that
+  means "claim the floating reference", and the wrapper's drop then releases the
+  only reference there was. Asking a floating box for its parent destroys the box
+  -- which is how the dock's own row disappeared in a test. ~ui/mod.rs~ has
+  ~parent_of~, ~first_child_of~, ~next_sibling_of~ and ~button_child~, which
+  borrow through the C getter instead; use them wherever the widget asked may not
+  be parented yet, which is every widget a constructor has just built.
 - *A widget built in Rust has to be floated again before C gets it.* The same
   contract runs the other way: ~lambdock_icon_zoom_new~ returns a widget the
   caller appends to a box, and appending sinks what it is given. A gtk4-rs
