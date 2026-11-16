@@ -114,7 +114,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   followed: what a kind of dock item is (its name, its CSS class, the key a layout
   override remembers it by, the text a screen reader gets) and what a click or a
   key means -- launch, focus, minimize or list; walk, reorder, jump to either end;
-  open or close the menu -- are Rust, and ~ui/dock_item.c~ keeps the widget.  The two views followed,
+  open or close the menu -- are Rust.  Then the widget itself followed: the button
+  and its content box, the zoom-wrapped icon, the reflection slot, the popover and
+  its gestures, all six item constructors, the poller and the trash artwork, the
+  teardown, and the hot reload -- so ~ui/dock_item.c~ is gone, 1922 lines down to a
+  header that is still the C-side contract.  The two views followed,
   and so did the panel above them: ~ui/stack.c~ is gone, and a stack -- grid or
   list, the header that walks back out, the view toggle and the popover that stays
   where it is looking -- is ~rust/src/ui/stack.rs~.  A

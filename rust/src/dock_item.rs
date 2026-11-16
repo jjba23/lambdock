@@ -3333,6 +3333,248 @@ pub unsafe extern "C" fn clear_favorite_dock_items(state: *mut LambdockState) {
 }
 
 
+// ============================================================================
+// HOT RELOAD
+// ============================================================================
+//
+// `reload_dock_instance` is a sequence of named stages rather than one long body:
+// what a reload *is* is "re-read the settings, move the surface, rebuild the row,
+// re-apply the derived state, put the dock where it belongs". Each stage below is
+// one of those sentences, and every one of them belongs to the window rather than
+// to an item -- which is why this is the last thing in the item module.
+
+/// `GTK_LAYER_SHELL_EDGE_LEFT` and `..._RIGHT`, which are what make a dock
+/// vertical. The other two are `EDGE_RIGHT` and `EDGE_BOTTOM` in
+/// `core/config_values`.
+const LAYER_EDGE_LEFT: c_int = 0;
+const LAYER_EDGE_RIGHT: c_int = 1;
+
+extern "C" {
+    /// `src/guile_bridge.c`: re-reads every setting into the dock's state.
+    fn dock_read_settings(state: *mut LambdockState);
+
+    /// `src/guile_bridge.c`: builds an item for every entry of the configuration.
+    fn populate_dock_items_for(state: *mut LambdockState);
+
+    /// `src/toplevel_tracker.c`: re-syncs the foreign-window handles.
+    fn sync_window_trackers(state: *mut LambdockState);
+
+    /// `src/dock_window.c`: the surface, its exclusive zone and its visibility.
+    fn dock_apply_exclusive_zone(state: *mut LambdockState);
+    fn reveal_dock(state: *mut LambdockState);
+    fn hide_dock(state: *mut LambdockState);
+    fn apply_dock_mode_classes(state: *mut LambdockState);
+    fn refresh_dock_mode(state: *mut LambdockState);
+    fn update_dock_dimensions(state: *mut LambdockState);
+    fn dock_apply_motion_preference(state: *mut LambdockState);
+
+    /// `gtk4-layer-shell`: the anchors that put the surface on an edge. The crate
+    /// is a C library with no bindings here, so these are the three calls the dock
+    /// makes of it.
+    fn gtk_layer_is_layer_window(window: *mut gtk4::ffi::GtkWindow) -> c_int;
+    fn gtk_layer_set_margin(window: *mut gtk4::ffi::GtkWindow, edge: c_int, margin: c_int);
+    fn gtk_layer_set_anchor(window: *mut gtk4::ffi::GtkWindow, edge: c_int, anchor: c_int);
+}
+
+/// Mode-relevant settings, captured before a reload so it can compare afterwards.
+///
+/// A mode class and the dock's dimensions depend on these *and* on the row that is
+/// rebuilt, so the reload only refreshes them when one of them actually moved.
+#[derive(Clone, Copy)]
+struct ModeSnapshot {
+    taskbar: bool,
+    shelf: crate::core::config_values::ShelfParams,
+}
+
+impl ModeSnapshot {
+    /// # Safety
+    ///
+    /// `state` must be a live `LambdockState`.
+    unsafe fn of(state: &LambdockState) -> Self {
+        Self {
+            taskbar: state.taskbar != 0,
+            shelf: state.shelf,
+        }
+    }
+}
+
+/// Re-reads the settings CSS depends on, and reloads the stylesheets.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn reload_appearance(state: &mut LambdockState) -> ModeSnapshot {
+    let before = ModeSnapshot::of(state);
+
+    // One reader, before the CSS: it fills the mode flags *and* the icon size the
+    // shelf's band is computed from, so the stylesheet is never built from the
+    // size the previous reload happened to leave behind.
+    dock_read_settings(state);
+    crate::ui::theme_engine::load_custom_css(state);
+
+    before
+}
+
+/// Applies the settings a widget takes once it exists.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn apply_settings(state: &mut LambdockState) {
+    // A pending auto-hide timeout would fire against the layout being replaced.
+    if state.hide_timer_id != 0 {
+        glib::ffi::g_source_remove(state.hide_timer_id);
+        state.hide_timer_id = 0;
+    }
+
+    if let Some(dock_box) = widget_of(state.box_).and_then(|dock_box| {
+        dock_box
+            .as_ref()
+            .downcast_ref::<gtk4::Box>()
+            .map(|dock_box| dock_box.as_ptr())
+    }) {
+        gtk4::ffi::gtk_box_set_spacing(dock_box, state.item_spacing);
+    }
+}
+
+/// Moves the surface to a new screen edge, re-orienting the dock with it.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn apply_edge_change(state: &mut LambdockState, edge: c_int) {
+    if edge == state.edge {
+        return;
+    }
+
+    if state.tick_cb_id != 0 && !state.window.is_null() {
+        gtk4::ffi::gtk_widget_remove_tick_callback(state.window.cast(), state.tick_cb_id);
+        state.tick_cb_id = 0;
+    }
+
+    // The edge lives in layer-shell anchors; without a layer surface (X11, GNOME)
+    // there is nothing to re-anchor, and every call would log a critical.
+    let window = state.window.cast::<gtk4::ffi::GtkWindow>();
+    if !window.is_null() && gtk_layer_is_layer_window(window) != 0 {
+        gtk_layer_set_margin(window, state.edge, 0);
+        gtk_layer_set_anchor(window, state.edge, 0);
+
+        state.edge = edge;
+        gtk_layer_set_anchor(window, state.edge, 1);
+    } else {
+        state.edge = edge;
+    }
+
+    let vertical = edge == LAYER_EDGE_LEFT || edge == LAYER_EDGE_RIGHT;
+    let orientation = if vertical {
+        gtk4::Orientation::Vertical
+    } else {
+        gtk4::Orientation::Horizontal
+    };
+    state.orientation = orientation.into_glib();
+
+    // Both are orientables: the row itself and the capsule drawn behind it.
+    for widget in [state.box_, state.bg_capsule] {
+        if !widget.is_null() {
+            gtk4::ffi::gtk_orientable_set_orientation(widget.cast(), orientation.into_glib());
+        }
+    }
+
+    // A dock that just changed edges is on screen, at rest.
+    state.current_margin = 0;
+    state.target_margin = 0;
+    state.start_margin = 0;
+    state.is_hidden = 0;
+}
+
+/// Rebuilds the row from the configuration and re-syncs the tracked windows.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn reload_items(state: *mut LambdockState) {
+    clear_favorite_dock_items(state);
+    populate_dock_items_for(state);
+
+    // Re-sync Wayland foreign window handles back to the new launchers.
+    sync_window_trackers(state);
+
+    let mut link = (*state).dock_items.cast::<GList>();
+    while let Some(entry) = link.as_ref() {
+        link = entry.next;
+
+        let item = entry.data.cast::<DockItem>();
+        if item.as_ref().is_none_or(|item| item.button.is_null()) {
+            continue;
+        }
+
+        apply_dock_item_alignment(item);
+        crate::ui::dock_item_windows::update_dock_item_status(item);
+    }
+}
+
+/// Reserves space for the dock (or not) and puts it where the setting wants it.
+///
+/// # Safety
+///
+/// `state` must be a live `LambdockState`.
+unsafe fn apply_auto_hide_state(state: *mut LambdockState) {
+    dock_apply_exclusive_zone(state);
+
+    let state_ref = &*state;
+    let stay_visible = state_ref.auto_hide == 0
+        || (state_ref.show_when_clear != 0 && state_ref.window_trackers.is_null());
+
+    if stay_visible {
+        reveal_dock(state);
+    } else {
+        hide_dock(state);
+    }
+}
+
+/// Hot-reloads one dock: its appearance, its configuration, its CSS, its
+/// auto-hide behaviour, its edge and its row -- without restarting the dock.
+///
+/// # Safety
+///
+/// `state` must be null or a live `LambdockState`.
+#[no_mangle]
+pub unsafe extern "C" fn reload_dock_instance(state: *mut LambdockState) {
+    let Some(state_ref) = state.as_mut() else {
+        return;
+    };
+
+    log_info!(
+        "UI",
+        "Hot-reloading UI layout for config: {}",
+        crate::cstr::text_or_empty(state_ref.config_path)
+    );
+
+    let before = reload_appearance(state_ref);
+    apply_settings(state_ref);
+
+    let config_path = crate::cstr::cstring(&crate::cstr::text_or_empty(state_ref.config_path));
+    apply_edge_change(
+        state_ref,
+        crate::bridge::get_position_config_for(config_path.as_ptr()),
+    );
+    reload_items(state);
+
+    // Mode classes and dimensions depend on both the new flags and the new row.
+    apply_dock_mode_classes(state);
+    if before.taskbar != (state_ref.taskbar != 0) || before.shelf != state_ref.shelf {
+        refresh_dock_mode(state);
+    }
+
+    update_dock_dimensions(state);
+
+    // A toggle from the preferences window takes effect on the running dock.
+    dock_apply_motion_preference(state);
+
+    apply_auto_hide_state(state);
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -182,6 +182,41 @@ __attribute__((weak)) void clear_window_tracker_dock_references(
   (void)state;
 }
 
+/* A hot reload re-reads the settings and rebuilds the row, which is the bridge's
+ * business, and re-anchors the surface, which is the window's. A slice binary has
+ * neither: "nothing to read, nothing to build, no surface" is what these answer. */
+__attribute__((weak)) void dock_read_settings(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void populate_dock_items_for(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void sync_window_trackers(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void dock_apply_exclusive_zone(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void apply_dock_mode_classes(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void refresh_dock_mode(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void dock_apply_motion_preference(LambdockState *state) {
+  (void)state;
+}
+
+__attribute__((weak)) void hide_dock(LambdockState *state) {
+  (void)state;
+}
+
 /* An item's menu releases the dock's popover slot when it closes, which is
  * dock_window.c's business. A slice binary has no dock window. */
 __attribute__((weak)) void on_popover_closed(GtkPopover *popover,

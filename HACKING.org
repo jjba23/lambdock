@@ -656,21 +656,19 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-=ui/stack.c= is gone -- the first widget file to be finished. Its listing, the
+=ui/dock_item.c= is gone, and it was the heart of the widget layer: the item's
+scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
+the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
+stays as the C-side contract the tests and the bridge still call. Its 1922 lines
+came down over five steps, each green.
+
+=ui/stack.c= is gone too -- the first widget file to be finished. Its listing, the
 thumbnail decision and decode, the two views with their cells and click actions,
 the panel header and the popover that walks folders are all =rust/src/ui/stack.rs=,
 and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
 builder still call.
 
-=ui/dock_item.c= is the file being taken apart: what an item *is* (its kind's
-name and CSS class, the key a layout override remembers, the title a menu shows,
-the text a screen reader gets) and what a click or a key *means* (identity,
-activation, the arrow-key walk, the reorder) are =rust/src/dock_item.rs=; what is
-left in C is the widget -- the button, the icon, the reflection, the popover, the
-poller and the timers.
-
 Not yet ported, in the order the rest of the port intends to take them:
-the rest of =ui/dock_item.c=, then
 =ui/launchpad.c= and =ui/preferences.c= (leaf panels, and the last two widget
 files that are still whole), then the two trackers (=toplevel_tracker.c= over
 =zwlr_foreign_toplevel_v1= and =x11_tracker.c= over Xlib, both of which need an
