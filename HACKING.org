@@ -656,6 +656,7 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
+The whole of =src/core/=, =src/ui/= except two panels, and both trackers are Rust.
 =ui/dock_item.c= is gone, and it was the heart of the widget layer: the item's
 scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
 the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
@@ -667,6 +668,24 @@ thumbnail decision and decode, the two views with their cells and click actions,
 the panel header and the popover that walks folders are all =rust/src/ui/stack.rs=,
 and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
 builder still call.
+
+Both window trackers are Rust now: =toplevel_tracker.c= (the broadcast and the
+Wayland half) is =rust/src/toplevel_tracker.rs=, and =x11_tracker.c= is
+=rust/src/x11_tracker.rs=. The X11 one is behind the build option, as it was in C:
+meson tells cargo =LAMBDOCK_HAVE_X11= and the module compiles =#[cfg(have_x11)]=, so
+a GTK built for Wayland alone still builds and the no-op half answers instead.
+
+Neither vendored a crate for the protocols. libwayland and libX11 are C libraries
+like GTK, so both surfaces are declared as FFI -- with one thing to know about
+libwayland: the *generated* protocol's request functions are =static inline=, and
+so are wayland.xml's own =wl_registry_bind= and =wl_display_get_registry= (libwayland
+does not export them at all). Those are rebuilt from the protocol's opcodes over
+=wl_proxy_marshal_flags=.
+
+The X11 half keeps its own connection on purpose: GDK reads the events of its own
+and hands none out, and this backend is built on =PropertyNotify= on the root
+window. One extra socket, watched with =g_unix_fd_add_full=, keeps the tracker out
+of GDK's event path entirely.
 
 Not yet ported, in the order the rest of the port intends to take them:
 =ui/launchpad.c= and =ui/preferences.c= (leaf panels, and the last two widget

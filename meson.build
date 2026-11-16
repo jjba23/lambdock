@@ -282,6 +282,7 @@ rust_sources = files(
   'rust/src/ui/theme_engine.rs',
   'rust/src/ui/trash.rs',
   'rust/src/ui/widget_utils.rs',
+  'rust/src/x11_tracker.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
   'rust/src/core/config_values.rs',
@@ -302,6 +303,14 @@ rust_sources = files(
 # is what lets a read-only source checkout (a Guix or Nix sandbox) build.
 rust_profile = get_option('debug') ? 'debug' : 'release'
 
+# `LAMBDOCK_HAVE_X11` is how meson tells cargo which backends exist: the X11
+# tracker is `#[cfg(have_x11)]`, so a GTK built for Wayland alone compiles the
+# no-op half instead of failing to link libX11.
+rust_env = {'CARGO_HOME': meson.project_build_root() / 'rust-cargo-home'}
+if have_x11
+  rust_env += {'LAMBDOCK_HAVE_X11': '1'}
+endif
+
 rust_lib = custom_target(
   'lambdock-rust',
   input: rust_sources + files(
@@ -317,7 +326,7 @@ rust_lib = custom_target(
     rust_profile,
     '@OUTPUT@',
   ],
-  env: {'CARGO_HOME': meson.project_build_root() / 'rust-cargo-home'},
+  env: rust_env,
   console: true,
 )
 
@@ -333,10 +342,13 @@ rust_lib = custom_target(
 # stack, which is `rust_lib_dep`.
 wayland_client_libdir = wayland_client_dep.get_variable(pkgconfig: 'libdir')
 
+# The X11 tracker's Xlib calls, when this build has them.
+rust_x11_link_args = have_x11 ? ['-lX11'] : []
+
 rust_core_dep = declare_dependency(
   sources: rust_lib,
   link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread',
-    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'],
+    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'] + rust_x11_link_args,
   dependencies: [dependency('glib-2.0')],
 )
 
@@ -349,7 +361,7 @@ rust_lib_dep = declare_dependency(
   # it follows the archive, with `--no-as-needed` so it stays loaded for the
   # archive meson also appends at the end of the line.
   link_args: [rust_lib.full_path(), '-lm', '-ldl', '-lpthread',
-    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'],
+    '-L' + wayland_client_libdir, '-Wl,--no-as-needed', '-lwayland-client'] + rust_x11_link_args,
   dependencies: [dependency('glib-2.0'), guile_dep, gtk_dep],
 )
 
@@ -366,7 +378,6 @@ sources = files(
   'src/main.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
-  'src/x11_tracker.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )
@@ -407,7 +418,6 @@ test_stubs = files('tests/test_stubs.c')
 full_app_sources = files(
   'src/dock_window.c',
   'src/guile_bridge.c',
-  'src/x11_tracker.c',
   'src/ui/launchpad.c',
   'src/ui/preferences.c',
 )
@@ -669,6 +679,10 @@ endif
 rust_test_env = environment()
 rust_test_env.set('CARGO_TARGET_DIR', meson.project_build_root() / 'rust-target')
 rust_test_env.set('CARGO_HOME', meson.project_build_root() / 'rust-cargo-home')
+if have_x11
+  # Same answer as the archive gets, so `cargo test` compiles the same half.
+  rust_test_env.set('LAMBDOCK_HAVE_X11', '1')
+endif
 
 test('rust_unit_tests', cargo,
      args: ['test', '--locked', '--offline', '--quiet',

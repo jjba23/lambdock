@@ -18,6 +18,14 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_PATH");
     println!("cargo:rerun-if-env-changed=PKG_CONFIG_LIBDIR");
+    // The X11 window tracker is a build option, not a runtime one: a GTK built for
+    // Wayland alone has no Xlib to link, and meson says so by not setting this.
+    println!("cargo:rerun-if-env-changed=LAMBDOCK_HAVE_X11");
+    println!("cargo:rustc-check-cfg=cfg(have_x11)");
+    if std::env::var_os("LAMBDOCK_HAVE_X11").is_some() {
+        println!("cargo:rustc-cfg=have_x11");
+        link("x11");
+    }
 
     // The crate borrows three libraries' contracts: GLib's allocator and printf
     // for the strings it hands back, libguile for the Scheme values it reads, and

@@ -23,3 +23,4 @@ pub mod logging;
 pub mod state;
 pub mod toplevel_tracker;
 pub mod ui;
+pub mod x11_tracker;
