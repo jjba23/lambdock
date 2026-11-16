@@ -341,6 +341,7 @@ lambdock/
 │       ├── ui/                # Layers 3-4, the Rust home of src/ui/
 │       │   ├── mod.rs         # + ensure_gtk_initialized()
 │       │   ├── icon_resolver.rs # Icon search paths + the six-stage pipeline
+│       │   ├── poof.rs      # The smoke burst: a widget subclass that paints
 │       │   └── widget_utils.rs # CSS-class toggles
 │       ├── accessibility.rs   # Reduce-motion rules + accessible labels
 │       ├── app_window.rs      # The window records and their ownership rules

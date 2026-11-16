@@ -266,6 +266,7 @@ rust_sources = files(
   'rust/src/dock_registry.rs',
   'rust/src/ui/mod.rs',
   'rust/src/ui/icon_resolver.rs',
+  'rust/src/ui/poof.rs',
   'rust/src/ui/widget_utils.rs',
   'rust/src/core/mod.rs',
   'rust/src/core/clock_face.rs',
@@ -357,7 +358,6 @@ sources = files(
   'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
-  'src/ui/poof.c',
   'src/ui/preferences.c',
   'src/ui/trash.c',
 )
@@ -414,7 +414,6 @@ full_app_sources = files(
   'src/ui/clock.c',
   'src/ui/shelf.c',
   'src/ui/shelf_follow.c',
-  'src/ui/poof.c',
   'src/ui/preferences.c',
   'src/ui/trash.c',
 )

@@ -35,9 +35,12 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   same format, tagged ~[R:SUB]~.  ~rust/src/state.rs~ mirrors ~LambdockState~
   field for field -- pinned to the C layout by a test, because Rust now reads a
   dock's fields (~reduce_motion~ first) -- and the Rust half needs GTK 4.14 for
-  accessible announcements.  The release profile builds one codegen unit per
-  module, so a C test that only calls a decision function still links nothing but
-  GLib instead of dragging GTK and Guile into its link line.
+  accessible announcements.  ~ui/poof.c~ is now ~rust/src/ui/poof.rs~, the first
+  widget *subclass* written from Rust: it owns a frame-clock tick, paints its
+  puffs through a snapshot, and takes itself out of the dock on an idle.  The
+  release profile builds one codegen unit per module, so a C test that only calls
+  a decision function still links nothing but GLib instead of dragging GTK and
+  Guile into its link line.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from
