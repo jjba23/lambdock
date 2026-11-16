@@ -99,7 +99,6 @@ fn generate(_what: &str) {
     // The toolchain's own compiler, or whichever the environment names: a sandbox
     // (Guix, Nix) puts it on PATH under a name of its choosing.
     let cc = std::env::var("CC").unwrap_or_else(|_| "cc".to_owned());
-    let ar = std::env::var("AR").unwrap_or_else(|_| "ar".to_owned());
 
     let mut objects = Vec::new();
     for source in [&resources, &protocol] {

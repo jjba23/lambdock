@@ -97,6 +97,27 @@ fn staged(prefix: &Path, destdir: &Path) -> PathBuf {
     destdir.join(prefix.strip_prefix("/").unwrap_or(prefix))
 }
 
+/// The release binary cargo produced, wherever the workspace put it.
+///
+/// A workspace keeps one `target/` at its root, and `CARGO_TARGET_DIR` moves it
+/// again, so the path is computed rather than assumed: `rust/target/release` was
+/// right before the workspace and only looked right locally because an old binary
+/// was still sitting there.
+fn release_binary() -> PathBuf {
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .map(|directory| {
+            if directory.is_absolute() {
+                directory
+            } else {
+                root().join(directory)
+            }
+        })
+        .unwrap_or_else(|| root().join("target"));
+
+    target.join("release/lambdock")
+}
+
 /// Builds the binary `install` copies, when it is not there yet: `cargo xtask
 /// install` is the whole install step of every recipe, so it cannot assume
 /// somebody built first.
@@ -120,7 +141,7 @@ fn install(arguments: &[String]) {
     let root = root();
     let target = staged(&prefix, &destdir);
 
-    let binary = root.join("rust/target/release/lambdock");
+    let binary = release_binary();
     if !binary.is_file() {
         build_binary();
     }

@@ -248,6 +248,20 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.0.9 (2026-11-16)
+
+- *The installer finds the binary a workspace builds.* In a workspace the release
+  binary lands in the *workspace* `target/`, not in `rust/target/` -- the path
+  `xtask` used was right before the workspace and only looked right locally
+  because an old binary was still sitting there.  That is why a Guix install
+  failed with =could not install .../rust/target/release/lambdock= right after
+  cargo had reported the release build finished: it had finished, somewhere else.
+  The path now comes from =CARGO_TARGET_DIR= when it is set and from the
+  workspace root otherwise.
+- *And the build script says what it means.* The archive step disappeared when the
+  generated objects started being linked directly, so =AR= had no caller; the
+  variable is gone instead of warning in every build.
+
 ** v2.0.8 (2026-11-16)
 
 - *The README says what the project is.* Its badges carry Rust and Scheme instead
