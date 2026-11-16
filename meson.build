@@ -261,6 +261,7 @@ rust_sources = files(
   'rust/src/glib.rs',
   'rust/src/guile.rs',
   'rust/src/logging.rs',
+  'rust/src/main_app.rs',
   'rust/src/state.rs',
   'rust/src/toplevel_tracker.rs',
   'rust/src/dock_item.rs',

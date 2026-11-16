@@ -21,6 +21,7 @@ pub mod dock_window;
 pub(crate) mod glib;
 pub(crate) mod guile;
 pub mod logging;
+pub mod main_app;
 pub mod state;
 pub mod toplevel_tracker;
 pub mod ui;

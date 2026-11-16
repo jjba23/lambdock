@@ -47,6 +47,14 @@ typedef struct {
 
 static MainTimers g_timers;
 
+/* The two decisions `main.c` used to make itself -- what a settings file is
+ * called, and how a wheel moves the row -- are `rust/src/main_app.rs` now, along
+ * with the monitor lookup; they cross the seam by name. */
+int is_settings_filename_c(const char *filename);
+gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
+                        double dy, gpointer user_data);
+GdkMonitor *find_monitor_by_connector(const char *connector);
+
 /**
  * unregister_dock_state:
  * Removes an active LambdockState instance from the dock registry.
@@ -58,22 +66,6 @@ void unregister_dock_state(LambdockState *state) {
 /* =========================================================================
  * HELPER ROUTINES FOR DIRECTORY DISCOVERY & FILE MATCHING
  * ========================================================================= */
-
-/**
- * is_settings_filename:
- * Returns TRUE if filename is "settings.scm" or matches pattern
- * "settings-*.scm".
- */
-static gboolean is_settings_filename(const char *filename) {
-  if (!filename)
-    return FALSE;
-  if (g_strcmp0(filename, "settings.scm") == 0)
-    return TRUE;
-  if (g_str_has_prefix(filename, "settings-") &&
-      g_str_has_suffix(filename, ".scm"))
-    return TRUE;
-  return FALSE;
-}
 
 /**
  * get_config_dir_c:
@@ -110,7 +102,7 @@ static GList *scan_settings_files(void) {
   if (dir) {
     const char *filename;
     while ((filename = g_dir_read_name(dir)) != NULL) {
-      if (is_settings_filename(filename)) {
+      if (is_settings_filename_c(filename)) {
         char *full_path = g_build_filename(config_dir, filename, NULL);
         file_list = g_list_append(file_list, full_path);
       }
@@ -121,90 +113,9 @@ static GList *scan_settings_files(void) {
   return file_list;
 }
 
-/**
- * find_monitor_by_connector:
- * Resolves a monitor connector name (e.g. "DP-1") to the matching GdkMonitor.
- * Returns a new reference (caller must g_object_unref it) or NULL if none match.
- */
-static GdkMonitor *find_monitor_by_connector(const char *connector) {
-  if (!connector || *connector == '\0')
-    return NULL;
-
-#if GTK_CHECK_VERSION(4, 10, 0)
-  GdkDisplay *display = gdk_display_get_default();
-  if (!display)
-    return NULL;
-
-  GListModel *monitors = gdk_display_get_monitors(display);
-  if (!monitors)
-    return NULL;
-
-  guint n = g_list_model_get_n_items(monitors);
-  for (guint i = 0; i < n; i++) {
-    GdkMonitor *mon = GDK_MONITOR(g_list_model_get_item(monitors, i));
-    if (!mon)
-      continue;
-
-    const char *name = gdk_monitor_get_connector(mon);
-    if (name && g_strcmp0(name, connector) == 0)
-      return mon; /* transfer reference to the caller */
-    g_object_unref(mon);
-  }
-#else
-  (void)connector;
-#endif
-  return NULL;
-}
-
 /* =========================================================================
  * GUILE SCHEME <-> C BRIDGE & HOT-RELOAD LOGIC
  * ========================================================================= */
-
-/**
- * on_dock_scroll:
- * Mouse wheel scroll event controller callback handler. Converts mouse wheel
- * motion (dy/dx) into smooth viewport scrolling along the active main dock
- * axis.
- */
-static gboolean on_dock_scroll(GtkEventControllerScroll *controller, double dx,
-                               double dy, gpointer user_data) {
-  (void)controller;
-  LambdockState *state = (LambdockState *)user_data;
-  if (!state || !state->scrolled_window)
-    return FALSE;
-
-  if (state->orientation == GTK_ORIENTATION_HORIZONTAL) {
-    GtkAdjustment *adj = gtk_scrolled_window_get_hadjustment(
-        GTK_SCROLLED_WINDOW(state->scrolled_window));
-    double delta = (fabs(dx) > fabs(dy)) ? dx : dy;
-    double page_size = gtk_adjustment_get_page_size(adj);
-    double upper = gtk_adjustment_get_upper(adj);
-    double lower = gtk_adjustment_get_lower(adj);
-    double max_scroll = upper - page_size;
-    double new_val = gtk_adjustment_get_value(adj) + delta * 30.0;
-    if (new_val < lower)
-      new_val = lower;
-    if (new_val > max_scroll)
-      new_val = max_scroll;
-    gtk_adjustment_set_value(adj, new_val);
-    return TRUE;
-  } else {
-    GtkAdjustment *adj = gtk_scrolled_window_get_vadjustment(
-        GTK_SCROLLED_WINDOW(state->scrolled_window));
-    double page_size = gtk_adjustment_get_page_size(adj);
-    double upper = gtk_adjustment_get_upper(adj);
-    double lower = gtk_adjustment_get_lower(adj);
-    double max_scroll = upper - page_size;
-    double new_val = gtk_adjustment_get_value(adj) + dy * 30.0;
-    if (new_val < lower)
-      new_val = lower;
-    if (new_val > max_scroll)
-      new_val = max_scroll;
-    gtk_adjustment_set_value(adj, new_val);
-    return TRUE;
-  }
-  return FALSE;
-}
 
 /**
  * forward declaration of create_dock_instance.
