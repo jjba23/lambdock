@@ -260,11 +260,14 @@ rust_sources = files(
   'rust/src/core/clock_face.rs',
   'rust/src/core/config_values.rs',
   'rust/src/core/dock_click.rs',
+  'rust/src/core/dock_dims.rs',
   'rust/src/core/dock_motion.rs',
   'rust/src/core/item_text.rs',
   'rust/src/core/poof.rs',
   'rust/src/core/poll_budget.rs',
+  'rust/src/core/render_stats.rs',
   'rust/src/core/tracker_rules.rs',
+  'rust/src/core/x11_rules.rs',
 )
 
 # `cargo build` writes `<target-dir>/<profile>/liblambdock.a` and a custom target
@@ -314,9 +317,6 @@ sources = files(
   'src/main.c',
   'src/accessibility.c',
   'src/app_window.c',
-  'src/core/dock_dims.c',
-  'src/core/render_stats.c',
-  'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
@@ -379,9 +379,6 @@ test_stubs = files('tests/test_stubs.c')
 full_app_sources = files(
   'src/accessibility.c',
   'src/app_window.c',
-  'src/core/dock_dims.c',
-  'src/core/render_stats.c',
-  'src/core/x11_rules.c',
   'src/dock_registry.c',
   'src/dock_window.c',
   'src/guile_bridge.c',
@@ -466,7 +463,7 @@ unit_tests = [
   },
   {
     'id': 'dock_dims',
-    'extra_sources': ['src/core/dock_dims.c', 'src/ui/shelf.c',
+    'extra_sources': ['src/ui/shelf.c',
                       'src/ui/icon_zoom.c', lambdock_resources],
   },
   {
@@ -482,8 +479,8 @@ unit_tests = [
     # the properties is src/x11_tracker.c's job, and the edge enum is what pulls
     # GTK's headers in.
     'id': 'x11_rules',
-    'extra_sources': ['src/core/x11_rules.c'],
-    'deps': [gtk_dep, layer_shell_dep, libm_dep],
+    'extra_sources': [],
+    'deps': [gtk_dep, layer_shell_dep, libm_dep, rust_lib_dep],
   },
   {
     # The poof's cloud is arithmetic too: puffs in, puffs out. The widget only

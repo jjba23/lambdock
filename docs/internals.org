@@ -67,7 +67,7 @@ implements, from Xfce and MATE to GNOME on Xorg and the tiling window managers.
   and =_NET_WM_PID= to recognise the dock's own windows.
 - *The dock's own surface* is typed as =_NET_WM_WINDOW_TYPE_DOCK=, marked
   above/sticky/skip-taskbar/skip-pager/on-all-desktops, moved to its edge with
-  the rectangle =core/x11_rules.c= computes, and it publishes
+  the rectangle =rust/src/core/x11_rules.rs= computes, and it publishes
   =_NET_WM_STRUT_PARTIAL= so the window manager shrinks the work area of the
   monitor it is on. Without that strut a maximized window would cover the dock.
 - *Focus, minimize and close* are the same three operations as on Wayland, sent

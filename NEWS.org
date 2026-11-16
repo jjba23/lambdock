@@ -9,14 +9,16 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
-- *The port from C to Rust has started.* Seven more decision modules are Rust
-  now, exported over the same C ABI so the dock behaves exactly as before:
-  ~src/core/dock_click.c~, ~tracker_rules.c~, ~dock_motion.c~, ~clock_face.c~,
-  ~poof.c~, ~item_text.c~ and ~config_values.c~ joined ~poll_budget.c~ under
-  ~rust/src/core/~.  Their =tests/test_<module>.c= binaries still run -- they are
-  what checks the ABI at the seam, structs returned by value, strings freed with
-  ~g_free~ and every limit against the header macro included -- and the modules'
-  own Rust tests cover the same cases.
+- *The port from C to Rust has started.* The whole of layer 1 is Rust now, and
+  every module is exported over the same C ABI so the dock behaves exactly as
+  before: ~src/core/dock_click.c~, ~tracker_rules.c~, ~dock_motion.c~,
+  ~clock_face.c~, ~poof.c~, ~item_text.c~, ~config_values.c~, ~dock_dims.c~,
+  ~x11_rules.c~ and ~render_stats.c~ joined ~poll_budget.c~ under
+  ~rust/src/core/~, and ~src/core/~ keeps only their headers.  Their
+  =tests/test_<module>.c= binaries still run -- they are what checks the ABI at
+  the seam, structs passed and returned by value, strings freed with ~g_free~
+  and every limit against the header macro included -- and the modules' own Rust
+  tests cover the same cases.
 - *Meson builds the Rust archive with cargo.* ~rust/cargo-build.sh~ runs
   ~cargo build --offline --locked~ and puts the archive where meson can declare
   it; ~cargo test~ runs the Rust suite as ~rust_unit_tests~.  Building from

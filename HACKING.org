@@ -123,7 +123,7 @@ If you read nothing else, read this.
 | Change the window popover                  | =src/ui/popover_menu.c=                                        |
 | Change the stack panel (browsing, header)  | =src/ui/stack.c=                                               |
 | Touch Wayland protocols                    | =src/toplevel_tracker.c=                                       |
-| Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.c=                       |
+| Touch the X11 backend or its strut         | =src/x11_tracker.c= + =core/x11_rules.h=                      |
 | Change auto-hide or animation              | =src/dock_window.c=                                            |
 | Change CSS scoping or theming              | =src/ui/theme_engine.c=                                        |
 | Change the glass shelf / reflections       | =src/ui/shelf.c= + =resources/css/shelf.css=                    |
@@ -180,16 +180,13 @@ expensive, because the state they move is widgets.
 :CUSTOM_ID: dependency-rules
 :END:
 
-- *=ui/= may include =core/=, never the reverse.* There is one known leak:
-  =core/dock_dims.h= includes =ui/shelf.h= (for =LambdockShelfGeometry=), and
-  =core/config_values.h= includes =lambdock.h= (for =LambdockShelfParams=).
-  The modules in =rust/src/core/= (=dock_click=, =dock_motion=,
-  =tracker_rules=, =clock_face=, =poof=, =poll_budget=, =item_text=,
-  =config_values=) are genuinely GTK-free and their test binaries link nothing
-  but GLib and the Rust archive;
-  =dock_dims= is pure in content but typed against =ui/shelf.h=, so its test
-  links GTK. Moving the remaining dock value struct into =core/= would close the
-  loop.
+- *=ui/= may include =core/=, never the reverse.* Every layer-1 module is in
+  =rust/src/core/= now, and the headers beside them in =src/core/= are the C-side
+  contract: the dock decisions are GTK-free and their test binaries link nothing
+  but GLib (and, for =x11_rules=, the Layer Shell enum). Two headers still reach
+  outwards -- =core/dock_dims.h= includes =ui/shelf.h= and =core/config_values.h=
+  includes =lambdock.h= -- which is where the value structs are declared; moving
+  them into =core/= would close the loop.
 - *Only three files touch Guile's C API:* =guile_bridge.c= (all config reads),
   =ui/dock_item.c= (calling a stored poll procedure) and =main.c= (starting the
   REPL). Anything else that needs Scheme asks the bridge.
@@ -303,9 +300,11 @@ lambdock/
 │   ├── lambdock.h             # THE central header: LambdockState, DockItem, AppWindow, constants
 │   ├── dock_window.h          # Public window API (plus guile_bridge.h, toplevel_tracker.h, ...)
 │   ├── logger.h               # LOG_C_* colored logging macros
-│   ├── core/                  # Layer 1: decisions from values, no widgets
-│   │   ├── dock_dims.c/.h     # DockDims value struct: capsule/overlay/margins from values
-│   │   └── x11_rules.c/.h     # EWMH decisions: which windows to list, where the dock goes, its struts
+│   ├── core/                  # Layer 1's C-side contract: the headers, and
+│   │   │                      # the implementations are in rust/src/core/
+│   │   ├── shelf_params.h     # LambdockShelfParams / LambdockShelfGeometry
+│   │   ├── dock_dims.h        # DockDims: capsule/overlay/margins from values
+│   │   └── x11_rules.h        # EWMH decisions: which windows, where the dock goes, its struts
 │   └── ui/                    # Layers 3-4: one dock's widgets and its panels
 │       ├── dock_item.c/.h     # Item widgets, window association, free/clear, reload
 │       ├── shelf.c/.h         # Glass shelf: 3D frame projection + icon reflections
@@ -337,11 +336,14 @@ lambdock/
 │           ├── clock_face.rs  # Hand positions + the squircle
 │           ├── config_values.rs # Clamps/sanitisers + name→value rules
 │           ├── dock_click.rs  # What a left click does
+│           ├── dock_dims.rs   # Capsule/overlay/margin arithmetic
 │           ├── dock_motion.rs # Easing, slide, auto-hide margin, fisheye
 │           ├── item_text.rs   # All item wording: labels, tooltips, gauges, plurals
 │           ├── poof.rs        # The burst as particles
 │           ├── poll_budget.rs # The poller budget
-│           └── tracker_rules.rs # Window-tracking decisions
+│           ├── render_stats.rs # Per-frame counters
+│           ├── tracker_rules.rs # Window-tracking decisions
+│           └── x11_rules.rs   # EWMH: which windows, placement, struts
 ├── scheme/lambdock/         # The Guile modules (installed to guile/site/3.0)
 │   ├── core.scm             # Public API surface: init-dock!, load-dock-config!, start-repl!
 │   ├── items.scm            # <dock-item> record, constructors, dynamic pollers
@@ -442,11 +444,13 @@ To move one module:
    running: it is the only check that the ABI at the seam still matches.
 6. ~meson setup --reconfigure build && meson compile -C build && meson test -C build~.
 
-Ported so far, each with the same cases as the =tests/test_<module>.c= that still
-runs against it: =core/poll_budget.c=, =core/dock_click.c=, =core/tracker_rules.c=,
-=core/dock_motion.c=, =core/clock_face.c=, =core/poof.c=, =core/item_text.c= and
-=core/config_values.c=. Not yet ported: =core/dock_dims.c=, =core/x11_rules.c=,
-=core/render_stats.c= and everything GTK, Wayland and Guile.
+Ported so far: the whole of layer 1. =core/poll_budget.c=, =core/dock_click.c=,
+=core/tracker_rules.c=, =core/dock_motion.c=, =core/clock_face.c=,
+=core/poof.c=, =core/item_text.c=, =core/config_values.c=, =core/dock_dims.c=,
+=core/x11_rules.c= and =core/render_stats.c= are now =rust/src/core/*.rs=, and
+=src/core/= keeps their headers as the C-side contract. Each still has the
+=tests/test_<module>.c= that checks its ABI. Not yet ported: everything GTK,
+Wayland and Guile (layers 2-4).
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
@@ -557,7 +561,7 @@ display to be tested.
 - =test_x11_dock= reads the properties back off the X server: it presents a
   dock on the test display (Xvfb, in ~maak test~) and asserts that the window
   carries =_NET_WM_WINDOW_TYPE_DOCK=, the state flags and a
-  =_NET_WM_STRUT_PARTIAL= matching =core/x11_rules.c=. It skips (77) on a
+  =_NET_WM_STRUT_PARTIAL= matching =rust/src/core/x11_rules.rs=. It skips (77) on a
   Wayland session or a build without X11, and it is the only test that checks
   what the *window manager* would see rather than what the dock computed.
 - =test_config_startup= is the one to know about: =test_guile_bridge= swaps in a
@@ -1215,7 +1219,7 @@ pointer dies:
 | Layer | File                   | Responsibility                                                                 |
 |-------+------------------------+--------------------------------------------------------------------------------+
 | 1     | =core/config_values.h= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf, edges) -- Rust |
-| 1     | =core/dock_dims.c=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values         |
+| 1     | =core/dock_dims.h=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values -- Rust  |
 | 1     | =core/dock_click.h=    | Click policy: launch, minimize, restore, list -- GTK-free, in Rust               |
 | 1     | =core/dock_motion.h=   | Easing and slide/fisheye arithmetic -- GTK-free, in Rust                         |
 | 1     | =core/item_text.h=     | All item wording: labels, tooltips, gauges, plurals -- in Rust                |

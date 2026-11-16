@@ -12,8 +12,11 @@
 pub mod clock_face;
 pub mod config_values;
 pub mod dock_click;
+pub mod dock_dims;
 pub mod dock_motion;
 pub mod item_text;
 pub mod poof;
 pub mod poll_budget;
+pub mod render_stats;
 pub mod tracker_rules;
+pub mod x11_rules;

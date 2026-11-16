@@ -18,7 +18,7 @@
  *   5. requests     -- activate, minimize, close: the same three the popover asks
  *   6. the dock     -- its window's type, state, geometry and struts
  *
- * What the property values *mean* is in core/x11_rules.c, where it is unit
+ * What the property values *mean* is in rust/src/core/x11_rules.rs, where it is unit
  * tested without an X server. A build without X11 support compiles the no-op
  * half at the bottom, which is what keeps dock_window.c free of #ifdefs.
  *
@@ -244,7 +244,7 @@ static gboolean atom_list_has(Window window, Atom property, Atom atom) {
  * Whether any of the window's declared types is one the desktop owns.
  *
  * The names are read back from the server because the decision table lives in
- * core/x11_rules.c, where it is tested; a second copy here would be the copy
+ * rust/src/core/x11_rules.rs, where it is tested; a second copy here would be the copy
  * nobody updates. This costs one round trip per window, and only for windows
  * the dock has not seen before.
  */

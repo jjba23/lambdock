@@ -23,7 +23,9 @@
  * windows, and a way to reserve screen space -- are *not* part of the X11 core
  * protocol: they are conventions in the EWMH specification, which every
  * desktop on X11 (Xfce, KDE, Cinnamon, MATE, GNOME on Xorg, the tiling window
- * managers) implements. tests/test_x11_rules.c links this file alone.
+ * managers) implements. The implementation is rust/src/core/x11_rules.rs, and
+ * tests/test_x11_rules.c links nothing but GLib, the Layer Shell enum and the
+ * Rust archive.
  */
 
 /** A rectangle in root (whole-desktop) coordinates, in pixels. */
