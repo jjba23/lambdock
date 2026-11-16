@@ -16,7 +16,7 @@
 //! refuses to step above the folder the stack was given, and the breadcrumb says
 //! only where inside that folder you are.
 
-use crate::glib::strdup_string;
+use crate::glib::{g_malloc0, strdup_string};
 use gtk4::glib;
 use std::os::raw::{c_char, c_int};
 
@@ -285,6 +285,155 @@ pub extern "C" fn lambdock_stack_view_to_string(view: c_int) -> *const c_char {
     }
 }
 
+/// One entry of a listed folder: `LambdockStackEntry` from the header, field for
+/// field. The C side reads these fields directly, so the order is the contract.
+#[repr(C)]
+pub struct StackEntry {
+    pub name: *mut c_char,
+    pub path: *mut c_char,
+    pub is_dir: c_int,
+}
+
+/// `STACK_MAX_ENTRIES` in `stack.h`: how many entries one panel will show.
+const MAX_ENTRIES: u32 = 300;
+
+/// `g_utf8_collate`, so the listing sorts the way the user's locale does.
+fn collate(left: &str, right: &str) -> std::cmp::Ordering {
+    let left = std::ffi::CString::new(left).unwrap_or_default();
+    let right = std::ffi::CString::new(right).unwrap_or_default();
+
+    unsafe { glib::ffi::g_utf8_collate(left.as_ptr(), right.as_ptr()).cmp(&0) }
+}
+
+unsafe extern "C" fn free_entry(data: *mut std::ffi::c_void) {
+    lambdock_stack_entry_free(data.cast());
+}
+
+/// Frees one entry; null is a no-op.
+///
+/// # Safety
+///
+/// `entry` must be null or a record this module allocated, not freed twice.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_entry_free(entry: *mut StackEntry) {
+    if entry.is_null() {
+        return;
+    }
+
+    crate::glib::g_free((*entry).name.cast());
+    crate::glib::g_free((*entry).path.cast());
+    crate::glib::g_free(entry.cast());
+}
+
+/// Frees a whole listing, entries and array.
+///
+/// # Safety
+///
+/// `entries` must be null or an array this module created.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_entries_free(entries: *mut glib::ffi::GPtrArray) {
+    if !entries.is_null() {
+        glib::ffi::g_ptr_array_free(entries, glib::ffi::GTRUE);
+    }
+}
+
+/// The visible children of `path`, folders first and then by name.
+///
+/// Hidden files stay hidden, as in any file manager; the listing stops one name
+/// past `limit`, because that is what tells the panel the folder has more instead
+/// of silently hiding the rest.
+///
+/// # Safety
+///
+/// `path` must be null or NUL-terminated; `truncated` must be null or point at a
+/// writable `gboolean`. The result is `(transfer full)`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_list_directory_limited(
+    path: *const c_char,
+    limit: u32,
+    truncated: *mut c_int,
+) -> *mut glib::ffi::GPtrArray {
+    let entries = glib::ffi::g_ptr_array_new_with_free_func(Some(free_entry));
+
+    if !truncated.is_null() {
+        *truncated = 0;
+    }
+
+    let limit = if limit == 0 { MAX_ENTRIES } else { limit };
+
+    let Some(dir_path) = expand_path(text(path).as_deref()) else {
+        return entries;
+    };
+
+    let directory = match std::fs::read_dir(&dir_path) {
+        Ok(directory) => directory,
+        Err(_) => {
+            crate::log_warn!("UI", "Stack path is not a readable directory: {dir_path}");
+            return entries;
+        }
+    };
+
+    let mut listed: Vec<*mut StackEntry> = Vec::new();
+
+    for child in directory.flatten() {
+        let name = child.file_name().to_string_lossy().into_owned();
+        if name.starts_with('.') {
+            continue;
+        }
+
+        // One name past the cap is enough to know the folder has more.
+        if listed.len() as u32 >= limit {
+            if !truncated.is_null() {
+                *truncated = 1;
+            }
+            break;
+        }
+
+        let child_path = join(&dir_path, &name);
+        let is_dir = std::path::Path::new(&child_path).is_dir();
+
+        let entry = g_malloc0(std::mem::size_of::<StackEntry>()).cast::<StackEntry>();
+        (*entry).name = strdup_string(&name);
+        (*entry).path = strdup_string(&child_path);
+        (*entry).is_dir = c_int::from(is_dir);
+
+        listed.push(entry);
+    }
+
+    // Folders first, then names: the order a file manager would show.
+    listed.sort_by(|left, right| {
+        let left_dir = (**left).is_dir != 0;
+        let right_dir = (**right).is_dir != 0;
+
+        match left_dir.cmp(&right_dir) {
+            std::cmp::Ordering::Equal => collate(
+                &text((**left).name).unwrap_or_default(),
+                &text((**right).name).unwrap_or_default(),
+            ),
+            // `true` sorts last, and folders go first.
+            ordering => ordering.reverse(),
+        }
+    });
+
+    for entry in listed {
+        glib::ffi::g_ptr_array_add(entries, entry.cast());
+    }
+
+    entries
+}
+
+/// The visible children of `path`, capped at `STACK_MAX_ENTRIES`.
+///
+/// # Safety
+///
+/// `path` must be null or NUL-terminated; the result is `(transfer full)`.
+#[no_mangle]
+pub unsafe extern "C" fn lambdock_stack_list_directory(
+    path: *const c_char,
+) -> *mut glib::ffi::GPtrArray {
+    lambdock_stack_list_directory_limited(path, MAX_ENTRIES, std::ptr::null_mut())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,6 +581,103 @@ mod tests {
                 std::ffi::CStr::from_ptr(lambdock_stack_view_to_string(VIEW_GRID)),
                 c"grid"
             );
+        }
+    }
+
+    // ======================================================================
+    // The listing
+    // ======================================================================
+
+    /// What a listing of `root` holds, as `(name, is_dir)`.
+    unsafe fn listed(root: &std::path::Path) -> (Vec<(String, bool)>, bool) {
+        let path = std::ffi::CString::new(root.to_string_lossy().as_bytes()).expect("no NUL");
+        let mut truncated = 0;
+        let entries = lambdock_stack_list_directory_limited(path.as_ptr(), 0, &mut truncated);
+
+        let mut out = Vec::new();
+        for index in 0..(*entries).len as usize {
+            let entry = *(*entries).pdata.add(index) as *mut StackEntry;
+            out.push((
+                text((*entry).name).unwrap_or_default(),
+                (*entry).is_dir != 0,
+            ));
+        }
+
+        lambdock_stack_entries_free(entries);
+        (out, truncated != 0)
+    }
+
+    /// A listing is folders first and then by name, with dot files left out.
+    #[test]
+    fn the_listing_is_folders_first_then_names() {
+        let root = std::env::temp_dir().join("lambdock-stack-listing");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("zulu")).expect("dir");
+        std::fs::create_dir_all(root.join("alpha")).expect("dir");
+        std::fs::write(root.join("beta.txt"), "x").expect("file");
+        std::fs::write(root.join("Alpha.txt"), "x").expect("file");
+        std::fs::write(root.join(".hidden"), "x").expect("file");
+
+        unsafe {
+            let (entries, truncated) = listed(&root);
+
+            assert!(!truncated);
+            assert_eq!(
+                entries,
+                [
+                    (String::from("alpha"), true),
+                    (String::from("zulu"), true),
+                    (String::from("Alpha.txt"), false),
+                    (String::from("beta.txt"), false),
+                ],
+                "folders first, then names collated"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The cap stops the listing one name past the limit and says so, instead of
+    /// silently hiding the rest of the folder.
+    #[test]
+    fn a_listing_stops_at_its_cap_and_says_so() {
+        let root = std::env::temp_dir().join("lambdock-stack-capped");
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("dir");
+        for name in ["a", "b", "c"] {
+            std::fs::write(root.join(name), "x").expect("file");
+        }
+
+        let path = std::ffi::CString::new(root.to_string_lossy().as_bytes()).expect("no NUL");
+
+        unsafe {
+            let mut truncated = 0;
+            let entries = lambdock_stack_list_directory_limited(path.as_ptr(), 2, &mut truncated);
+            assert_eq!((*entries).len, 2);
+            assert_ne!(truncated, 0, "the folder has more than the cap");
+            lambdock_stack_entries_free(entries);
+
+            // Exactly the cap is not truncation.
+            let mut truncated = 0;
+            let entries = lambdock_stack_list_directory_limited(path.as_ptr(), 3, &mut truncated);
+            assert_eq!((*entries).len, 3);
+            assert_eq!(truncated, 0);
+            lambdock_stack_entries_free(entries);
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A missing path lists nothing instead of crashing. The unreadable-directory
+    /// case is not checked here on purpose: it warns (as a stack whose folder went
+    /// away should), and `cargo test` output stays pristine.
+    #[test]
+    fn a_missing_path_lists_nothing() {
+        unsafe {
+            let entries = lambdock_stack_list_directory(std::ptr::null());
+            assert_eq!((*entries).len, 0);
+            lambdock_stack_entries_free(entries);
+            lambdock_stack_entries_free(std::ptr::null_mut());
         }
     }
 }

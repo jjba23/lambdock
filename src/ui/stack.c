@@ -21,93 +21,12 @@
  * ============================================================================
  */
 
-void lambdock_stack_entry_free(LambdockStackEntry *entry) {
-  if (!entry)
-    return;
-  g_free(entry->name);
-  g_free(entry->path);
-  g_free(entry);
-}
-
-/* ============================================================================
- * PATH ARITHMETIC -- in rust/src/ui/stack.rs
- * ============================================================================
- * Expanding `~`, joining a child, walking back to a parent without leaving the
- * stack's own folder, and saying where you are in one line: all of it is string
- * arithmetic, so it is Rust and it is tested. lambdock_stack_view_from_string()
- * and lambdock_stack_view_to_string() went with it -- the view modes are two names
- * and two enum values. What stays here is the folder listing and the view that
- * draws it.
+/* The listing itself -- lambdock_stack_entry_free(), compare_stack_entries(),
+ * lambdock_stack_list_directory(), its _limited() form and
+ * lambdock_stack_entries_free() -- is in rust/src/ui/stack.rs: reading a directory,
+ * hiding dot files, capping the listing and sorting folders first is a decision
+ * about a folder, not about a widget. What stays here is what draws the result.
  */
-
-static gint compare_stack_entries(gconstpointer a, gconstpointer b) {
-  const LambdockStackEntry *entry_a = *(const LambdockStackEntry *const *)a;
-  const LambdockStackEntry *entry_b = *(const LambdockStackEntry *const *)b;
-
-  /* Folders first, then names: the order a file manager would show. */
-  if (entry_a->is_dir != entry_b->is_dir)
-    return entry_a->is_dir ? -1 : 1;
-
-  return g_utf8_collate(entry_a->name, entry_b->name);
-}
-
-GPtrArray *lambdock_stack_list_directory_limited(const char *path, guint limit,
-                                                 gboolean *truncated) {
-  GPtrArray *entries = g_ptr_array_new_with_free_func(
-      (GDestroyNotify)lambdock_stack_entry_free);
-
-  if (truncated)
-    *truncated = FALSE;
-
-  if (limit == 0)
-    limit = STACK_MAX_ENTRIES;
-
-  char *dir_path = lambdock_stack_expand_path(path);
-  if (!dir_path)
-    return entries;
-
-  GDir *dir = g_dir_open(dir_path, 0, NULL);
-  if (!dir) {
-    LOG_C_WARN("UI", "Stack path is not a readable directory: %s", dir_path);
-    g_free(dir_path);
-    return entries;
-  }
-
-  const char *filename;
-  while ((filename = g_dir_read_name(dir)) != NULL) {
-    if (filename[0] == '.')
-      continue; /* Hidden files stay hidden, as in any file manager. */
-
-    /* One name past the cap is enough to know the folder has more: the panel
-     * says so instead of silently hiding the rest. */
-    if (entries->len >= limit) {
-      if (truncated)
-        *truncated = TRUE;
-      break;
-    }
-
-    LambdockStackEntry *entry = g_new0(LambdockStackEntry, 1);
-    entry->name = g_strdup(filename);
-    entry->path = g_build_filename(dir_path, filename, NULL);
-    entry->is_dir = g_file_test(entry->path, G_FILE_TEST_IS_DIR);
-    g_ptr_array_add(entries, entry);
-  }
-
-  g_dir_close(dir);
-  g_free(dir_path);
-
-  g_ptr_array_sort(entries, compare_stack_entries);
-  return entries;
-}
-
-GPtrArray *lambdock_stack_list_directory(const char *path) {
-  return lambdock_stack_list_directory_limited(path, STACK_MAX_ENTRIES, NULL);
-}
-
-void lambdock_stack_entries_free(GPtrArray *entries) {
-  if (entries)
-    g_ptr_array_free(entries, TRUE);
-}
 
 /* ============================================================================
  * VIEW MODES

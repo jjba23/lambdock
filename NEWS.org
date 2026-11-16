@@ -103,8 +103,11 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   C's rule that a widget is not destroyed from inside its own handler.  The folder
   stacks started the same way: expanding `~`, joining a child, walking back to a
   parent without leaving the stack's own folder, the breadcrumb in one line and the
-  two view names are ~rust/src/ui/stack.rs~, tested as string arithmetic; what is
-  still C is the folder listing, the thumbnails and the view that draws them.  A
+  two view names are ~rust/src/ui/stack.rs~, tested as string arithmetic, and the
+  listing followed: reading a directory, hiding dot files, capping it one name past
+  the limit so the panel can say the folder has more, and sorting folders first with
+  a locale-aware comparison. What is still C is the thumbnails and the two views
+  that draw the result.  A
   test binary that
   links only a slice of the C sources now needs one weak double
   (~update_dock_dimensions~ in ~tests/test_stubs.c~), because a Rust module
