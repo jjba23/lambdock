@@ -720,6 +720,448 @@ pub unsafe extern "C" fn create_dock_instance(
     let _: *mut gtk4::ffi::GtkApplicationWindow = window.into_glib_ptr();
 }
 
+// ===========================================================================
+// THE RECONCILE PASS
+// ===========================================================================
+//
+// Reconciling is two steps, and the first one is a value: given the settings
+// files on disk, the docks that are registered and the monitors that exist, work
+// out which docks to destroy, which to reload and where to spawn new ones. That
+// decision takes no widgets -- `plan_for_file` below is tested without a display
+// -- and the second step applies it to the registry.
+
+/// One dock, as the reconcile pass sees it: the settings path it was built for
+/// (`None` for the fallback dock) and the monitor it was put on, as an address.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DockFacts {
+    config: Option<String>,
+    monitor: Option<usize>,
+}
+
+/// A settings file's monitor policy, read from its `dock-monitor` string.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum MonitorPolicy {
+    /// `all`: one dock per active monitor.
+    All,
+    /// `default`, empty or missing: a single dock that follows no monitor.
+    Default,
+    /// A named connector: exactly one dock, on that monitor.
+    Connector(String),
+}
+
+impl MonitorPolicy {
+    fn from_config(dock_monitor: Option<&str>) -> Self {
+        match dock_monitor {
+            Some("all") => Self::All,
+            Some(name) if !name.is_empty() && name != "default" => Self::Connector(name.to_owned()),
+            _ => Self::Default,
+        }
+    }
+}
+
+/// What one settings file needs done, as indices into the snapshot it was
+/// computed from.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct FilePlan {
+    destroy: Vec<usize>,
+    reload: Vec<usize>,
+    /// Monitors to spawn on; `None` is "no monitor", the fallback dock.
+    spawn: Vec<Option<usize>>,
+}
+
+/// What `file` needs, given the docks registered and the monitors that exist.
+fn plan_for_file(
+    file: &str,
+    policy: &MonitorPolicy,
+    target: Option<usize>,
+    docks: &[DockFacts],
+    monitors: &[usize],
+) -> FilePlan {
+    let mut plan = FilePlan::default();
+    let is_for_file = |dock: &DockFacts| dock.config.as_deref() == Some(file);
+
+    match policy {
+        MonitorPolicy::All => {
+            // A dock on a monitor that is gone is stranded; destroying it is what
+            // makes room for its replacement below.
+            for (index, dock) in docks.iter().enumerate().filter(|(_, dock)| is_for_file(dock)) {
+                let live = dock.monitor.is_some_and(|monitor| monitors.contains(&monitor));
+                if !live {
+                    plan.destroy.push(index);
+                }
+            }
+
+            for monitor in monitors {
+                let existing = docks.iter().enumerate().find(|(index, dock)| {
+                    is_for_file(dock) && dock.monitor == Some(*monitor) && !plan.destroy.contains(index)
+                });
+
+                match existing {
+                    Some((index, _)) => plan.reload.push(index),
+                    None => plan.spawn.push(Some(*monitor)),
+                }
+            }
+        }
+        MonitorPolicy::Connector(_) => {
+            // A connector that does not exist is documented to fall back to the
+            // default monitor, which is the `Default` policy's work.
+            let Some(target) = target else {
+                return plan_for_file(file, &MonitorPolicy::Default, None, docks, monitors);
+            };
+
+            for (index, dock) in docks.iter().enumerate().filter(|(_, dock)| is_for_file(dock)) {
+                let stranded = dock.monitor.is_some_and(|monitor| !monitors.contains(&monitor));
+                if dock.monitor != Some(target) || stranded {
+                    plan.destroy.push(index);
+                }
+            }
+
+            let existing = docks.iter().enumerate().find(|(index, dock)| {
+                is_for_file(dock) && dock.monitor == Some(target) && !plan.destroy.contains(index)
+            });
+
+            match existing {
+                Some((index, _)) => plan.reload.push(index),
+                None => plan.spawn.push(Some(target)),
+            }
+        }
+        MonitorPolicy::Default => {
+            // A dock on any monitor is wrong for this file...
+            for (index, dock) in docks.iter().enumerate().filter(|(_, dock)| is_for_file(dock)) {
+                if dock.monitor.is_some() {
+                    plan.destroy.push(index);
+                }
+            }
+
+            // ...and exactly one dock without a monitor is wanted.
+            let existing = docks.iter().enumerate().find(|(index, dock)| {
+                is_for_file(dock) && dock.monitor.is_none() && !plan.destroy.contains(index)
+            });
+
+            match existing {
+                Some((index, _)) => plan.reload.push(index),
+                None => plan.spawn.push(None),
+            }
+        }
+    }
+
+    plan
+}
+
+/// The docks registered right now.
+fn registry_snapshot() -> Vec<*mut LambdockState> {
+    extern "C" fn collect(state: *mut LambdockState, data: *mut c_void) {
+        unsafe { &mut *data.cast::<Vec<*mut LambdockState>>() }.push(state);
+    }
+
+    let mut docks: Vec<*mut LambdockState> = Vec::new();
+    unsafe {
+        crate::dock_registry::dock_registry_foreach(
+            Some(collect),
+            (&mut docks as *mut Vec<*mut LambdockState>).cast(),
+        )
+    };
+
+    docks
+}
+
+/// The live monitors, in the display's own order.
+fn live_monitors() -> Vec<gdk::Monitor> {
+    let Some(display) = gdk::Display::default() else {
+        return Vec::new();
+    };
+
+    let monitors = display.monitors();
+    (0..monitors.n_items())
+        .filter_map(|index| monitors.item(index))
+        .filter_map(|item| item.downcast::<gdk::Monitor>().ok())
+        .collect()
+}
+
+/// The address that names `monitor` in a plan.
+fn address_of(monitor: &gdk::Monitor) -> usize {
+    monitor.as_ptr() as usize
+}
+
+/// Applies one file's plan: destroy, reload, then spawn -- in that order, because
+/// a destroy is what makes room for a spawn on the same monitor.
+///
+/// # Safety
+///
+/// `docks` are the pointers `registry_snapshot` handed out, still live, and
+/// `monitors` are the ones the plan was computed from.
+unsafe fn apply_plan(
+    app: &gtk4::Application,
+    file: &str,
+    docks: &[*mut LambdockState],
+    monitors: &[gdk::Monitor],
+    plan: &FilePlan,
+) {
+    for index in &plan.destroy {
+        if let Some(dock) = docks.get(*index) {
+            destroy_dock_instance(*dock);
+        }
+    }
+
+    for index in &plan.reload {
+        if let Some(dock) = docks.get(*index) {
+            crate::dock_item::reload_dock_instance(*dock);
+        }
+    }
+
+    for monitor in &plan.spawn {
+        let monitor: *mut gdk::ffi::GdkMonitor = monitor
+            .and_then(|address| {
+                monitors
+                    .iter()
+                    .find(|candidate| address_of(candidate) == address)
+            })
+            .map_or(std::ptr::null_mut(), |monitor| {
+                monitor.as_ptr().cast::<gdk::ffi::GdkMonitor>()
+            });
+
+        if monitor.is_null() {
+            crate::log_info!("Main", "Spawning single dock instance ({file})...");
+        } else {
+            crate::log_info!("Main", "New monitor detected. Spawning dock instance ({file})...");
+        }
+
+        create_dock_instance(app.as_ptr().cast(), monitor, cstring(file).as_ptr());
+    }
+}
+
+/// Reconciles one settings file with the docks and monitors that exist.
+///
+/// # Safety
+///
+/// `app` must be the live application.
+unsafe fn reconcile_settings_file(app: &gtk4::Application, file: &str) {
+    let file_c = cstring(file);
+    crate::bridge::load_dock_config_scm(file_c.as_ptr());
+
+    // The dock's own REPL, when the module provides one.
+    // The dock's own REPL, when `(lambdock core)` provides one.
+    let start_repl = crate::guile::scm_c_public_ref(c"lambdock core".as_ptr(), c"start-repl!".as_ptr());
+    if !start_repl.is_null() {
+        crate::guile::scm_call_1(start_repl, crate::guile::scm_from_utf8_string(file_c.as_ptr()));
+    }
+
+    let policy = MonitorPolicy::from_config(
+        crate::cstr::text(crate::bridge::get_monitor_config_for(file_c.as_ptr())).as_deref(),
+    );
+
+    let monitors = live_monitors();
+    let addresses: Vec<usize> = monitors.iter().map(address_of).collect();
+
+    // A named connector resolves to a monitor; one that does not exist says so
+    // once and falls back, which the policy below already knows how to do.
+    let target = match &policy {
+        MonitorPolicy::Connector(name) => {
+            let found = monitors
+                .iter()
+                .find(|monitor| monitor.connector().as_deref() == Some(name.as_str()));
+
+            if found.is_none() {
+                crate::log_warn!(
+                    "Main",
+                    "Monitor connector '{name}' not found for [{file}]; falling back to the default monitor."
+                );
+            }
+
+            found.map(address_of)
+        }
+        _ => None,
+    };
+
+    let docks = registry_snapshot();
+    let facts: Vec<DockFacts> = docks.iter().map(|dock| unsafe { facts_of(*dock) }).collect();
+    let plan = plan_for_file(file, &policy, target, &facts, &addresses);
+
+    apply_plan(app, file, &docks, &monitors, &plan);
+}
+
+/// One dock's facts, read from its state.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn facts_of(dock: *mut LambdockState) -> DockFacts {
+    let Some(dock) = dock.as_ref() else {
+        return DockFacts {
+            config: None,
+            monitor: None,
+        };
+    };
+
+    DockFacts {
+        config: crate::cstr::non_empty_text(dock.config_path),
+        monitor: Some(dock.monitor as usize).filter(|monitor| *monitor != 0),
+    }
+}
+
+/// Reconciles the active docks with the settings files on disk: a dock per file
+/// and monitor policy, the fallback dock when there is no file at all, and
+/// nothing left over for a file that is gone.
+///
+/// # Safety
+///
+/// `app` must be the live application.
+#[no_mangle]
+pub unsafe extern "C" fn sync_docks_with_disk(app: *mut gtk4::ffi::GtkApplication) {
+    if app.is_null() {
+        return;
+    }
+    let app: gtk4::Application = from_glib_none(app);
+
+    let files: Vec<String> = settings_files()
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect();
+
+    if files.is_empty() {
+        // No settings file at all: one fallback dock, from the built-in settings.
+        for dock in registry_snapshot() {
+            if facts_of(dock).config.is_some() {
+                destroy_dock_instance(dock);
+            }
+        }
+
+        if registry_snapshot().is_empty() {
+            crate::log_info!(
+                "Main",
+                "No settings files found. Spawning default fallback dock..."
+            );
+            crate::bridge::reload_guile_config();
+            create_dock_instance(app.as_ptr().cast(), std::ptr::null_mut(), std::ptr::null());
+        }
+
+        return;
+    }
+
+    crate::log_info!("Main", "Settings file(s) detected. Destroying fallback dock.");
+
+    // The fallback dock goes, and so does any dock whose settings file is gone.
+    for dock in registry_snapshot() {
+        let keep = facts_of(dock)
+            .config
+            .is_some_and(|config| files.contains(&config));
+
+        if !keep {
+            destroy_dock_instance(dock);
+        }
+    }
+
+    for file in &files {
+        reconcile_settings_file(&app, file);
+    }
+}
+
+#[cfg(test)]
+mod plan_tests {
+    use super::*;
+
+    fn dock(config: Option<&str>, monitor: Option<usize>) -> DockFacts {
+        DockFacts {
+            config: config.map(str::to_owned),
+            monitor,
+        }
+    }
+
+    /// `dock-monitor: all` wants one dock per live monitor, and none on a monitor
+    /// that is gone.
+    #[test]
+    fn all_monitors_get_a_dock_each() {
+        let docks = [
+            dock(Some("/a.scm"), Some(1)),
+            dock(Some("/a.scm"), Some(2)),
+            dock(Some("/a.scm"), None),
+            dock(Some("/b.scm"), Some(1)),
+        ];
+
+        let plan = plan_for_file("/a.scm", &MonitorPolicy::All, None, &docks, &[1, 3]);
+
+        assert_eq!(plan.destroy, vec![1, 2]);
+        assert_eq!(plan.reload, vec![0]);
+        assert_eq!(plan.spawn, vec![Some(3)]);
+    }
+
+    /// A named connector keeps one dock, on that monitor.
+    #[test]
+    fn a_connector_keeps_exactly_one_dock() {
+        let docks = [dock(Some("/a.scm"), Some(1)), dock(Some("/a.scm"), Some(2))];
+
+        let plan = plan_for_file(
+            "/a.scm",
+            &MonitorPolicy::Connector("DP-2".to_owned()),
+            Some(2),
+            &docks,
+            &[1, 2],
+        );
+
+        assert_eq!(plan.destroy, vec![0]);
+        assert_eq!(plan.reload, vec![1]);
+        assert!(plan.spawn.is_empty());
+    }
+
+    /// A connector that does not exist falls back to the default monitor.
+    #[test]
+    fn a_missing_connector_falls_back_to_the_default_monitor() {
+        let docks = [dock(Some("/a.scm"), Some(1))];
+
+        let plan = plan_for_file(
+            "/a.scm",
+            &MonitorPolicy::Connector("nope".to_owned()),
+            None,
+            &docks,
+            &[1],
+        );
+
+        assert_eq!(plan.destroy, vec![0]);
+        assert_eq!(plan.spawn, vec![None]);
+    }
+
+    /// No `dock-monitor` means exactly one dock, with no monitor of its own.
+    #[test]
+    fn the_default_policy_wants_one_dock_without_a_monitor() {
+        let docks = [dock(Some("/a.scm"), None), dock(Some("/b.scm"), None)];
+
+        let plan = plan_for_file("/a.scm", &MonitorPolicy::Default, None, &docks, &[1]);
+        assert!(plan.destroy.is_empty());
+        assert_eq!(plan.reload, vec![0]);
+        assert!(plan.spawn.is_empty());
+
+        let only_other_file = [dock(Some("/b.scm"), None)];
+        let plan = plan_for_file("/a.scm", &MonitorPolicy::Default, None, &only_other_file, &[1]);
+        assert_eq!(plan.spawn, vec![None]);
+    }
+
+    /// A dock whose settings file is gone is not in any plan but its own file's
+    /// absence: another file's docks are never touched.
+    #[test]
+    fn another_files_docks_are_left_alone() {
+        let docks = [dock(Some("/b.scm"), Some(1)), dock(None, None)];
+
+        let plan = plan_for_file("/a.scm", &MonitorPolicy::All, None, &docks, &[1]);
+
+        assert!(plan.destroy.is_empty());
+        assert!(plan.reload.is_empty());
+        assert_eq!(plan.spawn, vec![Some(1)]);
+    }
+
+    /// The policy the settings file asks for, as a value.
+    #[test]
+    fn the_monitor_policy_is_read_from_the_settings() {
+        assert_eq!(MonitorPolicy::from_config(Some("all")), MonitorPolicy::All);
+        assert_eq!(MonitorPolicy::from_config(Some("default")), MonitorPolicy::Default);
+        assert_eq!(MonitorPolicy::from_config(Some("")), MonitorPolicy::Default);
+        assert_eq!(MonitorPolicy::from_config(None), MonitorPolicy::Default);
+        assert_eq!(
+            MonitorPolicy::from_config(Some("DP-1")),
+            MonitorPolicy::Connector("DP-1".to_owned())
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
