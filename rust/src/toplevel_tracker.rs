@@ -599,18 +599,18 @@ pub unsafe fn lambdock_toplevel_new() -> *mut LambdockToplevel {
     Box::into_raw(Box::new(LambdockToplevel::default()))
 }
 
-/// Frees the title, the id and the record. The backend destroys its own handle
-/// first: only it knows what the handle means.
+/// Frees the record, and the title and id it copied. The backend destroys its own
+/// handle first: only it knows what the handle means.
 ///
 /// # Safety
 ///
 /// `window` must be null or a record from [`lambdock_toplevel_new`].
 pub unsafe fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
-    let Some(window) = window.as_mut() else {
+    if window.is_null() {
         return;
-    };
+    }
 
-    drop(Box::from_raw(window as *mut LambdockToplevel));
+    drop(Box::from_raw(window));
 }
 
 /// Records the id and moves the window between the docks' items for it.
