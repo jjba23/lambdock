@@ -625,10 +625,7 @@ mod backend {
     unsafe fn tracked_window_new(window: Window) -> *mut LambdockToplevel {
         let top = crate::toplevel_tracker::lambdock_toplevel_new();
         (*top).x11_window = window;
-        (*top).title = match window_title(window) {
-            Some(title) => crate::glib::strdup_string(&title),
-            None => std::ptr::null_mut(),
-        };
+        (*top).title = window_title(window).map(|title| crate::cstr::cstring(&title));
 
         let state = window_state(window);
         (*top).minimized = state.minimized;
@@ -650,7 +647,7 @@ mod backend {
         log_info!(
             "Tracker",
             "Window closed globally: '{}'",
-            crate::cstr::text_or_empty((*top).app_id)
+            (*top).app_id.as_deref().unwrap_or_default().to_string_lossy()
         );
 
         crate::toplevel_tracker::lambdock_toplevel_withdraw(top);
@@ -699,10 +696,7 @@ mod backend {
         }
 
         let top = tracked_window_new(window);
-        (*top).app_id = match app_id {
-            Some(app_id) => crate::glib::strdup_string(&app_id),
-            None => std::ptr::null_mut(),
-        };
+        (*top).app_id = app_id.map(|app_id| crate::cstr::cstring(&app_id));
 
         lock().windows.push((window, top));
 
@@ -797,12 +791,8 @@ mod backend {
         let atoms = lock().atoms;
 
         if property == atoms[ATOM_NET_WM_NAME] || property == XA_WM_NAME {
-            let title = window_title(window);
-            crate::toplevel_tracker::lambdock_toplevel_set_title(
-                top,
-                title
-                    .map_or(std::ptr::null_mut(), |title| crate::glib::strdup_string(&title)),
-            );
+            let title = window_title(window).map(|title| crate::cstr::cstring(&title));
+            crate::toplevel_tracker::lambdock_toplevel_set_title(top, title.as_deref());
             return;
         }
 
@@ -820,12 +810,8 @@ mod backend {
         // belongs to after its window exists: the id has to be re-read, not
         // remembered.
         if property == atoms[ATOM_WM_CLASS] || property == atoms[ATOM_GTK_APPLICATION_ID] {
-            let app_id = window_app_id(window);
-            crate::toplevel_tracker::lambdock_toplevel_set_app_id(
-                top,
-                app_id
-                    .map_or(std::ptr::null_mut(), |app_id| crate::glib::strdup_string(&app_id)),
-            );
+            let app_id = window_app_id(window).map(|app_id| crate::cstr::cstring(&app_id));
+            crate::toplevel_tracker::lambdock_toplevel_set_app_id(top, app_id.as_deref());
         }
     }
 

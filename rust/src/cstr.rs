@@ -61,6 +61,16 @@ pub(crate) unsafe fn text_or_empty(pointer: *const c_char) -> String {
     text(pointer).unwrap_or_default()
 }
 
+/// `pointer` as a borrowed `CStr`, or `None` when it is null: for a caller that
+/// already has the text and only needs to read it.
+///
+/// # Safety
+///
+/// `pointer` must be null or NUL-terminated, and must outlive the answer.
+pub(crate) unsafe fn borrowed<'a>(pointer: *const c_char) -> Option<&'a CStr> {
+    pointer.as_ref().map(|pointer| CStr::from_ptr(pointer))
+}
+
 /// A `CString` of `text`, for the C calls that only read it.
 ///
 /// An interior NUL truncates rather than fails: it is a log line or a file name,

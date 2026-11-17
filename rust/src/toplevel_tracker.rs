@@ -279,9 +279,9 @@ unsafe fn display_is(display: *mut GdkDisplay, type_: glib::ffi::GType) -> bool 
 // visitor may even destroy its own dock without disturbing the walk.
 
 /// Payload of the two app-id visitors: the window, and the id it reports now.
-struct AppIdEvent {
+struct AppIdEvent<'a> {
     window: *mut LambdockToplevel,
-    app_id: *const c_char,
+    app_id: Option<&'a CStr>,
 }
 
 /// Creates the dock item for an application that is running but not pinned.
@@ -294,12 +294,13 @@ struct AppIdEvent {
 ///
 /// # Safety
 ///
-/// `state` must be a live `LambdockState`; `app_id` a C string.
+/// `state` must be a live `LambdockState`.
 unsafe fn create_item_for_app_id(
     state: *mut LambdockState,
-    app_id: *const c_char,
+    app_id: Option<&CStr>,
 ) -> *mut DockItem {
-    let entry = crate::ui::desktop_entry::lambdock_desktop_entry_lookup(app_id);
+    let app_id_c = app_id.map_or(std::ptr::null(), CStr::as_ptr);
+    let entry = crate::ui::desktop_entry::lambdock_desktop_entry_lookup(app_id_c);
     let entry = entry.as_ref();
 
     let (name, icon, exec) = match entry {
@@ -307,7 +308,7 @@ unsafe fn create_item_for_app_id(
             log_info!(
                 "Tracker",
                 "App id '{}' resolved to {} ({})",
-                crate::cstr::text_or_empty(app_id),
+                crate::cstr::text_or_empty(app_id_c),
                 crate::cstr::text_or_empty(entry.id),
                 crate::cstr::text_or_empty(entry.name)
             );
@@ -315,19 +316,19 @@ unsafe fn create_item_for_app_id(
             (entry.name, entry.icon, entry.exec)
         }
         None => {
-            let name = crate::ui::desktop_entry::lambdock_app_id_to_name(app_id);
+            let name = crate::ui::desktop_entry::lambdock_app_id_to_name(app_id_c);
             log_info!(
                 "Tracker",
                 "App id '{}' has no desktop entry; showing it as '{}'",
-                crate::cstr::text_or_empty(app_id),
+                crate::cstr::text_or_empty(app_id_c),
                 crate::cstr::text_or_empty(name)
             );
 
-            (name, app_id.cast_mut(), std::ptr::null_mut())
+            (name, app_id_c.cast_mut(), std::ptr::null_mut())
         }
     };
 
-    create_dock_item(state, name, icon, exec, app_id, 0, 1)
+    create_dock_item(state, name, icon, exec, app_id_c, 0, 1)
 }
 
 /// Retitles one dock's copy of a window.
@@ -341,7 +342,7 @@ unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) 
         return;
     };
 
-    let item = find_dock_item_by_app_id(state, top_ref.app_id);
+    let item = find_dock_item_by_app_id(state, top_ref.app_id.as_deref());
     let Some(item) = item.as_ref() else {
         return;
     };
@@ -358,12 +359,11 @@ unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) 
         // The session re-announces the title on every change, including changes
         // that do not touch the text shown. Nothing to do means nothing to
         // rebuild: no label, no accessible name, no title tooltip.
-        let incoming = top_ref.title.as_ref().map(|title| CStr::from_ptr(title));
-        if (*window).title.as_deref() == incoming {
+        if (*window).title.as_deref() == top_ref.title.as_deref() {
             return;
         }
 
-        app_window_set_title(window, top_ref.title);
+        app_window_set_title(window, top_ref.title.as_deref());
 
         // Refresh the running state, the accessible name and the window-title
         // label, which all read the title back.
@@ -384,7 +384,7 @@ unsafe fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) 
         return;
     };
 
-    let item = find_dock_item_by_app_id(state, top_ref.app_id);
+    let item = find_dock_item_by_app_id(state, top_ref.app_id.as_deref());
     let Some(item) = item.as_ref() else {
         return;
     };
@@ -418,11 +418,11 @@ unsafe fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) 
 ///
 /// `state` must be a live `LambdockState`; `data` an `AppIdEvent`.
 unsafe fn dock_detach_previous_app_id(state: *mut LambdockState, data: *mut c_void) {
-    let Some(event) = (data as *const AppIdEvent).as_ref() else {
+    let Some(event) = (data as *const AppIdEvent<'_>).as_ref() else {
         return;
     };
 
-    let item = find_dock_item_by_app_id(state, event.window.as_ref().map_or(std::ptr::null(), |top| top.app_id));
+    let item = find_dock_item_by_app_id(state, event.app_id);
     let Some(item) = item.as_ref() else {
         return;
     };
@@ -448,7 +448,7 @@ unsafe fn dock_detach_previous_app_id(state: *mut LambdockState, data: *mut c_vo
 ///
 /// `state` must be a live `LambdockState`; `data` an `AppIdEvent`.
 unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_void) {
-    let Some(event) = (data as *const AppIdEvent).as_ref() else {
+    let Some(event) = (data as *const AppIdEvent<'_>).as_ref() else {
         return;
     };
     let top = event.window;
@@ -463,13 +463,14 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
 
     // An excluded app is the one case where the dock deliberately does nothing at
     // all.
-    if crate::core::tracker_rules::lambdock_tracker_ignores_app_id(event.app_id) != 0
-        || crate::bridge::is_app_excluded(event.app_id, (*state).config_path) != 0
+    let app_id = event.app_id.map_or(std::ptr::null(), CStr::as_ptr);
+    if crate::core::tracker_rules::lambdock_tracker_ignores_app_id(app_id) != 0
+        || crate::bridge::is_app_excluded(app_id, (*state).config_path) != 0
     {
         log_info!(
             "Tracker",
             "Ignoring excluded app_id '{}' for [{}]",
-            crate::cstr::text_or_empty(event.app_id),
+            crate::cstr::text_or_empty(app_id),
             crate::cstr::text_or_empty((*state).config_path)
         );
         return;
@@ -483,7 +484,7 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
     let top_ref = &*top;
     let window = dock_item_add_window(item, top);
     app_window_set_state(window, top_ref.minimized, top_ref.activated);
-    app_window_set_title(window, top_ref.title);
+    app_window_set_title(window, top_ref.title.as_deref());
 
     if !(*state).window_trackers.contains(&top) {
         (*state).window_trackers.push(top);
@@ -517,7 +518,7 @@ unsafe fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void
         return;
     }
 
-    let item = find_dock_item_by_app_id(state, top.app_id);
+    let item = find_dock_item_by_app_id(state, top.app_id.as_deref());
     if let Some(item) = item.as_ref() {
         dock_item_remove_window(item as *const _ as *mut _, data.cast());
 
@@ -609,9 +610,6 @@ pub unsafe fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
         return;
     };
 
-    crate::glib::g_free(window.title.cast());
-    crate::glib::g_free(window.app_id.cast());
-
     drop(Box::from_raw(window as *mut LambdockToplevel));
 }
 
@@ -619,42 +617,53 @@ pub unsafe fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
 ///
 /// # Safety
 ///
-/// `window` must be null or a live record; `app_id` a C string.
+/// `window` must be null or a live record.
 pub unsafe fn lambdock_toplevel_set_app_id(
     window: *mut LambdockToplevel,
-    app_id: *const c_char,
+    app_id: Option<&CStr>,
 ) {
     let Some(window_ref) = window.as_mut() else {
         return;
     };
-    if crate::core::tracker_rules::lambdock_tracker_ignores_app_id(app_id) != 0 {
+    if crate::core::tracker_rules::lambdock_tracker_ignores_app_id(
+        app_id.map_or(std::ptr::null(), CStr::as_ptr),
+    ) != 0
+    {
         return;
     }
 
-    // Detach from the previous id before recording the new one: the detach has to
-    // look up the old item by the old app id, which is about to be overwritten.
-    if !window_ref.app_id.is_null() && crate::glib::g_strcmp0(window_ref.app_id, app_id) != 0 {
+    // The old id is taken out, not overwritten: the detach has to look the old
+    // item up by it, and it is about to be replaced.
+    let previous = window_ref.app_id.take();
+
+    // Detach from the previous id before recording the new one.
+    if previous.is_some() && previous.as_deref() != app_id {
         let event = AppIdEvent {
             window,
-            app_id: window_ref.app_id,
+            app_id: previous.as_deref(),
         };
-        foreach(dock_detach_previous_app_id, (&event as *const AppIdEvent).cast_mut().cast());
+        foreach(
+            dock_detach_previous_app_id,
+            (&event as *const AppIdEvent<'_>).cast_mut().cast(),
+        );
     }
 
-    crate::glib::g_free(window_ref.app_id.cast());
-    window_ref.app_id = crate::glib::strdup_string(&crate::cstr::text_or_empty(app_id));
+    window_ref.app_id = app_id.map(CStr::to_owned);
 
     log_info!(
         "Tracker",
         "App ID resolved globally: '{}'",
-        crate::cstr::text_or_empty(app_id)
+        app_id.unwrap_or_default().to_string_lossy()
     );
 
     let event = AppIdEvent {
         window,
-        app_id: window_ref.app_id,
+        app_id: window_ref.app_id.as_deref(),
     };
-    foreach(dock_attach_current_app_id, (&event as *const AppIdEvent).cast_mut().cast());
+    foreach(
+        dock_attach_current_app_id,
+        (&event as *const AppIdEvent<'_>).cast_mut().cast(),
+    );
 }
 
 /// Records the title and renames the window in every dock, unless the text did
@@ -662,20 +671,19 @@ pub unsafe fn lambdock_toplevel_set_app_id(
 ///
 /// # Safety
 ///
-/// `window` must be null or a live record; `title` a C string.
+/// `window` must be null or a live record.
 pub unsafe fn lambdock_toplevel_set_title(
     window: *mut LambdockToplevel,
-    title: *const c_char,
+    title: Option<&CStr>,
 ) {
     let Some(window_ref) = window.as_mut() else {
         return;
     };
-    if title.is_null() || crate::glib::g_strcmp0(window_ref.title, title) == 0 {
+    if title.is_none() || window_ref.title.as_deref() == title {
         return;
     }
 
-    crate::glib::g_free(window_ref.title.cast());
-    window_ref.title = crate::glib::strdup_string(&crate::cstr::text_or_empty(title));
+    window_ref.title = title.map(CStr::to_owned);
 
     foreach(dock_apply_window_title, window.cast());
 }
@@ -710,15 +718,18 @@ pub unsafe fn lambdock_toplevel_deliver(window: *mut LambdockToplevel) {
     let Some(window_ref) = window.as_ref() else {
         return;
     };
-    if window_ref.app_id.is_null() {
+    if window_ref.app_id.is_none() {
         return;
     }
 
     let event = AppIdEvent {
         window,
-        app_id: window_ref.app_id,
+        app_id: window_ref.app_id.as_deref(),
     };
-    foreach(dock_attach_current_app_id, (&event as *const AppIdEvent).cast_mut().cast());
+    foreach(
+        dock_attach_current_app_id,
+        (&event as *const AppIdEvent<'_>).cast_mut().cast(),
+    );
     foreach(dock_apply_window_title, window.cast());
 }
 
@@ -795,11 +806,11 @@ unsafe fn toplevel_of<'a>(data: *mut c_void) -> Option<&'a mut LambdockToplevel>
 }
 
 unsafe extern "C" fn handle_title(data: *mut c_void, _handle: *mut ToplevelHandle, title: *const c_char) {
-    lambdock_toplevel_set_title(data.cast(), title);
+    lambdock_toplevel_set_title(data.cast(), crate::cstr::borrowed(title));
 }
 
 unsafe extern "C" fn handle_app_id(data: *mut c_void, _handle: *mut ToplevelHandle, app_id: *const c_char) {
-    lambdock_toplevel_set_app_id(data.cast(), app_id);
+    lambdock_toplevel_set_app_id(data.cast(), crate::cstr::borrowed(app_id));
 }
 
 unsafe extern "C" fn handle_output_enter(data: *mut c_void, _handle: *mut ToplevelHandle, _output: *mut c_void) {
@@ -862,7 +873,7 @@ unsafe extern "C" fn handle_closed(data: *mut c_void, _handle: *mut ToplevelHand
     log_info!(
         "Tracker",
         "Window closed globally: '{}'",
-        crate::cstr::text_or_empty(top.app_id)
+        top.app_id.as_deref().unwrap_or_default().to_string_lossy()
     );
 
     lambdock_toplevel_withdraw(data.cast());
@@ -1342,7 +1353,7 @@ pub unsafe fn sync_window_trackers(state: &LambdockState) {
                 // Skip what the compositor has not finished describing: a window
                 // with no app id yet has no icon to attach to.
                 if let Some(top_ref) = top.as_ref() {
-                    if !top_ref.app_id.is_null() {
+                    if top_ref.app_id.is_some() {
                         lambdock_toplevel_deliver(top);
                     }
                 }
@@ -1488,3 +1499,40 @@ pub unsafe fn clear_window_tracker_dock_references(_state: *mut LambdockState) {
 ///
 /// `tracker_ptr` is ignored.
 pub unsafe fn free_window_tracker(_tracker_ptr: *mut c_void) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The record keeps what the session last said, and a repeated title or id
+    /// changes nothing -- the events arrive far more often than the text does.
+    #[test]
+    fn a_record_keeps_the_last_id_and_title() {
+        unsafe {
+            let top = lambdock_toplevel_new();
+
+            lambdock_toplevel_set_app_id(top, Some(c"org.example.App"));
+            assert_eq!((*top).app_id.as_deref(), Some(c"org.example.App"));
+
+            // A late profile load re-announces the id; the record follows it.
+            lambdock_toplevel_set_app_id(top, Some(c"org.example.Other"));
+            assert_eq!((*top).app_id.as_deref(), Some(c"org.example.Other"));
+
+            // The same id twice is not a change.
+            lambdock_toplevel_set_app_id(top, Some(c"org.example.Other"));
+            assert_eq!((*top).app_id.as_deref(), Some(c"org.example.Other"));
+
+            lambdock_toplevel_set_title(top, Some(c"One"));
+            assert_eq!((*top).title.as_deref(), Some(c"One"));
+
+            lambdock_toplevel_set_title(top, Some(c"Two"));
+            assert_eq!((*top).title.as_deref(), Some(c"Two"));
+
+            // A missing title is not a title: the last one stays.
+            lambdock_toplevel_set_title(top, None);
+            assert_eq!((*top).title.as_deref(), Some(c"Two"));
+
+            lambdock_toplevel_free(top);
+        }
+    }
+}

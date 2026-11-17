@@ -494,18 +494,21 @@ unsafe fn find_item(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock; `app_id` must be null or a C string.
+/// `state` must be null or a live dock.
 pub unsafe fn find_dock_item_by_app_id(
     state: *mut LambdockState,
-    app_id: *const c_char,
+    app_id: Option<&CStr>,
 ) -> *mut DockItem {
-    if state.is_null() || app_id.is_null() || *app_id == 0 {
+    let Some(app_id) = app_id.filter(|app_id| !app_id.is_empty()) else {
+        return std::ptr::null_mut();
+    };
+    if state.is_null() {
         return std::ptr::null_mut();
     }
 
     // An app id that is not UTF-8 is not one the compositor sends; lossy
     // conversion keeps the comparison total instead of dropping the window.
-    let id = std::ffi::CStr::from_ptr(app_id).to_string_lossy();
+    let id = app_id.to_string_lossy();
 
     let match_by_id = find_item(state, |item| item_matches_app_id(&item_names(item), &id));
     if !match_by_id.is_null() {
@@ -516,7 +519,7 @@ pub unsafe fn find_dock_item_by_app_id(
     // application is actually installed under, so use those for a second pass: a
     // pinned "Files" (icon "nautilus") tracks a window whose app id is
     // "org.gnome.Nautilus".
-    let entry = lambdock_desktop_entry_lookup(app_id);
+    let entry = lambdock_desktop_entry_lookup(app_id.as_ptr());
     if entry.is_null() {
         return std::ptr::null_mut();
     }

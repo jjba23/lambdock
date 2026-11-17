@@ -26,8 +26,9 @@ use std::os::raw::{c_char, c_int, c_void};
 pub struct LambdockToplevel {
     pub handle: *mut c_void,
     pub x11_window: std::os::raw::c_ulong,
-    pub title: *mut c_char,
-    pub app_id: *mut c_char,
+    /// What the compositor last said, copied out of its callback.
+    pub title: Option<CString>,
+    pub app_id: Option<CString>,
     pub minimized: c_int,
     pub activated: c_int,
 }
@@ -84,7 +85,7 @@ pub unsafe fn app_window_new(
 /// # Safety
 ///
 /// `window` must be null or a live `AppWindow`; `title` must be null or a C string.
-pub unsafe fn app_window_set_title(window: *mut AppWindow, title: *const c_char) {
+pub unsafe fn app_window_set_title(window: *mut AppWindow, title: Option<&CStr>) {
     let Some(window) = window.as_mut() else {
         return;
     };
@@ -92,7 +93,7 @@ pub unsafe fn app_window_set_title(window: *mut AppWindow, title: *const c_char)
     // Titles arrive on every compositor title event, often with the same text:
     // re-allocating and re-pushing it would wake the label, the accessible name
     // and the tooltip for nothing.
-    let title = own_title(title);
+    let title = title.map(CStr::to_owned);
     if window.title == title {
         return;
     }
@@ -202,7 +203,7 @@ mod tests {
         let before = unsafe { (*window).title.as_ref().map(|title| title.as_ptr()) };
 
         let same = std::ffi::CString::new("Inbox").expect("no interior NUL");
-        unsafe { app_window_set_title(window, same.as_ptr()) };
+        unsafe { app_window_set_title(window, Some(same.as_c_str())) };
 
         // The dedupe is what keeps a title event from waking the label: the same
         // text is the same allocation.
@@ -219,7 +220,7 @@ mod tests {
         let window = window(Some("Inbox"));
         let next = std::ffi::CString::new("Sent").expect("no interior NUL");
 
-        unsafe { app_window_set_title(window, next.as_ptr()) };
+        unsafe { app_window_set_title(window, Some(next.as_c_str())) };
 
         assert_eq!(title_of(window), "Sent");
         unsafe { app_window_free(window) };
@@ -230,7 +231,7 @@ mod tests {
         let title = std::ffi::CString::new("Inbox").expect("no interior NUL");
 
         unsafe {
-            app_window_set_title(std::ptr::null_mut(), title.as_ptr());
+            app_window_set_title(std::ptr::null_mut(), Some(title.as_c_str()));
             app_window_set_state(std::ptr::null_mut(), 1, 1);
             app_window_free(std::ptr::null_mut());
             app_windows_free(std::ptr::null_mut());

@@ -379,8 +379,8 @@ unsafe fn add_file(state: *mut LambdockState, file: &gio::File) -> bool {
         }
 
         let name = crate::cstr::text_or_empty((*entry).name);
-        let known = !find_dock_item_by_app_id(state, (*entry).id).is_null()
-            || !find_dock_item_by_app_id(state, (*entry).name).is_null();
+        let known = !find_dock_item_by_app_id(state, crate::cstr::borrowed((*entry).id)).is_null()
+            || !find_dock_item_by_app_id(state, crate::cstr::borrowed((*entry).name)).is_null();
 
         let added = if known {
             crate::log_info!("UI", "Application is already in the dock: {}", name);
