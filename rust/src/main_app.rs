@@ -292,12 +292,15 @@ extern "C" fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void
 /// the dock is running, so every dock re-reads it: the next slide or hover is
 /// then immediate instead of animated.
 ///
+/// The arguments are GLib's own -- the settings object, the property spec and the
+/// data the handler was connected with -- and all three are ignored.
+///
 /// # Safety
 ///
-/// The arguments are the signal's own and are ignored.
+/// Connected as a `notify::` handler, so it is called from GLib.
 #[no_mangle]
 pub unsafe extern "C" fn on_system_motion_changed(
-    _settings: *mut glib::gobject_ffi::GObject,
+    _settings: *mut c_void,
     _pspec: *mut c_void,
     _user_data: *mut c_void,
 ) {
@@ -1468,7 +1471,7 @@ fn activate(app: &gtk4::Application) {
     // Follow the desktop's reduced-motion setting while the dock runs.
     unsafe {
         crate::accessibility::lambdock_watch_system_motion(
-            on_system_motion_changed as *mut c_void,
+            Some(on_system_motion_changed),
             std::ptr::null_mut(),
         )
     };

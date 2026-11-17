@@ -15,6 +15,7 @@ use crate::glib::g_strdup;
 use std::ffi::{CStr, CString};
 use std::fmt::Write as _;
 use std::os::raw::{c_char, c_int};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The two counters the shelf bumps, by the header's enum order: a reflection
 /// repaint and each band it draws inside one.
@@ -54,11 +55,14 @@ const NAMES: [&CStr; STAT_COUNT] = [
     c"hover_us",
 ];
 
-/// One array, one bump per event: this runs on the frame path, so it stays a
-/// plain increment. GTK drives everything from the main thread, so there is
-/// nothing to synchronise -- the C version was a `static` array for the same
-/// reason, and an atomic `fetch_add` would put a locked instruction on that path.
-static mut COUNTERS: [u64; STAT_COUNT] = [0; STAT_COUNT];
+/// One array, one bump per event.
+///
+/// The C version was a `static` array of `uint64_t`, which is only sound while
+/// exactly one thread touches it; an atomic makes the answer the same from any
+/// thread and costs a relaxed `lock` instruction, and a bump happens at most
+/// once or twice per frame -- never per item, never per pixel -- so it is not
+/// where a frame goes.
+static COUNTERS: [AtomicU64; STAT_COUNT] = [const { AtomicU64::new(0) }; STAT_COUNT];
 
 /// The counters a `LambdockStat` names, or nothing when the value is out of
 /// range (which is what the C bounds check said).
@@ -73,10 +77,8 @@ fn index(stat: c_int) -> Option<usize> {
 /// Clears every counter.
 #[no_mangle]
 pub extern "C" fn lambdock_stats_reset() {
-    // One assignment rather than a loop: the counters are a fixed array, and
-    // "all of them, at once" is what the reset means.
-    unsafe {
-        COUNTERS = [0; STAT_COUNT];
+    for counter in &COUNTERS {
+        counter.store(0, Ordering::Relaxed);
     }
 }
 
@@ -84,9 +86,7 @@ pub extern "C" fn lambdock_stats_reset() {
 #[no_mangle]
 pub extern "C" fn lambdock_stats_bump(stat: c_int) {
     if let Some(index) = index(stat) {
-        unsafe {
-            COUNTERS[index] += 1;
-        }
+        COUNTERS[index].fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -94,16 +94,14 @@ pub extern "C" fn lambdock_stats_bump(stat: c_int) {
 #[no_mangle]
 pub extern "C" fn lambdock_stats_add(stat: c_int, count: u64) {
     if let Some(index) = index(stat) {
-        unsafe {
-            COUNTERS[index] += count;
-        }
+        COUNTERS[index].fetch_add(count, Ordering::Relaxed);
     }
 }
 
 /// The current value of `stat`.
 #[no_mangle]
 pub extern "C" fn lambdock_stats_get(stat: c_int) -> u64 {
-    index(stat).map_or(0, |index| unsafe { COUNTERS[index] })
+    index(stat).map_or(0, |index| COUNTERS[index].load(Ordering::Relaxed))
 }
 
 /// A stable name for `stat` ("hover_frames", ...).
@@ -122,7 +120,7 @@ pub extern "C" fn lambdock_stats_describe() -> *mut c_char {
             text.push(' ');
         }
 
-        let value = unsafe { COUNTERS[index] };
+        let value = COUNTERS[index].load(Ordering::Relaxed);
         let _ = write!(text, "{}={}", name.to_string_lossy(), value);
     }
 

@@ -12,8 +12,9 @@
 //! snapshot, so destroying a dock inside a loop cannot corrupt the walk.
 //!
 //! Like the rest of the GTK code it is touched from the main thread only, which
-//! is why the state below is a plain `Vec` and not behind a lock.
+//! is why the state below is a thread-local `Vec` and not behind a lock.
 
+use std::cell::RefCell;
 use std::os::raw::{c_int, c_uint, c_void};
 
 pub use crate::state::LambdockState;
@@ -29,16 +30,15 @@ extern "C" {
     fn g_ptr_array_add(array: *mut GPtrArray, data: *mut c_void);
 }
 
-/// The registry's whole state: the live docks, in registration order, borrowed.
-static mut DOCKS: Vec<*mut LambdockState> = Vec::new();
-
-/// The list itself.
-///
-/// `addr_of_mut!` rather than `&mut DOCKS`: taking a reference to a `static mut`
-/// is what the `static_mut_refs` lint warns about, and the registry is
-/// main-thread-only by contract, so there is no second caller to alias with.
-fn docks() -> &'static mut Vec<*mut LambdockState> {
-    unsafe { &mut *std::ptr::addr_of_mut!(DOCKS) }
+// The registry's whole state: the live docks, in registration order.
+//
+// A `static mut` was the C-shaped answer, and it is the one thing in this file
+// that had to go: two `&mut` handed out from a `static mut` are aliasing the
+// compiler is allowed to assume never happens. A thread-local `RefCell` says
+// what the contract always said -- one thread, one owner at a time -- and a
+// visitor that re-enters the registry panics instead of corrupting it.
+thread_local! {
+    static DOCKS: RefCell<Vec<*mut LambdockState>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Registers a dock; registering the same one twice is a no-op.
@@ -52,7 +52,7 @@ pub unsafe extern "C" fn dock_registry_add(state: *mut LambdockState) {
         return;
     }
 
-    docks().push(state);
+    DOCKS.with_borrow_mut(|docks| docks.push(state));
 }
 
 /// Removes a dock if it is registered; removing an unknown one is a no-op, so
@@ -67,10 +67,11 @@ pub unsafe extern "C" fn dock_registry_remove(state: *mut LambdockState) {
         return;
     }
 
-    let docks = docks();
-    if let Some(index) = docks.iter().position(|registered| *registered == state) {
-        docks.remove(index);
-    }
+    DOCKS.with_borrow_mut(|docks| {
+        if let Some(index) = docks.iter().position(|registered| *registered == state) {
+            docks.remove(index);
+        }
+    });
 }
 
 /// Whether this dock is registered.
@@ -84,22 +85,24 @@ pub unsafe extern "C" fn dock_registry_contains(state: *const LambdockState) -> 
         return 0;
     }
 
-    docks()
-        .iter()
-        .any(|registered| std::ptr::eq(*registered as *const LambdockState, state))
-        as c_int
+    DOCKS.with_borrow(|docks| {
+        docks
+            .iter()
+            .any(|registered| std::ptr::eq(*registered as *const LambdockState, state))
+            as c_int
+    })
 }
 
 /// How many docks are registered right now.
 #[no_mangle]
 pub extern "C" fn dock_registry_count() -> c_uint {
-    docks().len() as c_uint
+    DOCKS.with_borrow(|docks| docks.len() as c_uint)
 }
 
 /// Whether the registry is empty.
 #[no_mangle]
 pub extern "C" fn dock_registry_is_empty() -> c_int {
-    docks().is_empty() as c_int
+    DOCKS.with_borrow(|docks| docks.is_empty() as c_int)
 }
 
 /// A new array of borrowed docks, in registration order.
@@ -107,20 +110,23 @@ pub extern "C" fn dock_registry_is_empty() -> c_int {
 /// The caller owns the array (unref it) but not the docks.
 #[no_mangle]
 pub extern "C" fn dock_registry_snapshot() -> *mut GPtrArray {
-    let docks = docks();
-    let states = unsafe { g_ptr_array_sized_new(docks.len() as c_uint) };
+    DOCKS.with_borrow(|docks| {
+        let states = unsafe { g_ptr_array_sized_new(docks.len() as c_uint) };
 
-    for state in docks.iter() {
-        unsafe { g_ptr_array_add(states, (*state).cast()) };
-    }
+        for state in docks.iter() {
+            unsafe { g_ptr_array_add(states, (*state).cast()) };
+        }
 
-    states
+        states
+    })
 }
 
 /// Calls `visit` once per registered dock, in registration order.
 ///
 /// The walk is over a snapshot, so a visitor may register or remove docks --
-/// including its own -- without disturbing it.
+/// including its own -- without disturbing it. Taking the copy also ends the
+/// borrow before the first visitor runs, which is what keeps re-entry a normal
+/// call rather than a panic.
 ///
 /// # Safety
 ///
@@ -134,8 +140,7 @@ pub unsafe extern "C" fn dock_registry_foreach(
         return;
     };
 
-    // A copy, not the list itself: that is the whole point of the snapshot.
-    let snapshot: Vec<*mut LambdockState> = docks().clone();
+    let snapshot: Vec<*mut LambdockState> = DOCKS.with_borrow(std::clone::Clone::clone);
 
     for state in snapshot {
         visit(state, user_data);
@@ -145,5 +150,5 @@ pub unsafe extern "C" fn dock_registry_foreach(
 /// Forgets every dock without touching the states themselves.
 #[no_mangle]
 pub extern "C" fn dock_registry_clear() {
-    docks().clear();
+    DOCKS.with_borrow_mut(Vec::clear);
 }

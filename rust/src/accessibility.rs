@@ -40,10 +40,15 @@ extern "C" {
         destroy: Option<unsafe extern "C" fn(*mut c_void)>,
     );
 
+    /// C's `GCallback` is `void (*)(void)` only because C cannot say better: what
+    /// a `notify::` handler really receives is the settings object, the property
+    /// spec and the data it was connected with, so that is the type declared
+    /// here. The ABI is a function pointer either way, and the one place that
+    /// relies on it is this file.
     fn g_signal_connect_data(
         instance: *mut c_void,
         detailed_signal: *const c_char,
-        handler: Option<unsafe extern "C" fn()>,
+        handler: Option<unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void)>,
         data: *mut c_void,
         destroy: Option<unsafe extern "C" fn(*mut c_void, *mut c_void)>,
         flags: c_int,
@@ -199,9 +204,20 @@ pub unsafe extern "C" fn lambdock_accessible_announce(
 }
 
 /// Drops the cached `gtk-enable-animations` so the next read is fresh.
-extern "C" fn animations_changed(_settings: *mut c_void, _pspec: *mut c_void, _data: *mut c_void) {
+///
+/// GLib calls this with the settings object, the property spec and the data
+/// pointer it was connected with; the dock's setting is read from the new value
+/// elsewhere, so all three are ignored.
+unsafe extern "C" fn animations_changed(
+    _settings: *mut c_void,
+    _pspec: *mut c_void,
+    _data: *mut c_void,
+) {
     ANIMATIONS_QUERIED.store(false, Ordering::Relaxed);
 }
+
+/// The signature GLib calls a `notify::` handler with.
+pub type MotionListener = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void);
 
 /// Watches the desktop's animation setting.
 ///
@@ -212,10 +228,11 @@ extern "C" fn animations_changed(_settings: *mut c_void, _pspec: *mut c_void, _d
 ///
 /// # Safety
 ///
-/// `callback` must be null or a valid `GCallback` for the lifetime of the process.
+/// `callback` must be null or a valid `notify::` handler for the lifetime of the
+/// process.
 #[no_mangle]
 pub unsafe extern "C" fn lambdock_watch_system_motion(
-    callback: *mut c_void,
+    callback: Option<MotionListener>,
     data: *mut c_void,
 ) -> c_uint {
     let Some(settings) = default_settings() else {
@@ -226,29 +243,21 @@ pub unsafe extern "C" fn lambdock_watch_system_motion(
     let signal = c"notify::gtk-enable-animations".as_ptr();
 
     if !ANIMATIONS_WATCHED.swap(true, Ordering::Relaxed) {
-        let handler: unsafe extern "C" fn() = std::mem::transmute::<
-            extern "C" fn(*mut c_void, *mut c_void, *mut c_void),
-            unsafe extern "C" fn(),
-        >(animations_changed);
-
         g_signal_connect_data(
             instance,
             signal,
-            Some(handler),
+            Some(animations_changed),
             std::ptr::null_mut(),
             None,
             0,
         );
     }
 
-    if callback.is_null() {
+    let Some(callback) = callback else {
         return 0;
-    }
+    };
 
-    let handler: unsafe extern "C" fn() =
-        std::mem::transmute::<*mut c_void, unsafe extern "C" fn()>(callback);
-
-    g_signal_connect_data(instance, signal, Some(handler), data, None, 0) as c_uint
+    g_signal_connect_data(instance, signal, Some(callback), data, None, 0) as c_uint
 }
 
 #[cfg(test)]
