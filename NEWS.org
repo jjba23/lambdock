@@ -9,6 +9,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+*[Released]*
+
+** v2.1.6 (2026-11-17)
+
 - *A dock's state owns its widgets.* `LambdockState` held nine `*mut c_void`
   widget fields, a `GdkMonitor`, a `SizeGroup` and five `CssProvider`s as raw
   pointers, because it started life as a mirror of a C struct that the C half
@@ -33,8 +37,6 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   once the parameter was a reference, and so did the shelf-parameter reader they
   call.
 
-
-*[Released]*
 
 ** v2.1.5 (2026-11-17)
 
