@@ -716,6 +716,7 @@ struct ItemAccessors {
     unit: Scm,
     max: Scm,
     poll_name: Scm,
+    style: Scm,
 }
 
 /// What one item builder is given.
@@ -856,9 +857,23 @@ unsafe fn build_dynamic_item(context: &BuildContext<'_>) {
 }
 
 unsafe fn build_separator_item(context: &BuildContext<'_>) {
-    create_separator_dock_item(context.state, context.separator_orientation.into_glib());
+    // The style is a symbol in the settings file ("line", "groove", ...) and a
+    // CSS class on the line; the Rust side validates it against its own list.
+    let style = symbol_name(accessor(context.accessors.style, context.item))
+        .map(|style| crate::cstr::text_or_empty(style));
+    let style_c = cstring_of(&style);
 
-    log_info!("GuileBridge", "Created layout separator");
+    create_separator_dock_item(
+        context.state,
+        context.separator_orientation.into_glib(),
+        style_c.as_ptr(),
+    );
+
+    log_info!(
+        "GuileBridge",
+        "Created layout separator ({})",
+        style.as_deref().unwrap_or("line")
+    );
 }
 
 unsafe fn build_stack_item(context: &BuildContext<'_>) {
@@ -967,6 +982,7 @@ unsafe fn resolve_item_accessors() -> Option<ItemAccessors> {
         unit: scm_c_public_ref(CORE_MODULE.as_ptr(), c"dock-item-unit".as_ptr()),
         max: scm_c_public_ref(CORE_MODULE.as_ptr(), c"dock-item-max".as_ptr()),
         poll_name: scm_c_public_ref(CORE_MODULE.as_ptr(), c"dock-item-poll-name".as_ptr()),
+        style: scm_c_public_ref(CORE_MODULE.as_ptr(), c"dock-item-style".as_ptr()),
     };
 
     let procedures = [
@@ -983,6 +999,7 @@ unsafe fn resolve_item_accessors() -> Option<ItemAccessors> {
         accessors.max,
         accessors.poll_interval,
         accessors.poll_name,
+        accessors.style,
     ];
 
     procedures

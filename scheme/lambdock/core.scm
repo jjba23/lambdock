@@ -34,6 +34,7 @@
                dock-item-max
                dock-item-key
                dock-item-poll-name
+               dock-item-style
                app-item
                separator-item
                dynamic-item

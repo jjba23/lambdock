@@ -317,20 +317,126 @@ button.running-app:hover {
 
 /* -------------------------------------------------------------------------
  * SEPARATOR GROOVE
+ * -------------------------------------------------------------------------
+ * Mavericks draws its divider as one hairline groove pressed into the platinum,
+ * with a lit edge beside it, and it stops short of both lips instead of spanning
+ * the slab: `separatorstraight-horizontal.png` fades out well before its ends.
+ *
+ * `line` is that single groove, `(separator-item #:style 'groove)` the engraved
+ * pair, and the other styles -- pill, dot, gap -- are the theme independent
+ * shapes overlays.css draws, recoloured here so they follow the platinum rather
+ * than the plain foreground.
  * ------------------------------------------------------------------------- */
 
-/* `separatorstraight-horizontal.png` is two pixels: black at 0.14 and white at
- * 0.14 next to it -- the engraved groove, no more. */
+/* A separator outside the dock -- a menu's rule -- keeps the plain engraved
+ * pair; the dock's own dividers are the rules below. */
 separator {
   margin: 6px 8px;
   min-width: 2px;
   background-image: linear-gradient(
     90deg,
-    rgba(0, 0, 0, 0.14) 0px,
-    rgba(0, 0, 0, 0.14) 1px,
+    rgba(2, 2, 2, 0.14) 0px,
+    rgba(2, 2, 2, 0.14) 1px,
     rgba(255, 255, 255, 0.14) 1px,
     rgba(255, 255, 255, 0.14) 2px
   );
+}
+
+/* A divider in a top or bottom dock runs vertically, and fades at both ends. */
+separator.dock-separator.separator-line.separator-vertical {
+  min-width: 2px;
+  margin: 6px 8px;
+  border: none;
+  background-repeat: no-repeat;
+  background-size: 1px 100%, 1px 100%;
+  background-position: left, right;
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(2, 2, 2, 0.30) 26%,
+      rgba(2, 2, 2, 0.30) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.52) 26%,
+      rgba(255, 255, 255, 0.52) 74%,
+      transparent 100%
+    );
+}
+
+/* The same divider in a left or right dock. */
+separator.dock-separator.separator-line.separator-horizontal {
+  min-height: 2px;
+  margin: 6px 8px;
+  border: none;
+  background-repeat: no-repeat;
+  background-size: 100% 1px, 100% 1px;
+  background-position: top, bottom;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(2, 2, 2, 0.30) 26%,
+      rgba(2, 2, 2, 0.30) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.52) 26%,
+      rgba(255, 255, 255, 0.52) 74%,
+      transparent 100%
+    );
+}
+
+/* `separatorstraight-horizontal.png` is two pixels: black at 0.14 and white at
+ * 0.14 next to it -- the engraved pair, no more. */
+separator.dock-separator.separator-groove.separator-vertical {
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(2, 2, 2, 0.20) 20%,
+      rgba(2, 2, 2, 0.20) 80%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.55) 20%,
+      rgba(255, 255, 255, 0.55) 80%,
+      transparent 100%
+    );
+}
+
+separator.dock-separator.separator-groove.separator-horizontal {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(2, 2, 2, 0.20) 20%,
+      rgba(2, 2, 2, 0.20) 80%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.55) 20%,
+      rgba(255, 255, 255, 0.55) 80%,
+      transparent 100%
+    );
+}
+
+/* The marks are brushed platinum, not the plain foreground colour. */
+separator.dock-separator.separator-pill {
+  background-color: rgba(196, 210, 226, 0.60);
+}
+
+separator.dock-separator.separator-dot {
+  background-color: rgba(210, 222, 236, 0.68);
 }
 
 /* On the glass shelf the separator is part of the slab rather than a divider
@@ -338,11 +444,12 @@ separator {
  * the slab tilts towards the viewer, and fades out before the front lip, the way
  * the dock's does. It only applies while the slab is actually projected
  * (keystone or tilt), so a flat capsule keeps the divider above. */
-.shelf-projected separator {
+.shelf-projected separator.dock-separator.separator-line.separator-vertical,
+.shelf-projected separator.dock-separator.separator-groove.separator-vertical {
   margin: 0;
-  min-width: 3px;
-  border: none;
-  background-color: transparent;
+  min-width: 2px;
+  background-size: 1px 100%, 1px 100%;
+  background-position: left, right;
 
   /* Two layers: the groove on the left and its lit edge one pixel to the
    * right, both fading into the slab at either end.  The alphas are
@@ -366,9 +473,29 @@ separator {
       rgba(2, 2, 2, 0.24) 74%,
       transparent 100%
     );
-  background-size: 2px 100%, 1px 100%;
-  background-position: right, left;
-  background-repeat: no-repeat, no-repeat;
+}
+
+.shelf-projected separator.dock-separator.separator-line.separator-horizontal,
+.shelf-projected separator.dock-separator.separator-groove.separator-horizontal {
+  margin: 0;
+  min-height: 2px;
+  background-size: 100% 1px, 100% 1px;
+  background-position: top, bottom;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(255, 255, 255, 0.26) 18%,
+      rgba(255, 255, 255, 0.26) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(2, 2, 2, 0.24) 18%,
+      rgba(2, 2, 2, 0.24) 74%,
+      transparent 100%
+    );
 }
 
 /* -------------------------------------------------------------------------

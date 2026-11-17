@@ -504,3 +504,96 @@ button.dock-item.window-minimized image {
 .launchpad-shelf-item label {
   font-size: 0.9em;
 }
+
+/* -------------------------------------------------------------------------
+ * SEPARATOR STYLES
+ * -------------------------------------------------------------------------
+ * A separator is drawn in one of five styles, picked per item with
+ * `(separator-item #:style 'pill)`. The theme owns the colour, the thickness and
+ * the margins; these rules own only the shape, so every theme answers all five
+ * without repeating the geometry in twenty stylesheets. `currentColor` is the
+ * theme's own foreground, so a pill or a bead follows it instead of inventing a
+ * colour of its own.
+ * ------------------------------------------------------------------------- */
+
+/* An engraved pair: a dark line with its lit edge beside it, fading out before
+ * both ends so the divider stops short of the capsule's lips. `separator-vertical`
+ * is a divider in a top or bottom dock; `separator-horizontal` one in a
+ * left or right dock. */
+separator.dock-separator.separator-groove {
+  border: none;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  min-width: 2px;
+  min-height: 2px;
+}
+
+separator.dock-separator.separator-groove.separator-vertical {
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.28) 18%,
+      rgba(0, 0, 0, 0.28) 82%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.32) 18%,
+      rgba(255, 255, 255, 0.32) 82%,
+      transparent 100%
+    );
+  background-size: 1px 100%, 1px 100%;
+  background-position: left, right;
+}
+
+separator.dock-separator.separator-groove.separator-horizontal {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.28) 18%,
+      rgba(0, 0, 0, 0.28) 82%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.32) 18%,
+      rgba(255, 255, 255, 0.32) 82%,
+      transparent 100%
+    );
+  background-size: 100% 1px, 100% 1px;
+  background-position: top, bottom;
+}
+
+/* A short rounded bar in the theme's foreground colour. Its size is the dock's
+ * (a mark, not a line), so this rule only says how it looks. */
+separator.dock-separator.separator-pill {
+  border: none;
+  border-radius: 2px;
+  background-image: none;
+  background-color: alpha(currentColor, 0.55);
+}
+
+/* A single round bead. */
+separator.dock-separator.separator-dot {
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background-image: none;
+  background-color: alpha(currentColor, 0.62);
+}
+
+/* A group break with nothing drawn: just the room between two groups. The
+ * longhands, not the `background` shorthand: GTK's parser drops the shorthand and
+ * leaves the theme's line in place, which is exactly the divider this style is
+ * asked to remove. */
+separator.dock-separator.separator-gap {
+  border: none;
+  box-shadow: none;
+  background-color: transparent;
+  background-image: none;
+}
+

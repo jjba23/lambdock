@@ -892,7 +892,13 @@ Only the running dock changes; write the look into settings.scm to keep it."
      (format #f "(app-item #:name ~s #:icon ~s #:exec ~s~a)"
              (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
              (settings-hover item))]
-    [(separator) "(separator-item)"]
+    [(separator)
+     ;; The style is written back when it is not the default, so an exported
+     ;; settings file draws the same separators the dock is drawing now.
+     (let ((style (dock-item-style item)))
+       (if (eq? style 'line)
+         "(separator-item)"
+         (format #f "(separator-item #:style '~a)" style)))]
     [(stack)
      (format #f "(stack-item #:name ~s #:icon ~s #:path ~s #:view-mode '~a~a)"
              (dock-item-name item) (dock-item-icon item) (dock-item-path item)

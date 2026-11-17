@@ -290,11 +290,13 @@ button.running-app:hover {
 
 /* -------------------------------------------------------------------------
  * SEPARATOR GROOVE
+ * -------------------------------------------------------------------------
+ * Smoked glass answers the same five styles as Platinum: a hairline groove for
+ * `line`, the engraved pair for `groove`, and the theme independent marks
+ * (pill, dot, gap) recoloured for the dark material.
  * ------------------------------------------------------------------------- */
 
-/* `separatorstraight-horizontal.png`'s engraved groove, lit from the other
- * side on smoked glass: white at 0.16 for the lit edge, black at 0.30 beside
- * it. */
+/* A separator outside the dock -- a menu's rule -- keeps the engraved pair. */
 separator {
   margin: 6px 8px;
   min-width: 2px;
@@ -307,16 +309,113 @@ separator {
   );
 }
 
+/* A divider in a top or bottom dock runs vertically, fading at both ends. */
+separator.dock-separator.separator-line.separator-vertical {
+  min-width: 2px;
+  margin: 6px 8px;
+  border: none;
+  background-repeat: no-repeat;
+  background-size: 1px 100%, 1px 100%;
+  background-position: left, right;
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.30) 26%,
+      rgba(255, 255, 255, 0.30) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.55) 26%,
+      rgba(0, 0, 0, 0.55) 74%,
+      transparent 100%
+    );
+}
+
+/* The same divider in a left or right dock. */
+separator.dock-separator.separator-line.separator-horizontal {
+  min-height: 2px;
+  margin: 6px 8px;
+  border: none;
+  background-repeat: no-repeat;
+  background-size: 100% 1px, 100% 1px;
+  background-position: top, bottom;
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.30) 26%,
+      rgba(255, 255, 255, 0.30) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.55) 26%,
+      rgba(0, 0, 0, 0.55) 74%,
+      transparent 100%
+    );
+}
+
+/* The engraved pair, lit from the other side on smoked glass. */
+separator.dock-separator.separator-groove.separator-vertical {
+  background-image:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.16) 20%,
+      rgba(255, 255, 255, 0.16) 80%,
+      transparent 100%
+    ),
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.45) 20%,
+      rgba(0, 0, 0, 0.45) 80%,
+      transparent 100%
+    );
+}
+
+separator.dock-separator.separator-groove.separator-horizontal {
+  background-image:
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.16) 20%,
+      rgba(255, 255, 255, 0.16) 80%,
+      transparent 100%
+    ),
+    linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(0, 0, 0, 0.45) 20%,
+      rgba(0, 0, 0, 0.45) 80%,
+      transparent 100%
+    );
+}
+
+/* The marks are smoked glass, not the plain foreground colour. */
+separator.dock-separator.separator-pill {
+  background-color: rgba(226, 236, 248, 0.50);
+}
+
+separator.dock-separator.separator-dot {
+  background-color: rgba(238, 245, 255, 0.58);
+}
+
 /* On the glass shelf the separator is part of the slab rather than a divider
  * standing in front of it: it starts at the icons' base line, runs down the face
  * the slab tilts towards the viewer, and fades out before the front lip, the way
  * the dock's does. It only applies while the slab is actually projected
  * (keystone or tilt), so a flat capsule keeps the divider above. */
-.shelf-projected separator {
+.shelf-projected separator.dock-separator.separator-line.separator-vertical,
+.shelf-projected separator.dock-separator.separator-groove.separator-vertical {
   margin: 0;
-  min-width: 3px;
-  border: none;
-  background-color: transparent;
+  min-width: 2px;
+  background-size: 1px 100%, 1px 100%;
+  background-position: left, right;
 
   /* Smoked glass: a dark groove with a dim lit edge, fading at both ends. */
   background-image:
@@ -334,9 +433,29 @@ separator {
       rgba(0, 0, 0, 0.42) 74%,
       transparent 100%
     );
-  background-size: 2px 100%, 1px 100%;
-  background-position: right, left;
-  background-repeat: no-repeat, no-repeat;
+}
+
+.shelf-projected separator.dock-separator.separator-line.separator-horizontal,
+.shelf-projected separator.dock-separator.separator-groove.separator-horizontal {
+  margin: 0;
+  min-height: 2px;
+  background-size: 100% 1px, 100% 1px;
+  background-position: top, bottom;
+  background-image:
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(255, 255, 255, 0.13) 18%,
+      rgba(255, 255, 255, 0.13) 74%,
+      transparent 100%
+    ),
+    linear-gradient(
+      to right,
+      transparent 0%,
+      rgba(0, 0, 0, 0.42) 18%,
+      rgba(0, 0, 0, 0.42) 74%,
+      transparent 100%
+    );
 }
 
 /* -------------------------------------------------------------------------

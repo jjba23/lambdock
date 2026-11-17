@@ -210,7 +210,7 @@ presets.
 |---------------------------------+-------------+----------------------------------------------------+-------------------------------------------------------------------------------------------------------|
 | ~(app-item ...)~                | Record      | Custom application launcher definition              | ~#:name~, ~#:icon~, ~#:exec~, ~#:hover-animate?~                                                       |
 | ~(dynamic-item ...)~            | Record      | Dynamic polling widget: text, or a gauge with ~#:meter?~ | ~#:name~, ~#:icon~, ~#:exec~, ~#:poll-fn~, ~#:poll-interval~, ~#:hover-animate?~, ~#:meter?~, ~#:unit~, ~#:max~ |
-| ~(separator-item)~              | Record      | Layout divider line                                 | None                                                                                                  |
+| ~(separator-item ...)~          | Record      | Divider between groups of items                     | ~#:style~ (~'line~, ~'groove~, ~'pill~, ~'dot~, ~'gap~)                                               |
 | ~(stack-item ...)~              | Record      | Folder stack: opens a directory in a popover        | ~#:name~, ~#:path~, ~#:icon~, ~#:view-mode~ (~'grid~, ~'list~), ~#:hover-animate?~                    |
 | ~(launchpad-item ...)~          | Record      | Opens the full-screen application grid              | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
 | ~(trash-item ...)~              | Record      | Desktop trash icon: shows, opens and empties it     | ~#:name~, ~#:icon~, ~#:hover-animate?~                                                                 |
@@ -360,6 +360,32 @@ Here is an example of separators being used along with presets.
                                 'pavucontrol
                                 'onepassword)))
 #+end_src
+
+A separator draws in one of five styles, and every theme answers each of them
+with its own material:
+
+| Style       | What it draws                                                     |
+|-------------+-------------------------------------------------------------------|
+| ~'line~     | The theme's plain divider (the default).                           |
+| ~'groove~   | An engraved pair: a dark line with a lit one beside it, fading out |
+|             | before both ends.                                                  |
+| ~'pill~     | A short rounded bar in the theme's divider colour.                 |
+| ~'dot~      | A single round bead.                                               |
+| ~'gap~      | Empty room: a group break with no line at all.                     |
+
+#+begin_src scheme
+(define dock-items
+  (append (preset-launchers-for 'nautilus 'google-chrome)
+          (list (separator-item #:style 'groove))
+          (preset-launchers-for 'emacs)
+          (list (separator-item #:style 'dot))
+          (preset-launchers-for 'ram 'cpu)
+          (list (separator-item #:style 'gap))
+          (preset-launchers-for 'btop 'onepassword)))
+#+end_src
+
+A style nothing knows is the plain divider, so an old settings file keeps
+working and a typo never leaves a group without its divider.
 
 Here a snapshot of my own (@jjba23) configuration:
 

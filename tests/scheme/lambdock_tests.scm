@@ -352,6 +352,14 @@
 (check-equal "separator-item name is empty" "" (dock-item-name %sep))
 (check-not "separator-item never hover-animates"
            (dock-item-hover-animate? %sep))
+(check-equal "separator-item dividers with the theme's plain line"
+             'line (dock-item-style %sep))
+(check-equal "separator-item takes the style the dock should draw"
+             'groove (dock-item-style (separator-item #:style 'groove)))
+(check-equal "a separator style nobody paints is the plain divider"
+             'line (dock-item-style (separator-item #:style 'zigzag)))
+(check-equal "every other item kind keeps the line style"
+             'line (dock-item-style (app-item #:name "A")))
 
 (define %dyn (dynamic-item #:name "Dyn" #:poll-fn (lambda () "x")))
 (check-equal "dynamic-item type is 'dynamic"

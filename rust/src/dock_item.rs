@@ -522,6 +522,27 @@ mod kind_tests {
         assert!(unsafe { dock_item_key(std::ptr::null()) }.is_none());
     }
 
+    /// Each separator style is its own class, and anything else is the plain
+    /// divider: the name comes from a settings file, so it must not reach a
+    /// selector nothing paints.
+    #[test]
+    fn a_separator_style_is_a_class_the_stylesheet_knows() {
+        assert_eq!(separator_style_class(Some("line")), "separator-line");
+        assert_eq!(separator_style_class(Some("groove")), "separator-groove");
+        assert_eq!(separator_style_class(Some("pill")), "separator-pill");
+        assert_eq!(separator_style_class(Some("dot")), "separator-dot");
+        assert_eq!(separator_style_class(Some("gap")), "separator-gap");
+
+        // A settings file writes a symbol, and a person may type it either way.
+        assert_eq!(separator_style_class(Some("GROOVE")), "separator-groove");
+        assert_eq!(separator_style_class(Some(" dot ")), "separator-dot");
+
+        // Nothing, a typo, and a style from a newer version: the theme's divider.
+        assert_eq!(separator_style_class(None), "separator-line");
+        assert_eq!(separator_style_class(Some("")), "separator-line");
+        assert_eq!(separator_style_class(Some("zigzag")), "separator-line");
+    }
+
     /// A kind nobody knows behaves like an application: the first row is the
     /// fallback, which is what the C table did.
     #[test]
@@ -1621,15 +1642,21 @@ pub unsafe fn apply_dock_item_alignment(item: *mut DockItem) {
 
         if item_ref.kind == ITEM_SEPARATOR {
             let horizontal = is_horizontal(state);
-            button.set_valign(if horizontal {
+            // A line and a groove run the length of the row; the fixed-size
+            // marks (pill, bead, gap) are centred in it instead of being
+            // stretched from its start edge to its end.
+            let fills = button.has_css_class("separator-line")
+                || button.has_css_class("separator-groove");
+
+            button.set_valign(if horizontal && fills {
                 gtk4::Align::Fill
             } else {
                 gtk4::Align::Center
             });
-            button.set_halign(if horizontal {
-                gtk4::Align::Center
-            } else {
+            button.set_halign(if !horizontal && fills {
                 gtk4::Align::Fill
+            } else {
+                gtk4::Align::Center
             });
         }
     }
@@ -2513,15 +2540,43 @@ pub unsafe fn create_dynamic_dock_item(
     item
 }
 
+/// The separator styles a stylesheet knows, as the CSS class each one adds.
+///
+/// A style that is not in this list is the plain divider: the value comes from a
+/// settings file, and a typo must not put a class (or a selector) nothing paints
+/// on the dock.
+const SEPARATOR_STYLES: [(&str, &str); 5] = [
+    ("line", "separator-line"),
+    ("groove", "separator-groove"),
+    ("pill", "separator-pill"),
+    ("dot", "separator-dot"),
+    ("gap", "separator-gap"),
+];
+
+/// The CSS class for a separator style name, or the plain divider's.
+fn separator_style_class(style: Option<&str>) -> &'static str {
+    let style = style.map(str::trim).unwrap_or("");
+
+    SEPARATOR_STYLES
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(style))
+        .map_or(SEPARATOR_STYLES[0].1, |(_, class)| class)
+}
+
 /// A separator: a line in the same icon-sized cell every other item's content
 /// sits in, so it is centred on the row instead of hanging at its bottom edge.
 ///
+/// `style` is one of `SEPARATOR_STYLES` ("line", "groove", "pill", "dot",
+/// "gap"): it becomes a CSS class the stylesheet paints, so every theme answers
+/// with its own material.
+///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
+/// `state` must be null or a live `LambdockState`; `style` null or a C string.
 pub unsafe fn create_separator_dock_item(
     state: *mut LambdockState,
     orientation: c_int,
+    style: *const c_char,
 ) -> *mut DockItem {
     use gtk4::glib::translate::IntoGlib;
 
@@ -2547,6 +2602,15 @@ pub unsafe fn create_separator_dock_item(
 
     let line_view: Borrowed<gtk4::Widget> = from_glib_borrow(line);
     line_view.add_css_class("dock-separator");
+    let style_class = separator_style_class(crate::cstr::text(style).as_deref());
+    line_view.add_css_class(style_class);
+    // The separator's own orientation, so a stylesheet can lay a fade along the
+    // right axis: a divider in a bottom dock runs vertically.
+    line_view.add_css_class(if vertical {
+        "separator-vertical"
+    } else {
+        "separator-horizontal"
+    });
     if vertical {
         line_view.set_margin_start(SEPARATOR_MARGIN_PX);
         line_view.set_margin_end(SEPARATOR_MARGIN_PX);
@@ -2555,10 +2619,31 @@ pub unsafe fn create_separator_dock_item(
         line_view.set_margin_bottom(SEPARATOR_MARGIN_PX);
     }
 
+    // A line and a groove run the length of the row; a pill, a bead and a gap
+    // are marks of their own size, so they must not stretch along it.
+    let full_length = matches!(style_class, "separator-line" | "separator-groove");
+
+    // The marks are sized here rather than in CSS: a GtkSeparator draws through
+    // no CSS gadget, so `min-width` is not a lever on it, and its own measure is
+    // one pixel in both directions. (thickness, length) along the line.
+    let mark = match style_class {
+        "separator-pill" => (3, 20),
+        "separator-dot" => (5, 5),
+        "separator-gap" => (12, 12),
+        _ => (0, 0),
+    };
+    if mark.0 > 0 {
+        if vertical {
+            line_view.set_size_request(mark.0, mark.1);
+        } else {
+            line_view.set_size_request(mark.1, mark.0);
+        }
+    }
+
     // Along the cell's own axis the line has to claim the spare room; across it
     // the cell is exactly as wide as the line plus its margins.
-    line_view.set_vexpand(vertical);
-    line_view.set_hexpand(!vertical);
+    line_view.set_vexpand(vertical && full_length);
+    line_view.set_hexpand(!vertical && full_length);
 
     let cell = gtk4::ffi::gtk_box_new(orientation, 0);
     item_ref.cell = cell.cast();

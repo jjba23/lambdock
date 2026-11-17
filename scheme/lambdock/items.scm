@@ -25,6 +25,7 @@
                         dock-item-max
                         dock-item-key
                         dock-item-poll-name
+                        dock-item-style
 
                         ;; Generic Constructors
                         app-item
@@ -67,6 +68,11 @@
 ;; `clock?` marks the item that is drawn as an analogue clock face. Its poll
 ;; function still runs -- the string it returns is the face's tooltip and the text
 ;; a screen reader announces -- while the hands follow the system clock.
+;;
+;; `style` is how a separator is drawn: 'line (the theme's plain divider, the
+;; default), 'groove (an engraved pair of lines), 'pill (a short rounded bar),
+;; 'dot (a single bead) or 'gap (empty room, no line at all). Every other kind of
+;; item keeps 'line; only the dock's separator reads it.
 (define-record-type <dock-item>
   (make-dock-item type
                   name
@@ -80,7 +86,8 @@
                   meter?
                   clock?
                   unit
-                  max)
+                  max
+                  style)
   dock-item?
   (type %dock-item-type)
   (name %dock-item-name)
@@ -94,7 +101,8 @@
   (meter? %dock-item-meter?)
   (clock? %dock-item-clock?)
   (unit %dock-item-unit)
-  (max %dock-item-max))
+  (max %dock-item-max)
+  (style %dock-item-style))
 
 ;; Public procedure wrappers
 (define (dock-item-type item)
@@ -135,6 +143,12 @@
 
 (define (dock-item-max item)
   (%dock-item-max item))
+
+(define (dock-item-style item)
+  "How a separator is drawn: 'line, 'groove, 'pill, 'dot or 'gap.
+
+Only separators read it; every other kind answers 'line."
+  (%dock-item-style item))
 
 (define (dock-item-key item)
   "Stable identifier of ITEM, used by the dock layout overrides to remember
@@ -177,10 +191,28 @@ unless it was defined with `define'."
                   #f
                   #f
                   ""
-                  100))
+                  100
+                  'line))
 
-;; Generic constructor for separators
-(define (separator-item)
+;; The separator styles the stylesheets know. A typo is the plain divider rather
+;; than a selector nothing paints.
+(define %separator-styles '(line groove pill dot gap))
+
+(define (normalize-separator-style style)
+  "STYLE when it names one of the separator styles, 'line otherwise."
+  (if (memq style %separator-styles) style 'line))
+
+;; Generic constructor for separators.
+;;
+;; `style` says how the divider is drawn, and every theme answers with its own
+;; material:
+;;
+;;   'line    the theme's plain divider (the default)
+;;   'groove  an engraved pair: a dark line with a lit one beside it
+;;   'pill    a short rounded bar in the theme's divider colour
+;;   'dot     a single round bead, centred in the row
+;;   'gap     empty room: a group break with no line at all
+(define* (separator-item #:key (style 'line))
   (make-dock-item 'separator
                   ""
                   ""
@@ -193,7 +225,8 @@ unless it was defined with `define'."
                   #f
                   #f
                   ""
-                  100))
+                  100
+                  (normalize-separator-style style)))
 
 ;; Generic constructor for dynamic polling items.
 ;;
@@ -222,7 +255,8 @@ unless it was defined with `define'."
                   meter?
                   clock?
                   unit
-                  max))
+                  max
+                  'line))
 
 ;; A stack: a dock icon that opens a popover with the contents of a directory.
 ;; `view-mode` is one of 'grid or 'list and can be changed at runtime from
@@ -246,7 +280,8 @@ unless it was defined with `define'."
                   #f
                   #f
                   ""
-                  100))
+                  100
+                  'line))
 
 ;; The launchpad: clicking it opens a full screen grid of installed apps.
 (define* (launchpad-item #:key (name "Launchpad")
@@ -264,7 +299,8 @@ unless it was defined with `define'."
                   #f
                   #f
                   ""
-                  100))
+                  100
+                  'line))
 
 ;; The trash: a dock icon that follows the desktop trash. It shows whether there
 ;; is anything in it, opens it on a click, and its context menu empties it. `icon`
@@ -285,7 +321,8 @@ unless it was defined with `define'."
                   #f
                   #f
                   ""
-                  100))
+                  100
+                  'line))
 
 ;; =============================================================================
 ;; Dynamic Helper Procedures & Presets
