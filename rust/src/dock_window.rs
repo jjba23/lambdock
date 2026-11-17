@@ -244,8 +244,8 @@ unsafe fn apply_scroll_policy(state: &LambdockState, dims: &DockDims) {
 /// # Safety
 ///
 /// `state` must be a live dock with its box built.
-unsafe fn apply_box_margins(state: &LambdockState, dims: &DockDims, horizontal: bool) {
-    let Some(box_) = state.box_.as_ref() else {
+unsafe fn apply_box_margins(dock: &mut LambdockState, dims: &DockDims, horizontal: bool) {
+    let Some(box_) = dock.box_.as_ref() else {
         return;
     };
 
@@ -270,9 +270,9 @@ unsafe fn apply_box_margins(state: &LambdockState, dims: &DockDims, horizontal: 
     }
 
     let edge_is_start = if horizontal {
-        state.edge == EDGE_TOP
+        dock.edge == EDGE_TOP
     } else {
-        state.edge == EDGE_LEFT
+        dock.edge == EDGE_LEFT
     };
 
     if horizontal {
@@ -326,11 +326,8 @@ unsafe fn content_main_px(state: &LambdockState, horizontal: bool) -> c_int {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn dock_reserve_hover_room(dock: &mut LambdockState) {
     let Some(overlay) = dock.overlay.as_ref() else {
         return;
     };
@@ -357,7 +354,7 @@ pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
         overlay.set_size_request(width, main_px);
     }
 
-    dock_schedule_input_region(state);
+    dock_schedule_input_region(dock);
 }
 
 /// Cross-axis size requests for the overlay and the capsule.
@@ -365,8 +362,8 @@ pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be a live dock with its widgets built.
-unsafe fn apply_size_requests(state: &LambdockState, dims: &DockDims, horizontal: bool) {
-    let (Some(overlay), Some(capsule)) = (state.overlay.as_ref(), state.bg_capsule.as_ref()) else {
+unsafe fn apply_size_requests(dock: &LambdockState, dims: &DockDims, horizontal: bool) {
+    let (Some(overlay), Some(capsule)) = (dock.overlay.as_ref(), dock.bg_capsule.as_ref()) else {
         return;
     };
 
@@ -589,11 +586,8 @@ unsafe fn apply_input_region(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn apply_dock_input_region(state: *mut LambdockState) -> bool {
-    let Some(dock) = state.as_mut() else {
-        return false;
-    };
+/// `dock` must be a live dock.
+unsafe fn apply_dock_input_region(dock: &mut LambdockState) -> bool {
     let (Some(window), Some(shelf)) = (dock.window.as_ref(), dock.bg_shelf.as_ref()) else {
         return false;
     };
@@ -619,7 +613,7 @@ unsafe fn apply_dock_input_region(state: *mut LambdockState) -> bool {
     // A tucked-away dock is a strip at the screen edge, and that strip is the
     // surface's *headroom* -- the part the dock-shaped region below cuts away. It
     // has to stay clickable, or the pointer could never bring the dock back (a
-    // slide moves the window every frame, so this is also the state to be in for
+    // slide moves the window every frame, so this is also the dock to be in for
     // the whole animation). While the dock is away the whole surface is the
     // strip, so the whole surface keeps its input.
     if lambdock_dock_needs_full_input(dock.is_hidden, dock.current_margin) != 0 {
@@ -670,7 +664,7 @@ unsafe extern "C" fn on_input_region_tick(
         return glib::ffi::GFALSE;
     };
 
-    if apply_dock_input_region(state) {
+    if apply_dock_input_region(dock) {
         dock.input_region_tick_id = 0;
         dock.input_region_attempts = 0;
         return glib::ffi::GFALSE;
@@ -693,11 +687,9 @@ unsafe extern "C" fn on_input_region_tick(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_schedule_input_region(state: *mut LambdockState) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn dock_schedule_input_region(dock: &mut LambdockState) {
+    let pointer = dock as *mut LambdockState;
     if dock.input_region_tick_id != 0 {
         return;
     }
@@ -709,7 +701,7 @@ pub unsafe fn dock_schedule_input_region(state: *mut LambdockState) {
     dock.input_region_tick_id = gtk4::ffi::gtk_widget_add_tick_callback(
         window.as_ptr().cast(),
         Some(on_input_region_tick),
-        state.cast(),
+        pointer.cast(),
         None,
     );
 }
@@ -724,11 +716,8 @@ pub unsafe fn dock_schedule_input_region(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn update_dock_dimensions(state: *mut LambdockState) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn update_dock_dimensions(dock: &mut LambdockState) {
     if dock.bg_capsule.is_none() || dock.overlay.is_none() {
         return;
     }
@@ -751,13 +740,13 @@ pub unsafe fn update_dock_dimensions(state: *mut LambdockState) {
     apply_box_margins(dock, &dims, horizontal);
     dock.hover_headroom_px = dims.hover_headroom_px;
     apply_size_requests(dock, &dims, horizontal);
-    dock_reserve_hover_room(state);
+    dock_reserve_hover_room(dock);
     apply_scroll_alignment(dock, horizontal);
     apply_capsule_alignment(dock, horizontal);
 
     // Size, show or hide the glass-shelf reflections so they always match the
     // current icon size and shelf parameters.
-    apply_shelf_layout(state);
+    apply_shelf_layout(dock as *mut LambdockState);
     mirror_shelf_alignment(dock);
 
     // Icon size, spacing, padding, mode and shelf all move the items: the hover
@@ -766,11 +755,11 @@ pub unsafe fn update_dock_dimensions(state: *mut LambdockState) {
 
     // The surface may be bigger than the dock now: keep the input region on the
     // dock itself.
-    dock_schedule_input_region(state);
+    dock_schedule_input_region(dock);
 
     // An X11 dock is moved and resized by hand, so a size change is also a
     // placement change. Idempotent: an unchanged rectangle is not re-applied.
-    lambdock_x11_dock_apply(state);
+    lambdock_x11_dock_apply(dock as *mut LambdockState);
 }
 
 /// The number of frames the input region may keep retrying before it gives up,
@@ -1000,11 +989,9 @@ unsafe fn stop_pointer_tick_inner(dock: &mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn stop_pointer_tick(state: *mut LambdockState) {
-    if let Some(dock) = state.as_mut() {
-        stop_pointer_tick_inner(dock);
-    }
+/// `dock` must be a live dock.
+pub unsafe fn stop_pointer_tick(dock: &mut LambdockState) {
+    stop_pointer_tick_inner(dock);
 }
 
 /// Runs `visit` over the dock row from Rust, skipping empty slots.
@@ -1117,18 +1104,16 @@ unsafe fn reset_dock_items_scale_inner(dock: &mut LambdockState) {
     dock.fisheye_active = 0;
 
     // The row is back at rest: let the surface hug it again.
-    dock_reserve_hover_room(dock as *mut LambdockState);
+    dock_reserve_hover_room(dock);
 }
 
 /// Resets every dock item to its base pixel size.
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn reset_dock_items_scale(state: *mut LambdockState) {
-    if let Some(dock) = state.as_mut() {
-        reset_dock_items_scale_inner(dock);
-    }
+/// `dock` must be a live dock.
+pub unsafe fn reset_dock_items_scale(dock: &mut LambdockState) {
+    reset_dock_items_scale_inner(dock);
 }
 
 /// One frame of the slide: interpolates `current_margin` towards
@@ -1162,7 +1147,7 @@ unsafe extern "C" fn animate_margin_tick(
 
         // The dock has arrived, so the input region it needs may have changed:
         // out in the open it is the dock, mid-slide it was the whole surface.
-        dock_schedule_input_region(user_data.cast());
+        dock_schedule_input_region(dock);
         return glib::ffi::GFALSE;
     }
 
@@ -1209,7 +1194,7 @@ unsafe fn start_margin_animation(dock: &mut LambdockState, target_margin: c_int)
     // not shaped for, and whether the whole surface has to take input depends on
     // the margin: ask for the region again on the frame the slide starts, not
     // only on the frames something else happens to reapply it.
-    dock_schedule_input_region(dock as *mut LambdockState);
+    dock_schedule_input_region(dock);
 
     if dock.tick_cb_id == 0 {
         if let Some(window) = dock.window.as_ref() {
@@ -1232,11 +1217,8 @@ unsafe fn start_margin_animation(dock: &mut LambdockState, target_margin: c_int)
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_apply_motion_preference(state: *mut LambdockState) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn dock_apply_motion_preference(dock: &mut LambdockState) {
 
     if dock.window.is_none() || crate::accessibility::lambdock_animations_enabled(dock) != 0 {
         return;
@@ -1256,11 +1238,12 @@ pub unsafe fn dock_apply_motion_preference(state: *mut LambdockState) {
 
 /// Adapter: a GLib timeout hands the state back as a plain pointer.
 unsafe extern "C" fn on_hide_timeout(user_data: *mut c_void) -> c_int {
-    if let Some(dock) = user_data.cast::<LambdockState>().as_mut() {
-        dock.hide_timer_id = 0;
-    }
+    let Some(dock) = user_data.cast::<LambdockState>().as_mut() else {
+        return glib::ffi::GFALSE;
+    };
 
-    hide_dock(user_data.cast());
+    dock.hide_timer_id = 0;
+    hide_dock(dock);
 
     glib::ffi::GFALSE
 }
@@ -1281,25 +1264,21 @@ unsafe fn cancel_hide_timer_inner(dock: &mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn cancel_hide_timer(state: *mut LambdockState) {
-    if let Some(dock) = state.as_mut() {
-        cancel_hide_timer_inner(dock);
-    }
+/// `dock` must be a live dock.
+pub unsafe fn cancel_hide_timer(dock: &mut LambdockState) {
+    cancel_hide_timer_inner(dock);
 }
 
 /// (Re)schedules the auto-hide timeout, replacing a pending one.
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn schedule_hide_timer(state: *mut LambdockState, delay_ms: c_uint) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn schedule_hide_timer(dock: &mut LambdockState, delay_ms: c_uint) {
+    let pointer = dock as *mut LambdockState;
 
     cancel_hide_timer_inner(dock);
-    dock.hide_timer_id = glib::ffi::g_timeout_add(delay_ms, Some(on_hide_timeout), state.cast());
+    dock.hide_timer_id = glib::ffi::g_timeout_add(delay_ms, Some(on_hide_timeout), pointer.cast());
 }
 
 /// The surface's current size along the dock's main axis, or 0 before GTK has
@@ -1324,11 +1303,8 @@ unsafe fn measured_main_axis_px(dock: &LambdockState) -> c_int {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn reveal_dock(state: *mut LambdockState) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn reveal_dock(dock: &mut LambdockState) {
 
     cancel_hide_timer_inner(dock);
 
@@ -1342,7 +1318,7 @@ pub unsafe fn reveal_dock(state: *mut LambdockState) {
 
         // The pollers stood still while the dock was away; make every clock,
         // gauge and trash count current before the first frame is drawn.
-        dock_items_refresh_polls(state);
+        dock_items_refresh_polls(dock);
     } else {
         trace(&format!("reveal: already out (margin {})", dock.current_margin));
     }
@@ -1353,11 +1329,8 @@ pub unsafe fn reveal_dock(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn hide_dock(state: *mut LambdockState) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn hide_dock(dock: &mut LambdockState) {
 
     // Auto-hide slides the surface off-screen with a layer-shell margin. Without
     // layer shell (X11, GNOME) there is no margin to move, so "hiding" would
@@ -1502,11 +1475,8 @@ unsafe fn apply_shelf_shape(dock: &LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn apply_dock_mode_classes(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn apply_dock_mode_classes(dock: &LambdockState) {
     if dock.bg_capsule.is_none() {
         return;
     }
@@ -1547,11 +1517,8 @@ unsafe fn apply_surface_anchors(window: &gtk4::Window, policy: &DockSurfacePolic
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_apply_exclusive_zone(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn dock_apply_exclusive_zone(dock: &LambdockState) {
     let Some(window) = window_of(dock) else {
         return;
     };
@@ -1573,11 +1540,8 @@ pub unsafe fn dock_apply_exclusive_zone(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock with its window built.
-pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock with its window built.
+pub unsafe fn setup_layer_shell_window(dock: &LambdockState) {
     let Some(widget) = dock.window.as_ref() else {
         return;
     };
@@ -1609,7 +1573,7 @@ pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
         // -- `gtk_layer_init_for_window` must come before the surface exists --
         // which is why this only happens on the branch not using it.
         widget.realize();
-        lambdock_x11_dock_apply(state);
+        lambdock_x11_dock_apply(dock as *const LambdockState as *mut LambdockState);
         return;
     }
 
@@ -1650,11 +1614,8 @@ pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn refresh_dock_mode(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn refresh_dock_mode(dock: &mut LambdockState) {
     let Some(window) = window_of(dock) else {
         return;
     };
@@ -1665,21 +1626,18 @@ pub unsafe fn refresh_dock_mode(state: *mut LambdockState) {
         apply_surface_anchors(&window, &policy);
     }
 
-    apply_dock_mode_classes(state);
+    apply_dock_mode_classes(dock);
     // Dimension updates end by re-placing the X11 window, which is where a mode
     // switch (dock <-> taskbar) changes the dock's size.
-    update_dock_dimensions(state);
+    update_dock_dimensions(dock);
 }
 
 /// Schedules the first hide, on a dock that auto-hides.
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn schedule_initial_autohide(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn schedule_initial_autohide(dock: &mut LambdockState) {
     let Some(window) = window_of(dock) else {
         return;
     };
@@ -1687,7 +1645,7 @@ pub unsafe fn schedule_initial_autohide(state: *mut LambdockState) {
     // Without a layer surface there is no slide, so there is nothing to
     // schedule.
     if dock.auto_hide != 0 && layer_shell::is_layer_window(&*window) {
-        schedule_hide_timer(state, AUTOHIDE_INITIAL_DELAY_MS);
+        schedule_hide_timer(dock, AUTOHIDE_INITIAL_DELAY_MS);
     }
 }
 
@@ -1755,7 +1713,7 @@ pub unsafe fn on_popover_closed(
     }
 
     if dock.auto_hide != 0 && dock.active_popovers == 0 {
-        schedule_hide_timer(user_data.cast(), AUTOHIDE_POPOVER_DELAY_MS);
+        schedule_hide_timer(dock, AUTOHIDE_POPOVER_DELAY_MS);
     }
 }
 
@@ -1952,11 +1910,8 @@ unsafe fn refresh_item_centres(dock: &mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
+/// `dock` must be a live dock.
+pub unsafe fn dock_apply_hover_at(dock: &mut LambdockState, x: f64, y: f64) {
 
     if dock.dock_items.is_empty()
         || dock.hover_animate == 0
@@ -2027,7 +1982,7 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
     // The capsule grows under the pointer, so the clickable region has to follow
     // it; the tick that sizes the surface is the same one that cuts it out.
     dock.fisheye_active = 1;
-    dock_schedule_input_region(state);
+    dock_schedule_input_region(dock);
 
     lambdock_stats_add(
         HOVER_US,
@@ -2419,14 +2374,11 @@ pub unsafe fn destroy_dock_instance(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
+/// `dock` must be a live dock.
 pub unsafe fn dock_window_set_tracker_connected(
-    state: *mut LambdockState,
+    dock: &mut LambdockState,
     connected: bool,
 ) {
-    let Some(dock) = state.as_mut() else {
-        return;
-    };
 
     dock.tracker_connected = c_int::from(connected);
 
@@ -2497,8 +2449,8 @@ unsafe fn on_motion_enter(state: *mut LambdockState, x: f64, y: f64) {
 
     // Make room for the spread before it starts: sizing the surface now, with
     // the row still at rest, is what keeps the hover itself free of resizes.
-    dock_reserve_hover_room(state);
-    reveal_dock(state);
+    dock_reserve_hover_room(dock);
+    reveal_dock(dock);
 }
 
 /// The newest pointer position, applied to the fisheye once per frame.
@@ -2536,7 +2488,7 @@ unsafe fn on_hover_tick(state: *mut LambdockState) {
     dock.pointer_applied = 1;
 
     let (x, y) = (dock.pointer_x, dock.pointer_y);
-    dock_apply_hover_at(state, x, y);
+    dock_apply_hover_at(dock, x, y);
 }
 
 /// Adapter: GLib wants a frame-clock callback, this module wants a dock.
@@ -2585,7 +2537,7 @@ unsafe fn on_motion_leave(state: *mut LambdockState) {
     }
 
     if dock.auto_hide != 0 {
-        schedule_hide_timer(state, AUTOHIDE_LEAVE_DELAY_MS);
+        schedule_hide_timer(dock, AUTOHIDE_LEAVE_DELAY_MS);
     }
 }
 
@@ -2606,7 +2558,7 @@ unsafe fn on_motion_notify(state: *mut LambdockState, x: f64, y: f64) {
 
     if dock.is_hidden != 0 {
         trace(&format!("motion at {x:.0},{y:.0} on the strip: revealing"));
-        reveal_dock(state);
+        reveal_dock(dock);
         return;
     }
 
@@ -2632,7 +2584,10 @@ unsafe fn on_motion_notify(state: *mut LambdockState, x: f64, y: f64) {
 /// Applies the input region whenever the dock window (re)appears, and wires the
 /// surface's own size signals the first time it does.
 unsafe fn on_window_map(state: *mut LambdockState) {
-    dock_schedule_input_region(state);
+    let Some(dock) = state.as_mut() else {
+        return;
+    };
+    dock_schedule_input_region(dock);
 
     // The window id only exists once the surface is realised, so this is the
     // first moment an X11 dock can be typed, moved and given its strut. On
@@ -2669,34 +2624,27 @@ unsafe fn on_window_map(state: *mut LambdockState) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock with its window built.
-pub unsafe fn setup_dock_motion_controller(state: *mut LambdockState) {
-    let Some(dock) = state.as_ref() else {
-        return;
-    };
+/// `dock` must be a live dock with its window built.
+pub unsafe fn setup_dock_motion_controller(dock: &mut LambdockState) {
+    // The handlers outlive this call, so they carry the pointer rather than the
+    // borrow it came from.
+    let pointer = dock as *mut LambdockState;
+
     let Some(window) = dock.window.as_ref() else {
         return;
     };
 
     let motion = gtk4::EventControllerMotion::new();
-
-    let pointer = state;
     motion.connect_enter(move |_, x, y| on_motion_enter(pointer, x, y));
-
-    let pointer = state;
     motion.connect_leave(move |_| on_motion_leave(pointer));
-
-    let pointer = state;
     motion.connect_motion(move |_, x, y| on_motion_notify(pointer, x, y));
-
     window.add_controller(motion);
 
     // The surface is bigger than the dock, so its clickable area has to be cut
     // down to the dock every time the window appears.
-    let pointer = state;
     window.connect_map(move |_| on_window_map(pointer));
 
-    dock_schedule_input_region(state);
+    dock_schedule_input_region(dock);
 }
 
 #[cfg(test)]

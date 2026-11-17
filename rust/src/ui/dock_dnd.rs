@@ -156,7 +156,7 @@ pub unsafe fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
     free_dock_item(item);
 
     if !state.is_null() {
-        update_dock_dimensions(state);
+        update_dock_dimensions(&mut *state);
         dock_dnd_persist_order(state);
     }
 }
@@ -506,7 +506,7 @@ unsafe fn on_dock_drop(state: *mut LambdockState, value: &glib::Value, x: f64, y
         }
 
         if added {
-            update_dock_dimensions(state);
+            update_dock_dimensions(&mut *state);
             dock_dnd_persist_order(state);
         }
 

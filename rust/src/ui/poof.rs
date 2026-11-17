@@ -191,7 +191,7 @@ fn schedule_removal(poof: &Poof) {
 
         // The gap closes now, not while the smoke was still there.
         if !state.is_null() && unsafe { !(*state).window.is_none() } {
-            unsafe { update_dock_dimensions(state) };
+            unsafe { update_dock_dimensions(&mut *state) };
         }
 
         glib::ControlFlow::Break

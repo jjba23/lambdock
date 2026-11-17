@@ -495,7 +495,7 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
         c_int::from(!(*state).window_trackers.is_empty()),
     );
     if should_hide != 0 {
-        hide_dock(state);
+        hide_dock(&mut *state);
     }
 }
 
@@ -538,7 +538,7 @@ unsafe fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void
         c_int::from(!(*state).window_trackers.is_empty()),
     );
     if should_reveal != 0 {
-        reveal_dock(state);
+        reveal_dock(&mut *state);
     }
 }
 
@@ -557,7 +557,7 @@ unsafe fn dock_forget_all_windows(state: *mut LambdockState, _data: *mut c_void)
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn dock_tracker_state(state: *mut LambdockState, data: *mut c_void) {
-    dock_window_set_tracker_connected(state, !data.is_null());
+    dock_window_set_tracker_connected(&mut *state, !data.is_null());
 }
 
 /// The same answer for every dock: `connected` is a session fact, not a per-dock

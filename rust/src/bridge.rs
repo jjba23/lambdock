@@ -1087,7 +1087,7 @@ pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
     // row's cross-axis size. Re-applying the layout here is the same pass a reload
     // runs, and without it the first frame kept every reflection hidden -- so the
     // icons sat one band lower (and unmirrored) until something reloaded the dock.
-    update_dock_dimensions(state);
+    update_dock_dimensions(&mut *state);
 }
 
 /// `LAMBDOCK_POLL_BUDGET_PER_SECOND`, from `core/poll_budget.h`.

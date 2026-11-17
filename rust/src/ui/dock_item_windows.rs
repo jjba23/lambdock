@@ -330,7 +330,7 @@ pub unsafe fn clear_tracked_windows(state: *mut LambdockState) {
     (*state).window_trackers.clear();
 
     if (*state).show_when_clear != 0 {
-        reveal_dock(state);
+        reveal_dock(&mut *state);
     }
 }
 

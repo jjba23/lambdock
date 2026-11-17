@@ -3353,16 +3353,16 @@ unsafe fn reload_items(state: *mut LambdockState) {
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn apply_auto_hide_state(state: *mut LambdockState) {
-    dock_apply_exclusive_zone(state);
+    dock_apply_exclusive_zone(&*state);
 
     let state_ref = &*state;
     let stay_visible = state_ref.auto_hide == 0
         || (state_ref.show_when_clear != 0 && state_ref.window_trackers.is_empty());
 
     if stay_visible {
-        reveal_dock(state);
+        reveal_dock(&mut *state);
     } else {
-        hide_dock(state);
+        hide_dock(&mut *state);
     }
 }
 
@@ -3394,15 +3394,15 @@ pub unsafe fn reload_dock_instance(state: *mut LambdockState) {
     reload_items(state);
 
     // Mode classes and dimensions depend on both the new flags and the new row.
-    apply_dock_mode_classes(state);
+    apply_dock_mode_classes(&*state);
     if before.taskbar != (state_ref.taskbar != 0) || before.shelf != state_ref.shelf {
-        refresh_dock_mode(state);
+        refresh_dock_mode(&mut *state);
     }
 
-    update_dock_dimensions(state);
+    update_dock_dimensions(&mut *state);
 
     // A toggle from the preferences window takes effect on the running dock.
-    dock_apply_motion_preference(state);
+    dock_apply_motion_preference(&mut *state);
 
     apply_auto_hide_state(state);
 }

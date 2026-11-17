@@ -276,7 +276,7 @@ pub fn scan_settings_files() -> *mut crate::app_window::GList {
 
 /// Every dock re-reads the desktop's motion setting.
 fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void) {
-    unsafe { dock_apply_motion_preference(state) };
+    unsafe { dock_apply_motion_preference(&mut *state) };
 }
 
 /// The desktop's "reduce motion" (GTK's `gtk-enable-animations`) can change while
@@ -431,7 +431,7 @@ unsafe fn build_capsule(dock: &mut LambdockState) {
     // Wrap the styled capsule in the shelf frame, which parents the capsule.
     // With the default shelf parameters (no tilt) the frame passes through.
     let frame = crate::ui::shelf::shelf_frame_new(capsule.as_ptr().cast());
-    apply_dock_mode_classes(dock as *mut LambdockState);
+    apply_dock_mode_classes(dock);
 
     if !frame.is_null() {
         // The frame arrives floating: this is what sinks that reference.
@@ -479,7 +479,7 @@ unsafe fn build_widgets(dock: &mut LambdockState) {
     };
     overlay.add_overlay(&scrolled);
 
-    update_dock_dimensions(dock as *mut LambdockState);
+    update_dock_dimensions(dock);
 
     let mode = match orientation_of(dock) {
         gtk4::Orientation::Horizontal => gtk4::SizeGroupMode::Horizontal,
@@ -573,7 +573,7 @@ unsafe fn build_input(dock: &mut LambdockState) {
     });
     window.add_controller(right_click);
 
-    setup_dock_motion_controller(dock as *mut LambdockState);
+    setup_dock_motion_controller(dock);
     crate::ui::dock_dnd::dock_dnd_setup(dock as *mut LambdockState);
 
     // Keyboard access: arrows walk the icons, Menu opens their context menu,
@@ -597,10 +597,10 @@ unsafe fn present(dock: *mut LambdockState) {
         return;
     };
 
-    setup_layer_shell_window(dock);
+    setup_layer_shell_window(&*dock);
 
     // A dock that starts with reduced motion must not run a first slide.
-    dock_apply_motion_preference(dock);
+    dock_apply_motion_preference(&mut *dock);
 
     crate::dock_registry::dock_registry_add(dock);
 
@@ -616,7 +616,7 @@ unsafe fn present(dock: *mut LambdockState) {
         // A dock created during a compositor restart starts reconnecting,
         // without waiting for the next tracker event to tell it.
         dock_window_set_tracker_connected(
-            dock,
+            &mut *dock,
             crate::toplevel_tracker::lambdock_tracker_connected() != 0,
         );
     } else {
@@ -628,9 +628,9 @@ unsafe fn present(dock: *mut LambdockState) {
 
     let state = &*dock;
     if state.auto_hide != 0 && state.show_when_clear != 0 && !state.window_trackers.is_empty() {
-        hide_dock(dock);
+        hide_dock(&mut *dock);
     } else {
-        schedule_initial_autohide(dock);
+        schedule_initial_autohide(&mut *dock);
     }
 }
 
