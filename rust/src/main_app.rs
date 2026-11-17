@@ -624,7 +624,7 @@ unsafe fn present(dock: *mut LambdockState) {
         crate::log_warn!("Tracker", "window tracking unavailable: {message}");
     }
 
-    crate::toplevel_tracker::sync_window_trackers(dock);
+    crate::toplevel_tracker::sync_window_trackers(&*dock);
 
     let state = &*dock;
     if state.auto_hide != 0 && state.show_when_clear != 0 && !state.window_trackers.is_empty() {
@@ -676,7 +676,7 @@ pub unsafe fn create_dock_instance(
     };
 
     // One reader for the whole settings file, shared with the reload path.
-    crate::bridge::dock_read_settings(state);
+    crate::bridge::dock_read_settings(dock);
 
     let app: gtk4::Application = from_glib_none(app);
     let window = gtk4::ApplicationWindow::new(&app);
@@ -686,10 +686,10 @@ pub unsafe fn create_dock_instance(
     dock.window = Some(window.clone().upcast());
 
     // The theme stylesheet needs the window's CSS context, hence this order.
-    crate::ui::theme_engine::load_custom_css(state);
+    crate::ui::theme_engine::load_custom_css(dock);
 
     build_widgets(dock);
-    crate::bridge::populate_dock_items_for(state);
+    crate::bridge::populate_dock_items_for(dock);
     build_menu_popover(dock);
     build_input(dock);
     present(state);

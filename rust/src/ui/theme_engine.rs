@@ -239,20 +239,20 @@ fn store_provider(provider: Option<CssProvider>, slot: &mut Option<CssProvider>)
 }
 
 /// Removes the previous theme class and tags the window with the new one.
-unsafe fn swap_window_class(state: *mut LambdockState, theme_class: &str) {
-    let window = (*state).window.as_ref();
+unsafe fn swap_window_class(state: &mut LambdockState, theme_class: &str) {
+    let window = state.window.as_ref();
 
-    if !(*state).active_theme_class.is_null() {
-        let previous = CStr::from_ptr((*state).active_theme_class)
+    if !state.active_theme_class.is_null() {
+        let previous = CStr::from_ptr(state.active_theme_class)
             .to_string_lossy()
             .into_owned();
         if let Some(window) = window {
             window.remove_css_class(&previous);
         }
-        g_free((*state).active_theme_class.cast());
+        g_free(state.active_theme_class.cast());
     }
 
-    (*state).active_theme_class = strdup_string(theme_class);
+    state.active_theme_class = strdup_string(theme_class);
     if let Some(window) = window {
         window.add_css_class(theme_class);
     }
@@ -262,13 +262,13 @@ unsafe fn swap_window_class(state: *mut LambdockState, theme_class: &str) {
 ///
 /// A reload must swap providers, never stack them: the state holds the five of
 /// them precisely so they can be released here.
-unsafe fn detach_providers(state: *mut LambdockState, display: &gdk::Display) {
+unsafe fn detach_providers(state: &mut LambdockState, display: &gdk::Display) {
     for slot in [
-        &mut (*state).base_css_provider,
-        &mut (*state).taskbar_css_provider,
-        &mut (*state).shelf_css_provider,
-        &mut (*state).indicator_guard_css_provider,
-        &mut (*state).user_css_provider,
+        &mut state.base_css_provider,
+        &mut state.taskbar_css_provider,
+        &mut state.shelf_css_provider,
+        &mut state.indicator_guard_css_provider,
+        &mut state.user_css_provider,
     ] {
         if let Some(provider) = slot.take() {
             gtk4::style_context_remove_provider_for_display(display, &provider);
@@ -279,7 +279,7 @@ unsafe fn detach_providers(state: *mut LambdockState, display: &gdk::Display) {
 /// Layers the taskbar and shelf modifiers in before the theme, so a theme rule of
 /// equal specificity still wins over them.
 unsafe fn attach_modifiers(
-    state: *mut LambdockState,
+    state: &mut LambdockState,
     display: &gdk::Display,
     theme: &ThemeResolution,
 ) {
@@ -293,7 +293,7 @@ unsafe fn attach_modifiers(
             priority,
         );
 
-        if store_provider(provider, &mut (*state).taskbar_css_provider) {
+        if store_provider(provider, &mut state.taskbar_css_provider) {
             log_info!(
                 "UI",
                 "Loaded taskbar/window-title modifier for [{}]",
@@ -310,7 +310,7 @@ unsafe fn attach_modifiers(
             priority,
         );
 
-        if store_provider(provider, &mut (*state).shelf_css_provider) {
+        if store_provider(provider, &mut state.shelf_css_provider) {
             log_info!(
                 "UI",
                 "Loaded glass shelf modifier for [{}]",
@@ -322,7 +322,7 @@ unsafe fn attach_modifiers(
 
 /// Loads the base theme, falling back to vanilla when it is not shipped.
 unsafe fn attach_base_theme(
-    state: *mut LambdockState,
+    state: &mut LambdockState,
     display: &gdk::Display,
     theme: &ThemeResolution,
 ) {
@@ -348,7 +348,7 @@ unsafe fn attach_base_theme(
         );
     }
 
-    if store_provider(provider, &mut (*state).base_css_provider) {
+    if store_provider(provider, &mut state.base_css_provider) {
         log_info!(
             "UI",
             "Loaded & scoped CSS theme [{}] for [{}]",
@@ -373,7 +373,7 @@ unsafe fn attach_base_theme(
 /// on the indicator while the glass is mirroring -- and the user's own
 /// stylesheet, attached after even this, still wins over both.
 unsafe fn attach_indicator_guard(
-    state: *mut LambdockState,
+    state: &mut LambdockState,
     display: &gdk::Display,
     theme: &ThemeResolution,
 ) {
@@ -390,13 +390,13 @@ unsafe fn attach_indicator_guard(
         gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
 
-    store_provider(provider, &mut (*state).indicator_guard_css_provider);
+    store_provider(provider, &mut state.indicator_guard_css_provider);
 }
 
 /// Layers `~/.config/lambdock/styles.css` on top of everything, at user priority,
 /// so a hand-written override wins over any shipped theme.
 unsafe fn attach_user_css(
-    state: *mut LambdockState,
+    state: &mut LambdockState,
     display: &gdk::Display,
     theme: &ThemeResolution,
 ) {
@@ -413,7 +413,7 @@ unsafe fn attach_user_css(
         gtk4::STYLE_PROVIDER_PRIORITY_USER,
     );
 
-    if store_provider(provider, &mut (*state).user_css_provider) {
+    if store_provider(provider, &mut state.user_css_provider) {
         log_info!(
             "UI",
             "Loaded & scoped user CSS override for [{}]",
@@ -427,9 +427,9 @@ unsafe fn attach_user_css(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock whose window is set.
-pub unsafe fn load_custom_css(state: *mut LambdockState) {
-    if state.is_null() || (*state).window.is_none() {
+/// `state` must be a live dock whose window is set.
+pub unsafe fn load_custom_css(state: &mut LambdockState) {
+    if state.window.is_none() {
         return;
     }
 
@@ -442,18 +442,18 @@ pub unsafe fn load_custom_css(state: *mut LambdockState) {
     let shelf_active = lambdock_shelf_active(&*state) != 0;
     // The glass draws the running indicator only when it shows reflections: that
     // is the band the bead is painted on.
-    let shelf_indicator = lambdock_shelf_geometry_for(&*state, (*state).icon_size).band_px > 0;
+    let shelf_indicator = lambdock_shelf_geometry_for(&*state, state.icon_size).band_px > 0;
 
-    let requested_theme = if (*state).theme.is_null() {
+    let requested_theme = if state.theme.is_null() {
         None
     } else {
-        Some(CStr::from_ptr((*state).theme).to_string_lossy())
+        Some(CStr::from_ptr(state.theme).to_string_lossy())
     };
 
     let theme = resolve_theme(
         requested_theme.as_deref(),
-        (*state).taskbar != 0,
-        (*state).show_window_titles != 0,
+        state.taskbar != 0,
+        state.show_window_titles != 0,
         shelf_active,
         shelf_indicator,
     );

@@ -995,11 +995,11 @@ unsafe fn resolve_item_accessors() -> Option<ItemAccessors> {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState` with its row already built.
-pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
-    let Some(state_ref) = state.as_mut() else {
-        return;
-    };
+/// `state` must be a live `LambdockState` with its row already built.
+pub unsafe fn populate_dock_items_for(state: &mut LambdockState) {
+    // The builders keep the pointer: an item remembers the dock that made it.
+    let pointer = state as *mut LambdockState;
+    let state_ref = state;
     if state_ref.box_.is_none() {
         return;
     }
@@ -1037,7 +1037,7 @@ pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
         match type_name.as_deref().and_then(builder_for_type) {
             Some(build) => {
                 let context = BuildContext {
-                    state,
+                    state: pointer,
                     item,
                     hover_animate: is_true(accessor(accessors.hover_animate, item)),
                     separator_orientation,
@@ -1087,7 +1087,7 @@ pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
     // row's cross-axis size. Re-applying the layout here is the same pass a reload
     // runs, and without it the first frame kept every reflection hidden -- so the
     // icons sat one band lower (and unmirrored) until something reloaded the dock.
-    update_dock_dimensions(&mut *state);
+    update_dock_dimensions(state_ref);
 }
 
 /// `LAMBDOCK_POLL_BUDGET_PER_SECOND`, from `core/poll_budget.h`.
@@ -1103,10 +1103,8 @@ const LAMBDOCK_POLL_BUDGET_PER_SECOND: f64 = 10.0;
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-pub unsafe fn dock_read_settings(state: *mut LambdockState) {
-    let Some(state_ref) = state.as_mut() else {
-        return;
-    };
+pub unsafe fn dock_read_settings(state: &mut LambdockState) {
+    let state_ref = state;
     let path = state_ref.config_path;
 
     g_free(state_ref.theme.cast());

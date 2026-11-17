@@ -548,7 +548,7 @@ unsafe fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn dock_forget_all_windows(state: *mut LambdockState, _data: *mut c_void) {
-    clear_tracked_windows(state);
+    clear_tracked_windows(&mut *state);
 }
 
 /// Tells one dock whether the compositor's window list is being tracked.
@@ -1320,11 +1320,9 @@ pub unsafe fn init_toplevel_tracker(error: *mut *mut glib::ffi::GError) -> c_int
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn sync_window_trackers(state: *mut LambdockState) {
-    let Some(state_ref) = state.as_ref() else {
-        return;
-    };
+/// `state` must be a live `LambdockState`.
+pub unsafe fn sync_window_trackers(state: &LambdockState) {
+    let state_ref = state;
     if state_ref.track_windows == 0 {
         return;
     }

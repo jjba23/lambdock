@@ -95,22 +95,22 @@ unsafe fn item_key(item: *const DockItem) -> Option<String> {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_dnd_persist_order(state: *mut LambdockState) {
-    if state.is_null() || (*state).config_path.is_null() {
+/// `state` must be a live dock.
+pub unsafe fn dock_dnd_persist_order(state: &LambdockState) {
+    if state.config_path.is_null() {
         return;
     }
 
     // Separators have no stable identity: they are re-placed between their
     // neighbours when the layout is replayed.
-    let keys: Vec<String> = (*state)
+    let keys: Vec<String> = state
         .dock_items
         .iter()
         .filter(|item| item.as_ref().is_some_and(|item| item.kind != ITEM_SEPARATOR))
         .filter_map(|item| item_key(*item))
         .collect();
 
-    dock_layout_set_order((*state).config_path, &keys);
+    dock_layout_set_order(state.config_path, &keys);
 }
 
 /// Removes an item: forgets it in the layout overrides, drops it and re-measures
@@ -157,7 +157,7 @@ pub unsafe fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
 
     if !state.is_null() {
         update_dock_dimensions(&mut *state);
-        dock_dnd_persist_order(state);
+        dock_dnd_persist_order(&*state);
     }
 }
 
@@ -205,13 +205,9 @@ pub unsafe fn schedule_remove_dock_item(item: *mut DockItem) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn find_item_by_key(state: *mut LambdockState, key: &str) -> *mut DockItem {
-    if state.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    (*state)
+/// `state` must be a live dock.
+unsafe fn find_item_by_key(state: &LambdockState, key: &str) -> *mut DockItem {
+    state
         .dock_items
         .iter()
         .find(|item| item_key(**item).is_some_and(|item_key| item_key == key))
@@ -249,7 +245,7 @@ pub unsafe fn dock_drop_handle_item(
     }
 
     let key = CStr::from_ptr(key).to_string_lossy();
-    let item = find_item_by_key(state, &key);
+    let item = find_item_by_key(&*state, &key);
 
     if item.is_null() {
         crate::log_warn!("UI", "Dropped dock item is not part of this dock: {}", key);
@@ -331,7 +327,7 @@ pub unsafe fn dock_drop_handle_item(
         }
     }
 
-    dock_dnd_persist_order(state);
+    dock_dnd_persist_order(&*state);
 
     let name = if (*item).name.is_null() {
         String::new()
@@ -507,7 +503,7 @@ unsafe fn on_dock_drop(state: *mut LambdockState, value: &glib::Value, x: f64, y
 
         if added {
             update_dock_dimensions(&mut *state);
-            dock_dnd_persist_order(state);
+            dock_dnd_persist_order(&*state);
         }
 
         return added;

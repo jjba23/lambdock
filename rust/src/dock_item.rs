@@ -986,7 +986,7 @@ pub unsafe fn lambdock_dock_item_move(
     items.insert(if delta > 0 { to + 1 } else { to }, moved);
 
     reorder_dock_widgets(dock);
-    dock_dnd_persist_order(state);
+    dock_dnd_persist_order(&*state);
 
     1
 }
@@ -3332,10 +3332,10 @@ unsafe fn apply_edge_change(state: &mut LambdockState, edge: c_int) {
 /// `state` must be a live `LambdockState`.
 unsafe fn reload_items(state: *mut LambdockState) {
     clear_favorite_dock_items(state);
-    populate_dock_items_for(state);
+    populate_dock_items_for(&mut *state);
 
     // Re-sync Wayland foreign window handles back to the new launchers.
-    sync_window_trackers(state);
+    sync_window_trackers(&*state);
 
     for item in &(*state).dock_items {
         if item.as_ref().is_none_or(|item| item.button.is_null()) {

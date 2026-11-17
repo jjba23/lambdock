@@ -746,7 +746,7 @@ pub unsafe fn update_dock_dimensions(dock: &mut LambdockState) {
 
     // Size, show or hide the glass-shelf reflections so they always match the
     // current icon size and shelf parameters.
-    apply_shelf_layout(dock as *mut LambdockState);
+    apply_shelf_layout(dock);
     mirror_shelf_alignment(dock);
 
     // Icon size, spacing, padding, mode and shelf all move the items: the hover

@@ -1481,21 +1481,21 @@ pub unsafe fn shelf_wrap_item(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
-    if state.is_null() || (*state).dock_items.is_empty() {
+/// `state` must be a live dock.
+pub unsafe fn apply_shelf_layout(state: &mut LambdockState) {
+    if state.dock_items.is_empty() {
         return;
     }
 
     let params = lambdock_shelf_params_effective(&*state);
-    let default_icon = if (*state).icon_size > 0 {
-        (*state).icon_size
+    let default_icon = if state.icon_size > 0 {
+        state.icon_size
     } else {
         DEFAULT_ICON_SIZE
     };
     let geometry = lambdock_shelf_geometry_for(&*state, default_icon);
 
-    for item in (*state).dock_items.iter() {
+    for item in state.dock_items.iter() {
         let item = *item;
 
         if !item.is_null() && !(*item).reflection.is_null() {
@@ -1512,7 +1512,7 @@ pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
 
                 shelf_reflection_configure(
                     reflection,
-                    (*state).edge,
+                    state.edge,
                     icon_px,
                     params.reflection_ratio,
                     params.reflection_blur_ratio,

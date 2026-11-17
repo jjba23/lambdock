@@ -297,13 +297,10 @@ unsafe fn apply_window_title_label(item: *const DockItem) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-pub unsafe fn clear_tracked_windows(state: *mut LambdockState) {
-    if state.is_null() {
-        return;
-    }
+/// `state` must be a live dock.
+pub unsafe fn clear_tracked_windows(state: &mut LambdockState) {
 
-    for item in &(*state).dock_items {
+    for item in &state.dock_items {
         let Some(item_ref) = item.as_ref() else {
             continue;
         };
@@ -318,18 +315,18 @@ pub unsafe fn clear_tracked_windows(state: *mut LambdockState) {
     // stay: they were in the settings file. The row is put back together before
     // anything is freed, so a callback cannot see a half-emptied dock.
     let (orphans, kept): (Vec<_>, Vec<_>) =
-        std::mem::take(&mut (*state).dock_items).into_iter().partition(|item| {
+        std::mem::take(&mut state.dock_items).into_iter().partition(|item| {
             item.as_ref().is_some_and(|item| item.is_favorite == 0)
         });
-    (*state).dock_items = kept;
+    state.dock_items = kept;
 
     for item in orphans {
         free_dock_item(item);
     }
 
-    (*state).window_trackers.clear();
+    state.window_trackers.clear();
 
-    if (*state).show_when_clear != 0 {
+    if state.show_when_clear != 0 {
         reveal_dock(&mut *state);
     }
 }
