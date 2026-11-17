@@ -3086,6 +3086,11 @@ unsafe fn free_item_strings(item: &mut DockItem) {
 
 /// Remembers the Scheme-side name of the item's poller.
 ///
+/// The name is copied, because the caller's string is its own: the C it replaces
+/// was `g_free`d right after the call, and the item's copy is freed with the item
+/// on the next reload. Taking the pointer instead of a copy freed the same
+/// allocation twice.
+///
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`; `name` a C string.
@@ -3095,7 +3100,11 @@ pub unsafe fn dock_item_set_poll_name(item: *mut DockItem, name: *const c_char) 
     };
 
     crate::glib::g_free(item.poll_name.cast());
-    item.poll_name = name.cast_mut();
+    item.poll_name = if name.is_null() {
+        std::ptr::null_mut()
+    } else {
+        crate::glib::dup_c_str(CStr::from_ptr(name))
+    };
 }
 
 /// Frees one item: its timers, its Scheme handle, its widgets and its strings.
@@ -3430,5 +3439,33 @@ mod tests {
             [ITEM_APP, ITEM_DYNAMIC, ITEM_SEPARATOR, ITEM_STACK, ITEM_LAUNCHPAD, ITEM_TRASH],
             [0, 1, 2, 3, 4, 5]
         );
+    }
+
+    /// The item keeps its own copy of the poll name.
+    ///
+    /// The bridge hands the setter a temporary it frees on the way out, and a
+    /// reload frees the item's copy: an item that borrows instead of copying is
+    /// freed twice on the next reload, which glibc reports as "double free or
+    /// corruption" and turns into an abort.
+    #[test]
+    fn a_poll_name_belongs_to_the_item() {
+        let mut item = unsafe { std::mem::zeroed::<DockItem>() };
+
+        let name = crate::cstr::cstring("ram");
+        unsafe { dock_item_set_poll_name(&mut item, name.as_ptr()) };
+
+        assert_ne!(
+            item.poll_name as *const c_char,
+            name.as_ptr(),
+            "the item borrowed a string its caller frees"
+        );
+
+        drop(name);
+
+        assert_eq!(unsafe { CStr::from_ptr(item.poll_name) }.to_str(), Ok("ram"));
+
+        // What a reload does to every item it drops.
+        unsafe { free_item_strings(&mut item) };
+        assert!(item.poll_name.is_null());
     }
 }
