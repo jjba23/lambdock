@@ -11,6 +11,33 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.1 (2026-11-17)
+
+- *The C seam is gone.* Every module used to declare its functions ~#[no_mangle]
+  pub extern "C"~, and modules called each other through ~extern "C"~ blocks that
+  named their own crate: the shape the port left behind, kept so that each step
+  could be checked against the callers it had. Nothing outside the crate calls in
+  any more, so the seam has been taken out. No ~#[no_mangle]~ remains; the 68
+  cross-module calls that went through C are ordinary ~use crate::module::name~
+  imports; 411 definitions moved to the Rust ABI; and the 57 that are still
+  ~extern "C"~ are the ones C really calls -- GLib timeouts and idles, GTK tick
+  callbacks and signal handlers, the Wayland listener tables, the Xlib error
+  handler, and the four Guile subrs. Of the ~400 functions whose signatures take
+  no raw pointer, the ones whose bodies needed no unsafe are plain ~fn~ now; the
+  rest kept the ~unsafe fn~ they earn.
+
+  Two things fell out of it. The extern declarations had been lying about a few
+  types -- a ~c_int~ where the function takes a ~bool~, a ~*mut c_void~ where it
+  takes ~*mut LambdockToplevel~ -- which worked only because the low byte of the
+  register happens to be the value; the compiler checks them now. And letting the
+  compiler drop the functions nothing called exposed a link-order assumption in
+  =rust/build.rs=: the generated objects are link arguments, so they come after
+  cargo's own ~-l~ flags, and with ~--as-needed~ the libraries they need were
+  dropped from a target that did not reference them itself. They are named again
+  after the objects.
+
+
+
 ** v2.1.0 (2026-11-17)
 
 - *The shell is a Rust development environment now.* The Guix manifest and the

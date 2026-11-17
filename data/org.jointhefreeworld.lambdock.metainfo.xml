@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.1" date="2026-11-17">
+      <description>
+        <p>The C seam the port left behind is gone. Every module used to export its functions with <code>#[no_mangle] pub extern "C"</code>, and modules called each other through <code>extern "C"</code> blocks that named their own crate; nothing outside the crate calls in any more, so the 381 attributes are removed, 68 cross-module calls are ordinary imports, 411 definitions moved to the Rust ABI, and only the 57 functions C really calls -- GLib timeouts and idles, GTK tick callbacks and signal handlers, the Wayland listener tables, the Xlib error handler and the four Guile subrs -- keep it. Four hundred functions take no raw pointer; the ones whose bodies need no unsafe are plain <code>fn</code> now. Nothing a user sees changes: the suite, the lints, a run on niri and a REPL-driven reload are the same as before.</p>
+      </description>
+    </release>
     <release version="2.1.0" date="2026-11-17">
       <description>
         <p>The dock is a Rust crate, and it docks. The port from C finished with the widget layer, so the build is cargo and the binary holds no C of its own; the manual and the developer guide now describe the tree that exists, and the pinned Guix shell and the Nix dev shell carry a full Rust environment — clippy, rustfmt, rust-analyzer with the standard library's sources, and gdb for the debug task — while no longer carrying Meson, Ninja or Xvfb, which the crate and the display-free suite do not need. Two fixes came with it. The link order now puts gtk4-layer-shell before libwayland-client, without which the library never initialises and a compositor that implements layer shell gets a window that does not dock; and the counters and the dock registry stopped being <code>static mut</code>, which the compiler was allowed to read as "nobody else is looking".</p>
