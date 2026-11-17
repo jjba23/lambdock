@@ -7,7 +7,7 @@
 name = "lambdock"
 # The version that ships, and the one the Makefile installs and the packaging
 # reads. The crate is never published, so this is the only place it is written.
-version = "2.1.11"
+version = "2.1.12"
 edition = "2021"
 publish = false
 license = "MIT"

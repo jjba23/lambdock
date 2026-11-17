@@ -11,6 +11,39 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.12 (2026-11-17)
+
+- *A tracker that fails without saying why no longer takes the dock with it.*
+  When window tracking is unavailable the dock logs the reason, and it read it
+  from the `GError` the tracker was given. A backend can fail without filling that
+  error in -- the X11 and Wayland start paths both have branches that return
+  failure and set nothing -- so on such a session the log line was a null
+  dereference. The error is read through an `Option` now, and the line says the
+  compositor did not say why. This is the one finding in the code-scanning report
+  that was a live bug rather than a shape.
+- *The pointer walks prove a pointer before reading it.* Eight of the report's
+  nine findings in our own code were the same shape: `is_null()` in one statement,
+  `(*ptr)` a few lines later, with the proof in between that the analyzer cannot
+  follow. The `GList` walks over an item's windows, the tracker's title and state
+  walks, the debug assertion in `free_dock_item` and three `desktop_entry` test
+  assertions all use `while let Some(entry) = node.as_ref()` and take a record as
+  `&`/`&mut` once. `app_window_matches`, `app_window_set_title` and
+  `app_window_set_state` lost their pointers entirely and are plain `fn` now; the
+  "a null window is a no-op" contract is left where it belongs, in the two helpers
+  whose argument is a pointer.
+- *The array walker checks the array and the index.* Making `ptr_array_at` answer
+  null for a missing element is what exposed its callers: it read
+  `(*array).pdata.add(index)` with neither a null check nor a bound, and the
+  desktop-entry cache read five fields and the alternates array through the
+  element it had just taken. Both are guarded now, so a malformed `GPtrArray`
+  cannot be read past its end.
+- The nine findings in `rust/vendor/` are `cairo-rs` and `glib` sources, kept in
+  the tree so the build works offline; they are dismissed in the report as
+  third-party code rather than patched here.
+
+
+*[Released]*
+
 ** v2.1.11 (2026-11-17)
 
 - *The documentation caught up with the code.* `VISION.md` still described a C
