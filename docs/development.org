@@ -111,10 +111,11 @@ cargo fmt
 ~maak test~ is those last two inside the shell, with the cargo home pinned so
 ~cargo clippy~ finds the shell's clippy rather than the host's under rustup.
 
-If you use [[https://github.com/MaskRay/ccls][ccls]] for the C half of the
-history, ~maak add-libs~ regenerates ~.ccls~ with the right Guix package flags;
-for ~rust/src/~ the language server is ~rust-analyzer~, which needs no
-configuration in the shell.
+For ~rust/src/~ the language server is ~rust-analyzer~, which needs no
+configuration in the shell.  Two target directories exist and neither is the
+other: from the repository root ~cargo build~ writes =./target=, while
+~maak test~ builds in =rust/target= because it changes into =rust= first.  Run
+~./target/debug/lambdock~ -- =./rust/target/debug/lambdock= can be days old.
 
 *** Tests
 :PROPERTIES:
@@ -132,13 +133,14 @@ pinned environment.  The suite needs no display: every test is a decision, so it
 runs where the shell does -- on a CI runner with no compositor, over SSH, in a
 container.
 
-- *Rust unit tests* (~rust/src~, ~#[cfg(test)]~ beside the code): 312 of them.
+- *Rust unit tests* (~rust/src~, ~#[cfg(test)]~ beside the code): 310 of them.
   The pure decisions -- the dimension arithmetic, the easing and the slide, the
   item wording, the EWMH rules, the poller budget, the render counters -- plus the
-  seams: ~state.rs~ pinned to the C layout field by field, the theme selector
-  rewriting, the settings export round trip.
+  seams: the theme selector rewriting, the settings export round trip, an item's
+  key, the record that owns its text, and the pure reorder on a slice that replaced
+  a `GList` delete-and-insert.
 - *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, run by ~cargo test~ as
-  the ~scheme~ integration test): 342 assertions over the pure-Guile
+  the ~scheme~ integration test): 348 assertions over the pure-Guile
   configuration engine -- state, items, presets, the loader, layout overrides and
   core -- with no display and no GTK.
 - *The widget layer* -- dock windows, popovers, the launchpad, drag and drop -- has

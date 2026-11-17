@@ -70,9 +70,10 @@ The guide is split by what you are trying to do:
 - *[[file:docs/configuration.org][Configuring lambdock]]* — the settings file, every option, the item DSL, presets, multi-dock setups and the Preferences window
 - *[[file:docs/theming.org][Theming and the shelf]]* — themes, looks, whole-dock recipes, the glass shelf, dock mode, spacing and your own CSS
 - *[[file:docs/repl.org][The live REPL]]* — driving the running dock from a Guile REPL, with Geiser
-- *[[file:docs/internals.org][How lambdock works]]* — Wayland toplevel tracking, app identity, the C↔Guile bridge, animation, and why Lisp and Guix
+- *[[file:docs/internals.org][How lambdock works]]* — Wayland toplevel tracking, app identity, the Rust↔Guile bridge, animation, and why Lisp and Guix
 - *[[file:docs/development.org][Developing and community]]* — building and hacking with maak, the test suite, translations, community and the changelog
 - *[[file:docs/contributing.org][Contributing]]* — reporting, patches, the AI policy, the code of conduct and the etymology
+- *[[file:VISION.md][The vision]]* — where the dock is going: a settings file that cannot be silently wrong, item kinds from Scheme, capability reporting, and the one C-shaped struct left
 
 This page keeps the feature list, the licence and the project links.
 

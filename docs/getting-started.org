@@ -199,13 +199,19 @@ native super performance.
 
 #+begin_quote
 I therefore designed lambdock in my mind, in bed, much inspired by Emacs. A
-powerful, small C core that powers the program, rendering, graphics and low level
+powerful, small core that powers the program, rendering, graphics and low level
 details, and an embedded GNU Guile Scheme engine that at runtime is the heart and
 brain of the whole thing. This architecture uniquely delivers interactive socket
 REPL control, Lisp metaprogramming macros, dynamic multi-dock spawning, native
 Wayland foreign-toplevel window tracking, and frame-clock-driven hover
 animations.
 #+end_quote
+
+That core started as C17 and is Rust since v2.1.0, module for module: the same
+four layers, the same file names with a different extension, the same seam in the
+same place. The port is the reason the rendering half could then be refactored at
+all -- the ownership of every widget, list and protocol record has since moved into
+the type system, which is the part C could not give.
 
 #+begin_quote
 ~lambdock~ is a story of resilience in many ways, as I cannot even remember how

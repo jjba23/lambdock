@@ -23,6 +23,8 @@ that will bite you. Read it once end to end, then keep it open as a reference.
 - 📖 *Read the user-facing side:* [[file:README.org][README.org]] -- what the dock does and how it is configured
 - 🗺 *Get the shape in one screen:* [[#map-at-a-glance][The map at a glance]] -- layers, dependency rules, the tables
 - 📰 *Read what changed:* [[file:NEWS.org][NEWS.org]]
+- 🧭 *Read where it is going:* [[file:VISION.md][VISION.md]] -- the interface the
+  project still owes its users, and the last C-shaped struct
 - 💾 *Read the source:* [[https://github.com/jjba23/lambdock][github.com/jjba23/lambdock]]
 - 🐛 *Report a bug:* [[https://github.com/jjba23/lambdock/issues][the issue tracker]]
 - 💬 *Ask a question:* [[https://jointhefreeworld.zulipchat.com/#narrow/channel/632484-lambdock][the lambdock Zulip community]]
@@ -201,6 +203,15 @@ expensive, because the state they move is widgets.
   is the other way round -- its ~GtkWidget*~ fields are borrowed pointers that GTK
   destroys. Lists of items, window trackers and strings are owned and freed by
   the module that created them. See [[#lifecycles][Lifecycles]].
+- *A reference, unless the boundary is the point.* A function that works on a dock
+  takes ~&LambdockState~ or ~&mut LambdockState~.  A function C calls keeps its raw
+  pointer, because that is where the pointer arrives: ~GLib~ timeouts,
+  GTK signal handlers, the Wayland listener tables, the Xlib error handler and the
+  four Guile subrs.  The adapter converts once, at the top, and hands the borrow
+  on.  When a callback needs a value that outlives the call -- a tick's user data,
+  a timeout's -- take the pointer from the reference *before* the borrow becomes
+  one (`let pointer = dock as *mut LambdockState;`), which is the only place in
+  the tree where that cast is the point.
 
 ** Inside a file, top to bottom
 :PROPERTIES:
@@ -721,15 +732,16 @@ cargo test --offline --locked      # the same suite, outside it
 cd rust && cargo test --offline --locked   # from the crate directory
 #+end_src
 
-- *Rust unit tests* -- ~#[cfg(test)]~ modules beside the code in =rust/src/=, 312
+- *Rust unit tests* -- ~#[cfg(test)]~ modules beside the code in =rust/src/=, 310
   of them.  The pure decisions (the dimension arithmetic in =core/dock_dims.rs=,
   the easing in =core/dock_motion.rs=, the wording in =core/item_text.rs=, the
   EWMH rules in =core/x11_rules.rs=, the poller budget, the render counters), and
-  the seams that are not decisions: =state.rs= pinned to the C layout, the theme
-  selector rewriting, the settings export round trip, the icon pipeline's search
-  paths.
+  the seams that are not decisions: the theme selector rewriting, the settings
+  export round trip, the icon pipeline's search paths, an item's key, the tracker
+  record that owns its text, and the pure reorder on a slice that replaced a
+  `GList` delete-and-insert.
 - *The Scheme suite* -- =tests/scheme/lambdock_tests.scm=, run by
-  =rust/tests/scheme.rs= as one integration test (342 assertions).  It loads the
+  =rust/tests/scheme.rs= as one integration test (348 assertions).  It loads the
   real ~scheme/lambdock~ modules under Guile: the configuration engine, items,
   presets, the loader, layout overrides and core.  It needs neither a display nor
   GTK, and it skips itself when no Guile interpreter is on the PATH.
@@ -786,6 +798,15 @@ And the checklist that goes with it:
 
 - ~maak test~ passes: the Rust suite, the Scheme suite, and ~cargo clippy
   --all-targets~ with no warning.
+- The X11 half compiles and lints too: ~LAMBDOCK_HAVE_X11=1 cargo clippy
+  --all-targets~.  It is a build option, not a runtime one, so a change that only
+  touches wayland can still break the other half of the tracker.
+- You ran the *binary you built*.  There are two target directories: from the repo
+  root ~cargo build~ writes ~./target~, while ~maak test~ builds in ~rust/target~
+  because it changes into ~rust~ first.  ~./rust/target/debug/lambdock~ can
+  therefore be days old while ~./target/~ is current -- a stale binary has cost a
+  debugging session here, so run ~./target/debug/lambdock~ (or ~maak debug-run~)
+  and check the timestamp when a symptom makes no sense.
 - New decisions have a case in the ~#[cfg(test)]~ module beside them; new
   configuration or item behaviour has one in =tests/scheme/lambdock_tests.scm=.
 - If you added a source, callback or provider, you added the matching teardown
@@ -1500,20 +1521,28 @@ settings file/.
 :CUSTOM_ID: rough-edges
 :END:
 
-What is left is size, not correctness.  The three biggest files hold several
+What is left is size, not correctness.  The five biggest files hold several
 ideas each, and every one of them is a mechanical split:
 
 | Where                          | Lines | What is rough                                                     | First move                                                    |
 |--------------------------------+-------+-------------------------------------------------------------------+---------------------------------------------------------------|
-| =rust/src/dock_item.rs=        | 3500  | builds, mounts, styles, polls and frees an item, plus its kind table | split the per-kind constructors from the mounting helpers   |
-| =rust/src/dock_window.rs=      | 2872  | the window, the layout, the input region, the slide and auto-hide  | the surface policy and the animation want their own module    |
-| =rust/src/ui/stack.rs=         | 2443  | listing, thumbnails, two views, the panel and the popover          | the decode queue is a module of its own                       |
+| =rust/src/dock_item.rs=        | 3423  | builds, mounts, styles, polls and frees an item, plus its kind table | split the per-kind constructors from the mounting helpers   |
+| =rust/src/dock_window.rs=      | 2744  | the window, the layout, the input region, the slide and auto-hide  | the surface policy and the animation want their own module    |
+| =rust/src/ui/stack.rs=         | 2442  | listing, thumbnails, two views, the panel and the popover          | the decode queue is a module of its own                       |
 | =rust/src/ui/preferences.rs=   | 1652  | a data-driven form, its builders and its window in one file        | move the row builders next to the tables they serve           |
 | =rust/src/main_app.rs=         | 1726  | startup, disk sync, overlay CSS and the Scheme primitives together | the REPL primitives want their own module                     |
 
-What is left of the C-shaped seam is cosmetic: the ~lambdock_*~ prefixes on
-functions nothing outside the crate calls.  Renaming them is a mechanical follow-up
-that wants a quiet tree.
+What is left of the C-shaped seam is one struct and one naming habit.
+~DockItem~ is still allocated with ~g_malloc0~, still borrows its widgets as
+~*mut c_void~, still duplicates its strings with ~g_strdup~ and still keeps its
+per-window list as a ~GList~ inside that allocation -- it is the last record that
+has not been through the treatment ~LambdockState~, ~AppWindow~ and
+~LambdockToplevel~ got.  Beside it: ~55~ functions still take a
+~*mut LambdockState~ (the item factory, the registry visitors, the drop target,
+the launchpad and the X11 backend), and the ~lambdock_*~ prefixes remain on
+functions nothing outside the crate calls.  Renaming the prefixes is mechanical and
+wants a quiet tree; the struct wants care, because it is the one whose teardown
+order is load-bearing.
 
 Deprecated GTK3 patterns are *not* on this list: there are none left
 (~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and
@@ -2143,6 +2172,20 @@ code.
 :PROPERTIES:
 :CUSTOM_ID: memory-ownership
 :END:
+
+Who owns what, in one screen:
+
+| Thing                        | Owner                                          | Released by                     |
+|------------------------------+------------------------------------------------+---------------------------------|
+| the dock's widgets           | ~LambdockState~ (~Option<gtk4::Widget>~)        | ~None~, or dropping the state   |
+| the monitor, size group      | ~LambdockState~ (~Option<...>~)                 | ~None~ / ~take~                 |
+| the five CSS providers       | ~LambdockState~ (~Option<CssProvider>~)         | ~detach_providers~              |
+| the row, the tracked windows | ~LambdockState~ (~Vec~)                         | ~std::mem::take~ before freeing |
+| one dock item                | the dock (~DockItem~ list)                      | ~free_dock_item~                |
+| one tracked window           | the tracker (~LambdockToplevel~)                | ~lambdock_toplevel_free~        |
+| an item's windows            | the item (~AppWindow~ list)                     | ~app_windows_free~              |
+| the text of a record         | the record (~String~ / ~CString~)               | dropping the record             |
+| configured values            | Scheme (~<dock-config>~, ~<dock-item>~ records)  | Guile                           |
 
 - *One owner per resource.* ~LambdockState~ owns its ~dock_items~,
   ~window_trackers~, its widgets, its ~monitor~, its ~size_group~ and its CSS

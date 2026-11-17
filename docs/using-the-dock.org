@@ -82,6 +82,29 @@ the same menu.
 The protocol behind that list is described in
 [[file:internals.org#toplevel-tracking][Wayland Toplevel Tracking & Popovers]].
 
+** "Why is this item here?" 🔎
+:PROPERTIES:
+:CUSTOM_ID: item-inspector
+:END:
+
+A dock item is resolved through a chain: the item in your settings file, the
+preset or the desktop entry it names, the icon theme that had the artwork, and the
+poller that drives it.  When an icon is wrong or a widget does not update, the
+answer is somewhere in that chain -- so right-click the item and pick *Why is this
+item here?*, which unfolds four rows in place:
+
+- *Launcher* -- the item's key and the settings file it came from, or the sentence
+  that says this is the fallback dock and there is no file at all.
+- *Desktop entry* -- the ~.desktop~ entry the item resolves to, and the path it was
+  read from, or the sentence that says there is none.
+- *Icon* -- the icon name the item configured, and whether the icon theme actually
+  had it or the generic executable is being drawn.
+- *Poller* -- the name and interval of the Scheme procedure behind a dynamic item,
+  or the sentence that says this item does not poll.
+
+The rows are selectable text, so a report can carry them.  The toggle is per item
+and stays open while the menu is; closing the menu leaves it how you left it.
+
 ** The dock's own menu
 :PROPERTIES:
 :CUSTOM_ID: the-docks-own-menu

@@ -197,26 +197,27 @@ application is.
 
 ------------------
 
-** Bi-Directionality of C and Guile Scheme
+** Bi-Directionality of Rust and Guile Scheme
 :PROPERTIES:
-:CUSTOM_ID: c-guile-bidirectionality
+:CUSTOM_ID: rust-guile-bidirectionality
 :END:
 
 ~lambdock~ is not merely configured by Scheme. It has an embedded, extensible
-Lisp engine and runtime environment which complements a high-performance C
-application core and graphics engine. Execution flows bi-directionally between C
-and Guile.
+Lisp engine and runtime environment which complements a high-performance Rust
+application core and graphics engine. Execution flows bi-directionally between
+them, across the one boundary that keeps the C ABI: ~libguile~'s own.
 
-The entry point of the binary (~rust/src/main_app.rs~) boots the Guile interpreter using
-~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to
-manage state and extract settings.
+The entry point of the binary (~rust/src/main_app.rs~) boots the Guile interpreter
+with ~scm_boot_guile~. The Rust side is the host: it invokes Scheme procedures to
+manage state and extract settings, and Guile invokes the crate's ~extern "C"~
+subrs to drive the dock.
 
 Scheme is not restricted to passive data declarations, as it can trigger actions
-inside the running C engine.
+inside the running process.
 
 #+begin_src mermaid
 flowchart LR
-    subgraph C_RUNTIME["C CORE + RUNTIME (GTK4)"]
+    subgraph RUST_CORE["RUST CORE + RUNTIME (GTK4)"]
         direction TB
         main["main()"] --> scm_boot_guile["scm_boot_guile()"]
         scm_boot_guile --> setup_primitives["setup_guile_primitives()"]
@@ -240,13 +241,13 @@ flowchart LR
     end
 
     %% Cross-Boundary Inter-Runtime Connections
-    C_RUNTIME --> LIBGUILE
+    RUST_CORE --> LIBGUILE
     LIBGUILE -- "Calls Scheme<br/>Procedures" --> GUILE_ENGINE
     GUILE_ENGINE --> LIBGUILE
-    LIBGUILE -- "Invokes C<br/>Primitives" --> C_RUNTIME
+    LIBGUILE -- "Invokes Rust Subrs" --> RUST_CORE
 
     %% Subgraph Styles
-    style C_RUNTIME fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
+    style RUST_CORE fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1,font-weight:bold
     style GUILE_ENGINE fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#c2410c,font-weight:bold
 
     %% Class Definitions for Nodes
@@ -263,31 +264,34 @@ flowchart LR
   <summary>See <strong>a more detailed explanation here</strong></summary>
 #+end_export
 
-*** C → Guile (Embedding & Inspection)
+*** Rust → Guile (Embedding & Inspection)
 :PROPERTIES:
-:CUSTOM_ID: c-to-guile
+:CUSTOM_ID: rust-to-guile
 :END:
 
-- *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and
-  evaluate the user's =~/.config/lambdock/settings.scm=.
+- *Module Loading*: the dock calls ~(init-dock!)~ via ~scm_c_public_ref~ to load
+  and evaluate the user's =~/.config/lambdock/settings.scm=.
 - *Config Extraction*: Functions in ~rust/src/bridge.rs~ inspect Scheme records and
   Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to
   retrieve properties like ~get-dock-position~, ~get-dock-theme~, and
   ~get-dock-items~.
-- *Socket REPL Spawning*: C calls ~(start-repl!)~, which uses Guile's
+- *Socket REPL Spawning*: the dock calls ~(start-repl!)~, which uses Guile's
   ~call-with-new-thread~ and ~(system repl server)~ to spin up a background Unix
   domain socket thread.
 
-*** Guile → C (Extending & Primitives)
+*** Guile → Rust (Extending & Primitives)
 :PROPERTIES:
-:CUSTOM_ID: guile-to-c
+:CUSTOM_ID: guile-to-rust
 :END:
 
-- *C Primitives Export*: During initialization, ~setup_guile_primitives()~ uses
-  ~scm_c_define_gsubr~ to register native C functions as Scheme procedures inside
-  the ~(lambdock core)~ module.
-- *Live REPL Reloads*: Evaluating ~(reload-dock!)~ from the Scheme REPL directly
-  calls the C function ~scm_reload_dock~.
+- *Primitives Export*: during initialization, ~setup_guile_primitives()~ uses
+  ~scm_c_define_gsubr~ to register the crate's ~extern "C"~ subrs as Scheme
+  procedures inside the ~(lambdock core)~ module.  They are the one set of
+  functions that must keep the C ABI: Guile calls through an erased pointer, so the
+  compiler cannot tell anyone when one of them loses it.
+- *Live REPL Reloads*: evaluating ~(reload-dock!)~ from the Scheme REPL calls
+  ~scm_reload_dock~, which reloads every registered dock through the same path a
+  settings change takes.
 
 *** Thread-Safe Async Dispatch (~g_idle_add~)
 :PROPERTIES:
