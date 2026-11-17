@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.9" date="2026-11-17">
+      <description>
+        <p>A tracked window owns its title. The record the dock keeps for each window of a running app was a C mirror holding a GLib string it freed and re-duplicated on every title event; it is a plain Rust record in a box now, with the text copied once where the compositor's pointer is valid and compared as a value, so a redundant title event still costs nothing. The tracker's own record stopped being a C mirror too, and an item's layout key is a <code>String</code> instead of a GLib string the caller had to free. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.8" date="2026-11-17">
       <description>
         <p>Half of the dock's API takes a dock, not a pointer to one. Thirty-three functions opened by asking whether their argument was null and then worked on the borrow anyway; they take a reference now, so the null branch is gone and the signature says whether the function reads or writes. The callbacks GTK, GLib and Xlib invoke keep their raw pointer, because that is where the pointer arrives, and the one place that needs a value outliving the call takes it before the borrow becomes a reference. Nothing a user sees changes.</p>

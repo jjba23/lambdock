@@ -11,6 +11,30 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.9 (2026-11-17)
+
+- *A tracked window owns its title.* `AppWindow` -- one window of a running app,
+  as the dock tracks it -- was `#[repr(C)]`, allocated with `g_malloc0`, and kept
+  its title as a `*mut c_char` that every title event freed and re-duplicated with
+  `g_strdup`. It is a plain record in a box now, with the title as an
+  `Option<CString>`: the compositor's text is copied once, where its pointer is
+  still valid, and the dock reads a `CStr` afterwards. The "same title, same
+  allocation" rule that keeps a redundant title event from waking the label is a
+  comparison of two `Option<CString>`s instead of `g_strcmp0`, and
+  `app_window_matches` answers a `bool`.
+- *The tracker's record stops being a C mirror.* `LambdockToplevel` was
+  `#[repr(C)]` and pinned by a test comparing its offsets to a header that no
+  longer exists; it is a boxed Rust record with `Default`, like the windows it
+  describes. Its two C strings are the next thing to move.
+- *An item's key is a `String`.* `dock_item_key` built `"kind:name"` with
+  `g_strdup_printf` and handed back a `*mut c_char` that every one of its four
+  callers immediately turned back into a `String` -- one of them through a helper
+  whose whole body was that round trip. It returns `Option<String>`, and the
+  helper is gone.
+
+
+*[Released]*
+
 ** v2.1.8 (2026-11-17)
 
 - *Half of the dock's API takes a dock, not a pointer to one.* Thirty-three
