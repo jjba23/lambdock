@@ -9,6 +9,10 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+*[Released]*
+
+** v2.1.0 (2026-11-17)
+
 - *The shell is a Rust development environment now.* The Guix manifest and the
   Nix dev shell carry the pinned toolchain's `tools` output and its standard
   library sources -- `cargo clippy`, `cargo fmt`, `rustfmt`, `rust-analyzer` with

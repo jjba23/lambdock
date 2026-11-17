@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.0" date="2026-11-17">
+      <description>
+        <p>The dock is a Rust crate, and it docks. The port from C finished with the widget layer, so the build is cargo and the binary holds no C of its own; the manual and the developer guide now describe the tree that exists, and the pinned Guix shell and the Nix dev shell carry a full Rust environment — clippy, rustfmt, rust-analyzer with the standard library's sources, and gdb for the debug task — while no longer carrying Meson, Ninja or Xvfb, which the crate and the display-free suite do not need. Two fixes came with it. The link order now puts gtk4-layer-shell before libwayland-client, without which the library never initialises and a compositor that implements layer shell gets a window that does not dock; and the counters and the dock registry stopped being <code>static mut</code>, which the compiler was allowed to read as "nobody else is looking".</p>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-11-15">
       <description>
         <p>The dock explains itself and shares itself. An item's popover now offers the application's own extra launchers, read from its desktop entry's Actions= list, and a row that expands to show the launcher line that created the item, the desktop entry it resolved, the icon name and whether the theme had it, and the poller that drives it. A dock can mirror another dock by file name or path, optionally filtering by kind or excluding item keys, instead of listing items of its own. A compositor restart pauses window tracking instead of resetting it: the items and their order stay, and a Reconnecting label says why nothing is tracked. The launchpad reaches the dock's stacks and trash from a row under its search field. Dynamic pollers now share a budget, and a configuration that exceeds it is reported. Finally, Save settings.scm writes the resolved dock -- settings, Preferences overrides and layout order -- to the state directory and opens it, which is the inverse of the loader and a reproducible bug report.</p>
