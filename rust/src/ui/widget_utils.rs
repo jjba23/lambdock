@@ -3,95 +3,56 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-//! CSS-class toggles: `src/ui/widget_utils.h` in Rust.
+//! CSS-class toggles.
 //!
 //! The dock's styling is state-driven: an item gains `running-app` when a window
 //! appears and loses it when the last one closes, and the class list is what the
-//! stylesheets key on. These two helpers are the only place a class is set, so
-//! the "does it already have it?" check lives in one place instead of at every
-//! call site.
+//! stylesheets key on. This is the only place a class is set, so the "does it
+//! already have it?" check lives in one place instead of at every call site --
+//! `add_css_class` on a class the widget already has costs a class-list walk and a
+//! style invalidation, and this runs on the frame path.
 
-use gtk4::ffi::GtkWidget;
-use gtk4::glib::translate::{from_glib_borrow, Borrowed};
 use gtk4::prelude::*;
 use gtk4::Widget;
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+
+/// Whether a class list needs the change at all.
+///
+/// Adding a class a widget already has, or removing one it does not, costs a
+/// class-list walk and a style invalidation for nothing -- and this runs on the
+/// frame path, once per state change per item.
+fn should_change(has: bool, enabled: bool) -> bool {
+    has != enabled
+}
 
 /// Sets or clears one CSS class, touching the widget only when it changes.
 ///
-/// # Safety
-///
-/// `widget` must be null or a valid `GtkWidget`; `name` must be null or a
-/// NUL-terminated string.
-pub unsafe fn lambdock_set_css_class(
-    widget: *mut GtkWidget,
-    name: *const c_char,
-    enabled: c_int,
-) {
-    if widget.is_null() || name.is_null() {
+/// Takes a widget and a `&str`, so there is nothing unsafe about it: a class name
+/// is UTF-8 by construction, and GTK's class API is safe once the widget is a real
+/// one -- which the reference guarantees.
+pub fn set_css_class(widget: &Widget, name: &str, enabled: bool) {
+    if !should_change(widget.has_css_class(name), enabled) {
         return;
     }
 
-    // A class name that is not UTF-8 is not a class name: GTK's API takes UTF-8,
-    // so passing the bytes through would be the only thing worse than dropping
-    // them.
-    let Ok(name) = CStr::from_ptr(name).to_str() else {
-        return;
-    };
-
-    let widget: Borrowed<Widget> = from_glib_borrow(widget);
-
-    if enabled != 0 {
-        if !widget.has_css_class(name) {
-            widget.add_css_class(name);
-        }
-    } else if widget.has_css_class(name) {
+    if enabled {
+        widget.add_css_class(name);
+    } else {
         widget.remove_css_class(name);
-    }
-}
-
-/// Sets or clears the same state for every class in a null-terminated list.
-///
-/// # Safety
-///
-/// `widget` must be null or a valid `GtkWidget`; `names` must be null or point to
-/// `n_names` C strings.
-pub unsafe fn lambdock_toggle_css_classes(
-    widget: *mut GtkWidget,
-    names: *const *const c_char,
-    n_names: usize,
-    enabled: c_int,
-) {
-    if names.is_null() {
-        return;
-    }
-
-    for index in 0..n_names {
-        lambdock_set_css_class(widget, *names.add(index), enabled);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use std::ffi::CString;
+    use super::should_change;
 
-    /// Nothing here builds a widget: what the toggles *do* to a class list is
-    /// covered by the C suite (=test_dock_item=, =test_accessibility=,
-    /// =test_theme_engine=), which already owns real widgets and a display. What
-    /// is worth pinning down in Rust is that a missing widget or list is ignored
-    /// instead of dereferenced, and that needs no display at all.
+    /// The only decision in the toggle, and the reason it is cheap: a class that
+    /// is already there is not added twice, and one that is not there is not
+    /// removed.
     #[test]
-    fn a_missing_widget_or_list_is_ignored() {
-        let name = CString::new("running-app").expect("no interior NUL");
-        let names = [name.as_ptr()];
-
-        unsafe {
-            lambdock_set_css_class(std::ptr::null_mut(), name.as_ptr(), 1);
-            lambdock_set_css_class(std::ptr::null_mut(), std::ptr::null(), 1);
-            lambdock_toggle_css_classes(std::ptr::null_mut(), names.as_ptr(), names.len(), 1);
-            lambdock_toggle_css_classes(std::ptr::null_mut(), std::ptr::null(), 3, 0);
-        }
+    fn only_a_missing_class_needs_adding_and_only_a_present_one_needs_clearing() {
+        assert!(should_change(false, true), "missing and wanted: add it");
+        assert!(!should_change(true, true), "present and wanted: leave it");
+        assert!(should_change(true, false), "present and unwanted: clear it");
+        assert!(!should_change(false, false), "missing and unwanted: leave it");
     }
 }

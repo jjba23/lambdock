@@ -222,26 +222,24 @@ unsafe fn item_names<'a>(item: *const DockItem) -> ItemNames<'a> {
 /// `item` must be a live `DockItem` whose button is set.
 unsafe fn apply_running_state(item: *const DockItem) {
     let running = !(*item).windows.is_null();
-    let button = (*item).button.cast::<gtk4::ffi::GtkWidget>();
+    let Some(button) = crate::dock_window::widget_of((*item).button) else {
+        return;
+    };
 
-    crate::ui::widget_utils::lambdock_set_css_class(
-        button,
-        c"running-app".as_ptr(),
-        running as c_int,
-    );
+    crate::ui::widget_utils::set_css_class(&button, "running-app", running);
 
     // `window-focused`: the app's window is the one being looked at, which is the
     // depressed task button in a taskbar-style theme. `window-minimized`: all of
     // its windows are tucked away (overlays.css dims the icon for every theme).
-    crate::ui::widget_utils::lambdock_set_css_class(
-        button,
-        c"window-focused".as_ptr(),
-        any_window_focused((*item).windows) as c_int,
+    crate::ui::widget_utils::set_css_class(
+        &button,
+        "window-focused",
+        any_window_focused((*item).windows),
     );
-    crate::ui::widget_utils::lambdock_set_css_class(
-        button,
-        c"window-minimized".as_ptr(),
-        all_windows_minimized((*item).windows) as c_int,
+    crate::ui::widget_utils::set_css_class(
+        &button,
+        "window-minimized",
+        all_windows_minimized((*item).windows),
     );
 
     // The glass shelf draws its own running indicator near the outer edge.

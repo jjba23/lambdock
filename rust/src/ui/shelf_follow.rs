@@ -287,13 +287,11 @@ mod imp {
             // the theme's.
             let projected = is_projected(frame.as_ref());
 
-            unsafe {
-                crate::ui::widget_utils::lambdock_set_css_class(
-                    widget.as_ptr().cast(),
-                    c"shelf-projected".as_ptr(),
-                    c_int::from(projected),
-                );
-            }
+            crate::ui::widget_utils::set_css_class(
+                widget.upcast_ref::<gtk4::Widget>(),
+                "shelf-projected",
+                projected,
+            );
 
             let mut allocation = (0, 0, width, height);
 

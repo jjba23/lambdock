@@ -74,7 +74,7 @@ pub fn lambdock_tracker_should_reveal(
 /// # Safety
 ///
 /// Returns a pointer owned by gettext, or null when there is nothing to announce.
-pub unsafe fn lambdock_tracker_status_text(connected: c_int) -> *const c_char {
+pub fn lambdock_tracker_status_text(connected: c_int) -> *const c_char {
     // NULL means "connected: show nothing", so the caller can use the result
     // directly as "is there something to say?".
     if connected != 0 {
@@ -99,7 +99,7 @@ mod tests {
     }
 
     fn status(connected: bool) -> Option<String> {
-        let text = unsafe { lambdock_tracker_status_text(connected as c_int) };
+        let text = lambdock_tracker_status_text(connected as c_int);
         if text.is_null() {
             return None;
         }

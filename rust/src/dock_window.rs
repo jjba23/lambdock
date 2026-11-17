@@ -20,8 +20,7 @@ use gtk4::glib;
 use gtk4::glib::translate::{from_glib_borrow, from_glib_full, from_glib_none, Borrowed, IntoGlib};
 use gtk4::prelude::*;
 use std::cell::RefCell;
-use std::ffi::CStr;
-use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::os::raw::{c_int, c_uint, c_void};
 
 use crate::app_window::GList;
 use crate::cstr::{cstring, translated};
@@ -893,12 +892,12 @@ pub unsafe fn dock_is_settling(state: *const LambdockState) -> c_int {
 }
 
 /// CSS class naming the screen edge a shelf is docked to.
-pub fn shelf_edge_class(edge: c_int) -> *const c_char {
+pub fn shelf_edge_class(edge: c_int) -> &'static str {
     match edge {
-        EDGE_TOP => c"shelf-top".as_ptr(),
-        EDGE_LEFT => c"shelf-left".as_ptr(),
-        EDGE_RIGHT => c"shelf-right".as_ptr(),
-        _ => c"shelf-bottom".as_ptr(),
+        EDGE_TOP => "shelf-top",
+        EDGE_LEFT => "shelf-left",
+        EDGE_RIGHT => "shelf-right",
+        _ => "shelf-bottom",
     }
 }
 
@@ -1499,12 +1498,10 @@ const AUTOHIDE_INITIAL_DELAY_MS: u32 = 1000;
 /// # Safety
 ///
 /// `widget` must be null or a live widget.
-unsafe fn set_class(widget: *mut c_void, class: &CStr, enabled: bool) {
-    crate::ui::widget_utils::lambdock_set_css_class(
-        widget.cast(),
-        class.as_ptr(),
-        c_int::from(enabled),
-    );
+unsafe fn set_class(widget: *mut c_void, class: &str, enabled: bool) {
+    if let Some(widget) = widget_of(widget) {
+        crate::ui::widget_utils::set_css_class(&widget, class, enabled);
+    }
 }
 
 /// The dock's window, borrowed, when it has one.
@@ -1531,7 +1528,7 @@ pub(crate) unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Wi
 ///
 /// `dock` must be a live dock.
 unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirroring: bool) {
-    const EDGE_CLASSES: [&CStr; 4] = [c"shelf-bottom", c"shelf-top", c"shelf-left", c"shelf-right"];
+    const EDGE_CLASSES: [&str; 4] = ["shelf-bottom", "shelf-top", "shelf-left", "shelf-right"];
 
     // Edges are mutually exclusive: clear them all, then set the current one.
     for widget in [dock.bg_capsule, dock.window] {
@@ -1541,19 +1538,18 @@ unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirr
     }
 
     for widget in [dock.bg_capsule, dock.window] {
-        set_class(widget, c"shelf-mode", shelf_active);
+        set_class(widget, "shelf-mode", shelf_active);
         // `shelf-mirror` means the glass actually shows icon reflections: the
         // reflection widget then draws the running indicator itself, so the CSS
         // one must stay quiet.
-        set_class(widget, c"shelf-mirror", mirroring);
+        set_class(widget, "shelf-mirror", mirroring);
     }
 
     if !shelf_active {
         return;
     }
 
-    // `shelf_edge_class` answers a static string, so it is read, not taken.
-    let edge_class = CStr::from_ptr(shelf_edge_class(dock.edge));
+    let edge_class = shelf_edge_class(dock.edge);
     for widget in [dock.bg_capsule, dock.window] {
         set_class(widget, edge_class, true);
     }
@@ -1597,7 +1593,7 @@ pub unsafe fn apply_dock_mode_classes(state: *mut LambdockState) {
     let shelf_active = lambdock_shelf_active(state) != 0;
     let mirroring = shelf_active && lambdock_shelf_geometry_for(state, dock.icon_size).band_px > 0;
 
-    set_class(dock.bg_capsule, c"taskbar", dock.taskbar != 0);
+    set_class(dock.bg_capsule, "taskbar", dock.taskbar != 0);
     apply_shelf_css_classes(dock, shelf_active, mirroring);
     apply_shelf_shape(dock);
 }
@@ -2833,7 +2829,6 @@ pub unsafe fn setup_dock_motion_controller(state: *mut LambdockState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CStr;
 
     /// The clickable rectangle is the bounds rounded outwards, one pixel of
     /// slack per side so a rounded corner still takes a click.
@@ -2896,22 +2891,10 @@ mod tests {
     /// so top and left tilt backwards.
     #[test]
     fn the_shelf_knows_which_edge_it_is_on() {
-        assert_eq!(
-            unsafe { CStr::from_ptr(shelf_edge_class(EDGE_TOP)) }.to_str(),
-            Ok("shelf-top")
-        );
-        assert_eq!(
-            unsafe { CStr::from_ptr(shelf_edge_class(EDGE_LEFT)) }.to_str(),
-            Ok("shelf-left")
-        );
-        assert_eq!(
-            unsafe { CStr::from_ptr(shelf_edge_class(EDGE_RIGHT)) }.to_str(),
-            Ok("shelf-right")
-        );
-        assert_eq!(
-            unsafe { CStr::from_ptr(shelf_edge_class(EDGE_BOTTOM)) }.to_str(),
-            Ok("shelf-bottom")
-        );
+        assert_eq!(shelf_edge_class(EDGE_TOP), "shelf-top");
+        assert_eq!(shelf_edge_class(EDGE_LEFT), "shelf-left");
+        assert_eq!(shelf_edge_class(EDGE_RIGHT), "shelf-right");
+        assert_eq!(shelf_edge_class(EDGE_BOTTOM), "shelf-bottom");
 
         assert_eq!(shelf_tilt_for_edge(EDGE_TOP, 12.0), -12.0);
         assert_eq!(shelf_tilt_for_edge(EDGE_LEFT, 12.0), -12.0);

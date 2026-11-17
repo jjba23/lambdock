@@ -165,9 +165,9 @@ fn gsettings_icon_theme() -> Option<String> {
 
 /// Registers the search paths and resolves the icon theme name for the display.
 ///
-/// Safe to call on any thread from GTK's point of view -- it only touches the
-/// display's icon theme -- and the `unsafe` it wraps is the C strings it reads
-/// and frees: the search paths are built as a value, applied, and released.
+/// Safe to call: it only touches the display's icon theme, and the `unsafe` it
+/// wraps is the C strings it reads and frees -- the search paths are built as a
+/// value, applied, and released.
 pub fn setup_icon_theme() {
     crate::ui::ensure_gtk_initialized();
 

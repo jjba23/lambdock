@@ -557,7 +557,7 @@ pub unsafe fn lambdock_app_actions(
 /// # Safety
 ///
 /// The result must not be freed.
-pub unsafe fn lambdock_app_action_label(action: c_int) -> *const c_char {
+pub fn lambdock_app_action_label(action: c_int) -> *const c_char {
     let label = action_label(action);
 
     if label.is_empty() {

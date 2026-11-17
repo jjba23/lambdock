@@ -1233,6 +1233,10 @@ fn setup_guile_primitives() {
 // ===========================================================================
 
 thread_local! {
+    /// The directory monitors, kept for the life of the process: dropping one
+    /// stops the watch, so something has to own it.
+    static MONITORS: RefCell<Vec<gtk4::gio::FileMonitor>> = const { RefCell::new(Vec::new()) };
+
     /// The two debounce timers and the pending monitor-sync idle: the
     /// process-wide source ids, in one place so their ownership is one thing to
     /// look at.
@@ -1350,7 +1354,10 @@ fn setup_config_file_monitors(app: &gtk4::Application) {
                         app_pointer,
                     )
                 });
-                std::mem::forget(monitor);
+                // Kept, not forgotten: a `GFileMonitor` stops watching when it is
+                // dropped, and these watch for the life of the process, so the
+                // list is the thing that owns them.
+                MONITORS.with_borrow_mut(|monitors| monitors.push(monitor));
                 crate::log_info!(
                     "Main",
                     "Watching directory for {label} changes: {}",

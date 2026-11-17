@@ -68,19 +68,23 @@ pub(crate) fn strdup_string(text: &str) -> *mut c_char {
 /// The wrapper is also where an extractor attaches -- `xgettext` learns the name
 /// with `--keyword=tr:1` (and `trn:1,2`) once this crate is in `POTFILES.in`.
 ///
-/// # Safety
-///
-/// `msgid` is a valid C string by construction; the result is owned by gettext
-/// or by the static message table.
-pub(crate) unsafe fn tr(msgid: &CStr) -> *mut c_char {
-    gettext(msgid.as_ptr())
+/// Safe to call: the argument is a `&CStr`, so it is a valid C string, and what
+/// comes back is either the static message table or memory gettext owns. Nothing
+/// a caller can do with the pointer makes it unsound -- only *freeing* it would,
+/// which is why every function here hands it to `g_strdup` or reads it.
+pub(crate) fn tr(msgid: &CStr) -> *mut c_char {
+    unsafe { gettext(msgid.as_ptr()) }
 }
 
 /// The plural form of [`tr`], chosen by the locale's plural rules.
+pub(crate) fn trn(singular: &CStr, plural: &CStr, count: u32) -> *mut c_char {
+    unsafe { ngettext(singular.as_ptr(), plural.as_ptr(), c_ulong::from(count)) }
+}
+
+/// A copy of `text` in GLib's allocator: what a `(transfer full)` field holds.
 ///
-/// # Safety
-///
-/// The result is owned by gettext or by the static message table.
-pub(crate) unsafe fn trn(singular: &CStr, plural: &CStr, count: u32) -> *mut c_char {
-    ngettext(singular.as_ptr(), plural.as_ptr(), c_ulong::from(count))
+/// Safe, unlike the `g_strdup` it wraps: a `&CStr` cannot be NULL or unterminated,
+/// and the copy it returns belongs to the caller.
+pub(crate) fn dup_c_str(text: &CStr) -> *mut c_char {
+    unsafe { g_strdup(text.as_ptr()) }
 }

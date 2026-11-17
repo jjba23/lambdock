@@ -84,18 +84,17 @@ pub(crate) fn translated(msgid: &CStr) -> String {
 }
 
 /// Translate `msgid` into a GLib-allocated string, for a `(transfer full)` return
-/// the C caller frees with `g_free`.
+/// the receiver frees with `g_free`.
 ///
 /// Safe for the same reason as [`translated`]: the string is copied into GLib's
-/// allocator here, and the C caller owns that copy.
-pub(crate) unsafe fn translated_dup(msgid: &CStr) -> *mut c_char {
-    // SAFETY: as above -- read only, and the copy is ours.
-    let message = unsafe { tr(msgid) };
+/// allocator here, and the receiver owns that copy.
+pub(crate) fn translated_dup(msgid: &CStr) -> *mut c_char {
+    let message = tr(msgid);
     if message.is_null() {
         return std::ptr::null_mut();
     }
 
-    unsafe { crate::glib::g_strdup(message) }
+    crate::glib::dup_c_str(unsafe { CStr::from_ptr(message) })
 }
 
 #[cfg(test)]
@@ -126,7 +125,7 @@ mod tests {
     fn a_translation_of_a_known_literal_is_never_empty() {
         assert!(!translated(c"Back").is_empty());
 
-        let owned = unsafe { translated_dup(c"Back") };
+        let owned = translated_dup(c"Back");
         assert!(!owned.is_null());
         unsafe {
             assert!(!CStr::from_ptr(owned).to_bytes().is_empty());
