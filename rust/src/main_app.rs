@@ -431,7 +431,6 @@ unsafe fn build_capsule(dock: &mut LambdockState) {
     // Wrap the styled capsule in the shelf frame, which parents the capsule.
     // With the default shelf parameters (no tilt) the frame passes through.
     let frame = crate::ui::shelf::shelf_frame_new(capsule.as_ptr().cast());
-    apply_dock_mode_classes(dock);
 
     if !frame.is_null() {
         // The frame arrives floating: this is what sinks that reference.
@@ -439,6 +438,12 @@ unsafe fn build_capsule(dock: &mut LambdockState) {
         frame.set_overflow(gtk4::Overflow::Visible);
         dock.bg_shelf = Some(frame);
     }
+
+    // After the frame is the state's, or the shelf's shape has nothing to reach:
+    // `apply_shelf_shape` reads `bg_shelf`, so calling this first left a fresh
+    // dock flat until the first reload gave it its keystone, and the row was
+    // laid out without the room the flare reserves until then.
+    apply_dock_mode_classes(dock);
 }
 
 /// Window -> overlay -> [shelf frame( capsule ), scroller].

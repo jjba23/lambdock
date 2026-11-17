@@ -250,11 +250,60 @@ fn is_pinned_at_end(edge: c_int) -> bool {
     edge == EDGE_BOTTOM || edge == EDGE_RIGHT
 }
 
+/// Whether a renderer of this type can draw a projective transform.
+///
+/// The cairo renderer cannot: it has no perspective at all, and instead of
+/// skipping the node it paints the whole surface in its "unsupported node"
+/// colour, which arrives as a flat hot-pink rectangle with square corners. That
+/// is what a dock on a machine whose EGL display cannot be created shows, since
+/// GTK then falls back to cairo -- and cairo is also why such a dock is slow in
+/// the first place.
+///
+/// Named rather than typed so the rule holds without a display, which is what
+/// makes it a test.
+pub fn renderer_can_project(type_name: &str) -> bool {
+    type_name != "GskCairoRenderer"
+}
+
+/// Whether the surface `widget` is drawn on can render a projective transform.
+///
+/// A widget with no native is not being painted on any surface: say yes, so a
+/// frame built offscreen still measures and maps the way a real one does.
+fn surface_can_project(widget: &gtk4::Widget) -> bool {
+    let projectable = widget
+        .native()
+        .and_then(|native| native.renderer())
+        .is_none_or(|renderer| renderer_can_project(renderer.type_().name()));
+
+    if !projectable {
+        warn_once_software_renderer();
+    }
+
+    projectable
+}
+
+/// Says once, in the log, why the shelf came out as a plain rectangle.
+///
+/// A dock on the software renderer is slow as well as square, and both answers
+/// are the same one: GTK could not create an EGL display and fell back to cairo.
+fn warn_once_software_renderer() {
+    static WARNED: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+
+    if WARNED.set(()).is_ok() {
+        crate::log_warn!(
+            "UI",
+            "The dock is drawn by the software (cairo) GSK renderer, which has no projective transform: the shelf's keystone and tilt are drawn as a plain rectangle, and every frame is composited on the CPU. Check that GTK can create an EGL display (GSK_RENDERER=gl) if the dock is slow."
+        );
+    }
+}
+
 /// The projection the frame applies to the slab: the keystone (which gives the
 /// slab its trapezoid) followed by the tilt (which tips it away from the viewer).
 ///
-/// `None` when the shelf is a plain rectangle that needs no projection.
+/// `None` when the shelf is a plain rectangle that needs no projection, and when
+/// the surface's renderer cannot draw one -- see [`renderer_can_project`].
 pub fn frame_transform(
+    projectable: bool,
     edge: c_int,
     tilt: f64,
     perspective: f64,
@@ -262,7 +311,7 @@ pub fn frame_transform(
     width: i32,
     height: i32,
 ) -> Option<gsk::Transform> {
-    if tilt == 0.0 && flare == 0 {
+    if !projectable || (tilt == 0.0 && flare == 0) {
         return None;
     }
     if width <= 0 || height <= 0 {
@@ -436,7 +485,9 @@ mod imp {
                 return;
             };
 
+            let as_widget: &gtk4::Widget = widget.upcast_ref();
             let transform = frame_transform(
+                surface_can_project(as_widget),
                 self.edge.get(),
                 self.tilt.get(),
                 self.perspective.get(),
@@ -572,14 +623,21 @@ pub unsafe fn shelf_frame_is_frame(widget: *mut c_void) -> c_int {
 
 /// Whether the slab is drawn as a shape rather than a rectangle.
 ///
+/// It is a rectangle when the surface's renderer cannot draw the projection, so
+/// this answers what is painted rather than what was asked for: the pointer
+/// mapping that reads it has to agree with the pixels.
+///
 /// # Safety
 ///
 /// `frame` must be null or a live `GtkWidget`.
 pub unsafe fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) -> c_int {
-    match as_frame(frame) {
-        Some(frame) => c_int::from(frame.imp().tilt.get() != 0.0 || frame.imp().flare.get() != 0),
-        None => 0,
-    }
+    let Some(frame) = as_frame(frame) else {
+        return 0;
+    };
+    let widget: &gtk4::Widget = frame.upcast_ref();
+    let projected = frame.imp().tilt.get() != 0.0 || frame.imp().flare.get() != 0;
+
+    c_int::from(projected && surface_can_project(widget))
 }
 
 /// The axis across the dock: vertical for a dock on the top or bottom edge,
@@ -619,7 +677,9 @@ pub unsafe fn shelf_frame_project_point(
         return 0;
     }
 
+    let widget: &gtk4::Widget = frame.upcast_ref();
     let Some(transform) = frame_transform(
+        surface_can_project(widget),
         frame.imp().edge.get(),
         frame.imp().tilt.get(),
         frame.imp().perspective.get(),
@@ -1548,6 +1608,20 @@ pub unsafe fn apply_shelf_layout(state: &mut LambdockState) {
 mod tests {
     use super::*;
 
+    /// The software renderer has no projective transform, and asking it for one
+    /// does not draw a slanted slab: it fills the whole surface with its
+    /// "unsupported node" colour, which is a flat hot-pink rectangle. So a frame
+    /// on cairo has to stay a rectangle.
+    #[test]
+    fn only_a_renderer_with_a_projective_transform_may_project() {
+        assert!(!renderer_can_project("GskCairoRenderer"));
+        assert!(renderer_can_project("GskGLRenderer"));
+        assert!(renderer_can_project("GskVulkanRenderer"));
+        // Anything this does not know is given the benefit of the doubt: a
+        // newer renderer is more likely to have perspective than not to.
+        assert!(renderer_can_project("GskSomeFutureRenderer"));
+    }
+
     /// The capsule is the icon plus the margin plus whatever the glass takes on
     /// the outer side, and a reflection deeper than the front is what decides
     /// `outer`.
@@ -1747,17 +1821,21 @@ mod tests {
     /// flat dock must stay pixel-identical to the unwrapped capsule.
     #[test]
     fn a_flat_shelf_has_no_transform() {
-        assert!(frame_transform(EDGE_BOTTOM, 0.0, 400.0, 0, 100, 40).is_none());
+        assert!(frame_transform(true, EDGE_BOTTOM, 0.0, 400.0, 0, 100, 40).is_none());
         // Nothing allocated yet, nothing to project.
-        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 10, 0, 0).is_none());
+        assert!(frame_transform(true, EDGE_BOTTOM, 8.0, 400.0, 10, 0, 0).is_none());
     }
 
-    /// Either projection on its own is enough to need a transform.
+    /// Either projection on its own is enough to need a transform -- on a
+    /// renderer that has one. Without, the same settings have to stay flat, or
+    /// the surface comes out as the renderer's unsupported-node colour.
     #[test]
     fn a_tilt_or_a_flare_is_a_transform() {
-        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 0, 100, 40).is_some());
-        assert!(frame_transform(EDGE_BOTTOM, 0.0, 400.0, 10, 100, 40).is_some());
-        assert!(frame_transform(EDGE_BOTTOM, 8.0, 400.0, 10, 100, 40).is_some());
+        assert!(frame_transform(true, EDGE_BOTTOM, 8.0, 400.0, 0, 100, 40).is_some());
+        assert!(frame_transform(true, EDGE_BOTTOM, 0.0, 400.0, 10, 100, 40).is_some());
+        assert!(frame_transform(true, EDGE_BOTTOM, 8.0, 400.0, 10, 100, 40).is_some());
+
+        assert!(frame_transform(false, EDGE_BOTTOM, 8.0, 400.0, 10, 100, 40).is_none());
     }
 
     /// The dock's edges decide both axes: which way the depth runs and which edge

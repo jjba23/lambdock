@@ -832,6 +832,16 @@ A couple of shapes worth stealing:
   edge; the icons stay upright on top of it. It is a real =GskTransform= (rotate +
   perspective) because GTK CSS transforms are affine only and would just squash
   the shelf.
+- *The keystone and the tilt need a renderer with perspective.* The software
+  (cairo) GSK renderer has none, and asking it for one does not draw a flatter
+  slab: it paints the whole surface in its "unsupported node" colour, which
+  arrives as a flat hot-pink rectangle. GTK falls back to cairo whenever it
+  cannot create an EGL display -- a nix-built =lambdock= on a distribution that
+  keeps its GL drivers in =/run/opengl-driver= is the common case -- so
+  =lambdock= asks the surface's renderer first and leaves the slab a plain
+  rectangle there, which is also the answer to "why is the fisheye slow": every
+  frame is being composited on the CPU. The log says so once, naming
+  =GSK_RENDERER=, and the dock is square but correct instead of pink.
 - *Margin / front* place the icons in the glass: a negative margin lets them
   overhang the inner edge, and the front face is the glass in front of them.
 - *Reflection* paints a mirrored, gaussian-blurred copy that fades out over the
