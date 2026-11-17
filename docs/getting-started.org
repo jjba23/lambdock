@@ -369,6 +369,17 @@ nix --extra-experimental-features 'nix-command flakes' build
 nix --extra-experimental-features 'nix-command flakes' run .#
 #+end_src
 
+The package's wrapper appends the driver directories to =LD_LIBRARY_PATH=
+(=/run/opengl-driver/lib= on NixOS, =/usr/lib64= and
+=/usr/lib/x86_64-linux-gnu= elsewhere), which is what lets GTK create an EGL
+display and draw the dock on the GPU. Without an EGL vendor GTK falls back to
+the software renderer: the dock then works, but its shelf is a plain rectangle
+instead of a keystone and the fish-eye is composited on the CPU, which is slow.
+If a dock started that way says so in the log, the wrapper did not find your
+driver -- start it through [[https://github.com/nix-community/nixGL][nixGL]] or
+give =__EGL_VENDOR_LIBRARY_FILENAMES= the path of your
+=/usr/share/glvnd/egl_vendor.d= entry.
+
 -------
 
 *** From source (Cargo)

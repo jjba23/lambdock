@@ -61,9 +61,20 @@ stdenv.mkDerivation (finalAttrs: {
   # their own. Without it the process locale is unsupported -- GTK says so once
   # -- and gettext falls back to the C locale, so the dock is English no matter
   # which catalogue the install put in $out/share/locale.
+  #
+  # It also has to point the loader at an EGL vendor. The closure ships none, and
+  # a GTK that cannot create an EGL display gives up on hardware rendering: it
+  # falls back to cairo, which has no projective transform, so the shelf's
+  # keystone and tilt are drawn as a plain rectangle and every frame is composited
+  # on the CPU (a fisheye hover on a 27-item dock then crawls). NixOS keeps its
+  # driver in /run/opengl-driver and the other distributions keep theirs under
+  # /usr/lib*, so the wrapper appends all of them: the loader ignores a directory
+  # that is not there, and because these are appended the closure still wins for
+  # every library it does ship.
   preFixup = ''
     gappsWrapperArgs+=(
       --set LOCALE_ARCHIVE ${glibcLocales}/lib/locale/locale-archive
+      --suffix LD_LIBRARY_PATH : "/run/opengl-driver/lib:/usr/lib64:/usr/lib/x86_64-linux-gnu:/usr/lib"
     )
   '';
 
