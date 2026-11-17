@@ -2155,6 +2155,11 @@ code.
   ~clear_favorite_dock_items~ and ~clear_tracked_windows~ all move the row out of
   the state (or rebuild it) before anything is freed, so a callback cannot walk a
   half-freed dock. Preserve this pattern.
+- *A tracker record owns its text.* ~LambdockToplevel.title~ and ~.app_id~ are
+  `Option<CString>`: the protocol's pointer is copied once, in the callback that
+  carried it, and read as a `CStr` afterwards. The app-id setter takes the old id
+  *out* of the record before it writes the new one, because the detach has to look
+  the old item up by it.
 - *~window_trackers~ holds raw Wayland handles, not owned objects.*
   ~free_window_tracker~ and ~clear_window_tracker_dock_references~ are currently
   no-op stubs; do not assume they release anything.
@@ -2349,7 +2354,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
 | ~LambdockState~        | Per-dock state, owned: its widgets and settings; one GTK window            |
 | ~DockItem~             | A dock entry: favorite launcher, dynamic widget, separator, or tracked app |
 | ~AppWindow~            | A (Wayland handle, title) pair tracked by a ~DockItem~                     |
-| ~MasterToplevel~       | C struct pairing a raw toplevel handle with its title/app_id              |
+| ~MasterToplevel~       | The tracker's record for one window: its handle, title and app id, owned  |
 | ~window_trackers~      | Per-dock vector of raw toplevel handles used for show-when-clear logic     |
 | ~<dock-config>~        | Scheme record holding one dock's configuration                             |
 | ~*dock-configs*~       | Scheme hash table of ~<dock-config>~ keyed by path and ~'default~          |
