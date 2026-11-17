@@ -78,6 +78,13 @@
   </screenshots>
 
   <releases>
+    <release version="2.2.0" date="2026-11-17">
+      <description>
+        <p>Changing a theme no longer crashes the dock. A dynamic item kept a borrowed copy of its poller's name: the string was freed when the item was built and freed again on the next reload, which glibc reports as a double free and turns into an abort, so the dock vanished the moment any setting rebuilt its row. The item keeps its own copy now.</p>
+        <p>Magnifying is about half the CPU it was. A reflection used to be drawn once per fade band -- fourteen clipped copies of the icon inside a blur -- and the mirrors are repainted on every magnification step, so a hover sweep over a 27-item dock spent two thirds of its CPU there; the fade is one linear-gradient mask over one draw now, and the layout step widens with the pointer so a fast sweep stops re-measuring the whole row on every frame. A hide and a reveal were measured at 3-4 jiffies and left alone.</p>
+        <p>Separators come in five styles, chosen per item with <code>(separator-item #:style 'pill)</code>: the theme's own line, an engraved groove, a short pill, a bead, or a plain gap. Every theme answers all five, and the Platinum themes now draw the short fading groove of OS X Mavericks instead of a divider that spans the slab.</p>
+      </description>
+    </release>
     <release version="2.1.13" date="2026-11-17">
       <description>
         <p>A dock that changed a setting used to stay slow afterwards: the reload rebuilt the row but left the hover bookkeeping describing the old one, so the dock believed its icons were still magnified, stopped reserving the room the fisheye paints into, and then grew its layer surface back one compositor reconfigure per hover frame. The reload puts the row back at rest before it re-applies the dimensions. Auto-hide no longer re-measures the whole row on the frame its slide starts, the clickable region of a hover is widened once instead of once per frame, and a destroyed dock takes the CSS provider that hides the theme's running-app dot with it. A theme written with the label the Preferences window shows -- <code>(dock-theme "Glass Dark")</code> -- is reduced to its stylesheet name instead of producing a class and a file name GTK cannot use, which left the dock with no theme at all.</p>

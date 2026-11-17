@@ -11,6 +11,119 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.0 (2026-11-17)
+
+- *Changing a theme (or any setting) no longer crashes the dock.*  A dynamic
+  item kept a borrowed copy of its poller's name: the bridge freed the string it
+  handed over, and the next reload freed the item's copy of the same allocation.
+  glibc reports that as "double free or corruption" and aborts -- from the
+  outside, the dock vanishes the moment a theme, an icon size or a toggle
+  rebuilds the row. `dock_item_set_poll_name` now keeps its own copy, which is
+  what the C it replaced did (`g_strdup`), and a unit test pins the ownership.
+- *Separators come in five styles.*  `(separator-item #:style 'pill)` picks how
+  the divider is drawn: `line` (the theme's own divider, the default), `groove`
+  (an engraved pair with its lit edge), `pill` (a short rounded bar), `dot` (a
+  single bead) or `gap` (room, with no line at all). A style travels to the
+  stylesheet as a class, so every theme answers with its own material, and a
+  style nothing knows is the plain divider -- a typo never leaves a group
+  without one. The settings export writes the style back.
+- *The Platinum themes look more like the dock they are named after.*  The
+  divider is now the short engraved groove of `separatorstraight-horizontal.png`
+  -- it fades out before the slab's lips instead of spanning it -- in both the
+  light and the smoked-glass material, and the new separator styles follow the
+  same palette. A divider in a left or right dock fades along its own axis,
+  which the shipped themes never did.
+- *A reflection repaint is one masked draw instead of fourteen.*  The mirror used
+  to be drawn once per fade band, each band a clipped copy of the icon inside a
+  blur node, and the hover path repaints those mirrors on every magnification
+  step: on a 27-item dock a sweep spent about two thirds of its CPU there. The
+  fade is a linear-gradient mask now, so the icon is drawn once and the fade has
+  no band edges for the blur to smooth. Measured on the same 27-item dock, a
+  hover sweep costs 151-156 jiffies where it cost 314-324, and the mirror is
+  smoother for it.
+- *The row re-measures less the faster the pointer moves.*  Every magnification
+  step re-measures and re-allocates the whole row, which is most of a hover
+  frame. The layout step now follows the pointer: two pixels while it creeps over
+  an icon, up to six while it sweeps across the dock, where nobody can see the
+  spacing step. A sweep across the same 27-item flat dock costs 87-89 jiffies
+  where it cost 125, the magnification itself is still continuous, and a sweep
+  that stops dead is still within a couple of pixels of the exact spread.
+- *`dock-reflection-blur 0` keeps the mirror crisp.*  A zero radius used to be
+  clamped to half a pixel, which still asked the renderer for a blur pass per
+  reflection per repaint. It now draws no blur at all: on the same sweep that is
+  another 10-14 jiffies cheaper, and a theme that wants a sharp reflection has a
+  way to ask for one.
+- *A hide and a reveal cost 3-4 jiffies.*  Measured, not guessed: two 250 ms
+  margin slides and the poll refresh at the end of the reveal. Nothing was cut
+  from it -- the number is in the guide so the next person does not go looking.
+- *A stylesheet edit reaches the binary on the next build.*  `build.rs` only
+  watched the resource manifest, so the binary's compiled-in copy of the CSS was stale
+  until something else touched it: a theme edit appeared to do nothing and only
+  showed up after a clean build. Every file the manifest lists is an input now.
+
+
+** v2.1.13 (2026-11-17)
+
+- *A dock stops being slow after a setting is changed.*  A reload rebuilt the row
+  but left the hover bookkeeping describing the old one, so the dock went on
+  believing its icons were magnified. `dock_reserve_hover_room` reserves nothing
+  for a magnifying dock, so the surface lost the room the fisheye paints into and
+  then grew it back, one compositor reconfigure per hover frame, until the
+  pointer left. The reload puts the row back at rest before it re-applies the
+  dimensions, which is also what the following hover expects.
+- *Auto-hide does not re-measure the row as it starts to slide.*  A pointer that
+  leaves already resets the icons; `hide_dock` reset them a second time, which
+  re-measured the whole row on the one frame that has to be cheap. The reset now
+  happens only when something is actually magnified.
+- *The hover's input region is widened once per hover instead of once per frame.*
+  The fisheye step moves the row's bounds every frame, and the clickable region
+  followed them, so a sweep sent the compositor a `wl_surface.set_input_region`
+  for almost every layout step. The region now covers the dock plus the room the
+  row grows into -- computed when the hover starts, and left alone for the rest
+  of it. The room is added along the dock's own axis, so a pointer still leaves
+  the surface where it used to.
+- *A theme written the way the Preferences window labels it now works.*
+  `(dock-theme "Glass Dark")` -- the label, not the symbol -- used to become the
+  CSS class `theme-Glass Dark` and the resource path `Glass Dark.css`: neither is
+  a name GTK can use, so the stylesheet was discarded and the dock came up with
+  no theme at all. The requested name is reduced to a stylesheet name
+  (`glass-dark`) before either use, which also keeps a path in a settings file
+  from choosing the file that is read.
+- *A destroyed dock takes its indicator guard with it.*  The provider that
+  silences a theme's running-app dot while the glass draws one was removed by a
+  reload but not by teardown, so every dock that went away left a provider
+  matching its theme class installed on the display for the rest of the session.
+
+** v2.1.12 (2026-11-17)
+
+- *A tracker that fails without saying why no longer takes the dock with it.*
+  When window tracking is unavailable the dock logs the reason, and it read it
+  from the `GError` the tracker was given. A backend can fail without filling that
+  error in -- the X11 and Wayland start paths both have branches that return
+  failure and set nothing -- so on such a session the log line was a null
+  dereference. The error is read through an `Option` now, and the line says the
+  compositor did not say why. This is the one finding in the code-scanning report
+  that was a live bug rather than a shape.
+- *The pointer walks prove a pointer before reading it.* Eight of the report's
+  nine findings in our own code were the same shape: `is_null()` in one statement,
+  `(*ptr)` a few lines later, with the proof in between that the analyzer cannot
+  follow. The `GList` walks over an item's windows, the tracker's title and state
+  walks, the debug assertion in `free_dock_item` and three `desktop_entry` test
+  assertions all use `while let Some(entry) = node.as_ref()` and take a record as
+  `&`/`&mut` once. `app_window_matches`, `app_window_set_title` and
+  `app_window_set_state` lost their pointers entirely and are plain `fn` now; the
+  "a null window is a no-op" contract is left where it belongs, in the two helpers
+  whose argument is a pointer.
+- *The array walker checks the array and the index.* Making `ptr_array_at` answer
+  null for a missing element is what exposed its callers: it read
+  `(*array).pdata.add(index)` with neither a null check nor a bound, and the
+  desktop-entry cache read five fields and the alternates array through the
+  element it had just taken. Both are guarded now, so a malformed `GPtrArray`
+  cannot be read past its end.
+- The nine findings in `rust/vendor/` are `cairo-rs` and `glib` sources, kept in
+  the tree so the build works offline; they are dismissed in the report as
+  third-party code rather than patched here.
+
 ** v2.1.13 (2026-11-17)
 
 - *A dock stops being slow after a setting is changed.*  A reload rebuilt the row
