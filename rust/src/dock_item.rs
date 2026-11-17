@@ -21,8 +21,7 @@ use crate::app_window::{AppWindow, GList};
 use crate::core::dock_click::{lambdock_click_action_for, ClickAction};
 use crate::core::config_values::{EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP};
 use crate::core::item_text::{
-    lambdock_item_text_app, lambdock_item_text_clear, lambdock_item_text_dynamic,
-    lambdock_item_text_launchpad, lambdock_item_text_stack, lambdock_item_text_trash, ItemText,
+    trash_tooltip, text_app, text_dynamic, text_launchpad, text_stack, text_trash, ItemText,
 };
 use crate::log_info;
 use crate::log_warn;
@@ -34,7 +33,7 @@ use gtk4::glib::translate::{FromGlib, IntoGlib};
 use gtk4::glib::translate::{from_glib_borrow, Borrowed};
 use gtk4::pango;
 use gtk4::prelude::*;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use crate::bridge::{dock_read_settings, lambdock_poll_fn_call, lambdock_poll_fn_is_callable, lambdock_poll_fn_protect, lambdock_poll_fn_release, populate_dock_items_for};
 use crate::dock_window::{apply_dock_mode_classes, dock_apply_exclusive_zone, dock_apply_motion_preference, hide_dock, on_popover_closed, refresh_dock_mode, reveal_dock, update_dock_dimensions};
@@ -303,11 +302,20 @@ unsafe fn widget_of(widget: *mut c_void) -> Option<Borrowed<gtk4::Widget>> {
 // The per-kind accessible text. The wording is rust/src/core/item_text.rs's;
 // these only take the values out of the item.
 
+/// A C string field of an item, borrowed.
+///
+/// # Safety
+///
+/// The field must be null or a NUL-terminated string the item owns.
+unsafe fn field(text: *mut c_char) -> Option<&'static CStr> {
+    text.as_ref().map(|text| CStr::from_ptr(text))
+}
+
 /// # Safety
 ///
 /// `item` must be a live `DockItem`.
 unsafe fn describe_app(item: &DockItem) -> ItemText {
-    lambdock_item_text_app(item.name, window_count(item))
+    text_app(field(item.name), window_count(item))
 }
 
 /// # Safety
@@ -316,35 +324,32 @@ unsafe fn describe_app(item: &DockItem) -> ItemText {
 unsafe fn describe_dynamic(item: &DockItem) -> ItemText {
     // The item's tooltip already carries the latest reading, so that is the
     // value worth describing.
-    let tooltip = widget_of(item.button).and_then(|button| button.tooltip_text());
+    let reading = widget_of(item.button)
+        .and_then(|button| button.tooltip_text())
+        .and_then(|tooltip| CString::new(tooltip).ok());
 
-    lambdock_item_text_dynamic(
-        item.name,
-        tooltip
-            .as_ref()
-            .map_or(std::ptr::null(), |tooltip| tooltip.as_ptr()),
-    )
+    text_dynamic(field(item.name), reading.as_deref())
 }
 
 /// # Safety
 ///
 /// `item` must be a live `DockItem`.
 unsafe fn describe_stack(item: &DockItem) -> ItemText {
-    lambdock_item_text_stack(item.name)
+    text_stack(field(item.name))
 }
 
 /// # Safety
 ///
 /// `item` must be a live `DockItem`.
 unsafe fn describe_launchpad(item: &DockItem) -> ItemText {
-    lambdock_item_text_launchpad(item.name)
+    text_launchpad(field(item.name))
 }
 
 /// # Safety
 ///
 /// `item` must be a live `DockItem`.
 unsafe fn describe_trash(item: &DockItem) -> ItemText {
-    lambdock_item_text_trash(item.name, item.trash_count)
+    text_trash(field(item.name), item.trash_count)
 }
 
 /// Rebuilds what a screen reader says about `item`.
@@ -368,13 +373,15 @@ pub unsafe fn dock_item_update_accessible(item: *mut DockItem) {
         return;
     };
 
-    let mut text = describe(item_ref);
+    let text = describe(item_ref);
+    let label = crate::cstr::cstring(&text.label);
+    let description = crate::cstr::cstring(&text.description);
+
     crate::accessibility::lambdock_accessible_update(
         item_ref.button.cast(),
-        text.label,
-        text.description,
+        label.as_ptr(),
+        description.as_ptr(),
     );
-    lambdock_item_text_clear(&mut text);
 }
 
 /// Runs `command`, reporting a failure without taking the dock down.
@@ -1354,16 +1361,13 @@ unsafe fn apply_meter_reading(item: &DockItem, reading: &Reading) -> bool {
         return false;
     }
 
-    let printed_pointer =
-        crate::core::item_text::lambdock_meter_reading_text(reading.number, item.meter_unit);
-    let printed = crate::cstr::text_or_empty(printed_pointer);
-    if !printed_pointer.is_null() {
-        // `(transfer full)`: the reading's text is ours once it has been read.
-        crate::glib::g_free(printed_pointer.cast());
-    }
+    let printed = crate::core::item_text::meter_reading_text(
+        reading.number,
+        unsafe { field(item.meter_unit) },
+    );
 
     let fraction =
-        crate::core::item_text::lambdock_meter_reading_fraction(reading.number, item.meter_max);
+        crate::core::item_text::meter_reading_fraction(reading.number, item.meter_max);
     let printed_c = crate::cstr::cstring(&printed);
     crate::ui::meter::lambdock_meter_set_value(item.meter.cast(), fraction, printed_c.as_ptr());
 
@@ -1925,13 +1929,7 @@ pub unsafe fn dock_item_refresh_trash(item: *mut DockItem) {
 
     // The wording (and its plural form) is `core/item_text.rs`'s, the same place
     // the screen-reader description comes from.
-    let tooltip_pointer =
-        crate::core::item_text::lambdock_item_trash_tooltip(item_ref.name, count);
-    let tooltip = crate::cstr::text_or_empty(tooltip_pointer);
-    if !tooltip_pointer.is_null() {
-        // `(transfer full)`: the tooltip is GLib's once it has been read.
-        crate::glib::g_free(tooltip_pointer.cast());
-    }
+    let tooltip = trash_tooltip(unsafe { field(item_ref.name) }, count);
 
     if let Some(button) = widget_of(item_ref.button) {
         button.set_tooltip_text(Some(&tooltip));

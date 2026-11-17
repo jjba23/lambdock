@@ -18,6 +18,7 @@
 use crate::app_window::{AppWindow, GList, LambdockToplevel};
 use crate::dock_item::DockItem;
 use crate::state::LambdockState;
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use crate::dock_item::{dock_item_update_accessible, free_dock_item};
 use crate::dock_window::{reveal_dock};
@@ -267,26 +268,27 @@ unsafe fn apply_window_title_label(item: *const DockItem) {
     };
 
     let show_titles = !(*item).state.is_null() && (*(*item).state).show_window_titles != 0;
+    let borrowed = |text: *mut c_char| text.as_ref().map(|text| CStr::from_ptr(text));
     let title = if window.is_null() {
-        std::ptr::null()
+        None
     } else {
-        (*window).title
+        borrowed((*window).title)
     };
 
-    let text = crate::core::item_text::lambdock_window_title_text(
-        show_titles as c_int,
-        (!(*item).windows.is_null()) as c_int,
+    let text = crate::core::item_text::window_title_text(
+        show_titles,
+        !(*item).windows.is_null(),
         title,
-        (*item).name,
-        (*item).app_id,
+        borrowed((*item).name),
+        borrowed((*item).app_id),
     );
 
     let label = (*item).label.cast::<gtk4::ffi::GtkLabel>();
 
-    if !text.is_null() {
-        gtk_label_set_text(label, text);
+    if let Some(text) = text {
+        gtk_label_set_text(label, text.as_ptr());
     }
-    gtk_widget_set_visible(label.cast(), (!text.is_null()) as c_int);
+    gtk_widget_set_visible(label.cast(), c_int::from(text.is_some()));
 }
 
 /// Drops every tracked window and handle, and removes the items that existed

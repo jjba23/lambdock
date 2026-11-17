@@ -3,30 +3,33 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-//! What a dock item says about itself: `src/core/item_text.h` in Rust.
+//! What a dock item says about itself: labels, screen-reader descriptions,
+//! tooltips and gauge readouts, as functions of values.
 //!
-//! Labels, screen-reader descriptions, tooltips and gauge readouts, as functions
-//! of values: no widgets, no display, no Guile. Only strings, counts and numbers
-//! go in, which is what keeps it free of GTK -- and what makes the wording of
-//! every item kind testable without constructing a dock.
+//! No widgets, no display, no Guile: only strings, counts and numbers go in,
+//! which is what makes the wording of every item kind testable without
+//! constructing a dock.
 //!
-//! Two rules come from C and stay: a `(transfer full)` string is allocated with
-//! `g_strdup`, because the C callers free it with `g_free` and
-//! `lambdock_item_text_clear`; and a translated message with substitutions is
-//! formatted by `g_strdup_printf`, so a translation may reorder its placeholders.
+//! The strings go *out* as Rust `String`s. They used to be `g_strdup`ed C
+//! strings that the caller freed through `lambdock_item_text_clear`, which meant
+//! every early return was a leak waiting to happen; a value that owns its text
+//! cannot leak. The one place a C string is still needed -- the accessible
+//! properties GTK caches by pointer -- makes one at the call site.
+//!
+//! Formatting goes through `printf` rather than `format!` for one reason: a
+//! translation may reorder its placeholders, and `%s`-style formats let it.
 
-use crate::glib::{g_free, g_strdup, g_strdup_printf, tr, trn};
+use crate::glib::{
+    formatted_number_with_unit, formatted_with_two, translated, translated_plural,
+    translated_with, translated_with_count, translated_with_two,
+};
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
 
-/// Two strings that always belong together, so the per-kind functions can return
-/// them as one value instead of writing through two out-parameters.
-///
-/// The field order is the contract: `LambdockItemText` in the header.
-#[repr(C)]
+/// The label and description of one item, owning their text.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ItemText {
-    pub label: *mut c_char,
-    pub description: *mut c_char,
+    pub label: String,
+    pub description: String,
 }
 
 /// A reading that is not a number is a broken reading, not a large one, so it
@@ -39,238 +42,109 @@ fn finite_or(value: f64, fallback: f64) -> f64 {
     }
 }
 
-/// The empty string a lookup returns when there is nothing to say, so the caller
-/// can still print it (the C code returned `""` the same way).
-static EMPTY: [u8; 1] = [0];
-
-/// Whether a C string argument is present and non-empty: the rule the C code
-/// spelled out inline everywhere.
-unsafe fn is_set(text: *const c_char) -> bool {
-    !text.is_null() && *text != 0
-}
-
-/// Whether `text` begins with `prefix`, byte for byte, as `g_str_has_prefix` did.
-unsafe fn starts_with(text: *const c_char, prefix: *const c_char) -> bool {
-    CStr::from_ptr(text)
-        .to_bytes()
-        .starts_with(CStr::from_ptr(prefix).to_bytes())
-}
-
-/// What a screen reader should say about an app item besides its name.
-unsafe fn running_text(window_count: u32) -> *mut c_char {
-    if window_count == 0 {
-        return g_strdup(tr(c"Not running"));
-    }
-
-    g_strdup_printf(
-        trn(
-            c"Running, %u window",
-            c"Running, %u windows",
-            window_count,
-        ),
-        window_count,
-    )
-}
-
-/// Frees both strings and zeroes the struct, so an early return cannot leak it.
-///
-/// # Safety
-///
-/// `text` must be null or point to a struct produced by one of the functions here.
-pub unsafe fn lambdock_item_text_clear(text: *mut ItemText) {
-    if text.is_null() {
-        return;
-    }
-
-    let text = &mut *text;
-
-    if !text.label.is_null() {
-        g_free(text.label.cast());
-        text.label = std::ptr::null_mut();
-    }
-
-    if !text.description.is_null() {
-        g_free(text.description.cast());
-        text.description = std::ptr::null_mut();
-    }
-}
-
 /// The "use the name, but not an empty one" rule that every kind repeats.
-///
-/// # Safety
-///
-/// Each argument must be null or a NUL-terminated string. The result is borrowed
-/// from one of them.
-pub unsafe fn lambdock_item_display_name(
-    name: *const c_char,
-    fallback: *const c_char,
-) -> *const c_char {
-    if is_set(name) {
-        name
-    } else {
-        fallback
+fn display_name<'a>(name: Option<&'a CStr>, fallback: &'a CStr) -> &'a CStr {
+    match name.filter(|name| !name.is_empty()) {
+        Some(name) => name,
+        None => fallback,
     }
+}
+
+/// A `CStr` as an owned `String`. A name that is not UTF-8 is not a name, but it
+/// still gets shown lossily: the alternative is an item that says nothing.
+fn owned(text: &CStr) -> String {
+    text.to_string_lossy().into_owned()
 }
 
 /// The label and description of an application item.
-///
-/// # Safety
-///
-/// `name` must be null or a NUL-terminated string.
-pub unsafe fn lambdock_item_text_app(
-    name: *const c_char,
-    window_count: u32,
-) -> ItemText {
-    let title = lambdock_item_display_name(name, std::ptr::null());
-
-    ItemText {
-        label: g_strdup(if is_set(title) {
-            title
-        } else {
-            tr(c"Application")
-        }),
-        description: running_text(window_count),
-    }
-}
-
-/// The label and description of a polling (clock, CPU, meter) item.
-///
-/// # Safety
-///
-/// Each argument must be null or a NUL-terminated string.
-pub unsafe fn lambdock_item_text_dynamic(
-    name: *const c_char,
-    reading: *const c_char,
-) -> ItemText {
-    let title = lambdock_item_display_name(name, std::ptr::null());
-
-    let label = if is_set(reading) {
-        // Meter items already put "name: reading" in the tooltip, and repeating
-        // the name would read as "CPU: CPU: 42%".
-        let prefix = if is_set(title) {
-            title
-        } else {
-            EMPTY.as_ptr().cast()
-        };
-
-        if starts_with(reading, prefix) {
-            g_strdup(reading)
-        } else {
-            g_strdup_printf(
-                tr(c"%s: %s"),
-                if is_set(title) {
-                    title
-                } else {
-                    tr(c"Reading")
-                },
-                reading,
-            )
-        }
+pub fn text_app(name: Option<&CStr>, window_count: u32) -> ItemText {
+    let description = if window_count == 0 {
+        translated(c"Not running")
     } else {
-        g_strdup(if is_set(title) {
-            title
-        } else {
-            tr(c"Reading")
-        })
+        translated_plural(c"Running, %u window", c"Running, %u windows", window_count)
     };
 
     ItemText {
-        label,
-        description: g_strdup(tr(c"Live reading from the dock.")),
-    }
-}
-
-/// The label and description of a folder stack item.
-///
-/// # Safety
-///
-/// `name` must be null or a NUL-terminated string.
-pub unsafe fn lambdock_item_text_stack(name: *const c_char) -> ItemText {
-    let title = lambdock_item_display_name(name, tr(c"Stack"));
-
-    ItemText {
-        label: g_strdup_printf(tr(c"%s, folder stack"), title),
-        description: g_strdup(tr(c"Opens the folder's contents.")),
-    }
-}
-
-/// The label and description of the application grid item.
-///
-/// # Safety
-///
-/// `name` must be null or a NUL-terminated string.
-pub unsafe fn lambdock_item_text_launchpad(name: *const c_char) -> ItemText {
-    let title = lambdock_item_display_name(name, tr(c"Applications"));
-
-    ItemText {
-        label: g_strdup(title),
-        description: g_strdup(tr(c"Opens the application grid. Escape closes it.")),
-    }
-}
-
-/// The label and description of the trash item.
-///
-/// # Safety
-///
-/// `name` must be null or a NUL-terminated string.
-pub unsafe fn lambdock_item_text_trash(
-    name: *const c_char,
-    item_count: u32,
-) -> ItemText {
-    let title = lambdock_item_display_name(name, tr(c"Trash"));
-
-    if item_count == 0 {
-        return ItemText {
-            label: g_strdup(title),
-            description: g_strdup(tr(c"The trash is empty. Opens the trash.")),
-        };
-    }
-
-    let count = g_strdup_printf(
-        trn(
-            c"%u item in the trash",
-            c"%u items in the trash",
-            item_count,
-        ),
-        item_count,
-    );
-    let description = g_strdup_printf(tr(c"%s. Opens the trash."), count);
-    g_free(count.cast());
-
-    ItemText {
-        label: g_strdup(title),
+        label: owned(display_name(name, c"Application")),
         description,
     }
 }
 
+/// The label and description of a polling (clock, CPU, meter) item.
+pub fn text_dynamic(name: Option<&CStr>, reading: Option<&CStr>) -> ItemText {
+    let title = name.filter(|name| !name.is_empty());
+    let reading = reading.filter(|reading| !reading.is_empty());
+
+    let label = match (title, reading) {
+        // Meter items already write "name: reading", and repeating the name
+        // would read as "CPU: CPU: 42%".
+        (Some(title), Some(reading)) if reading.to_bytes().starts_with(title.to_bytes()) => {
+            owned(reading)
+        }
+        (Some(title), Some(reading)) => translated_with_two(c"%s: %s", title, reading),
+        // Nothing to prepend: the reading is the label.
+        (None, Some(reading)) => owned(reading),
+        (Some(title), None) => owned(title),
+        // Nameless and no reading: say something rather than nothing.
+        (None, None) => translated(c"Reading"),
+    };
+
+    ItemText {
+        label,
+        description: translated(c"Live reading from the dock."),
+    }
+}
+
+/// The label and description of a folder stack item.
+pub fn text_stack(name: Option<&CStr>) -> ItemText {
+    ItemText {
+        label: translated_with(c"%s, folder stack", display_name(name, c"Stack")),
+        description: translated(c"Opens the folder's contents."),
+    }
+}
+
+/// The label and description of the application grid item.
+pub fn text_launchpad(name: Option<&CStr>) -> ItemText {
+    ItemText {
+        label: owned(display_name(name, c"Applications")),
+        description: translated(c"Opens the application grid. Escape closes it."),
+    }
+}
+
+/// The label and description of the trash item.
+pub fn text_trash(name: Option<&CStr>, item_count: u32) -> ItemText {
+    let label = owned(display_name(name, c"Trash"));
+
+    let description = if item_count == 0 {
+        translated(c"The trash is empty. Opens the trash.")
+    } else {
+        let count = translated_plural(
+            c"%u item in the trash",
+            c"%u items in the trash",
+            item_count,
+        );
+        translated_with(c"%s. Opens the trash.", &crate::glib::c_string(&count))
+    };
+
+    ItemText { label, description }
+}
+
 /// The trash item's tooltip: its name, plus the count while the trash is not
 /// empty.
-///
-/// # Safety
-///
-/// `name` must be null or a NUL-terminated string; the result is `g_strdup`ed.
-pub unsafe fn lambdock_item_trash_tooltip(
-    name: *const c_char,
-    item_count: u32,
-) -> *mut c_char {
-    let title = lambdock_item_display_name(name, tr(c"Trash"));
+pub fn trash_tooltip(name: Option<&CStr>, item_count: u32) -> String {
+    let title = display_name(name, c"Trash");
 
     if item_count == 0 {
-        return g_strdup(title);
+        return owned(title);
     }
 
-    let items = g_strdup_printf(
-        trn(c"%u item", c"%u items", item_count),
-        item_count,
-    );
-    let tooltip = g_strdup_printf(c"%s — %s".as_ptr(), title, items);
-    g_free(items.cast());
+    let items = translated_plural(c"%u item", c"%u items", item_count);
 
-    tooltip
+    formatted_with_two(c"%s — %s", title, &crate::glib::c_string(&items))
 }
 
 /// The gauge's 0..1 fraction, clamped, and never non-finite.
-pub fn lambdock_meter_reading_fraction(reading: f64, maximum: f64) -> f64 {
+pub fn meter_reading_fraction(reading: f64, maximum: f64) -> f64 {
     // A gauge with no configured maximum is a percentage gauge.
     let full_scale = if maximum > 0.0 { maximum } else { 100.0 };
     let raw = if full_scale > 0.0 {
@@ -283,119 +157,65 @@ pub fn lambdock_meter_reading_fraction(reading: f64, maximum: f64) -> f64 {
 }
 
 /// The reading as the gauge writes it ("42%"), with non-finite readings as 0.
-///
-/// # Safety
-///
-/// `unit` must be null or a NUL-terminated string; the result is `g_strdup`ed.
-pub unsafe fn lambdock_meter_reading_text(
-    reading: f64,
-    unit: *const c_char,
-) -> *mut c_char {
+pub fn meter_reading_text(reading: f64, unit: Option<&CStr>) -> String {
     // The gauge writes whole numbers, so a wild reading would otherwise print as
     // twenty digits and break the icon's layout.
     let shown = finite_or(reading, 0.0).clamp(-1e9, 1e9);
-    let unit = if unit.is_null() {
-        EMPTY.as_ptr().cast()
-    } else {
-        unit
-    };
 
-    g_strdup_printf(c"%.0f%s".as_ptr(), shown, unit)
+    formatted_number_with_unit(shown, unit.unwrap_or(c""))
 }
 
-/// The text to show inside the icon, or null to hide the label.
-///
-/// # Safety
-///
-/// Each string argument must be null or NUL-terminated. The result is borrowed
-/// from one of them.
-pub unsafe fn lambdock_window_title_text(
-    show_titles: c_int,
-    has_windows: c_int,
-    window_title: *const c_char,
-    name: *const c_char,
-    app_id: *const c_char,
-) -> *const c_char {
-    if show_titles == 0 || has_windows == 0 {
-        return std::ptr::null();
+/// The text to show inside the icon, or nothing to keep the label hidden.
+pub fn window_title_text<'a>(
+    show_titles: bool,
+    has_windows: bool,
+    window_title: Option<&'a CStr>,
+    name: Option<&'a CStr>,
+    app_id: Option<&'a CStr>,
+) -> Option<&'a CStr> {
+    if !show_titles || !has_windows {
+        return None;
     }
 
-    if is_set(window_title) {
-        return window_title;
+    if let Some(title) = window_title.filter(|title| !title.is_empty()) {
+        return Some(title);
     }
 
-    if name.is_null() {
-        if app_id.is_null() {
-            EMPTY.as_ptr().cast()
-        } else {
-            app_id
-        }
-    } else {
-        name
-    }
+    // The application's own name, then its id, then nothing -- which is still a
+    // title, so the label shows rather than disappearing.
+    Some(name.or(app_id).unwrap_or(c""))
 }
 
 /// "key, from path" -- or the fallback-dock sentence when there is no file.
-///
-/// # Safety
-///
-/// Each argument must be null or NUL-terminated; the result is `g_strdup`ed.
-pub unsafe fn lambdock_inspector_launcher_text(
-    config_path: *const c_char,
-    item_key: *const c_char,
-) -> *mut c_char {
-    let key = if is_set(item_key) {
-        item_key
-    } else {
-        c"?".as_ptr()
-    };
+pub fn inspector_launcher_text(config_path: Option<&CStr>, item_key: Option<&CStr>) -> String {
+    let key = item_key.filter(|key| !key.is_empty()).unwrap_or(c"?");
 
-    if !is_set(config_path) {
-        return g_strdup_printf(
-            tr(c"%s (no settings file: the fallback dock)"),
-            key,
-        );
+    match config_path.filter(|path| !path.is_empty()) {
+        Some(path) => translated_with_two(c"%s, from %s", key, path),
+        None => translated_with(c"%s (no settings file: the fallback dock)", key),
     }
-
-    g_strdup_printf(tr(c"%s, from %s"), key, config_path)
 }
 
 /// The icon name and where it was found.
-///
-/// # Safety
-///
-/// `icon` must be null or NUL-terminated; the result is `g_strdup`ed.
-pub unsafe fn lambdock_inspector_icon_text(
-    icon: *const c_char,
-    found_in_theme: c_int,
-) -> *mut c_char {
-    if !is_set(icon) {
-        return g_strdup(tr(c"no icon configured; the generic executable is drawn"));
-    }
-
-    let format = if found_in_theme != 0 {
-        tr(c"%s (found in the icon theme)")
-    } else {
-        tr(c"%s (not in the icon theme; a fallback is drawn)")
+pub fn inspector_icon_text(icon: Option<&CStr>, found_in_theme: bool) -> String {
+    let Some(icon) = icon.filter(|icon| !icon.is_empty()) else {
+        return translated(c"no icon configured; the generic executable is drawn");
     };
 
-    g_strdup_printf(format, icon)
+    if found_in_theme {
+        translated_with(c"%s (found in the icon theme)", icon)
+    } else {
+        translated_with(c"%s (not in the icon theme; a fallback is drawn)", icon)
+    }
 }
 
 /// The poller and its interval, or a sentence saying the item does not poll.
-///
-/// # Safety
-///
-/// `poll_name` must be null or NUL-terminated; the result is `g_strdup`ed.
-pub unsafe fn lambdock_inspector_poller_text(
-    poll_name: *const c_char,
-    interval_ms: u32,
-) -> *mut c_char {
-    if !is_set(poll_name) {
-        return g_strdup(tr(c"none: this item does not poll"));
-    }
+pub fn inspector_poller_text(poll_name: Option<&CStr>, interval_ms: u32) -> String {
+    let Some(name) = poll_name.filter(|name| !name.is_empty()) else {
+        return translated(c"none: this item does not poll");
+    };
 
-    g_strdup_printf(tr(c"%s, every %u ms"), poll_name, interval_ms)
+    translated_with_count(c"%s, every %u ms", name, interval_ms)
 }
 
 #[cfg(test)]
@@ -407,30 +227,8 @@ mod tests {
         CString::new(text).expect("no interior NUL")
     }
 
-    /// Reads a `(transfer full)` string and frees it.
-    fn take(pointer: *mut c_char) -> Option<String> {
-        if pointer.is_null() {
-            return None;
-        }
-
-        let text = unsafe { CStr::from_ptr(pointer) }
-            .to_string_lossy()
-            .into_owned();
-        unsafe { g_free(pointer.cast()) };
-        Some(text)
-    }
-
-    /// Reads a borrowed string.
-    fn borrow(pointer: *const c_char) -> Option<String> {
-        if pointer.is_null() {
-            return None;
-        }
-
-        Some(unsafe { CStr::from_ptr(pointer) }.to_string_lossy().into_owned())
-    }
-
-    fn pair(text: ItemText) -> (Option<String>, Option<String>) {
-        (take(text.label), take(text.description))
+    fn pair(text: ItemText) -> (String, String) {
+        (text.label, text.description)
     }
 
     // ======================================================================
@@ -440,28 +238,15 @@ mod tests {
     #[test]
     fn a_non_empty_name_wins_over_the_fallback() {
         let (name, fallback) = (c("Terminal"), c("fallback"));
-        assert_eq!(
-            borrow(unsafe { lambdock_item_display_name(name.as_ptr(), fallback.as_ptr()) }),
-            Some("Terminal".to_owned())
-        );
+        assert_eq!(display_name(Some(&name), &fallback), &*name);
     }
 
     #[test]
     fn an_empty_name_is_no_name() {
         let (name, fallback) = (c(""), c("fallback"));
-        assert_eq!(
-            borrow(unsafe { lambdock_item_display_name(name.as_ptr(), fallback.as_ptr()) }),
-            Some("fallback".to_owned())
-        );
-        // A missing name falls back, and a missing fallback stays missing.
-        assert_eq!(
-            borrow(unsafe { lambdock_item_display_name(std::ptr::null(), fallback.as_ptr()) }),
-            Some("fallback".to_owned())
-        );
-        assert_eq!(
-            borrow(unsafe { lambdock_item_display_name(std::ptr::null(), std::ptr::null()) }),
-            None
-        );
+
+        assert_eq!(display_name(Some(&name), &fallback), &*fallback);
+        assert_eq!(display_name(None, &fallback), &*fallback);
     }
 
     // ======================================================================
@@ -471,116 +256,113 @@ mod tests {
     #[test]
     fn an_application_reads_its_name_and_window_count() {
         let name = c("Terminal");
-        let (label, description) = pair(unsafe { lambdock_item_text_app(name.as_ptr(), 0) });
-        assert_eq!(label.as_deref(), Some("Terminal"));
-        assert_eq!(description.as_deref(), Some("Not running"));
 
-        let (_, one) = pair(unsafe { lambdock_item_text_app(name.as_ptr(), 1) });
-        assert_eq!(one.as_deref(), Some("Running, 1 window"));
+        let (label, description) = pair(text_app(Some(&name), 0));
+        assert_eq!(label, "Terminal");
+        assert_eq!(description, "Not running");
 
-        let (_, three) = pair(unsafe { lambdock_item_text_app(name.as_ptr(), 3) });
-        assert_eq!(three.as_deref(), Some("Running, 3 windows"));
+        let (_, one) = pair(text_app(Some(&name), 1));
+        assert_eq!(one, "Running, 1 window");
+
+        let (_, three) = pair(text_app(Some(&name), 3));
+        assert_eq!(three, "Running, 3 windows");
     }
 
     #[test]
     fn an_unnamed_application_still_says_what_it_is() {
-        let (label, _) = pair(unsafe { lambdock_item_text_app(std::ptr::null(), 0) });
-        assert_eq!(label.as_deref(), Some("Application"));
+        let (label, _) = pair(text_app(None, 0));
+        assert_eq!(label, "Application");
 
         let empty = c("");
-        let (label, _) = pair(unsafe { lambdock_item_text_app(empty.as_ptr(), 0) });
-        assert_eq!(label.as_deref(), Some("Application"));
+        let (label, _) = pair(text_app(Some(&empty), 0));
+        assert_eq!(label, "Application");
     }
 
     #[test]
     fn a_dynamic_item_prepends_its_name_unless_the_reading_has_it() {
         let (name, plain) = (c("CPU"), c("42%"));
-        let (label, description) =
-            pair(unsafe { lambdock_item_text_dynamic(name.as_ptr(), plain.as_ptr()) });
-        assert_eq!(label.as_deref(), Some("CPU: 42%"));
-        assert_eq!(description.as_deref(), Some("Live reading from the dock."));
+        let (label, description) = pair(text_dynamic(Some(&name), Some(&plain)));
+        assert_eq!(label, "CPU: 42%");
+        assert_eq!(description, "Live reading from the dock.");
 
         // Meter items already write "name: reading"; repeating it would read as
         // "CPU: CPU: 42%".
         let reading = c("CPU: 42%");
-        let (label, _) = pair(unsafe { lambdock_item_text_dynamic(name.as_ptr(), reading.as_ptr()) });
-        assert_eq!(label.as_deref(), Some("CPU: 42%"));
+        let (label, _) = pair(text_dynamic(Some(&name), Some(&reading)));
+        assert_eq!(label, "CPU: 42%");
     }
 
     #[test]
     fn a_dynamic_item_without_a_reading_is_just_its_name() {
         let name = c("CPU");
-        for reading in [std::ptr::null(), c("").as_ptr()] {
-            let (label, _) = pair(unsafe { lambdock_item_text_dynamic(name.as_ptr(), reading) });
-            assert_eq!(label.as_deref(), Some("CPU"));
+        let empty = c("");
+
+        for reading in [None, Some(empty.as_c_str())] {
+            let (label, _) = pair(text_dynamic(Some(&name), reading));
+            assert_eq!(label, "CPU");
         }
 
         // Nameless with a reading: the reading is the label.
         let reading = c("42%");
-        let (label, _) = pair(unsafe { lambdock_item_text_dynamic(std::ptr::null(), reading.as_ptr()) });
-        assert_eq!(label.as_deref(), Some("42%"));
+        let (label, _) = pair(text_dynamic(None, Some(&reading)));
+        assert_eq!(label, "42%");
 
         // Nameless and no reading: a generic label rather than an empty one.
-        let (label, _) = pair(unsafe { lambdock_item_text_dynamic(std::ptr::null(), std::ptr::null()) });
-        assert_eq!(label.as_deref(), Some("Reading"));
+        let (label, _) = pair(text_dynamic(None, None));
+        assert_eq!(label, "Reading");
     }
 
     #[test]
     fn a_stack_reads_its_name_and_what_it_opens() {
         let downloads = c("Downloads");
-        let (label, description) = pair(unsafe { lambdock_item_text_stack(downloads.as_ptr()) });
-        assert_eq!(label.as_deref(), Some("Downloads, folder stack"));
-        assert_eq!(description.as_deref(), Some("Opens the folder's contents."));
 
-        let (label, _) = pair(unsafe { lambdock_item_text_stack(std::ptr::null()) });
-        assert_eq!(label.as_deref(), Some("Stack, folder stack"));
+        let (label, description) = pair(text_stack(Some(&downloads)));
+        assert_eq!(label, "Downloads, folder stack");
+        assert_eq!(description, "Opens the folder's contents.");
+
+        let (label, _) = pair(text_stack(None));
+        assert_eq!(label, "Stack, folder stack");
     }
 
     #[test]
     fn the_launchpad_reads_its_name_and_how_to_close_it() {
         let applications = c("Applications");
-        let (label, description) =
-            pair(unsafe { lambdock_item_text_launchpad(applications.as_ptr()) });
-        assert_eq!(label.as_deref(), Some("Applications"));
-        assert!(description.unwrap_or_default().contains("Escape"));
 
-        let (label, _) = pair(unsafe { lambdock_item_text_launchpad(std::ptr::null()) });
-        assert_eq!(label.as_deref(), Some("Applications"));
+        let (label, description) = pair(text_launchpad(Some(&applications)));
+        assert_eq!(label, "Applications");
+        assert!(description.contains("Escape"));
+
+        let (label, _) = pair(text_launchpad(None));
+        assert_eq!(label, "Applications");
     }
 
     #[test]
     fn the_trash_counts_what_is_in_it() {
         let trash = c("Trash");
 
-        let (label, empty) = pair(unsafe { lambdock_item_text_trash(trash.as_ptr(), 0) });
-        assert_eq!(label.as_deref(), Some("Trash"));
-        assert_eq!(empty.as_deref(), Some("The trash is empty. Opens the trash."));
+        let (label, empty) = pair(text_trash(Some(&trash), 0));
+        assert_eq!(label, "Trash");
+        assert_eq!(empty, "The trash is empty. Opens the trash.");
 
-        let (_, one) = pair(unsafe { lambdock_item_text_trash(trash.as_ptr(), 1) });
-        assert_eq!(one.as_deref(), Some("1 item in the trash. Opens the trash."));
+        let (_, one) = pair(text_trash(Some(&trash), 1));
+        assert_eq!(one, "1 item in the trash. Opens the trash.");
 
-        let (_, four) = pair(unsafe { lambdock_item_text_trash(trash.as_ptr(), 4) });
-        assert_eq!(four.as_deref(), Some("4 items in the trash. Opens the trash."));
+        let (_, four) = pair(text_trash(Some(&trash), 4));
+        assert_eq!(four, "4 items in the trash. Opens the trash.");
 
-        let (label, _) = pair(unsafe { lambdock_item_text_trash(std::ptr::null(), 2) });
-        assert_eq!(label.as_deref(), Some("Trash"));
+        let (label, _) = pair(text_trash(None, 2));
+        assert_eq!(label, "Trash");
     }
 
     #[test]
     fn the_trash_tooltip_names_the_count_only_while_there_is_one() {
         let trash = c("Trash");
 
-        for (count, expected) in [
-            (0, "Trash"),
-            (1, "Trash — 1 item"),
-            (7, "Trash — 7 items"),
-        ] {
-            let tooltip = take(unsafe { lambdock_item_trash_tooltip(trash.as_ptr(), count) });
-            assert_eq!(tooltip.as_deref(), Some(expected));
+        for (count, expected) in [(0, "Trash"), (1, "Trash — 1 item"), (7, "Trash — 7 items")] {
+            assert_eq!(trash_tooltip(Some(&trash), count), expected);
         }
 
-        let unnamed = take(unsafe { lambdock_item_trash_tooltip(std::ptr::null(), 0) });
-        assert_eq!(unnamed.as_deref(), Some("Trash"));
+        assert_eq!(trash_tooltip(None, 0), "Trash");
     }
 
     // ======================================================================
@@ -589,49 +371,36 @@ mod tests {
 
     #[test]
     fn the_gauge_fraction_is_clamped_to_a_full_ring_or_an_empty_one() {
-        assert_eq!(lambdock_meter_reading_fraction(50.0, 100.0), 0.5);
-        assert_eq!(lambdock_meter_reading_fraction(0.0, 100.0), 0.0);
-        assert_eq!(lambdock_meter_reading_fraction(100.0, 100.0), 1.0);
+        assert_eq!(meter_reading_fraction(50.0, 100.0), 0.5);
+        assert_eq!(meter_reading_fraction(0.0, 100.0), 0.0);
+        assert_eq!(meter_reading_fraction(100.0, 100.0), 1.0);
 
         // Out-of-range readings fill or empty the ring instead of wrapping it.
-        assert_eq!(lambdock_meter_reading_fraction(250.0, 100.0), 1.0);
-        assert_eq!(lambdock_meter_reading_fraction(-40.0, 100.0), 0.0);
+        assert_eq!(meter_reading_fraction(250.0, 100.0), 1.0);
+        assert_eq!(meter_reading_fraction(-40.0, 100.0), 0.0);
 
         // A gauge with no configured maximum is a percentage gauge.
-        assert_eq!(lambdock_meter_reading_fraction(25.0, 0.0), 0.25);
-        assert_eq!(lambdock_meter_reading_fraction(25.0, -10.0), 0.25);
+        assert_eq!(meter_reading_fraction(25.0, 0.0), 0.25);
+        assert_eq!(meter_reading_fraction(25.0, -10.0), 0.25);
     }
 
     #[test]
     fn a_broken_reading_never_reaches_the_gauge() {
-        assert_eq!(lambdock_meter_reading_fraction(f64::NAN, 100.0), 0.0);
-        assert_eq!(lambdock_meter_reading_fraction(f64::INFINITY, 100.0), 0.0);
+        assert_eq!(meter_reading_fraction(f64::NAN, 100.0), 0.0);
+        assert_eq!(meter_reading_fraction(f64::INFINITY, 100.0), 0.0);
     }
 
     #[test]
     fn the_reading_text_is_whole_numbers_with_the_unit_glued_on() {
         let percent = c("%");
 
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(42.4, percent.as_ptr()) }).as_deref(),
-            Some("42%")
-        );
+        assert_eq!(meter_reading_text(42.4, Some(&percent)), "42%");
         // Rounded to whole numbers, which is all the icon has room for.
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(42.6, percent.as_ptr()) }).as_deref(),
-            Some("43%")
-        );
+        assert_eq!(meter_reading_text(42.6, Some(&percent)), "43%");
 
         let celsius = c("°C");
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(54.0, celsius.as_ptr()) }).as_deref(),
-            Some("54°C")
-        );
-
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(7.0, std::ptr::null()) }).as_deref(),
-            Some("7")
-        );
+        assert_eq!(meter_reading_text(54.0, Some(&celsius)), "54°C");
+        assert_eq!(meter_reading_text(7.0, None), "7");
     }
 
     #[test]
@@ -639,18 +408,12 @@ mod tests {
         let percent = c("%");
 
         // NaN prints as 0, not as "nan".
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(f64::NAN, percent.as_ptr()) }).as_deref(),
-            Some("0%")
-        );
+        assert_eq!(meter_reading_text(f64::NAN, Some(&percent)), "0%");
 
         // A wild reading would otherwise print as twenty digits and break the
         // icon's layout.
         let none = c("");
-        assert_eq!(
-            take(unsafe { lambdock_meter_reading_text(1e300, none.as_ptr()) }).as_deref(),
-            Some("1000000000")
-        );
+        assert_eq!(meter_reading_text(1e300, Some(&none)), "1000000000");
     }
 
     // ======================================================================
@@ -662,15 +425,11 @@ mod tests {
         let (title, name, app_id) = (c("Inbox"), c("Mail"), c("mail"));
 
         assert_eq!(
-            borrow(unsafe {
-                lambdock_window_title_text(0, 1, title.as_ptr(), name.as_ptr(), app_id.as_ptr())
-            }),
+            window_title_text(false, true, Some(&title), Some(&name), Some(&app_id)),
             None
         );
         assert_eq!(
-            borrow(unsafe {
-                lambdock_window_title_text(1, 0, title.as_ptr(), name.as_ptr(), app_id.as_ptr())
-            }),
+            window_title_text(true, false, Some(&title), Some(&name), Some(&app_id)),
             None
         );
     }
@@ -680,11 +439,8 @@ mod tests {
         let (title, name, app_id) = (c("Inbox"), c("Mail"), c("mail"));
 
         assert_eq!(
-            borrow(unsafe {
-                lambdock_window_title_text(1, 1, title.as_ptr(), name.as_ptr(), app_id.as_ptr())
-            })
-            .as_deref(),
-            Some("Inbox")
+            window_title_text(true, true, Some(&title), Some(&name), Some(&app_id)),
+            Some(&*title)
         );
     }
 
@@ -693,38 +449,20 @@ mod tests {
         let (name, app_id) = (c("Mail"), c("mail"));
         let empty = c("");
 
-        for title in [std::ptr::null(), empty.as_ptr()] {
+        for title in [None, Some(empty.as_c_str())] {
             assert_eq!(
-                borrow(unsafe {
-                    lambdock_window_title_text(1, 1, title, name.as_ptr(), app_id.as_ptr())
-                })
-                .as_deref(),
-                Some("Mail")
+                window_title_text(true, true, title, Some(&name), Some(&app_id)),
+                Some(&*name)
             );
         }
 
         assert_eq!(
-            borrow(unsafe {
-                lambdock_window_title_text(1, 1, std::ptr::null(), std::ptr::null(), app_id.as_ptr())
-            })
-            .as_deref(),
-            Some("mail")
+            window_title_text(true, true, None, None, Some(&app_id)),
+            Some(&*app_id)
         );
 
         // Nothing at all to say still hides nothing: an empty title is a title.
-        assert_eq!(
-            borrow(unsafe {
-                lambdock_window_title_text(
-                    1,
-                    1,
-                    std::ptr::null(),
-                    std::ptr::null(),
-                    std::ptr::null(),
-                )
-            })
-            .as_deref(),
-            Some("")
-        );
+        assert_eq!(window_title_text(true, true, None, None, None), Some(c""));
     }
 
     // ======================================================================
@@ -736,21 +474,19 @@ mod tests {
         let (path, key) = (c("/home/me/.config/lambdock/settings.scm"), c("app:Firefox"));
 
         assert_eq!(
-            take(unsafe { lambdock_inspector_launcher_text(path.as_ptr(), key.as_ptr()) }).as_deref(),
-            Some("app:Firefox, from /home/me/.config/lambdock/settings.scm")
+            inspector_launcher_text(Some(&path), Some(&key)),
+            "app:Firefox, from /home/me/.config/lambdock/settings.scm"
         );
 
         let trash = c("trash:Trash");
         assert_eq!(
-            take(unsafe { lambdock_inspector_launcher_text(std::ptr::null(), trash.as_ptr()) })
-                .as_deref(),
-            Some("trash:Trash (no settings file: the fallback dock)")
+            inspector_launcher_text(None, Some(&trash)),
+            "trash:Trash (no settings file: the fallback dock)"
         );
 
         assert_eq!(
-            take(unsafe { lambdock_inspector_launcher_text(std::ptr::null(), std::ptr::null()) })
-                .as_deref(),
-            Some("? (no settings file: the fallback dock)")
+            inspector_launcher_text(None, None),
+            "? (no settings file: the fallback dock)"
         );
     }
 
@@ -761,16 +497,16 @@ mod tests {
         let empty = c("");
 
         assert_eq!(
-            take(unsafe { lambdock_inspector_icon_text(firefox.as_ptr(), 1) }).as_deref(),
-            Some("firefox (found in the icon theme)")
+            inspector_icon_text(Some(&firefox), true),
+            "firefox (found in the icon theme)"
         );
         assert_eq!(
-            take(unsafe { lambdock_inspector_icon_text(missing.as_ptr(), 0) }).as_deref(),
-            Some("no-such-icon (not in the icon theme; a fallback is drawn)")
+            inspector_icon_text(Some(&missing), false),
+            "no-such-icon (not in the icon theme; a fallback is drawn)"
         );
         assert_eq!(
-            take(unsafe { lambdock_inspector_icon_text(empty.as_ptr(), 0) }).as_deref(),
-            Some("no icon configured; the generic executable is drawn")
+            inspector_icon_text(Some(&empty), false),
+            "no icon configured; the generic executable is drawn"
         );
     }
 
@@ -780,33 +516,12 @@ mod tests {
         let empty = c("");
 
         assert_eq!(
-            take(unsafe { lambdock_inspector_poller_text(poller.as_ptr(), 2000) }).as_deref(),
-            Some("get-cpu-value, every 2000 ms")
+            inspector_poller_text(Some(&poller), 2000),
+            "get-cpu-value, every 2000 ms"
         );
         assert_eq!(
-            take(unsafe { lambdock_inspector_poller_text(empty.as_ptr(), 0) }).as_deref(),
-            Some("none: this item does not poll")
+            inspector_poller_text(Some(&empty), 0),
+            "none: this item does not poll"
         );
-    }
-
-    // ======================================================================
-    // Ownership
-    // ======================================================================
-
-    #[test]
-    fn clearing_frees_both_strings_and_zeroes_the_struct() {
-        let name = c("Terminal");
-        let mut text = unsafe { lambdock_item_text_app(name.as_ptr(), 2) };
-
-        assert!(!text.label.is_null());
-        assert!(!text.description.is_null());
-
-        unsafe { lambdock_item_text_clear(&mut text) };
-
-        assert!(text.label.is_null());
-        assert!(text.description.is_null());
-
-        // Clearing NULL is tolerated, so a kind that has nothing to say is safe.
-        unsafe { lambdock_item_text_clear(std::ptr::null_mut()) };
     }
 }

@@ -34,6 +34,7 @@ use gtk4::glib::object::ObjectExt;
 use gtk4::glib::translate::from_glib_none;
 use gtk4::prelude::*;
 use gtk4::{ffi, pango};
+use std::ffi::CStr;
 use std::os::raw::c_int;
 use crate::dock_item::{dock_item_from_widget, dock_item_key, dock_item_refresh_trash, lambdock_item_title};
 use crate::toplevel_tracker::{activate_toplevel_window, close_toplevel_window};
@@ -863,9 +864,11 @@ unsafe fn append_inspector_section(vbox: &gtk4::Box, item: *mut DockItem) {
             .as_ref()
             .map_or(std::ptr::null(), |state| state.config_path)
     };
-    let launcher = crate::core::item_text::lambdock_inspector_launcher_text(config_path, key);
-    append_detail_row(vbox, &crate::cstr::translated(c"Launcher"), &crate::cstr::text_or_empty(launcher));
-    crate::glib::g_free(launcher.cast());
+    let launcher = crate::core::item_text::inspector_launcher_text(
+        unsafe { config_path.as_ref().map(|path| CStr::from_ptr(path)) },
+        unsafe { key.as_ref().map(|key| CStr::from_ptr(key)) },
+    );
+    append_detail_row(vbox, &crate::cstr::translated(c"Launcher"), &launcher);
     crate::glib::g_free(key.cast());
 
     let entry = item_desktop_entry(item);
@@ -876,19 +879,22 @@ unsafe fn append_inspector_section(vbox: &gtk4::Box, item: *mut DockItem) {
     };
     append_detail_row(vbox, &crate::cstr::translated(c"Desktop entry"), &entry_text);
 
-    let icon_text = crate::core::item_text::lambdock_inspector_icon_text(
-        (*item).icon,
-        c_int::from(icon_is_known(item)),
+    let icon_text = crate::core::item_text::inspector_icon_text(
+        unsafe { (*item).icon.as_ref().map(|icon| CStr::from_ptr(icon)) },
+        icon_is_known(item),
     );
-    append_detail_row(vbox, &crate::cstr::translated(c"Icon"), &crate::cstr::text_or_empty(icon_text));
-    crate::glib::g_free(icon_text.cast());
+    append_detail_row(vbox, &crate::cstr::translated(c"Icon"), &icon_text);
 
-    let poller_text = crate::core::item_text::lambdock_inspector_poller_text(
-        (*item).poll_name,
+    let poller_text = crate::core::item_text::inspector_poller_text(
+        unsafe {
+            (*item)
+                .poll_name
+                .as_ref()
+                .map(|name| CStr::from_ptr(name))
+        },
         (*item).poll_interval,
     );
-    append_detail_row(vbox, &crate::cstr::translated(c"Poller"), &crate::cstr::text_or_empty(poller_text));
-    crate::glib::g_free(poller_text.cast());
+    append_detail_row(vbox, &crate::cstr::translated(c"Poller"), &poller_text);
 }
 
 /// The inspector's own row, plus the details when it is open.
