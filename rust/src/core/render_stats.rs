@@ -18,7 +18,7 @@ use std::os::raw::{c_char, c_int};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The two counters the shelf bumps, by the header's enum order: a reflection
-/// repaint and each band it draws inside one.
+/// repaint and the draw inside it (the mirror, faded by its mask).
 pub const REFLECTION_PAINTS: c_int = 5;
 pub const REFLECTION_DRAWS: c_int = 6;
 

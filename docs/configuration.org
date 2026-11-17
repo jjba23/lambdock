@@ -151,7 +151,7 @@ nothing at all.
 | ~dock-shelf-front~            | ~0~                          | Glass on the outer (screen edge) side: the front face, in px.                   |
 | ~dock-reflection~             | ~0~                          | Reflection band height / icon size. 0 disables the reflections.                 |
 | ~dock-reflection-intensity~   | ~0.55~                       | Alpha of the reflection where it touches the icon.                              |
-| ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections.                           |
+| ~dock-reflection-blur~        | ~0.05~                       | Gaussian blur radius / icon size for the reflections. ~0~ keeps the mirror crisp, and costs one render target less per repaint. |
 | ~dock-shelf-flare~            | ~0~                          | Keystone: px the slab is wider per side at the screen edge (-80 … 80).          |
 | ~dock-launchpad-icon-size~    | ~80~                         | Icon pixel size inside the launchpad grid (32 … 160).                          |
 | ~dock-launchpad-columns~      | ~0~                          | Launchpad tiles per row; 0 fits the screen, 3 … 14 is an upper bound.          |

@@ -466,7 +466,7 @@ flat capsule, so a dock that says nothing looks exactly like it always did.
 | ~dock-shelf-flare~          | ~0~     | -80 … 80   | Keystone: how much wider the slab is at the *screen* edge, per side, px. 0 = a plain rectangle. |
 | ~dock-reflection~           | ~0~     | 0 … 2      | Reflection band height / icon size. 0 = no reflections.         |
 | ~dock-reflection-intensity~ | ~0.55~  | 0 … 1      | Alpha of the reflection where it touches the icon.              |
-| ~dock-reflection-blur~      | ~0.05~  | 0 … 0.25   | Gaussian blur radius / icon size.                               |
+| ~dock-reflection-blur~      | ~0.05~  | 0 … 0.25   | Gaussian blur radius / icon size. ~0~: no blur, and one render target less per reflection repaint. |
 
 Out-of-range values are clamped instead of failing, and every option can also be
 set from the ~(configure-dock! ...)~ keyword arguments (~#:shelf-margin~,
@@ -799,8 +799,9 @@ A couple of shapes worth stealing:
   overhang the inner edge, and the front face is the glass in front of them.
 - *Reflection* paints a mirrored, gaussian-blurred copy that fades out over the
   front face, plus a soft contact shadow under the icon and the running-app dot
-  near the outer edge. The fade is drawn in bands sized to the band height, so a
-  short mirror fades smoothly instead of showing steps.
+  near the outer edge. The fade is a linear-gradient mask over one draw of the
+  mirror, so a short mirror fades smoothly, and a repaint costs one draw rather
+  than one per fade band.
 - Everything is derived: the capsule, the overlay's reserved space, the exclusive
   zone, the auto-hide distance and the fisheye geometry all read the same numbers.
   Put them back to their defaults and the dock is pixel-identical to before, live,

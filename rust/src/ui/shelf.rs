@@ -41,12 +41,23 @@ use std::os::raw::{c_double, c_int, c_void};
 /// `DEFAULT_ICON_SIZE` in `lambdock.h`.
 const DEFAULT_ICON_SIZE: c_int = 48;
 
-/// `SHELF_REFLECTION_BANDS` in `lambdock.h`: the most bands one reflection
-/// repaint may cost.
-const REFLECTION_BANDS: c_int = 16;
+/// The stops the reflection's fade is drawn with. Six is enough to bend the
+/// straight line of a gradient into the wash the band stack approximated, and it
+/// is one gradient either way.
+const FADE_STOPS: i32 = 6;
 
-/// The fewest bands a reflection is drawn with, however thin the band is.
-const MIN_BANDS: c_int = 6;
+/// The alpha a reflection fades to at `t`, where 0 is the icon's edge and 1 the
+/// far edge of the band: `intensity` at the icon, nothing at the end, on the
+/// power curve the band stack used.
+pub fn reflection_fade_alpha(intensity: f64, t: f64) -> f64 {
+    if !intensity.is_finite() || intensity <= 0.0 {
+        return 0.0;
+    }
+
+    let t = t.clamp(0.0, 1.0);
+
+    intensity.min(1.0) * (1.0 - t).powf(1.1)
+}
 
 /// The shelf parameters that should be used for `state`.
 ///
@@ -109,21 +120,6 @@ pub fn geometry(params: &ShelfParams, icon_size: c_int) -> ShelfGeometry {
 /// The shelf measured out for `state` at `icon_size`.
 pub fn lambdock_shelf_geometry_for(state: &LambdockState, icon_size: c_int) -> ShelfGeometry {
     geometry(&lambdock_shelf_params_effective(state), icon_size)
-}
-
-/// How many clipped draws one reflection repaint costs.
-///
-/// The fade is painted as a stack of bands, so this is the per-repaint budget of
-/// the whole widget: a pure function, and tested, because "a few bands" is not a
-/// budget.
-pub fn lambdock_reflection_band_count(axis_len: f64) -> c_int {
-    // NaN and a zero-length axis both get the full budget: there is nothing to
-    // fade, and a widget must still paint the bands it promised.
-    if axis_len.is_nan() || axis_len <= 0.0 {
-        return REFLECTION_BANDS;
-    }
-
-    (axis_len.round() as c_int).clamp(MIN_BANDS, REFLECTION_BANDS)
 }
 
 /// The keystone that gives the dock its shelf-look silhouette, as a graphene
@@ -1074,50 +1070,70 @@ mod reflection_imp {
                 }
 
                 let blur_unit = if vertical { w } else { h };
-                let blur = (blur_unit * self.blur_ratio.get()).max(0.5);
+                // A blur of its own is a render target per reflection, per
+                // repaint: a stylesheet that wants the mirror crisp says so with a
+                // radius of zero instead of paying for a blur nobody sees.
+                let blur = blur_unit * self.blur_ratio.get();
 
                 let offset = graphene::Point::new(tx, ty);
                 let mirror = gsk::Transform::new().translate(&offset).scale(sx, sy);
 
-                snapshot.push_blur(blur);
-
-                // The reflection fades as it recedes from the icon: draw the mirrored
-                // artwork once per slice, with a power-curve alpha. Each slice's clip
-                // is pushed *before* the mirror transform, so it is expressed in the
-                // widget's own coordinates.
-                let axis_len = if vertical { h } else { w };
-                let bands = lambdock_reflection_band_count(axis_len);
-                let band_len = axis_len / f64::from(bands);
-
-                for index in 0..bands {
-                    let start = band_len * f64::from(index);
-                    let t = (start + band_len * 0.5) / axis_len; // 0 = icon edge, 1 = far
-
-                    let alpha = self.intensity.get() * (1.0 - t).powf(1.1);
-                    if alpha <= 0.001 {
-                        continue;
-                    }
-
-                    let clip = if vertical {
-                        graphene::Rect::new(0.0, start as f32, w as f32, band_len as f32)
-                    } else {
-                        graphene::Rect::new(start as f32, 0.0, band_len as f32, h as f32)
-                    };
-
-                    snapshot.push_clip(&clip);
-                    snapshot.push_opacity(alpha);
-                    snapshot.save();
-                    snapshot.transform(Some(&mirror));
-                    paintable.snapshot(snapshot, sw, sh);
-                    crate::core::render_stats::lambdock_stats_bump(
-                        crate::core::render_stats::REFLECTION_DRAWS,
-                    );
-                    snapshot.restore();
-                    snapshot.pop(); // opacity
-                    snapshot.pop(); // clip
+                // One masked draw, under a blur when the stylesheet asks for one.
+                // It replaces one clipped draw per band (fourteen at the depth the
+                // Platinum shelf uses) inside the same blur: the blur is what
+                // softens the mirror, not the banding, so it stays.
+                let blurred = blur > 0.0;
+                if blurred {
+                    snapshot.push_blur(blur);
                 }
 
-                snapshot.pop(); // blur
+                // The fade is the mask: a linear gradient from `intensity` at the
+                // icon's edge to transparent at the far edge. A band stack
+                // approximated that with hard steps the blur had to smooth; a
+                // gradient has no steps, and costs one draw instead of fourteen.
+                let axis_len = if vertical { h } else { w };
+                let (from, to) = if vertical {
+                    (
+                        graphene::Point::new(0.0, 0.0),
+                        graphene::Point::new(0.0, axis_len as f32),
+                    )
+                } else {
+                    (
+                        graphene::Point::new(0.0, 0.0),
+                        graphene::Point::new(axis_len as f32, 0.0),
+                    )
+                };
+
+                let intensity = self.intensity.get();
+                let stops: Vec<gsk::ColorStop> = (0..FADE_STOPS)
+                    .map(|index| {
+                        let t = f64::from(index) / f64::from(FADE_STOPS - 1);
+                        let alpha = reflection_fade_alpha(intensity, t) as f32;
+                        gsk::ColorStop::new(t as f32, gdk::RGBA::new(1.0, 1.0, 1.0, alpha))
+                    })
+                    .collect();
+
+                let bounds = graphene::Rect::new(0.0, 0.0, w as f32, h as f32);
+
+                snapshot.push_mask(gsk::MaskMode::Alpha);
+                snapshot.append_linear_gradient(&bounds, &from, &to, &stops);
+                // Ends the mask; what follows is drawn through it.
+                snapshot.pop();
+
+                snapshot.save();
+                snapshot.transform(Some(&mirror));
+                paintable.snapshot(snapshot, sw, sh);
+                snapshot.restore();
+
+                crate::core::render_stats::lambdock_stats_bump(
+                    crate::core::render_stats::REFLECTION_DRAWS,
+                );
+
+                // Ends the masked group, then the blur when there is one.
+                snapshot.pop();
+                if blurred {
+                    snapshot.pop();
+                }
             }
 
             if self.running.get() {
@@ -1588,18 +1604,29 @@ mod tests {
         assert_eq!(geometry(&params, -5).capsule_px, 48);
     }
 
-    /// The band has a floor and a ceiling: a hairline band is still drawn in
-    /// enough strips to fade, and a deep one does not cost an unbounded number of
-    /// draws.
+    /// The reflection fades from its intensity at the icon's edge to nothing at
+    /// the far edge, on a curve that stays above the straight line.
     #[test]
-    fn the_band_count_is_a_budget() {
-        assert_eq!(lambdock_reflection_band_count(0.0), REFLECTION_BANDS);
-        assert_eq!(lambdock_reflection_band_count(-4.0), REFLECTION_BANDS);
-        assert_eq!(lambdock_reflection_band_count(f64::NAN), REFLECTION_BANDS);
+    fn the_reflection_fades_from_its_intensity_to_nothing() {
+        assert!((reflection_fade_alpha(0.6, 0.0) - 0.6).abs() < 1e-9);
+        assert_eq!(reflection_fade_alpha(0.6, 1.0), 0.0);
 
-        assert_eq!(lambdock_reflection_band_count(1.0), MIN_BANDS);
-        assert_eq!(lambdock_reflection_band_count(10.4), 10);
-        assert_eq!(lambdock_reflection_band_count(99.0), REFLECTION_BANDS);
+        // Monotonic towards the far edge, and below the straight ramp it bends
+        // away from: the exponent keeps the fade close to the icon.
+        let quarter = reflection_fade_alpha(0.6, 0.25);
+        let half = reflection_fade_alpha(0.6, 0.5);
+        assert!(quarter > half && half > 0.0 && quarter < 0.6);
+        assert!(half < 0.6 * 0.5);
+
+        // Out-of-range fractions are the ends, not a panic or a negative alpha.
+        assert!((reflection_fade_alpha(0.6, -3.0) - 0.6).abs() < 1e-9);
+        assert_eq!(reflection_fade_alpha(0.6, 9.0), 0.0);
+
+        // An intensity nobody meant paints nothing, and one past 1 is clamped.
+        assert_eq!(reflection_fade_alpha(f64::NAN, 0.5), 0.0);
+        assert_eq!(reflection_fade_alpha(-1.0, 0.0), 0.0);
+        assert_eq!(reflection_fade_alpha(0.0, 0.0), 0.0);
+        assert!((reflection_fade_alpha(4.0, 0.0) - 1.0).abs() < 1e-9);
     }
 
     /// The geometry the C asks for is the same one these tests measure, from a

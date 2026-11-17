@@ -1761,8 +1761,8 @@ classic ~icon + 24~ capsule, so the flat dock is untouched.
   pass-through.
 - ~LambdockReflection~ (=rust/src/ui/shelf.rs=) paints, per item: the contact shadow under
   the icon, the mirrored/blurred/faded copy, and the running-app glow dot near
-  the outer edge. The fade uses a number of bands proportional to the band
-  height (sub-pixel bands would be quantised away and leave gaps).
+  the outer edge. The fade is a linear-gradient mask: the mirror is drawn once,
+  and the blur softens the mirror itself rather than the edges of a band stack.
 - ~apply_shelf_layout()~ shows/hides and sizes those widgets from the parameters
   and the fisheye state; ~update_dock_item_status()~ feeds the running dot.
 - Scheme side: every parameter is a ~dock-*~ option plus a getter/setter, and
@@ -1805,9 +1805,30 @@ frames sweeping the pointer across it:
 
 and 20 sub-pixel jitter frames (a trackpad) cost =0= layout steps and =0=
 geometry rebuilds: =FISHEYE_POINTER_STEP_PX= drops them before they touch a
-widget. A reflection repaint costs one clipped draw per fade band, and
-=lambdock_reflection_band_count()= is pure and tested: 14 draws at the 14 px band
-the Platinum shelf uses, 16 in the worst case.
+widget. A reflection repaint is one masked draw -- the icon mirrored once, faded
+by a linear-gradient mask -- plus, when the stylesheet asks for it, the blur that
+softens the mirror. It used to be one clipped draw per fade band (fourteen at the
+depth the Platinum shelf uses) inside the same blur, and the mirrors are
+re-painted on every magnification step, so the bands were most of a hover's CPU.
+
+The layout step follows the pointer: =fisheye_layout_step()= gives a creeping
+pointer the two-pixel step and a sweeping one a coarser step (up to six), because
+every layout step re-measures and re-allocates the whole row and nobody can see a
+wide step at speed. The painted magnification stays continuous either way.
+
+Measured on one machine (niri, 1880x1253 at 1.2, a 27-item dock, an ~11 s sweep
+driven by a virtual pointer; one jiffy is 10 ms of CPU):
+
+| Hover sweep, 27 items                | Before  | After |
+|--------------------------------------+---------+-------|
+| mirrors on (the Platinum shelf look) | 314-324 | 151-156 |
+| flat dock, no mirrors                | 125     | 87-89 |
+| one hide + one reveal (auto-hide)    | --      | 3-4   |
+
+A hide and a reveal were never the expensive part: together they cost 3-4 jiffies,
+which is the two 250 ms margin slides and the poll refresh at the end of the
+reveal. What made them feel heavy was the repaint that follows a slide, and that
+is the same row of mirrors the table above is about.
 
 ** Where the time actually goes, and where it does not
 The counters say *what* happens per frame; the interesting question after that is
