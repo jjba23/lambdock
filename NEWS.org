@@ -11,6 +11,25 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.2 (2026-11-17)
+
+- *An installed dock finds its Scheme modules again.* =~/.local/bin/lambdock~,
+  a Nix profile, a Flatpak: every one of them died at startup with
+  ~no code for module (lambdock core)~, because the dock put exactly one path on
+  Guile's load path -- the *relative* ~scheme~, which only resolves when the
+  binary is run from the source tree. The installed directory was compiled in
+  only when the build set ~LAMBDOCK_SCHEME_DIR~, and no recipe did: not Guix, not
+  Nix, not the Flatpak, not the container. Now the dock derives the prefix from
+  its own location (~<prefix>/bin/lambdock~ → ~<prefix>/share/guile/site/3.0~)
+  when the build named no directory, and every recipe names one, so both the
+  packaged and the hand-installed case work from any working directory. The same
+  fallback gives the translations their ~<prefix>/share/locale~: ~main_app.rs~
+  read ~LAMBDOCK_LOCALEDIR~ through ~option_env!~, which never sees an
+  environment variable unless ~build.rs~ forwards it, so ~bindtextdomain~ was
+  never called at all and the dock always spoke English.
+
+
+
 ** v2.1.1 (2026-11-17)
 
 - *The C seam is gone.* Every module used to declare its functions ~#[no_mangle]

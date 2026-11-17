@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.2" date="2026-11-17">
+      <description>
+        <p>An installed dock finds its Scheme modules again. Every packaged copy — a Nix profile, a Guix profile, a Flatpak, the container — died at startup with <code>no code for module (lambdock core)</code>, because the dock put one path on Guile's load path: the relative <code>scheme</code>, which only resolves when the binary is run from the source tree. The installed directory was compiled in only when the build set <code>LAMBDOCK_SCHEME_DIR</code>, and no recipe did. The dock now derives the prefix from its own location when the build named no directory, every recipe names one, and the same fallback gives the translations their <code>share/locale</code> — which <code>bindtextdomain</code> was never given, so the dock always spoke English.</p>
+      </description>
+    </release>
     <release version="2.1.1" date="2026-11-17">
       <description>
         <p>The C seam the port left behind is gone. Every module used to export its functions with <code>#[no_mangle] pub extern "C"</code>, and modules called each other through <code>extern "C"</code> blocks that named their own crate; nothing outside the crate calls in any more, so the 381 attributes are removed, 68 cross-module calls are ordinary imports, 411 definitions moved to the Rust ABI, and only the 57 functions C really calls -- GLib timeouts and idles, GTK tick callbacks and signal handlers, the Wayland listener tables, the Xlib error handler and the four Guile subrs -- keep it. Four hundred functions take no raw pointer; the ones whose bodies need no unsafe are plain <code>fn</code> now. Nothing a user sees changes: the suite, the lints, a run on niri and a REPL-driven reload are the same as before.</p>
