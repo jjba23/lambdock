@@ -91,12 +91,12 @@ file. Resolving it here is what keeps those docks reading the same override file
 as a PATH-ed one, instead of silently dropping it because the key is not a
 string."
   (let ((candidate (if (and (string? config-path)
-                            (not (string-null? config-path)))
-                       config-path
-                       (get-config-path))))
+                         (not (string-null? config-path)))
+                     config-path
+                     (get-config-path))))
     (and (string? candidate)
-         (not (string-null? candidate))
-         candidate)))
+      (not (string-null? candidate))
+      candidate)))
 
 (define (%empty-layout)
   (list (cons 'order '())
@@ -109,19 +109,19 @@ string."
 sections. A missing, unreadable or malformed file simply means \"no overrides\"."
   (let* ((path (dock-layout-path config-path))
          (data (catch #t
-                 (lambda ()
-                   (and (file-exists? path) (call-with-input-file path read)))
-                 (lambda (key . args)
-                   (log-warn "Layout"
-                             "Ignoring unreadable dock layout ~a (~a)"
-                             path key)
-                   #f))))
+                      (lambda ()
+                        (and (file-exists? path) (call-with-input-file path read)))
+                      (lambda (key . args)
+                        (log-warn "Layout"
+                                  "Ignoring unreadable dock layout ~a (~a)"
+                                  path key)
+                        #f))))
     (if (and (list? data) (every pair? data))
-        (list (cons 'order (or (assq-ref data 'order) '()))
-              (cons 'removed (or (assq-ref data 'removed) '()))
-              (cons 'added (or (assq-ref data 'added) '()))
-              (cons 'views (or (assq-ref data 'views) '())))
-        (%empty-layout))))
+      (list (cons 'order (or (assq-ref data 'order) '()))
+            (cons 'removed (or (assq-ref data 'removed) '()))
+            (cons 'added (or (assq-ref data 'added) '()))
+            (cons 'views (or (assq-ref data 'views) '())))
+      (%empty-layout))))
 
 (define (dock-layout-ref config-path)
   "Returns the parsed override layout of CONFIG-PATH, read fresh from disk.
@@ -138,28 +138,28 @@ Takes the layout as a value instead of re-reading it: a mutation already holds
 the layout it just built, and re-reading would write the file it is replacing."
   (let ((target (dock-layout-target config-path)))
     (if (not target)
-        #f
-        (let ((path (dock-layout-path target)))
-          (ensure-directory (dirname path))
-          (catch #t
-                 (lambda ()
-                   (call-with-output-file path
-                     (lambda (port)
-                       (format port ";; lambdock dock layout for ~a~%" target)
-                       (format port
-                               ";; Written automatically by drag and drop in the dock, and by the~%")
-                       (format port
-                               ";; Preferences window's \"Add an item\" row.~%")
-                       (format port
-                               ";; Delete this file to go back to the items in your settings file.~%")
-                       (write layout port)
-                       (newline port)))
-                   (log-info "Layout" "Saved dock layout overrides to ~a" path)
-                   #t)
-                 (lambda (err . args)
-                   (log-error "Layout" "Could not write dock layout ~a (~a ~s)"
-                              path err args)
-                   #f))))))
+      #f
+      (let ((path (dock-layout-path target)))
+        (ensure-directory (dirname path))
+        (catch #t
+               (lambda ()
+                 (call-with-output-file path
+                                        (lambda (port)
+                                          (format port ";; lambdock dock layout for ~a~%" target)
+                                          (format port
+                                                  ";; Written automatically by drag and drop in the dock, and by the~%")
+                                          (format port
+                                                  ";; Preferences window's \"Add an item\" row.~%")
+                                          (format port
+                                                  ";; Delete this file to go back to the items in your settings file.~%")
+                                          (write layout port)
+                                          (newline port)))
+                 (log-info "Layout" "Saved dock layout overrides to ~a" path)
+                 #t)
+               (lambda (err . args)
+                 (log-error "Layout" "Could not write dock layout ~a (~a ~s)"
+                            path err args)
+                 #f))))))
 
 (define (dock-layout-reset! config-path)
   "Forgets every override of CONFIG-PATH (used by tests and by the REPL)."
@@ -176,15 +176,15 @@ The presets are the dock's ready-made widgets (trash, clock, ram, cpu,
 cpu-temp, battery) and its launcher shortcuts; (lambdock presets) is the single
 place that knows them, so this module does not keep a second list."
   (and (string? preset-name)
-       (not (string-null? preset-name))
-       (preset-launcher (string->symbol preset-name))))
+    (not (string-null? preset-name))
+    (preset-launcher (string->symbol preset-name))))
 
 (define (%descriptor-item-key desc)
   "The dock-item-key of the item DESC builds, without building it twice."
   (if (and (pair? desc) (equal? (car desc) "preset"))
-      (let ((item (%preset-item (and (>= (length desc) 2) (cadr desc)))))
-        (and item (dock-item-key item)))
-      #f))
+    (let ((item (%preset-item (and (>= (length desc) 2) (cadr desc)))))
+      (and item (dock-item-key item)))
+    #f))
 
 (define (%descriptor-key desc)
   "The stable key of a stored descriptor, which must match the key of the item
@@ -194,34 +194,34 @@ added item.
 Preset descriptors store the preset's name (\"ram\"), not the item's name
 (\"RAM Usage\"), so their key is derived from the item they build."
   (or (%descriptor-item-key desc)
-      (format #f "~a:~a" (list-ref desc 0) (list-ref desc 1))))
+    (format #f "~a:~a" (list-ref desc 0) (list-ref desc 1))))
 
 (define (%descriptor->item desc)
   "Rebuilds a dock item from a stored (kind name icon argument view) descriptor."
   (catch #t
          (lambda ()
            (if (or (not (list? desc)) (< (length desc) 5))
-               #f
-               (let ((kind (list-ref desc 0))
-                     (name (list-ref desc 1))
-                     (icon (list-ref desc 2))
-                     (arg (list-ref desc 3))
-                     (view (string->symbol (list-ref desc 4))))
-                 (cond ((string=? kind "app")
-                        (app-item #:name name #:icon icon #:exec arg))
-                       ((string=? kind "stack")
-                        (stack-item #:name name #:icon icon #:path arg
-                                    #:view-mode view))
-                       ((string=? kind "launchpad")
-                        (launchpad-item #:name name #:icon icon))
-                       ((string=? kind "preset")
-                        (or (%preset-item name)
-                            (begin
-                              (log-warn "Layout"
-                                        "Skipping unknown stored dock preset ~s"
-                                        name)
-                              #f)))
-                       (else #f)))))
+             #f
+             (let ((kind (list-ref desc 0))
+                   (name (list-ref desc 1))
+                   (icon (list-ref desc 2))
+                   (arg (list-ref desc 3))
+                   (view (string->symbol (list-ref desc 4))))
+               (cond [(string=? kind "app")
+                      (app-item #:name name #:icon icon #:exec arg)]
+                     [(string=? kind "stack")
+                      (stack-item #:name name #:icon icon #:path arg
+                                  #:view-mode view)]
+                     [(string=? kind "launchpad")
+                      (launchpad-item #:name name #:icon icon)]
+                     [(string=? kind "preset")
+                      (or (%preset-item name)
+                        (begin
+                          (log-warn "Layout"
+                                    "Skipping unknown stored dock preset ~s"
+                                    name)
+                          #f))]
+                     [else #f]))))
          (lambda (key . args)
            (log-warn "Layout" "Skipping invalid stored dock item ~s (~a)"
                      desc key)
@@ -230,14 +230,14 @@ Preset descriptors store the preset's name (\"ram\"), not the item's name
 (define (%apply-view item views)
   "Applies a stored per-item view mode (stacks only) to ITEM."
   (let ((stored (and (eq? (dock-item-type item) 'stack)
-                     (assoc-ref views (dock-item-key item)))))
+                  (assoc-ref views (dock-item-key item)))))
     (if (memq stored '(grid list))
-        (stack-item #:name (dock-item-name item)
-                    #:icon (dock-item-icon item)
-                    #:path (dock-item-path item)
-                    #:view-mode stored
-                    #:hover-animate? (dock-item-hover-animate? item))
-        item)))
+      (stack-item #:name (dock-item-name item)
+                  #:icon (dock-item-icon item)
+                  #:path (dock-item-path item)
+                  #:view-mode stored
+                  #:hover-animate? (dock-item-hover-animate? item))
+      item)))
 
 (define (%rank-items base added order)
   "Pairs every item with the rank that decides its place in the dock.
@@ -258,22 +258,22 @@ explicitly (which is what the running dock writes as soon as the drop lands)."
 
     (let base-loop ((rest base) (previous 0.0) (ranked '()))
       (if (null? rest)
-          (let* ((base-ranked (reverse ranked))
-                 (last-rank (if (null? base-ranked)
-                                0.0
-                                (apply max (map car base-ranked)))))
-            (append base-ranked
-                    (let add-loop ((items added)
-                                   (rank (+ (ceiling last-rank) 1.0))
-                                   (out '()))
-                      (if (null? items)
-                          (reverse out)
-                          (add-loop (cdr items) (+ rank 1.0)
-                                    (cons (cons rank (car items)) out))))))
-          (let* ((item (car rest))
-                 (stored (hash-ref positions (dock-item-key item) #f))
-                 (rank (or stored (+ previous 0.5))))
-            (base-loop (cdr rest) rank (cons (cons rank item) ranked)))))))
+        (let* ((base-ranked (reverse ranked))
+               (last-rank (if (null? base-ranked)
+                            0.0
+                            (apply max (map car base-ranked)))))
+          (append base-ranked
+                  (let add-loop ((items added)
+                                 (rank (+ (ceiling last-rank) 1.0))
+                                 (out '()))
+                    (if (null? items)
+                      (reverse out)
+                      (add-loop (cdr items) (+ rank 1.0)
+                                (cons (cons rank (car items)) out))))))
+        (let* ((item (car rest))
+               (stored (hash-ref positions (dock-item-key item) #f))
+               (rank (or stored (+ previous 0.5))))
+          (base-loop (cdr rest) rank (cons (cons rank item) ranked)))))))
 
 (define (%log-overrides target layout items)
   "Say what the stored layout does to ITEMS, and flag stale order keys.
@@ -288,8 +288,8 @@ of silently ignoring it."
          (known (append (map dock-item-key items)
                         (filter-map (lambda (desc)
                                       (and (list? desc)
-                                           (>= (length desc) 2)
-                                           (%descriptor-key desc)))
+                                        (>= (length desc) 2)
+                                        (%descriptor-key desc)))
                                     added)))
          (unknown (remove (lambda (key) (member key known)) order)))
     (when (or (pair? order) (pair? removed) (pair? added))
@@ -314,25 +314,25 @@ A dock with no settings path of its own uses the default settings file's layout
 losing its layout."
   (let ((target (dock-layout-target config-path)))
     (if (not target)
-        items
-        (let* ((layout (dock-layout-ref config-path))
-               (order (assq-ref layout 'order))
-               (removed (assq-ref layout 'removed))
-               (views (assq-ref layout 'views))
-               (base (filter (lambda (item)
-                               (not (member (dock-item-key item) removed)))
-                             items))
-               (base (map (lambda (item) (%apply-view item views)) base))
-               (existing (map dock-item-key base))
-               (added (filter (lambda (item)
-                                (not (member (dock-item-key item) existing)))
-                              (map (lambda (item) (%apply-view item views))
-                                   (filter-map %descriptor->item
-                                               (assq-ref layout 'added)))))
-               (ranked (%rank-items base added order)))
-          (%log-overrides target layout items)
-          (map cdr (stable-sort ranked
-                                (lambda (a b) (< (car a) (car b)))))))))
+      items
+      (let* ((layout (dock-layout-ref config-path))
+             (order (assq-ref layout 'order))
+             (removed (assq-ref layout 'removed))
+             (views (assq-ref layout 'views))
+             (base (filter (lambda (item)
+                             (not (member (dock-item-key item) removed)))
+                           items))
+             (base (map (lambda (item) (%apply-view item views)) base))
+             (existing (map dock-item-key base))
+             (added (filter (lambda (item)
+                              (not (member (dock-item-key item) existing)))
+                            (map (lambda (item) (%apply-view item views))
+                                 (filter-map %descriptor->item
+                                             (assq-ref layout 'added)))))
+             (ranked (%rank-items base added order)))
+        (%log-overrides target layout items)
+        (map cdr (stable-sort ranked
+                              (lambda (a b) (< (car a) (car b)))))))))
 
 ;; =============================================================================
 ;; Mutation (called from the C side for drag and drop)
@@ -381,8 +381,8 @@ losing its layout."
                              (remove (lambda (key) (string=? key item-key))
                                      (assq-ref layout 'order))
                              (if (member item-key removed)
-                                 removed
-                                 (cons item-key removed))
+                               removed
+                               (cons item-key removed))
                              (remove (lambda (desc)
                                        (string=? (%descriptor-key desc)
                                                  item-key))

@@ -12,8 +12,8 @@
   #:use-module (lambdock layout)
   #:use-module (lambdock looks)
   #:use-module (lambdock items)
-  #:export ( ;Configuration Entry Point
-             configure-dock!
+  #:export (;Configuration Entry Point
+            configure-dock!
             <dock-config>
             dock-config?
             get-dock-config
@@ -179,8 +179,8 @@
 (define %default-fallback-config%
   (make-dock-config 'bottom
                     48
-                    4       ; item spacing (px between dock items)
-                    12      ; capsule padding (px inside the capsule's ends)
+                    4 ; item spacing (px between dock items)
+                    12 ; capsule padding (px inside the capsule's ends)
                     '()
                     #f
                     #t
@@ -193,22 +193,22 @@
                     #t
                     'dock
                     #f
-                    0       ; shelf-tilt (degrees)
-                    400     ; shelf-perspective (px)
-                    24      ; shelf-margin (px, C's CAPSULE_PADDING_PX)
-                    0       ; shelf-front (px)
-                    0.0     ; reflection (band height / icon size)
-                    0.55    ; reflection-intensity
-                    0.05    ; reflection-blur (blur radius / icon size)
-                    0       ; shelf-flare (keystone px per side)
-                    80      ; launchpad-icon-size (px)
-                    0       ; launchpad-columns (0 = fit the screen)
-                    #f      ; launchpad-blur? (frosted backdrop)
-                    'left   ; launchpad-close-side (the launchpad's X)
-                    #f      ; reduce-motion? (disable animations)
-                    #f      ; mirror-of (no source: an ordinary dock)
-                    '()     ; mirror-exclude (item keys to drop)
-                    '()))   ; mirror-kinds (item types to keep)
+                    0 ; shelf-tilt (degrees)
+                    400 ; shelf-perspective (px)
+                    24 ; shelf-margin (px, C's CAPSULE_PADDING_PX)
+                    0 ; shelf-front (px)
+                    0.0 ; reflection (band height / icon size)
+                    0.55 ; reflection-intensity
+                    0.05 ; reflection-blur (blur radius / icon size)
+                    0 ; shelf-flare (keystone px per side)
+                    80 ; launchpad-icon-size (px)
+                    0 ; launchpad-columns (0 = fit the screen)
+                    #f ; launchpad-blur? (frosted backdrop)
+                    'left ; launchpad-close-side (the launchpad's X)
+                    #f ; reduce-motion? (disable animations)
+                    #f ; mirror-of (no source: an ordinary dock)
+                    '() ; mirror-exclude (item keys to drop)
+                    '())) ; mirror-kinds (item types to keep)
 
 ;; =============================================================================
 ;; Configuration Interface
@@ -294,36 +294,36 @@ anything else (an old symbol, a typo, a string) is the documented default."
     ;; ALWAYS update 'default key if this is the primary settings file or initial load
     (when (or (eq? config-path
                    'default)
-              (string-suffix? "settings.scm"
-                              (format #f "~a" config-path)))
+            (string-suffix? "settings.scm"
+                            (format #f "~a" config-path)))
       (hash-set! *dock-configs*
                  'default cfg))
 
     (log-info "State"
-     "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a/padding ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
-     config-path
-     (if (list? items)
-         (length items) 0)
-     position
-     theme
-     auto-hide?
-     enable-repl?
-     repl-socket-path
-     track-windows?
-     mode
-     icon-size
-     item-spacing
-     capsule-padding
-     shelf-tilt
-     shelf-margin
-     shelf-front
-     reflection
-     shelf-flare)))
+              "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a/padding ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
+              config-path
+              (if (list? items)
+                (length items) 0)
+              position
+              theme
+              auto-hide?
+              enable-repl?
+              repl-socket-path
+              track-windows?
+              mode
+              icon-size
+              item-spacing
+              capsule-padding
+              shelf-tilt
+              shelf-margin
+              shelf-front
+              reflection
+              shelf-flare)))
 
 (define (get-dock-config key)
   (or (hash-ref *dock-configs* key #f)
-      (hash-ref *dock-configs*
-                'default #f) %default-fallback-config%))
+    (hash-ref *dock-configs*
+              'default #f) %default-fallback-config%))
 
 ;; =============================================================================
 ;; Getters
@@ -336,14 +336,14 @@ anything else (an old symbol, a typo, a string) is the documented default."
 
 (define (dock-name-stem value)
   "The settings-file stem a mirror source names: a path, a file name or a symbol."
-  (let* ((raw (cond ((string? value) value)
-                    ((symbol? value) (symbol->string value))
-                    (else #f)))
+  (let* ((raw (cond [(string? value) value]
+                    [(symbol? value) (symbol->string value)]
+                    [else #f]))
          (base (and raw (basename raw))))
     (and base
-         (if (string-suffix? ".scm" base)
-             (substring base 0 (- (string-length base) 4))
-             base))))
+      (if (string-suffix? ".scm" base)
+        (substring base 0 (- (string-length base) 4))
+        base))))
 
 (define (dock-key-for-name name)
   "The *dock-configs* key NAME refers to, or #f.
@@ -354,139 +354,139 @@ settings file that something else generates can know without hardcoding a home
 directory."
   (let ((stem (dock-name-stem name)))
     (and stem
-         (or (and (hash-ref *dock-configs* name #f) name)
-             (hash-fold (lambda (key _ found)
-                          (or found
-                              (and (equal? stem (dock-name-stem key)) key)))
-                        #f *dock-configs*)))))
+      (or (and (hash-ref *dock-configs* name #f) name)
+        (hash-fold (lambda (key _ found)
+                     (or found
+                       (and (equal? stem (dock-name-stem key)) key)))
+                   #f *dock-configs*)))))
 
 (define (%mirror-keeps? item exclude kinds)
   "Whether a mirror keeps ITEM: not excluded by key and of a wanted kind."
   (and (not (member (dock-item-key item) exclude))
-       (or (null? kinds) (memq (dock-item-type item) kinds))))
+    (or (null? kinds) (memq (dock-item-type item) kinds))))
 
 (define (%mirror-items source own-key exclude kinds)
   (let ((source-key (dock-key-for-name source)))
     (cond
-      ((not source-key)
+      [(not source-key)
        (log-warn "State"
                  "Mirror dock [~a] names unknown source ~s: it shows no items"
                  own-key source)
-       '())
-      ((equal? source-key own-key)
+       '()]
+      [(equal? source-key own-key)
        (log-warn "State"
                  "Mirror dock [~a] names itself as its source: it shows no items"
                  own-key)
-       '())
-      (else
-       (filter (lambda (item)
-                 (%mirror-keeps? item exclude kinds))
-               (get-dock-items source-key))))))
+       '()]
+      [else
+        (filter (lambda (item)
+                  (%mirror-keeps? item exclude kinds))
+                (get-dock-items source-key))])))
 
 (define (get-dock-items . args)
   (let* ((key (if (null? args)
-                  'default
-                  (car args)))
+                'default
+                (car args)))
          (cfg (get-dock-config key))
          (mirror-of (dock-config-mirror-of cfg)))
     (if mirror-of
-        (%mirror-items mirror-of key
-                       (dock-config-mirror-exclude cfg)
-                       (dock-config-mirror-kinds cfg))
-        ;; Drag and drop edits (order, additions, removals, stack view modes) are
-        ;; replayed on top of the configured items, so the settings file stays
-        ;; the source of truth while the running dock remains freely
-        ;; rearrangeable.
-        (apply-dock-overrides (dock-config-items cfg) key))))
+      (%mirror-items mirror-of key
+                     (dock-config-mirror-exclude cfg)
+                     (dock-config-mirror-kinds cfg))
+      ;; Drag and drop edits (order, additions, removals, stack view modes) are
+      ;; replayed on top of the configured items, so the settings file stays
+      ;; the source of truth while the running dock remains freely
+      ;; rearrangeable.
+      (apply-dock-overrides (dock-config-items cfg) key))))
 
 (define (get-dock-position . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-position cfg)))
 
 (define (get-dock-theme . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-theme cfg)))
 
 (define (get-dock-icon-size . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-icon-size cfg)))
 
 (define (get-dock-item-spacing . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-item-spacing cfg)))
 
 (define (get-dock-capsule-padding . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-capsule-padding cfg)))
 
 (define (get-dock-auto-hide? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-auto-hide? cfg)))
 
 (define (get-dock-show-when-clear? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-show-when-clear? cfg)))
 
 (define (get-dock-monitor . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-monitor cfg)))
 
 (define (get-dock-exclude-apps . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-exclude-apps cfg)))
 
 (define (get-dock-enable-repl? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-enable-repl? cfg)))
 
 (define (get-dock-repl-socket-path . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-repl-socket-path cfg)))
 
 (define (get-dock-hover-animate? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-hover-animate? cfg)))
 
 (define (get-dock-track-windows? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-track-windows? cfg)))
 
 (define (get-dock-mode . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-mode cfg)))
 
 (define (get-dock-show-window-titles? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-show-window-titles? cfg)))
 
 ;; --- Shelf geometry / reflection parameters ---------------------------------
@@ -495,50 +495,50 @@ directory."
 
 (define (get-dock-shelf-tilt . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-shelf-tilt cfg)))
 
 (define (get-dock-shelf-perspective . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-shelf-perspective cfg)))
 
 (define (get-dock-shelf-margin . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-shelf-margin cfg)))
 
 (define (get-dock-shelf-front . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-shelf-front cfg)))
 
 (define (get-dock-reflection . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-reflection cfg)))
 
 (define (get-dock-reflection-intensity . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-reflection-intensity cfg)))
 
 (define (get-dock-reflection-blur . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-reflection-blur cfg)))
 
 (define (get-dock-shelf-flare . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-shelf-flare cfg)))
 
 ;; --- Launchpad ---------------------------------------------------------------
@@ -547,28 +547,28 @@ directory."
 
 (define (get-dock-launchpad-icon-size . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-launchpad-icon-size cfg)))
 
 (define (get-dock-launchpad-columns . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-launchpad-columns cfg)))
 
 (define (get-dock-launchpad-blur? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-launchpad-blur? cfg)))
 
 (define (get-dock-launchpad-close-side . args)
   "Returns 'left (the default) or 'right: the end of the launchpad's header the
 close button sits on."
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-launchpad-close-side cfg)))
 
 ;; --- Accessibility -----------------------------------------------------------
@@ -577,26 +577,26 @@ close button sits on."
 
 (define (get-dock-reduce-motion? . args)
   (let ((cfg (get-dock-config (if (null? args)
-                                  'default
-                                  (car args)))))
+                                'default
+                                (car args)))))
     (dock-config-reduce-motion? cfg)))
 
 ;; --- Mirrors ---------------------------------------------------------------
 
 (define (get-dock-mirror-of . args)
   (dock-config-mirror-of (get-dock-config (if (null? args)
-                                              'default
-                                              (car args)))))
+                                            'default
+                                            (car args)))))
 
 (define (get-dock-mirror-exclude . args)
   (dock-config-mirror-exclude (get-dock-config (if (null? args)
-                                                  'default
-                                                  (car args)))))
+                                                 'default
+                                                 (car args)))))
 
 (define (get-dock-mirror-kinds . args)
   (dock-config-mirror-kinds (get-dock-config (if (null? args)
-                                                'default
-                                                (car args)))))
+                                               'default
+                                               (car args)))))
 
 ;; =============================================================================
 ;; Setters
@@ -612,18 +612,18 @@ close button sits on."
                (let ((proc (module-ref mod
                                        'reload-dock! #f)))
                  (when (and proc
-                            (procedure? proc))
+                         (procedure? proc))
                    (proc))))))
          (lambda _
            #f)))
 
 (define (apply-to-targets proc args)
   (if (null? args)
-      (hash-for-each (lambda (k cfg)
-                       (proc cfg)) *dock-configs*)
-      (let ((cfg (get-dock-config (car args))))
-        (when cfg
-          (proc cfg))))
+    (hash-for-each (lambda (k cfg)
+                     (proc cfg)) *dock-configs*)
+    (let ((cfg (get-dock-config (car args))))
+      (when cfg
+        (proc cfg))))
   (trigger-ui-reload!))
 
 (define (set-dock-position! val . args)
@@ -741,32 +741,32 @@ close button sits on."
 (define (apply-look-setting! cfg key value)
   "Writes one (KEY . VALUE) of a look recipe into the config record CFG."
   (case key
-    ((theme dock-theme) (set-dock-config-theme! cfg value))
-    ((icon-size dock-icon-size) (set-dock-config-icon-size! cfg value))
-    ((item-spacing dock-item-spacing)
-     (set-dock-config-item-spacing! cfg value))
-    ((capsule-padding dock-capsule-padding)
-     (set-dock-config-capsule-padding! cfg value))
-    ((mode dock-mode) (set-dock-config-mode! cfg value))
-    ((show-window-titles? dock-show-window-titles?)
-     (set-dock-config-show-window-titles?! cfg value))
-    ((hover-animate? dock-hover-animate?)
-     (set-dock-config-hover-animate?! cfg value))
-    ((launchpad-blur? dock-launchpad-blur?)
-     (set-dock-config-launchpad-blur?! cfg value))
-    ((shelf-tilt dock-shelf-tilt) (set-dock-config-shelf-tilt! cfg value))
-    ((shelf-perspective dock-shelf-perspective)
-     (set-dock-config-shelf-perspective! cfg value))
-    ((shelf-margin dock-shelf-margin) (set-dock-config-shelf-margin! cfg value))
-    ((shelf-front dock-shelf-front) (set-dock-config-shelf-front! cfg value))
-    ((shelf-flare dock-shelf-flare) (set-dock-config-shelf-flare! cfg value))
-    ((reflection dock-reflection) (set-dock-config-reflection! cfg value))
-    ((reflection-intensity dock-reflection-intensity)
-     (set-dock-config-reflection-intensity! cfg value))
-    ((reflection-blur dock-reflection-blur)
-     (set-dock-config-reflection-blur! cfg value))
-    (else
-     (log-warn "State" "Look setting '~a' has no runtime setter; ignored" key))))
+    [(theme dock-theme) (set-dock-config-theme! cfg value)]
+    [(icon-size dock-icon-size) (set-dock-config-icon-size! cfg value)]
+    [(item-spacing dock-item-spacing)
+     (set-dock-config-item-spacing! cfg value)]
+    [(capsule-padding dock-capsule-padding)
+     (set-dock-config-capsule-padding! cfg value)]
+    [(mode dock-mode) (set-dock-config-mode! cfg value)]
+    [(show-window-titles? dock-show-window-titles?)
+     (set-dock-config-show-window-titles?! cfg value)]
+    [(hover-animate? dock-hover-animate?)
+     (set-dock-config-hover-animate?! cfg value)]
+    [(launchpad-blur? dock-launchpad-blur?)
+     (set-dock-config-launchpad-blur?! cfg value)]
+    [(shelf-tilt dock-shelf-tilt) (set-dock-config-shelf-tilt! cfg value)]
+    [(shelf-perspective dock-shelf-perspective)
+     (set-dock-config-shelf-perspective! cfg value)]
+    [(shelf-margin dock-shelf-margin) (set-dock-config-shelf-margin! cfg value)]
+    [(shelf-front dock-shelf-front) (set-dock-config-shelf-front! cfg value)]
+    [(shelf-flare dock-shelf-flare) (set-dock-config-shelf-flare! cfg value)]
+    [(reflection dock-reflection) (set-dock-config-reflection! cfg value)]
+    [(reflection-intensity dock-reflection-intensity)
+     (set-dock-config-reflection-intensity! cfg value)]
+    [(reflection-blur dock-reflection-blur)
+     (set-dock-config-reflection-blur! cfg value)]
+    [else
+      (log-warn "State" "Look setting '~a' has no runtime setter; ignored" key)]))
 
 (define (apply-look! look . args)
   "Applies the whole-dock LOOK (a recipe name, alias, or string) to the running
@@ -784,21 +784,21 @@ defaults -- so no geometry is inherited from the look that was there before.
 Only the running dock changes; write the look into settings.scm to keep it."
   (let ((settings (preset-look look)))
     (if (not (pair? settings))
-        (begin
-          (log-warn "State" "Unknown look '~a': nothing applied" look)
-          #f)
-        (begin
-          (apply-to-targets
-           (lambda (cfg)
-             (for-each (lambda (pair)
-                         (apply-look-setting! cfg (car pair) (cdr pair)))
-                       settings))
-           args)
-          (log-info "State" "Applied the '~a' look to ~a (~a settings)"
-                    (look-name look)
-                    (if (null? args) "every dock" (car args))
-                    (length settings))
-          #t))))
+      (begin
+        (log-warn "State" "Unknown look '~a': nothing applied" look)
+        #f)
+      (begin
+        (apply-to-targets
+         (lambda (cfg)
+           (for-each (lambda (pair)
+                       (apply-look-setting! cfg (car pair) (cdr pair)))
+                     settings))
+         args)
+        (log-info "State" "Applied the '~a' look to ~a (~a settings)"
+                  (look-name look)
+                  (if (null? args) "every dock" (car args))
+                  (length settings))
+        #t))))
 
 ;; =============================================================================
 ;; Capturing the resolved dock as settings.scm
@@ -811,34 +811,34 @@ Only the running dock changes; write the look into settings.scm to keep it."
 
 (define (settings-value value)
   "VALUE written as a settings-file expression."
-  (cond ((string? value) (format #f "~s" value))
-        ((symbol? value) (format #f "'~a" value))
-        ((boolean? value) (if value "#t" "#f"))
-        ((null? value) "'()")
-        ((or (number? value) (pair? value)) (format #f "'~s" value))
-        (else (format #f "~s" value))))
+  (cond [(string? value) (format #f "~s" value)]
+        [(symbol? value) (format #f "'~a" value)]
+        [(boolean? value) (if value "#t" "#f")]
+        [(null? value) "'()"]
+        [(or (number? value) (pair? value)) (format #f "'~s" value)]
+        [else (format #f "~s" value)]))
 
 (define (settings-hover item)
   "The #:hover-animate? argument of ITEM, or \"\" when it is the default #t."
   (if (dock-item-hover-animate? item)
-      ""
-      " #:hover-animate? #f"))
+    ""
+    " #:hover-animate? #f"))
 
 ;; A preset is recognised by rebuilding it from the item's own fields and
 ;; comparing the two values: that way a changed field falls back to the generic
 ;; dynamic item instead of silently exporting the preset's default.
 (define (settings-same-item? a b)
   (and (eq? (dock-item-type a) (dock-item-type b))
-       (equal? (dock-item-name a) (dock-item-name b))
-       (equal? (dock-item-icon a) (dock-item-icon b))
-       (equal? (dock-item-exec a) (dock-item-exec b))
-       (eq? (dock-item-poll-fn a) (dock-item-poll-fn b))
-       (= (dock-item-poll-interval a) (dock-item-poll-interval b))
-       (eq? (dock-item-hover-animate? a) (dock-item-hover-animate? b))
-       (eq? (dock-item-meter? a) (dock-item-meter? b))
-       (eq? (dock-item-clock? a) (dock-item-clock? b))
-       (equal? (dock-item-unit a) (dock-item-unit b))
-       (= (dock-item-max a) (dock-item-max b))))
+    (equal? (dock-item-name a) (dock-item-name b))
+    (equal? (dock-item-icon a) (dock-item-icon b))
+    (equal? (dock-item-exec a) (dock-item-exec b))
+    (eq? (dock-item-poll-fn a) (dock-item-poll-fn b))
+    (= (dock-item-poll-interval a) (dock-item-poll-interval b))
+    (eq? (dock-item-hover-animate? a) (dock-item-hover-animate? b))
+    (eq? (dock-item-meter? a) (dock-item-meter? b))
+    (eq? (dock-item-clock? a) (dock-item-clock? b))
+    (equal? (dock-item-unit a) (dock-item-unit b))
+    (= (dock-item-max a) (dock-item-max b))))
 
 (define (settings-preset-text item)
   "The preset constructor that rebuilds ITEM, or #f for a custom poller."
@@ -846,67 +846,67 @@ Only the running dock changes; write the look into settings.scm to keep it."
         (meter? (dock-item-meter? item))
         (interval (dock-item-poll-interval item)))
     (cond
-      ((settings-same-item? item (clock-item #:hover-animate? hover))
-       (format #f "(clock-item~a)" (settings-hover item)))
-      ((settings-same-item? item (ram-item #:poll-interval interval
+      [(settings-same-item? item (clock-item #:hover-animate? hover))
+       (format #f "(clock-item~a)" (settings-hover item))]
+      [(settings-same-item? item (ram-item #:poll-interval interval
                                            #:hover-animate? hover
                                            #:meter? meter?))
        (format #f "(ram-item #:poll-interval ~a~a~a)"
                interval (settings-hover item)
-               (if meter? "" " #:meter? #f")))
-      ((settings-same-item? item (cpu-item #:hover-animate? hover
+               (if meter? "" " #:meter? #f"))]
+      [(settings-same-item? item (cpu-item #:hover-animate? hover
                                            #:meter? meter?))
        (format #f "(cpu-item~a~a)"
                (settings-hover item)
-               (if meter? "" " #:meter? #f")))
-      ((settings-same-item? item (cpu-temp-item #:hover-animate? hover
+               (if meter? "" " #:meter? #f"))]
+      [(settings-same-item? item (cpu-temp-item #:hover-animate? hover
                                                 #:meter? meter?))
        (format #f "(cpu-temp-item~a~a)"
                (settings-hover item)
-               (if meter? "" " #:meter? #f")))
-      ((settings-same-item? item (battery-item #:hover-animate? hover))
-       (format #f "(battery-item~a)" (settings-hover item)))
-      (else #f))))
+               (if meter? "" " #:meter? #f"))]
+      [(settings-same-item? item (battery-item #:hover-animate? hover))
+       (format #f "(battery-item~a)" (settings-hover item))]
+      [else #f])))
 
 (define (settings-dynamic-text item)
   "A dynamic item as an expression, with its poller named in a comment."
   (or (settings-preset-text item)
-      (format #f
-              ";; poll-fn: ~a -- a Scheme procedure cannot be written out; redefine it here.
+    (format #f
+            ";; poll-fn: ~a -- a Scheme procedure cannot be written out; redefine it here.
   (dynamic-item #:name ~s #:icon ~s #:exec ~s #:poll-interval ~a~a~a~a~a)"
-              (dock-item-poll-name item)
-              (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
-              (dock-item-poll-interval item)
-              (settings-hover item)
-              (if (dock-item-clock? item) " #:clock? #t" "")
-              (if (dock-item-meter? item) " #:meter? #t" "")
-              (if (dock-item-meter? item)
-                  (format #f " #:unit ~s #:max ~a"
-                          (dock-item-unit item) (dock-item-max item))
-                  ""))))
+            (dock-item-poll-name item)
+            (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
+            (dock-item-poll-interval item)
+            (settings-hover item)
+            (if (dock-item-clock? item) " #:clock? #t" "")
+            (if (dock-item-meter? item) " #:meter? #t" "")
+            (if (dock-item-meter? item)
+              (format #f " #:unit ~s #:max ~a"
+                      (dock-item-unit item) (dock-item-max item))
+              ""))))
 
 (define (settings-item-text item)
   "ITEM as the settings-file expression that builds it."
   (case (dock-item-type item)
-    ((app)
+    [(app)
      (format #f "(app-item #:name ~s #:icon ~s #:exec ~s~a)"
              (dock-item-name item) (dock-item-icon item) (dock-item-exec item)
-             (settings-hover item)))
-    ((separator) "(separator-item)")
-    ((stack)
+             (settings-hover item))]
+    [(separator) "(separator-item)"]
+    [(stack)
      (format #f "(stack-item #:name ~s #:icon ~s #:path ~s #:view-mode '~a~a)"
              (dock-item-name item) (dock-item-icon item) (dock-item-path item)
-             (dock-item-view-mode item) (settings-hover item)))
-    ((launchpad)
+             (dock-item-view-mode item) (settings-hover item))]
+    [(launchpad)
      (format #f "(launchpad-item #:name ~s #:icon ~s~a)"
              (dock-item-name item) (dock-item-icon item)
-             (settings-hover item)))
-    ((trash)
+             (settings-hover item))]
+    [(trash)
      (format #f "(trash-item #:name ~s #:icon ~s~a)"
              (dock-item-name item) (dock-item-icon item)
-             (settings-hover item)))
-    ((dynamic) (settings-dynamic-text item))
-    (else (format #f ";; unknown item ~s" (dock-item-key item)))))
+             (settings-hover item))]
+    [(dynamic) (settings-dynamic-text item)]
+    [else (format #f ";; unknown item ~s" (dock-item-key item))]))
 
 (define (dock-settings-scm config-path)
   "The resolved configuration of CONFIG-PATH, as settings.scm text.
@@ -918,87 +918,87 @@ rather than the resolved copies of another dock's items."
   (let* ((cfg (get-dock-config config-path))
          (mirror (dock-config-mirror-of cfg)))
     (with-output-to-string
-      (lambda ()
-        (format #t
-                ";; lambdock settings, exported from the running dock~%")
-        (format #t ";; Source dock: ~a~%" config-path)
-        (format #t
-                ";; Resolved configuration: the settings file, the GUI preferences~%")
-        (format #t
-                ";; and the drag-and-drop layout, as values.  Save it as settings.scm~%")
-        (format #t ";; to make the dock on screen the dock it starts from.~%~%")
-        (format #t "(define dock-position ~a)~%"
-                (settings-value (dock-config-position cfg)))
-        (format #t "(define dock-theme ~a)~%"
-                (settings-value (dock-config-theme cfg)))
-        (format #t "(define dock-icon-size ~a)~%"
-                (dock-config-icon-size cfg))
-        (format #t "(define dock-item-spacing ~a)~%"
-                (dock-config-item-spacing cfg))
-        (format #t "(define dock-capsule-padding ~a)~%"
-                (dock-config-capsule-padding cfg))
-        (format #t "(define dock-monitor ~a)~%"
-                (settings-value (dock-config-monitor cfg)))
-        (format #t "(define dock-mode ~a)~%"
-                (settings-value (dock-config-mode cfg)))
-        (format #t "(define dock-auto-hide? ~a)~%"
-                (if (dock-config-auto-hide? cfg) "#t" "#f"))
-        (format #t "(define dock-show-when-clear? ~a)~%"
-                (if (dock-config-show-when-clear? cfg) "#t" "#f"))
-        (format #t "(define dock-hover-animate? ~a)~%"
-                (if (dock-config-hover-animate? cfg) "#t" "#f"))
-        (format #t "(define dock-track-windows? ~a)~%"
-                (if (dock-config-track-windows? cfg) "#t" "#f"))
-        (format #t "(define dock-show-window-titles? ~a)~%"
-                (if (dock-config-show-window-titles? cfg) "#t" "#f"))
-        (format #t "(define dock-exclude-apps ~a)~%"
-                (settings-value (dock-config-exclude-apps cfg)))
-        (format #t "(define dock-enable-repl? ~a)~%"
-                (if (dock-config-enable-repl? cfg) "#t" "#f"))
-        (format #t "(define dock-repl-socket-path ~a)~%"
-                (settings-value (dock-config-repl-socket-path cfg)))
-        (format #t "(define dock-reduce-motion? ~a)~%"
-                (if (dock-config-reduce-motion? cfg) "#t" "#f"))
-        (format #t "(define dock-shelf-tilt ~a)~%"
-                (dock-config-shelf-tilt cfg))
-        (format #t "(define dock-shelf-perspective ~a)~%"
-                (dock-config-shelf-perspective cfg))
-        (format #t "(define dock-shelf-margin ~a)~%"
-                (dock-config-shelf-margin cfg))
-        (format #t "(define dock-shelf-front ~a)~%"
-                (dock-config-shelf-front cfg))
-        (format #t "(define dock-shelf-flare ~a)~%"
-                (dock-config-shelf-flare cfg))
-        (format #t "(define dock-reflection ~a)~%"
-                (dock-config-reflection cfg))
-        (format #t "(define dock-reflection-intensity ~a)~%"
-                (dock-config-reflection-intensity cfg))
-        (format #t "(define dock-reflection-blur ~a)~%"
-                (dock-config-reflection-blur cfg))
-        (format #t "(define dock-launchpad-icon-size ~a)~%"
-                (dock-config-launchpad-icon-size cfg))
-        (format #t "(define dock-launchpad-columns ~a)~%"
-                (dock-config-launchpad-columns cfg))
-        (format #t "(define dock-launchpad-blur? ~a)~%"
-                (if (dock-config-launchpad-blur? cfg) "#t" "#f"))
-        (format #t "(define dock-launchpad-close-side ~a)~%"
-                (settings-value (dock-config-launchpad-close-side cfg)))
+     (lambda ()
+       (format #t
+               ";; lambdock settings, exported from the running dock~%")
+       (format #t ";; Source dock: ~a~%" config-path)
+       (format #t
+               ";; Resolved configuration: the settings file, the GUI preferences~%")
+       (format #t
+               ";; and the drag-and-drop layout, as values.  Save it as settings.scm~%")
+       (format #t ";; to make the dock on screen the dock it starts from.~%~%")
+       (format #t "(define dock-position ~a)~%"
+               (settings-value (dock-config-position cfg)))
+       (format #t "(define dock-theme ~a)~%"
+               (settings-value (dock-config-theme cfg)))
+       (format #t "(define dock-icon-size ~a)~%"
+               (dock-config-icon-size cfg))
+       (format #t "(define dock-item-spacing ~a)~%"
+               (dock-config-item-spacing cfg))
+       (format #t "(define dock-capsule-padding ~a)~%"
+               (dock-config-capsule-padding cfg))
+       (format #t "(define dock-monitor ~a)~%"
+               (settings-value (dock-config-monitor cfg)))
+       (format #t "(define dock-mode ~a)~%"
+               (settings-value (dock-config-mode cfg)))
+       (format #t "(define dock-auto-hide? ~a)~%"
+               (if (dock-config-auto-hide? cfg) "#t" "#f"))
+       (format #t "(define dock-show-when-clear? ~a)~%"
+               (if (dock-config-show-when-clear? cfg) "#t" "#f"))
+       (format #t "(define dock-hover-animate? ~a)~%"
+               (if (dock-config-hover-animate? cfg) "#t" "#f"))
+       (format #t "(define dock-track-windows? ~a)~%"
+               (if (dock-config-track-windows? cfg) "#t" "#f"))
+       (format #t "(define dock-show-window-titles? ~a)~%"
+               (if (dock-config-show-window-titles? cfg) "#t" "#f"))
+       (format #t "(define dock-exclude-apps ~a)~%"
+               (settings-value (dock-config-exclude-apps cfg)))
+       (format #t "(define dock-enable-repl? ~a)~%"
+               (if (dock-config-enable-repl? cfg) "#t" "#f"))
+       (format #t "(define dock-repl-socket-path ~a)~%"
+               (settings-value (dock-config-repl-socket-path cfg)))
+       (format #t "(define dock-reduce-motion? ~a)~%"
+               (if (dock-config-reduce-motion? cfg) "#t" "#f"))
+       (format #t "(define dock-shelf-tilt ~a)~%"
+               (dock-config-shelf-tilt cfg))
+       (format #t "(define dock-shelf-perspective ~a)~%"
+               (dock-config-shelf-perspective cfg))
+       (format #t "(define dock-shelf-margin ~a)~%"
+               (dock-config-shelf-margin cfg))
+       (format #t "(define dock-shelf-front ~a)~%"
+               (dock-config-shelf-front cfg))
+       (format #t "(define dock-shelf-flare ~a)~%"
+               (dock-config-shelf-flare cfg))
+       (format #t "(define dock-reflection ~a)~%"
+               (dock-config-reflection cfg))
+       (format #t "(define dock-reflection-intensity ~a)~%"
+               (dock-config-reflection-intensity cfg))
+       (format #t "(define dock-reflection-blur ~a)~%"
+               (dock-config-reflection-blur cfg))
+       (format #t "(define dock-launchpad-icon-size ~a)~%"
+               (dock-config-launchpad-icon-size cfg))
+       (format #t "(define dock-launchpad-columns ~a)~%"
+               (dock-config-launchpad-columns cfg))
+       (format #t "(define dock-launchpad-blur? ~a)~%"
+               (if (dock-config-launchpad-blur? cfg) "#t" "#f"))
+       (format #t "(define dock-launchpad-close-side ~a)~%"
+               (settings-value (dock-config-launchpad-close-side cfg)))
 
-        (if mirror
-            (begin
-              (format #t "~%;; A mirror: the item list is read from this dock.~%")
-              (format #t "(define dock-mirror-of ~a)~%"
-                      (settings-value mirror))
-              (format #t "(define dock-mirror-exclude ~a)~%"
-                      (settings-value (dock-config-mirror-exclude cfg)))
-              (format #t "(define dock-mirror-kinds ~a)~%"
-                      (settings-value (dock-config-mirror-kinds cfg))))
-            (begin
-              (format #t "~%(define dock-items (list~%")
-              (for-each (lambda (item)
-                          (format #t "  ~a~%" (settings-item-text item)))
-                        (get-dock-items config-path))
-              (format #t "))~%")))))))
+       (if mirror
+         (begin
+           (format #t "~%;; A mirror: the item list is read from this dock.~%")
+           (format #t "(define dock-mirror-of ~a)~%"
+                   (settings-value mirror))
+           (format #t "(define dock-mirror-exclude ~a)~%"
+                   (settings-value (dock-config-mirror-exclude cfg)))
+           (format #t "(define dock-mirror-kinds ~a)~%"
+                   (settings-value (dock-config-mirror-kinds cfg))))
+         (begin
+           (format #t "~%(define dock-items (list~%")
+           (for-each (lambda (item)
+                       (format #t "  ~a~%" (settings-item-text item)))
+                     (get-dock-items config-path))
+           (format #t "))~%")))))))
 
 (define* (export-dock-settings! config-path #:key target)
   "Writes the resolved dock of CONFIG-PATH as settings.scm text.
@@ -1015,8 +1015,8 @@ the running dock resolves, not what its settings file happens to spell."
            (lambda ()
              (ensure-directory (dirname path))
              (call-with-output-file path
-               (lambda (port)
-                 (display (dock-settings-scm config-path) port)))
+                                    (lambda (port)
+                                      (display (dock-settings-scm config-path) port)))
              (log-info "State" "Exported the resolved dock to ~a" path)
              path)
            (lambda (key . args)

@@ -56,9 +56,9 @@
 
 (define (look-key->symbol key)
   "Coerces KEY (a symbol or a string) to a symbol. Returns #f otherwise."
-  (cond ((symbol? key) key)
-        ((string? key) (string->symbol key))
-        (else #f)))
+  (cond [(symbol? key) key]
+        [(string? key) (string->symbol key)]
+        [else #f]))
 
 (define (look-name look)
   "the distro symbol naming LOOK, resolving aliases, or #f when there is no such look.
@@ -66,8 +66,8 @@ Accepts a symbol or a string, so both (look-name 'glass) and
 (look-name \"glass-dark\") work."
   (let ((key (look-key->symbol look)))
     (and key
-         (let ((canonical (or (assq-ref look-aliases key) key)))
-           (and (assq canonical dock-looks) canonical)))))
+      (let ((canonical (or (assq-ref look-aliases key) key)))
+        (and (assq canonical dock-looks) canonical)))))
 
 (define (preset-look look)
   "The recipe alist for LOOK (symbol or string; aliases allowed), or #f."
@@ -83,13 +83,13 @@ Accepts a symbol or a string, so both (look-name 'glass) and
 KEY may be written with or without the `dock-' prefix."
   (let ((settings (preset-look look)))
     (and settings
-         (let* ((sym (look-key->symbol key))
-                (str (and sym (symbol->string sym)))
-                (bare (if (and str (string-prefix? "dock-" str))
-                          (string->symbol (substring str 5))
-                          sym)))
-           (let ((pair (and bare (assq bare settings))))
-             (and pair (cdr pair)))))))
+      (let* ((sym (look-key->symbol key))
+             (str (and sym (symbol->string sym)))
+             (bare (if (and str (string-prefix? "dock-" str))
+                     (string->symbol (substring str 5))
+                     sym)))
+        (let ((pair (and bare (assq bare settings))))
+          (and pair (cdr pair)))))))
 
 (define (look? look)
   "Whether LOOK names a shipped recipe."

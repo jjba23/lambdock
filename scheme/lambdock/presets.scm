@@ -16,8 +16,8 @@
                look-settings
                look-setting
                look?)
-  #:export ( ;Alists
-             preset-icons
+  #:export (;Alists
+            preset-icons
             preset-launchers
 
             ;; Lookup & Convenience Functions
@@ -42,8 +42,8 @@
 Accepts variadic symbols e.g. (preset-launchers-for 'alacritty 'firefox)
 or a single list e.g. (preset-launchers-for '(alacritty firefox))."
   (let ((target-keys (if (and (pair? keys)
-                              (list? (car keys)))
-                         (car keys) keys)))
+                           (list? (car keys)))
+                       (car keys) keys)))
     (filter-map (lambda (k)
                   (let ((item (preset-launcher k)))
                     (unless item
@@ -56,8 +56,8 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
 ;; =============================================================================
 
 (define preset-icons
-  '( ;Web Browsers
-     (google-chrome . "google-chrome")
+  '(;Web Browsers
+    (google-chrome . "google-chrome")
     (google-chrome-flatpak . "com.google.Chrome")
     (firefox . "firefox")
     (firefox-flatpak . "org.mozilla.firefox")
@@ -148,11 +148,11 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
 ;; =============================================================================
 
 (define preset-launchers
-  `( ;Web Browsers
-     (google-chrome unquote
-                    (app-item #:name "Google Chrome"
-                              #:exec "google-chrome"
-                              #:icon "google-chrome"))
+  `(;Web Browsers
+    (google-chrome unquote
+                   (app-item #:name "Google Chrome"
+                             #:exec "google-chrome"
+                             #:icon "google-chrome"))
     (google-chrome-flatpak unquote
                            (app-item #:name "Google Chrome"
                                      #:exec "flatpak run com.google.Chrome"
@@ -280,9 +280,9 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
                         #:icon "idea"))
     (intellij-flatpak unquote
                       (app-item #:name "IntelliJ IDEA"
-                       #:exec
-                       "flatpak run com.jetbrains.IntelliJ-IDEA-Community"
-                       #:icon "com.jetbrains.IntelliJ-IDEA-Community"))
+                                #:exec
+                                "flatpak run com.jetbrains.IntelliJ-IDEA-Community"
+                                #:icon "com.jetbrains.IntelliJ-IDEA-Community"))
     (webstorm unquote
               (app-item #:name "WebStorm"
                         #:exec "webstorm"

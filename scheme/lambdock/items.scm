@@ -1,7 +1,7 @@
-;; lambdock -- hyper-hackable desktop dock for Wayland
-;;
-;; SPDX-License-Identifier: MIT
-;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
+;;; lambdock -- hyper-hackable desktop dock for Wayland
+;;;
+;;; SPDX-License-Identifier: MIT
+;;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 (define-module (lambdock items)
   #:declarative? #t
@@ -150,15 +150,15 @@ the thunk it carries, and a thunk in a settings file has no name to read back
 unless it was defined with `define'."
   (let ((fn (%dock-item-poll-fn item)))
     (if (procedure? fn)
-        (let ((name (catch #t
-                           (lambda ()
-                             (procedure-name fn))
-                           (lambda _
-                             #f))))
-          (cond ((symbol? name) (symbol->string name))
-                ((string? name) name)
-                (else "anonymous procedure")))
-        "")))
+      (let ((name (catch #t
+                         (lambda ()
+                           (procedure-name fn))
+                         (lambda _
+                           #f))))
+        (cond [(symbol? name) (symbol->string name)]
+              [(string? name) name]
+              [else "anonymous procedure"]))
+      "")))
 
 ;; Generic constructor for custom app launchers
 (define* (app-item #:key (name "Unknown")
@@ -241,8 +241,8 @@ unless it was defined with `define'."
                   hover-animate?
                   path
                   (if (memq view-mode '(grid list))
-                      view-mode
-                      'grid)
+                    view-mode
+                    'grid)
                   #f
                   #f
                   ""
@@ -299,32 +299,32 @@ reading formatted for a text item."
   (catch #t
          (lambda ()
            (call-with-input-file "/proc/meminfo"
-             (lambda (port)
-               (define (parse-kb line)
-                 (let* ((parts (string-split line #\space))
-                        (nums (filter (lambda (s)
-                                        (not (string-null? s))) parts)))
-                   (and (>= (length nums) 2)
-                        (string->number (list-ref nums 1)))))
-               (let loop
-                 ((line (read-line port))
-                  (mem-total #f)
-                  (mem-available #f))
-                 (cond
-                   ((and mem-total mem-available)
-                    (let* ((used (- mem-total mem-available))
-                           (pct (inexact->exact (round (* (/ used mem-total)
-                                                          100)))))
-                      pct))
-                   ((eof-object? line)
-                    #f)
-                   ((string-prefix? "MemTotal:" line)
-                    (loop (read-line port)
-                          (parse-kb line) mem-available))
-                   ((string-prefix? "MemAvailable:" line)
-                    (loop (read-line port) mem-total
-                          (parse-kb line)))
-                   (else (loop (read-line port) mem-total mem-available)))))))
+                                 (lambda (port)
+                                   (define (parse-kb line)
+                                     (let* ((parts (string-split line #\space))
+                                            (nums (filter (lambda (s)
+                                                            (not (string-null? s))) parts)))
+                                       (and (>= (length nums) 2)
+                                         (string->number (list-ref nums 1)))))
+                                   (let loop
+                                     ((line (read-line port))
+                                      (mem-total #f)
+                                      (mem-available #f))
+                                     (cond
+                                       [(and mem-total mem-available)
+                                        (let* ((used (- mem-total mem-available))
+                                               (pct (inexact->exact (round (* (/ used mem-total)
+                                                                              100)))))
+                                          pct)]
+                                       [(eof-object? line)
+                                        #f]
+                                       [(string-prefix? "MemTotal:" line)
+                                        (loop (read-line port)
+                                              (parse-kb line) mem-available)]
+                                       [(string-prefix? "MemAvailable:" line)
+                                        (loop (read-line port) mem-total
+                                              (parse-kb line))]
+                                       [else (loop (read-line port) mem-total mem-available)])))))
          (lambda _
            #f)))
 
@@ -381,25 +381,25 @@ from the system clock."
   (catch #t
          (lambda ()
            (call-with-input-file "/proc/stat"
-             (lambda (port)
-               (let loop
-                 ((line (read-line port)))
-                 (cond
-                   ((eof-object? line)
-                    #f)
-                   ((string-prefix? "cpu " line)
-                    (let* ((parts (string-split line #\space))
-                           (nums (map string->number
-                                      (filter (lambda (s)
-                                                (not (string-null? s)))
-                                              (cdr parts)))))
-                      (if (>= (length nums) 4)
-                          (let ((idle (list-ref nums 3))
-                                (iowait (if (>= (length nums) 5)
-                                            (list-ref nums 4) 0))
-                                (total (apply + nums)))
-                            (cons (+ idle iowait) total)) #f)))
-                   (else (loop (read-line port))))))))
+                                 (lambda (port)
+                                   (let loop
+                                     ((line (read-line port)))
+                                     (cond
+                                       [(eof-object? line)
+                                        #f]
+                                       [(string-prefix? "cpu " line)
+                                        (let* ((parts (string-split line #\space))
+                                               (nums (map string->number
+                                                          (filter (lambda (s)
+                                                                    (not (string-null? s)))
+                                                                  (cdr parts)))))
+                                          (if (>= (length nums) 4)
+                                            (let ((idle (list-ref nums 3))
+                                                  (iowait (if (>= (length nums) 5)
+                                                            (list-ref nums 4) 0))
+                                                  (total (apply + nums)))
+                                              (cons (+ idle iowait) total)) #f))]
+                                       [else (loop (read-line port))])))))
          (lambda _
            #f)))
 
@@ -411,16 +411,16 @@ This is the number a meter item wants; `get-cpu-percent' wraps it as text."
         (previous (vector-ref %cpu-last-sample 0)))
     (vector-set! %cpu-last-sample 0 sample)
     (if (and sample previous)
-        (let* ((idle1 (car previous))
-               (total1 (cdr previous))
-               (idle2 (car sample))
-               (total2 (cdr sample))
-               (diff-idle (- idle2 idle1))
-               (diff-total (- total2 total1)))
-          (if (> diff-total 0)
-              (inexact->exact (round (* 100 (- 1 (/ diff-idle diff-total)))))
-              #f))
-        #f)))
+      (let* ((idle1 (car previous))
+             (total1 (cdr previous))
+             (idle2 (car sample))
+             (total2 (cdr sample))
+             (diff-idle (- idle2 idle1))
+             (diff-total (- total2 total1)))
+        (if (> diff-total 0)
+          (inexact->exact (round (* 100 (- 1 (/ diff-idle diff-total)))))
+          #f))
+      #f)))
 
 (define (get-cpu-percent)
   "CPU usage as \"CPU 42%\", for text items."
@@ -448,9 +448,9 @@ By default it is a gauge; `#:meter? #f' gives the old text item."
            (let* ((cap-path "/sys/class/power_supply/BAT0/capacity")
                   (stat-path "/sys/class/power_supply/BAT0/status")
                   (cap (string-trim-both (call-with-input-file cap-path
-                                           read-line)))
+                                                               read-line)))
                   (stat (string-trim-both (call-with-input-file stat-path
-                                            read-line)))
+                                                                read-line)))
                   (charging? (string-ci=? stat "Charging")))
              (format #f "~a%~a" cap
                      (if charging? " ⚡" ""))))
@@ -470,9 +470,9 @@ By default it is a gauge; `#:meter? #f' gives the old text item."
   (catch #t
          (lambda ()
            (call-with-input-file "/sys/class/thermal/thermal_zone0/temp"
-             (lambda (port)
-               (let ((raw (string->number (string-trim-both (read-line port)))))
-                 (and raw (round (/ raw 1000)))))))
+                                 (lambda (port)
+                                   (let ((raw (string->number (string-trim-both (read-line port)))))
+                                     (and raw (round (/ raw 1000)))))))
          (lambda _
            #f)))
 

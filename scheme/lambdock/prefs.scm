@@ -67,16 +67,16 @@ never share their GUI choices."
 \"no overrides\"."
   (let* ((path (dock-preferences-path config-path))
          (data (catch #t
-                 (lambda ()
-                   (and (file-exists? path) (call-with-input-file path read)))
-                 (lambda (key . args)
-                   (log-warn "Preferences"
-                             "Ignoring unreadable preferences ~a (~a)"
-                             path key)
-                   #f))))
+                      (lambda ()
+                        (and (file-exists? path) (call-with-input-file path read)))
+                      (lambda (key . args)
+                        (log-warn "Preferences"
+                                  "Ignoring unreadable preferences ~a (~a)"
+                                  path key)
+                        #f))))
     (if (and (list? data) (every preference-pair? data))
-        data
-        '())))
+      data
+      '())))
 
 (define (apply-dock-preferences settings config-path)
   "Returns SETTINGS with the GUI overrides stored for CONFIG-PATH layered on top.
@@ -89,12 +89,12 @@ Logged on every load: \"which preferences were in effect at startup\" was
 otherwise only answerable by opening the Preferences window."
   (let ((overrides (dock-preferences-read config-path)))
     (if (null? overrides)
-        settings
-        (begin
-          (log-info "Preferences"
-                    "Applied ~a GUI preference(s) for ~a: ~{~a~^, ~}"
-                    (length overrides) config-path (map car overrides))
-          (append overrides settings)))))
+      settings
+      (begin
+        (log-info "Preferences"
+                  "Applied ~a GUI preference(s) for ~a: ~{~a~^, ~}"
+                  (length overrides) config-path (map car overrides))
+        (append overrides settings)))))
 
 (define (save-dock-preference! config-path key value)
   "Remembers KEY => VALUE for CONFIG-PATH in the GUI preference override file.
@@ -102,8 +102,8 @@ otherwise only answerable by opening the Preferences window."
 Only real settings-file paths are persisted: the fallback dock, which has no
 settings file, can have GUI edits for the session but nowhere to keep them."
   (when (and (string? config-path)
-             (not (string-null? config-path))
-             (symbol? key))
+          (not (string-null? config-path))
+          (symbol? key))
     (let* ((path (dock-preferences-path config-path))
            (existing (dock-preferences-read config-path))
            (updated (cons (cons key value)
@@ -114,12 +114,12 @@ settings file, can have GUI edits for the session but nowhere to keep them."
              (lambda ()
                (ensure-directory (dirname path))
                (call-with-output-file path
-                 (lambda (port)
-                   (format port ";; lambdock preferences for ~a~%" config-path)
-                   (format port
-                           ";; Written by the Preferences window. Delete this file to reset.~%")
-                   (write updated port)
-                   (newline port)))
+                                      (lambda (port)
+                                        (format port ";; lambdock preferences for ~a~%" config-path)
+                                        (format port
+                                                ";; Written by the Preferences window. Delete this file to reset.~%")
+                                        (write updated port)
+                                        (newline port)))
                (log-info "Preferences" "Saved ~a => ~s for ~a" key value
                          config-path)
                #t)
@@ -194,7 +194,7 @@ up when the next one arrived."
                                 setter-name
                                 #f)))
         (if (procedure? setter)
-            (begin
-              (save-dock-preference! config-path key value)
-              (setter value config-path))
-            (log-warn "Preferences" "Unknown preference setter ~a" setter-name))))))
+          (begin
+            (save-dock-preference! config-path key value)
+            (setter value config-path))
+          (log-warn "Preferences" "Unknown preference setter ~a" setter-name))))))
