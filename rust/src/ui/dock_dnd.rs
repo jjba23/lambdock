@@ -14,7 +14,6 @@
 //! started inside the dock and a drag that came from a file manager can be told
 //! apart by the same drop target.
 
-use crate::app_window::GList;
 use crate::dock_item::{DockItem, ITEM_SEPARATOR, ITEM_TRASH};
 use crate::state::LambdockState;
 use crate::ui::desktop_entry::{lambdock_desktop_entry_free, lambdock_desktop_entry_new_from_file};
@@ -35,46 +34,15 @@ use crate::dock_window::{update_dock_dimensions};
 /// started inside the dock carries it, a drag from a file manager does not.
 const ITEM_PREFIX: &str = "lambdock-item:";
 
-// Where drop handling reaches back into the modules that are still C.
-extern "C" {
-    fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
-    /// Only the tests free a list without its elements, so the library build sees
-    /// this as unused.
-    #[allow(dead_code)]
-    fn g_list_free(list: *mut GList);
-    fn g_list_free_full(list: *mut GList, free: Option<unsafe extern "C" fn(*mut c_void)>);
-    fn g_list_length(list: *mut GList) -> u32;
-    fn g_list_find(list: *mut GList, data: *const c_void) -> *mut GList;
-    fn g_list_delete_link(list: *mut GList, link: *mut GList) -> *mut GList;
-    fn g_list_insert(list: *mut GList, data: *mut c_void, position: c_int) -> *mut GList;
-    fn g_list_remove(list: *mut GList, data: *const c_void) -> *mut GList;
-    fn g_list_index(list: *mut GList, data: *const c_void) -> c_int;
-}
+/// Moves `item` to `index`, clamped into the list; an item the list does not hold
+/// leaves it alone.
+pub fn move_to<T: PartialEq + Copy>(items: &mut Vec<T>, item: T, index: usize) {
+    let Some(from) = items.iter().position(|each| *each == item) else {
+        return;
+    };
 
-/// Moves `data` to `index`, clamped into the list.
-///
-/// # Safety
-///
-/// `list` must be null or a `GList`; `data` must be one of its elements or not in
-/// it at all, in which case the list comes back unchanged.
-pub unsafe fn dock_list_move(
-    list: *mut GList,
-    data: *mut c_void,
-    index: c_int,
-) -> *mut GList {
-    let link = g_list_find(list, data);
-    if link.is_null() {
-        return list;
-    }
-
-    let length = g_list_length(list) as c_int;
-    let list = g_list_delete_link(list, link);
-
-    // After the removal the list is one element shorter, so the last valid
-    // insertion index is length - 1 (which appends).
-    let index = index.clamp(0, length - 1);
-
-    g_list_insert(list, data, index)
+    let moved = items.remove(from);
+    items.insert(index.min(items.len()), moved);
 }
 
 /// The insertion index for a pointer at `position`: the first item whose centre
@@ -133,26 +101,16 @@ pub unsafe fn dock_dnd_persist_order(state: *mut LambdockState) {
         return;
     }
 
-    let mut keys: *mut GList = std::ptr::null_mut();
+    // Separators have no stable identity: they are re-placed between their
+    // neighbours when the layout is replayed.
+    let keys: Vec<String> = (*state)
+        .dock_items
+        .iter()
+        .filter(|item| item.as_ref().is_some_and(|item| item.kind != ITEM_SEPARATOR))
+        .filter_map(|item| item_key(*item))
+        .collect();
 
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-
-        // Separators have no stable identity: they are re-placed between their
-        // neighbours when the layout is replayed.
-        if !item.is_null() && (*item).kind != ITEM_SEPARATOR {
-            if let Some(key) = item_key(item) {
-                let key = CString::new(key).unwrap_or_default();
-                keys = g_list_append(keys, crate::glib::g_strdup(key.as_ptr()).cast());
-            }
-        }
-
-        node = (*node).next;
-    }
-
-    dock_layout_set_order((*state).config_path, keys.cast());
-    g_list_free_full(keys, Some(crate::glib::g_free));
+    dock_layout_set_order((*state).config_path, &keys);
 }
 
 /// Removes an item: forgets it in the layout overrides, drops it and re-measures
@@ -180,7 +138,7 @@ pub unsafe fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
             }
         }
 
-        (*state).dock_items = g_list_remove((*state).dock_items.cast(), item.cast()).cast();
+        (*state).dock_items.retain(|each| *each != item);
     }
 
     let name = if (*item).name.is_null() {
@@ -253,18 +211,12 @@ unsafe fn find_item_by_key(state: *mut LambdockState, key: &str) -> *mut DockIte
         return std::ptr::null_mut();
     }
 
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-
-        if item_key(item).is_some_and(|item_key| item_key == key) {
-            return item;
-        }
-
-        node = (*node).next;
-    }
-
-    std::ptr::null_mut()
+    (*state)
+        .dock_items
+        .iter()
+        .find(|item| item_key(**item).is_some_and(|item_key| item_key == key))
+        .copied()
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// The child of the dock's box that stands for `item`.
@@ -349,10 +301,10 @@ pub unsafe fn dock_drop_handle_item(
         }),
     ) as c_int;
 
-    let current = g_list_index((*state).dock_items.cast(), item.cast());
-    if current < 0 {
+    let Some(current) = (*state).dock_items.iter().position(|each| *each == item) else {
         return 0;
-    }
+    };
+    let current = current as c_int;
 
     // Removing the item first shifts everything after it one slot left.
     let mut destination = if drop_index > current {
@@ -368,21 +320,15 @@ pub unsafe fn dock_drop_handle_item(
         return 1;
     }
 
-    (*state).dock_items =
-        dock_list_move((*state).dock_items.cast(), item.cast(), destination).cast();
+    move_to(&mut (*state).dock_items, item, destination as usize);
 
-    // Re-order the box children to match the list.
+    // Re-order the box children to match the row.
     let mut previous: Option<gtk4::Widget> = None;
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let each = (*node).data.cast::<DockItem>();
-
-        if let Some(child) = item_child(each) {
+    for each in (*state).dock_items.iter().filter(|each| !each.is_null()) {
+        if let Some(child) = item_child(*each) {
             dock_box.reorder_child_after(&child, previous.as_ref());
             previous = Some(child);
         }
-
-        node = (*node).next;
     }
 
     dock_dnd_persist_order(state);
@@ -789,48 +735,23 @@ mod tests {
         assert_eq!(drop_index_for_position(&[], 42.0), 0);
     }
 
-    /// Moving an item is a delete and an insert, and an index past the end
-    /// appends rather than dropping the item.
+    /// Moving an item is a remove and an insert: an index past the end appends
+    /// rather than dropping the item, and one that is not in the list leaves it
+    /// alone.
     #[test]
     fn moving_an_item_keeps_it_in_the_list() {
-        unsafe {
-            let mut list: *mut GList = std::ptr::null_mut();
-            let mut values = ['a', 'b', 'c'];
-            for value in &mut values {
-                list = g_list_append(list, (value as *mut char).cast());
-            }
+        let mut items = vec!['a', 'b', 'c'];
 
-            let a = (&mut values[0] as *mut char).cast();
-            let c = (&mut values[2] as *mut char).cast();
+        // 'a' to the end: the list is one shorter, so index 3 means "last".
+        move_to(&mut items, 'a', 3);
+        assert_eq!(items, ['b', 'c', 'a']);
 
-            // 'a' to the end: the list is one shorter, so index 3 becomes 2.
-            list = dock_list_move(list, a, 3);
-            assert_eq!(order(list), ['b', 'c', 'a']);
+        // 'c' back to the front.
+        move_to(&mut items, 'c', 0);
+        assert_eq!(items, ['c', 'b', 'a']);
 
-            // 'c' back to the front.
-            list = dock_list_move(list, c, 0);
-            assert_eq!(order(list), ['c', 'b', 'a']);
-
-            // An element that is not in the list leaves it alone.
-            let mut stranger = 'z';
-            let before = order(list);
-            list = dock_list_move(list, (&mut stranger as *mut char).cast(), 0);
-            assert_eq!(order(list), before);
-
-            g_list_free(list);
-        }
-    }
-
-    /// The values a list holds, for the assertions above.
-    unsafe fn order(list: *mut GList) -> Vec<char> {
-        let mut values = Vec::new();
-        let mut node = list;
-
-        while !node.is_null() {
-            values.push(*((*node).data as *const char));
-            node = (*node).next;
-        }
-
-        values
+        // An element that is not in the list leaves it alone.
+        move_to(&mut items, 'z', 0);
+        assert_eq!(items, ['c', 'b', 'a']);
     }
 }

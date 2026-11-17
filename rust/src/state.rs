@@ -76,7 +76,9 @@ pub struct LambdockState {
     pub input_region_height: c_int,
     pub fisheye_active: c_int,
     pub hover_headroom_px: c_int,
-    pub item_centres: *mut c_void,
+    /// Each item's centre along the dock axis, in the row's coordinates: what one
+    /// hover frame reads instead of measuring the row.
+    pub item_centres: Vec<c_int>,
     pub centres_dirty: c_int,
     pub applied_hover_axis: f64,
     pub hover_axis_valid: c_int,
@@ -90,11 +92,11 @@ pub struct LambdockState {
     pub x11_rect_y: c_int,
     pub x11_rect_width: c_int,
     pub x11_rect_height: c_int,
-    /// The row's items: a `GList` of `DockItem *`, owned by the dock.
-    pub dock_items: *mut crate::app_window::GList,
-    /// The windows this dock is tracking: a `GList` of borrowed
+    /// The row's items, in the order they are drawn.
+    pub dock_items: Vec<*mut crate::dock_item::DockItem>,
+    /// The windows this dock is tracking: borrowed
     /// `LambdockToplevel *`, owned by the tracker.
-    pub window_trackers: *mut crate::app_window::GList,
+    pub window_trackers: Vec<*mut crate::app_window::LambdockToplevel>,
     pub base_css_provider: Option<gtk4::CssProvider>,
     pub taskbar_css_provider: Option<gtk4::CssProvider>,
     pub shelf_css_provider: Option<gtk4::CssProvider>,

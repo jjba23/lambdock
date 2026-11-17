@@ -43,7 +43,6 @@ extern "C" {
 
     pub fn scm_cons(head: Scm, tail: Scm) -> Scm;
     pub fn scm_list_5(e1: Scm, e2: Scm, e3: Scm, e4: Scm, e5: Scm) -> Scm;
-    pub fn scm_reverse_x(list: Scm, tail: Scm) -> Scm;
 
     pub fn scm_from_int64(value: i64) -> Scm;
     pub fn scm_from_double(value: f64) -> Scm;

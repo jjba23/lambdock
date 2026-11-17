@@ -627,7 +627,7 @@ unsafe fn present(dock: *mut LambdockState) {
     crate::toplevel_tracker::sync_window_trackers(dock);
 
     let state = &*dock;
-    if state.auto_hide != 0 && state.show_when_clear != 0 && !state.window_trackers.is_null() {
+    if state.auto_hide != 0 && state.show_when_clear != 0 && !state.window_trackers.is_empty() {
         hide_dock(dock);
     } else {
         schedule_initial_autohide(dock);

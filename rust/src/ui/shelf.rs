@@ -23,7 +23,6 @@
 //! that is exactly the classic `icon + 24px` capsule, the frame is a pass-through
 //! and the reflections stay hidden.
 
-use crate::app_window::GList;
 use crate::core::config_values::{
     lambdock_shelf_params_default, ShelfParams, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP,
     SHELF_DEFAULT_PERSPECTIVE, SHELF_DEFAULT_REFLECTION, SHELF_DEFAULT_REFLECTION_BLUR,
@@ -1484,7 +1483,7 @@ pub unsafe fn shelf_wrap_item(
 ///
 /// `state` must be null or a live dock.
 pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
-    if state.is_null() || (*state).dock_items.is_null() {
+    if state.is_null() || (*state).dock_items.is_empty() {
         return;
     }
 
@@ -1496,9 +1495,8 @@ pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
     };
     let geometry = lambdock_shelf_geometry_for(&*state, default_icon);
 
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
+    for item in (*state).dock_items.iter() {
+        let item = *item;
 
         if !item.is_null() && !(*item).reflection.is_null() {
             let reflection = (*item).reflection.cast::<ffi::GtkWidget>();
@@ -1527,8 +1525,6 @@ pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
                 widget.set_visible(true);
             }
         }
-
-        node = (*node).next;
     }
 }
 

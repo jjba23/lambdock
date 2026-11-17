@@ -35,7 +35,7 @@ use crate::guile::{
     scm_call_0, scm_call_1, scm_call_2, scm_call_3, scm_cons, scm_from_double, scm_from_int64,
     scm_from_utf8_string, scm_gc_protect_object, scm_gc_unprotect_object, scm_internal_catch,
     scm_is_number, scm_is_pair, scm_is_real, scm_is_string, scm_list_5, scm_nan_p,
-    scm_procedure_p, scm_reverse_x, scm_string_to_symbol, scm_symbol_to_string, scm_to_bool,
+    scm_procedure_p, scm_string_to_symbol, scm_symbol_to_string, scm_to_bool,
     scm_to_double, scm_to_utf8_string, false_value, true_value, Scm,
 };
 use std::ffi::CStr;
@@ -1237,8 +1237,8 @@ pub unsafe fn dock_layout_remove_item(
 ///
 /// # Safety
 ///
-/// `config_path` must be null or NUL-terminated; `keys` a `GList` of strings.
-pub unsafe fn dock_layout_set_order(config_path: *const c_char, keys: *mut c_void) {
+/// `config_path` must be null or NUL-terminated.
+pub unsafe fn dock_layout_set_order(config_path: *const c_char, keys: &[String]) {
     let Some(config_path) = crate::cstr::non_empty_text(config_path) else {
         return;
     };
@@ -1248,23 +1248,14 @@ pub unsafe fn dock_layout_set_order(config_path: *const c_char, keys: *mut c_voi
         return;
     }
 
-    let mut list = empty_list();
-    let mut node = keys.cast::<crate::app_window::GList>();
-    while let Some(entry) = node.as_ref() {
-        if !entry.data.is_null() {
-            list = scm_cons(
-                optional_string(crate::cstr::text(entry.data.cast()).as_deref()),
-                list,
-            );
-        }
+    // Built back to front, so the conses come out in the order they were given.
+    let list = keys
+        .iter()
+        .rev()
+        .fold(empty_list(), |list, key| {
+            scm_cons(optional_string(Some(key)), list)
+        });
 
-        node = entry.next;
-    }
-
-    // The reversed list ends at the empty list: `scm_reverse_x` appends its second
-    // argument as the tail, so anything else would make the list improper and the
-    // Scheme side would reject it.
-    let list = scm_reverse_x(list, empty_list());
     scm_call_2(procedure, optional_string(Some(&config_path)), list);
 }
 

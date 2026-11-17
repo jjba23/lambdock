@@ -434,9 +434,9 @@ unsafe fn dock_detach_previous_app_id(state: *mut LambdockState, data: *mut c_vo
         item.is_favorite,
     );
     if should_drop != 0 {
-        let list = glib::ffi::g_list_remove((*state).dock_items.cast(), (item as *const DockItem).cast());
-        (*state).dock_items = list.cast();
-        free_dock_item(item as *const _ as *mut _);
+        let item = item as *const DockItem as *mut DockItem;
+        (*state).dock_items.retain(|each| *each != item);
+        free_dock_item(item);
     }
 }
 
@@ -483,9 +483,8 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
     app_window_set_state(window, top_ref.minimized, top_ref.activated);
     app_window_set_title(window, top_ref.title);
 
-    if glib::ffi::g_list_find((*state).window_trackers.cast(), top.cast()).is_null() {
-        (*state).window_trackers =
-            glib::ffi::g_list_append((*state).window_trackers.cast(), top.cast()).cast();
+    if !(*state).window_trackers.contains(&top) {
+        (*state).window_trackers.push(top);
     }
 
     update_dock_item_status(item);
@@ -493,7 +492,7 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
     let should_hide = crate::core::tracker_rules::lambdock_tracker_should_hide(
         (*state).auto_hide,
         (*state).show_when_clear,
-        c_int::from(!(*state).window_trackers.is_null()),
+        c_int::from(!(*state).window_trackers.is_empty()),
     );
     if should_hide != 0 {
         hide_dock(state);
@@ -525,17 +524,18 @@ unsafe fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void
             item.is_favorite,
         );
         if should_drop != 0 {
-            let list = glib::ffi::g_list_remove((*state).dock_items.cast(), data.cast());
-            (*state).dock_items = list.cast();
-            free_dock_item(item as *const _ as *mut _);
+            let item = item as *const DockItem as *mut DockItem;
+            (*state).dock_items.retain(|each| *each != item);
+            free_dock_item(item);
         }
     }
 
-    (*state).window_trackers = glib::ffi::g_list_remove((*state).window_trackers.cast(), data.cast()).cast();
+    let closed = data.cast::<crate::app_window::LambdockToplevel>();
+    (*state).window_trackers.retain(|each| *each != closed);
 
     let should_reveal = crate::core::tracker_rules::lambdock_tracker_should_reveal(
         (*state).show_when_clear,
-        c_int::from(!(*state).window_trackers.is_null()),
+        c_int::from(!(*state).window_trackers.is_empty()),
     );
     if should_reveal != 0 {
         reveal_dock(state);

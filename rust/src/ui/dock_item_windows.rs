@@ -178,8 +178,6 @@ extern "C" {
 
 
     fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
-    fn g_list_free(list: *mut GList);
-    fn g_list_delete_link(list: *mut GList, link: *mut GList) -> *mut GList;
     fn g_list_remove(list: *mut GList, data: *const c_void) -> *mut GList;
 
     fn gtk_label_set_text(label: *mut gtk4::ffi::GtkLabel, text: *const c_char);
@@ -305,35 +303,31 @@ pub unsafe fn clear_tracked_windows(state: *mut LambdockState) {
         return;
     }
 
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-        if !item.is_null() {
-            crate::app_window::app_windows_free((*item).windows);
-            (*item).windows = std::ptr::null_mut();
-            update_dock_item_status(item);
-        }
+    for item in &(*state).dock_items {
+        let Some(item_ref) = item.as_ref() else {
+            continue;
+        };
+        let pointer = *item;
 
-        node = (*node).next;
+        crate::app_window::app_windows_free(item_ref.windows);
+        (*pointer).windows = std::ptr::null_mut();
+        update_dock_item_status(pointer);
     }
 
     // Then the items that only a tracked window brought into being. Favourites
-    // stay: they were in the settings file.
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let next = (*node).next;
-        let item = (*node).data.cast::<DockItem>();
+    // stay: they were in the settings file. The row is put back together before
+    // anything is freed, so a callback cannot see a half-emptied dock.
+    let (orphans, kept): (Vec<_>, Vec<_>) =
+        std::mem::take(&mut (*state).dock_items).into_iter().partition(|item| {
+            item.as_ref().is_some_and(|item| item.is_favorite == 0)
+        });
+    (*state).dock_items = kept;
 
-        if !item.is_null() && (*item).is_favorite == 0 {
-            (*state).dock_items = g_list_delete_link((*state).dock_items.cast(), node).cast();
-            free_dock_item(item);
-        }
-
-        node = next;
+    for item in orphans {
+        free_dock_item(item);
     }
 
-    g_list_free((*state).window_trackers.cast());
-    (*state).window_trackers = std::ptr::null_mut();
+    (*state).window_trackers.clear();
 
     if (*state).show_when_clear != 0 {
         reveal_dock(state);
@@ -486,17 +480,12 @@ unsafe fn find_item(
     state: *const LambdockState,
     predicate: impl Fn(*const DockItem) -> bool,
 ) -> *mut DockItem {
-    let mut node = (*state).dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-        if !item.is_null() && predicate(item) {
-            return item;
-        }
-
-        node = (*node).next;
-    }
-
-    std::ptr::null_mut()
+    (*state)
+        .dock_items
+        .iter()
+        .find(|item| !item.is_null() && predicate(**item))
+        .copied()
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// The item a window belongs to.

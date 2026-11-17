@@ -34,7 +34,6 @@ use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
-use crate::app_window::GList;
 use crate::cstr::{cstring, text, text_or_empty, translated};
 use crate::core::config_values::{
     LAUNCHPAD_COLUMNS_AUTO, LAUNCHPAD_COLUMNS_MIN, LAUNCHPAD_ICON_SIZE,
@@ -1093,14 +1092,7 @@ pub unsafe fn lambdock_launchpad_shelf_new(
         return std::ptr::null_mut();
     };
 
-    let mut any = false;
-    let mut node = state.dock_items.cast::<GList>();
-    while !node.is_null() && !any {
-        any = is_shelf_item((*node).data.cast::<DockItem>());
-        node = (*node).next;
-    }
-
-    if !any {
+    if !state.dock_items.iter().any(|item| is_shelf_item(*item)) {
         return std::ptr::null_mut();
     }
 
@@ -1110,14 +1102,8 @@ pub unsafe fn lambdock_launchpad_shelf_new(
     shelf.add_css_class("launchpad-shelf");
     shelf.set_halign(gtk4::Align::Center);
 
-    let mut node = state.dock_items.cast::<GList>();
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-        if is_shelf_item(item) {
-            shelf.append(&make_shelf_button(item));
-        }
-
-        node = (*node).next;
+    for item in state.dock_items.iter().filter(|item| is_shelf_item(**item)) {
+        shelf.append(&make_shelf_button(*item));
     }
 
     into_floating_pointer(shelf.upcast())

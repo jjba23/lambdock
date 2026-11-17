@@ -708,11 +708,6 @@ fn stepped_index(focus: Focus, delta: i32, count: usize) -> Option<usize> {
     }
 }
 
-/// `state->dock_items`, the list the dock is built from.
-fn dock_items(state: &LambdockState) -> *mut GList {
-    state.dock_items
-}
-
 /// Whether the keyboard can reach `item`: it has a button, and is not a separator
 /// (which is drawn, not focused).
 ///
@@ -730,22 +725,13 @@ unsafe fn keyboard_reachable(item: *const DockItem) -> bool {
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn item_at_index(state: &LambdockState, index: usize) -> *mut DockItem {
-    let mut seen = 0;
-    let mut link = dock_items(state);
-
-    while let Some(entry) = link.as_ref() {
-        let item = entry.data.cast::<DockItem>();
-        if keyboard_reachable(item) {
-            if seen == index {
-                return item;
-            }
-            seen += 1;
-        }
-
-        link = entry.next;
-    }
-
-    std::ptr::null_mut()
+    state
+        .dock_items
+        .iter()
+        .filter(|item| keyboard_reachable(**item))
+        .nth(index)
+        .copied()
+        .unwrap_or(std::ptr::null_mut())
 }
 
 /// The index of `target` among the reachable items, when it is one of them.
@@ -759,22 +745,12 @@ unsafe fn index_of(state: &LambdockState, target: *const DockItem) -> Option<i32
         return None;
     }
 
-    let mut index = 0;
-    let mut link = dock_items(state);
-
-    while let Some(entry) = link.as_ref() {
-        let item = entry.data.cast::<DockItem>();
-        if keyboard_reachable(item) {
-            if item == target.cast_mut() {
-                return Some(index);
-            }
-            index += 1;
-        }
-
-        link = entry.next;
-    }
-
-    None
+    state
+        .dock_items
+        .iter()
+        .filter(|item| keyboard_reachable(**item))
+        .position(|item| item.cast_const() == target)
+        .map(|index| index as i32)
 }
 
 /// The item that currently holds the keyboard focus, looking through the button's
@@ -848,15 +824,11 @@ unsafe fn grab_item_focus(item: *mut DockItem) -> bool {
 ///
 /// `state` must be null or a live `LambdockState`.
 pub unsafe fn lambdock_dock_item_count(state: &LambdockState) -> c_int {
-    let mut count = 0;
-    let mut link = dock_items(state);
-
-    while let Some(entry) = link.as_ref() {
-        count += c_int::from(keyboard_reachable(entry.data.cast::<DockItem>()));
-        link = entry.next;
-    }
-
-    count
+    state
+        .dock_items
+        .iter()
+        .filter(|item| keyboard_reachable(**item))
+        .count() as c_int
 }
 
 /// The `index`th item the keyboard can reach, or null.
@@ -942,12 +914,8 @@ unsafe fn reorder_dock_widgets(state: &LambdockState) {
     };
 
     let mut previous: Option<gtk4::Widget> = None;
-    let mut link = state.dock_items;
 
-    while let Some(entry) = link.as_ref() {
-        let item = entry.data.cast::<DockItem>();
-        link = entry.next;
-
+    for item in &state.dock_items {
         let Some(item) = item.as_ref() else {
             continue;
         };
@@ -970,15 +938,6 @@ unsafe fn reorder_dock_widgets(state: &LambdockState) {
     }
 }
 
-/// Writes the item list back into the dock's state.
-///
-/// # Safety
-///
-/// `state` must be a live `LambdockState`; `list` must be the list it should hold.
-unsafe fn set_dock_items(state: *mut LambdockState, list: *mut glib::ffi::GList) {
-    (*state).dock_items = list.cast();
-}
-
 /// Moves `item` `delta` places along the dock, and remembers the order.
 ///
 /// # Safety
@@ -989,12 +948,15 @@ pub unsafe fn lambdock_dock_item_move(
     item: *mut DockItem,
     delta: c_int,
 ) -> c_int {
-    let (Some(state_ref), false) = (state.as_ref(), item.is_null() || delta == 0) else {
+    let Some(dock) = state.as_mut() else {
         return 0;
     };
+    if item.is_null() || delta == 0 {
+        return 0;
+    }
 
-    let count = lambdock_dock_item_count(state_ref) as usize;
-    let Some(index) = index_of(state_ref, item) else {
+    let count = lambdock_dock_item_count(dock) as usize;
+    let Some(index) = index_of(dock, item) else {
         return 0;
     };
     let target = index + delta;
@@ -1002,36 +964,28 @@ pub unsafe fn lambdock_dock_item_move(
         return 0;
     }
 
-    let Some(other) = item_at_index(state_ref, target as usize).as_ref() else {
+    let Some(other) = item_at_index(dock, target as usize).as_ref() else {
         return 0;
     };
     let other = other as *const DockItem as *mut DockItem;
 
-    let list = glib::ffi::g_list_find(state_ref.dock_items.cast(), item.cast());
-    if list.is_null() {
+    // The row's own positions, which also count the separators the keyboard
+    // steps over.
+    let items = &mut dock.dock_items;
+    let Some(from) = items.iter().position(|each| *each == item) else {
         return 0;
-    }
-    let list = glib::ffi::g_list_delete_link(state_ref.dock_items.cast(), list);
-    set_dock_items(state, list);
-
-    // The neighbour may have been the link that was just deleted: look it up
-    // again, and put the item back rather than drop it off the dock.
-    let other_link = glib::ffi::g_list_find(list, other.cast());
-    if other_link.is_null() {
-        let list = glib::ffi::g_list_append(list, item.cast());
-        set_dock_items(state, list);
-        return 0;
-    }
-
-    let before = if delta > 0 {
-        (*other_link).next
-    } else {
-        other_link
     };
-    let list = glib::ffi::g_list_insert_before(list, before, item.cast());
-    set_dock_items(state, list);
+    let Some(to) = items.iter().position(|each| *each == other) else {
+        return 0;
+    };
 
-    reorder_dock_widgets(&*state);
+    let moved = items.remove(from);
+    // The neighbour sits one place to the left once the item is out, and moving
+    // right lands the item after it.
+    let to = if from < to { to - 1 } else { to };
+    items.insert(if delta > 0 { to + 1 } else { to }, moved);
+
+    reorder_dock_widgets(dock);
     dock_dnd_persist_order(state);
 
     1
@@ -1049,12 +1003,8 @@ pub unsafe fn lambdock_dock_items_close_popovers(state: *mut LambdockState) -> c
     };
 
     let mut closed = false;
-    let mut link = state_ref.dock_items;
 
-    while let Some(entry) = link.as_ref() {
-        link = entry.next;
-
-        let item = entry.data.cast::<DockItem>();
+    for item in &state_ref.dock_items {
         let Some(popover) = item.as_ref().and_then(|item| popover_of(item.popover)) else {
             continue;
         };
@@ -1500,20 +1450,16 @@ pub unsafe fn dock_items_refresh_polls(state: *mut LambdockState) {
         return;
     };
 
-    let mut link = state_ref.dock_items;
-    while let Some(entry) = link.as_ref() {
-        link = entry.next;
-
-        let item = entry.data.cast::<DockItem>();
+    for item in &state_ref.dock_items {
         let Some(item_ref) = item.as_ref() else {
             continue;
         };
 
         if has_poller(item_ref) {
-            refresh(item);
+            refresh(*item);
         }
         if item_ref.trash_timer_id != 0 {
-            dock_item_refresh_trash(item);
+            dock_item_refresh_trash(*item);
         }
     }
 }
@@ -2252,7 +2198,7 @@ unsafe fn mount(item: *mut DockItem) -> *mut DockItem {
             }
         }
 
-        state.dock_items = glib::ffi::g_list_append(state.dock_items.cast(), item.cast()).cast();
+        state.dock_items.push(item);
         // A new item moves every centre after it.
         state.centres_dirty = 1;
     }
@@ -2670,7 +2616,7 @@ pub unsafe fn create_separator_dock_item(
             gtk4::ffi::gtk_box_append(dock_box.as_ptr().cast(), child.cast());
         }
 
-        state.dock_items = glib::ffi::g_list_append(state.dock_items.cast(), item.cast()).cast();
+        state.dock_items.push(item);
         state.centres_dirty = 1;
     }
 
@@ -3175,6 +3121,13 @@ pub unsafe fn free_dock_item(item: *mut DockItem) {
         return;
     };
 
+    // Every caller takes the item out of the row before freeing it: a freed
+    // pointer left behind is walked by the next tracker event.
+    debug_assert!(
+        item_ref.state.is_null() || !(*item_ref.state).dock_items.contains(&item),
+        "a dock item was freed while the row still held it"
+    );
+
     // The row is about to lose an item: every centre after it moves.
     if let Some(state) = item_ref.state.as_mut() {
         state.centres_dirty = 1;
@@ -3206,28 +3159,23 @@ pub unsafe fn clear_favorite_dock_items(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };
-    if state_ref.dock_items.is_null() {
+    if state_ref.dock_items.is_empty() {
         return;
     }
 
     clear_window_tracker_dock_references(state);
 
-    let mut list = state_ref.dock_items;
-    let mut link = list;
+    // The favourites go; the running-app items stay, because the tracker still
+    // holds windows for them. The row is put back together before anything is
+    // freed, so a callback cannot see a half-emptied dock.
+    let (favorites, others): (Vec<_>, Vec<_>) = std::mem::take(&mut state_ref.dock_items)
+        .into_iter()
+        .partition(|item| item.as_ref().is_some_and(|item| item.is_favorite != 0));
+    state_ref.dock_items = others;
 
-    while let Some(entry) = link.as_ref() {
-        let next = entry.next;
-        let item = entry.data.cast::<DockItem>();
-
-        if item.as_ref().is_some_and(|item| item.is_favorite != 0) {
-            list = glib::ffi::g_list_delete_link(list.cast(), link.cast()).cast();
-            free_dock_item(item);
-        }
-
-        link = next;
+    for item in favorites {
+        free_dock_item(item);
     }
-
-    state_ref.dock_items = list.cast();
 }
 
 
@@ -3389,17 +3337,13 @@ unsafe fn reload_items(state: *mut LambdockState) {
     // Re-sync Wayland foreign window handles back to the new launchers.
     sync_window_trackers(state);
 
-    let mut link = (*state).dock_items;
-    while let Some(entry) = link.as_ref() {
-        link = entry.next;
-
-        let item = entry.data.cast::<DockItem>();
+    for item in &(*state).dock_items {
         if item.as_ref().is_none_or(|item| item.button.is_null()) {
             continue;
         }
 
-        apply_dock_item_alignment(item);
-        crate::ui::dock_item_windows::update_dock_item_status(item);
+        apply_dock_item_alignment(*item);
+        crate::ui::dock_item_windows::update_dock_item_status(*item);
     }
 }
 
@@ -3413,7 +3357,7 @@ unsafe fn apply_auto_hide_state(state: *mut LambdockState) {
 
     let state_ref = &*state;
     let stay_visible = state_ref.auto_hide == 0
-        || (state_ref.show_when_clear != 0 && state_ref.window_trackers.is_null());
+        || (state_ref.show_when_clear != 0 && state_ref.window_trackers.is_empty());
 
     if stay_visible {
         reveal_dock(state);

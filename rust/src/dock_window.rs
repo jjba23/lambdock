@@ -22,7 +22,6 @@ use gtk4::prelude::*;
 use std::cell::RefCell;
 use std::os::raw::{c_int, c_uint, c_void};
 
-use crate::app_window::GList;
 use crate::cstr::{cstring, translated};
 use crate::core::dock_dims::{
     lambdock_dock_dims_compute, DockDims, FISHEYE_MAX_SCALE, FISHEYE_RADIUS_PX,
@@ -1008,50 +1007,14 @@ pub unsafe fn stop_pointer_tick(state: *mut LambdockState) {
     }
 }
 
-/// Runs `visit` over the dock row, skipping null items.
-///
-/// `g_list_foreach` would do the walk, but it takes a `GFunc` over `gpointer`,
-/// and casting dock-item callbacks to it gives up the type checking that keeps
-/// these visitors honest. The loop is four lines; the signature is worth it.
+/// Runs `visit` over the dock row from Rust, skipping empty slots.
 ///
 /// # Safety
 ///
-/// `items` must be null or a live `GList` of `DockItem`s; `visit` must be able
-/// to take each of them.
-pub unsafe fn for_each_dock_item(
-    items: *mut GList,
-    visit: Option<unsafe extern "C" fn(*mut DockItem, *mut c_void)>,
-    data: *mut c_void,
-) {
-    let Some(visit) = visit else {
-        return;
-    };
-
-    let mut node = items;
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-        if !item.is_null() {
-            visit(item, data);
-        }
-
-        node = (*node).next;
-    }
-}
-
-/// Runs `visit` over the dock row from Rust, skipping null items.
-///
-/// # Safety
-///
-/// `items` must be null or a live `GList` of `DockItem`s.
-unsafe fn for_each_item(items: *mut GList, mut visit: impl FnMut(&DockItem)) {
-    let mut node = items;
-
-    while !node.is_null() {
-        if let Some(item) = (*node).data.cast::<DockItem>().as_ref() {
-            visit(item);
-        }
-
-        node = (*node).next;
+/// Every item in `items` must be null or live.
+unsafe fn for_each_item(items: &[*mut DockItem], mut visit: impl FnMut(&DockItem)) {
+    for item in items.iter().filter_map(|item| item.as_ref()) {
+        visit(item);
     }
 }
 
@@ -1136,15 +1099,16 @@ unsafe fn reset_item_scale(item: &DockItem, horizontal: bool, base_px: c_int) {
 ///
 /// `dock` must be a live dock.
 unsafe fn reset_dock_items_scale_inner(dock: &mut LambdockState) {
-    if dock.dock_items.is_null() {
+    if dock.dock_items.is_empty() {
         return;
     }
 
     let horizontal = is_horizontal(dock);
     let base_px = dock_icon_size(dock);
-    let items = dock.dock_items;
 
-    for_each_item(items, |item| reset_item_scale(item, horizontal, base_px));
+    for_each_item(&dock.dock_items, |item| {
+        reset_item_scale(item, horizontal, base_px);
+    });
 
     // The row is back at rest, so the next frame has to apply the pointer again
     // even if it has not moved, and the surface's room can be re-measured.
@@ -1411,7 +1375,7 @@ pub unsafe fn hide_dock(state: *mut LambdockState) {
     }
 
     // `show-when-clear` means the dock belongs on screen while nothing runs.
-    if dock.show_when_clear != 0 && dock.window_trackers.is_null() {
+    if dock.show_when_clear != 0 && dock.window_trackers.is_empty() {
         return;
     }
 
@@ -1811,35 +1775,17 @@ const FISHEYE_POINTER_STEP_PX: f64 = 0.5;
 /// exact.
 const FISHEYE_LAYOUT_STEP_PX: c_int = 2;
 
-/// The cached item centres, as a slice the frame reads.
-///
-/// # Safety
-///
-/// `array` must be null or a `GArray` of `gint` this module created.
-unsafe fn centres_of(array: *mut c_void) -> (*const c_int, usize) {
-    if array.is_null() {
-        return (std::ptr::null(), 0);
-    }
-
-    let array = array.cast::<glib::ffi::GArray>();
-
-    ((*array).data as *const c_int, (*array).len as usize)
-}
-
 /// What one hover frame needs, computed once per pointer position.
 ///
 /// It holds the values it reads rather than the state, so the row walk can take
 /// the state mutably at the end of the frame.
-struct FisheyeFrame {
+struct FisheyeFrame<'a> {
     /// The pointer along the dock's main axis, relative to the row.
     pointer_axis: f64,
     base_size_px: c_int,
     radius_px: f64,
     max_scale: f64,
-    centres: *const c_int,
-    len: usize,
-    /// Position in the row, which is also the position in `centres`.
-    index: usize,
+    centres: &'a [c_int],
     horizontal: bool,
     shelf_active: bool,
     /// The reflection band, as a fraction of the icon size.
@@ -1849,7 +1795,7 @@ struct FisheyeFrame {
     geometry_changed: bool,
 }
 
-impl FisheyeFrame {
+impl FisheyeFrame<'_> {
     /// Grows the glass reflection with a magnified icon, keeping the band fixed.
     ///
     /// # Safety
@@ -1871,7 +1817,7 @@ impl FisheyeFrame {
     /// # Safety
     ///
     /// `item` must be a live item whose widgets are built.
-    unsafe fn apply(&mut self, item: &DockItem) {
+    unsafe fn apply(&mut self, index: usize, item: &DockItem) {
         // Separators and meters do not magnify, and a tile without a zoom
         // container has nothing to scale.
         if item.hover_animate == 0 || item.button.is_null() {
@@ -1885,11 +1831,16 @@ impl FisheyeFrame {
         }
 
         let zoom = item_zoom_widget(item);
-        if zoom.is_null() || self.index >= self.len {
+        if zoom.is_null() {
             return;
         }
 
-        let centre = f64::from(*self.centres.add(self.index));
+        // The centres are per item, in row order, and a frame that ran past them
+        // has nothing to place.
+        let Some(centre) = self.centres.get(index).copied() else {
+            return;
+        };
+        let centre = f64::from(centre);
         let scale = lambdock_fisheye_scale(self.pointer_axis - centre, self.radius_px, self.max_scale);
         let target_px = lambdock_scaled_size(self.base_size_px, scale);
 
@@ -1938,10 +1889,6 @@ impl FisheyeFrame {
 ///
 /// `dock` must be a live dock.
 unsafe fn refresh_item_centres(dock: &mut LambdockState) {
-    if dock.item_centres.is_null() {
-        dock.item_centres = glib::ffi::g_array_new(0, 0, std::mem::size_of::<c_int>() as u32).cast();
-    }
-
     let horizontal = is_horizontal(dock);
 
     // The row is the reference, not the window: it is the frame the items live
@@ -1967,32 +1914,27 @@ unsafe fn refresh_item_centres(dock: &mut LambdockState) {
         }
     }
 
-    let mut centres: Vec<c_int> = Vec::new();
-    let mut node = dock.dock_items;
+    dock.item_centres = dock
+        .dock_items
+        .iter()
+        .map(|item| {
+            let (Some(item), Some(reference)) = (item.as_ref(), reference) else {
+                return 0;
+            };
+            let Some(button) = widget_of(item.button) else {
+                return 0;
+            };
+            let Some(bounds) = button.compute_bounds(reference) else {
+                return 0;
+            };
 
-    while !node.is_null() {
-        let item = (*node).data.cast::<DockItem>();
-        let mut centre: c_int = 0;
-
-        if let (Some(item), Some(reference)) = (item.as_ref(), reference.as_ref()) {
-            if let Some(button) = widget_of(item.button) {
-                if let Some(bounds) = button.compute_bounds(&**reference) {
-                    centre = if horizontal {
-                        (f64::from(bounds.x()) + f64::from(bounds.width()) / 2.0).round() as c_int
-                    } else {
-                        (f64::from(bounds.y()) + f64::from(bounds.height()) / 2.0).round() as c_int
-                    };
-                }
+            if horizontal {
+                (f64::from(bounds.x()) + f64::from(bounds.width()) / 2.0).round() as c_int
+            } else {
+                (f64::from(bounds.y()) + f64::from(bounds.height()) / 2.0).round() as c_int
             }
-        }
-
-        centres.push(centre);
-        node = (*node).next;
-    }
-
-    let array = dock.item_centres.cast::<glib::ffi::GArray>();
-    glib::ffi::g_array_set_size(array, 0);
-    glib::ffi::g_array_append_vals(array, centres.as_ptr().cast(), centres.len() as u32);
+        })
+        .collect();
 
     dock.centres_dirty = 0;
     lambdock_stats_bump(GEOMETRY_REFRESHES);
@@ -2016,7 +1958,7 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
         return;
     };
 
-    if dock.dock_items.is_null()
+    if dock.dock_items.is_empty()
         || dock.hover_animate == 0
         || crate::accessibility::lambdock_animations_enabled(dock) == 0
         || dock.is_hidden != 0
@@ -2049,7 +1991,7 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
     // optimising either.
     let started_us = glib::ffi::g_get_monotonic_time();
 
-    if dock.centres_dirty != 0 || dock.item_centres.is_null() {
+    if dock.centres_dirty != 0 || dock.item_centres.len() != dock.dock_items.len() {
         refresh_item_centres(dock);
     }
 
@@ -2059,28 +2001,24 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
     } else {
         0.0
     };
-    let (centres, len) = centres_of(dock.item_centres);
-
     let mut frame = FisheyeFrame {
         // The centres are relative to the row, the pointer to the window.
         pointer_axis: axis - dock.box_origin_px,
         base_size_px: dock_icon_size(dock),
         radius_px: FISHEYE_RADIUS_PX,
         max_scale: FISHEYE_MAX_SCALE,
-        centres,
-        len,
-        index: 0,
+        centres: &dock.item_centres,
         horizontal,
         shelf_active,
         band_ratio,
         geometry_changed: false,
     };
 
-    let items = dock.dock_items;
-    for_each_item(items, |item| {
-        frame.apply(item);
-        frame.index += 1;
-    });
+    for (index, item) in dock.dock_items.iter().enumerate() {
+        if let Some(item) = item.as_ref() {
+            frame.apply(index, item);
+        }
+    }
 
     if frame.geometry_changed {
         dock.centres_dirty = 1;
@@ -2341,17 +2279,12 @@ unsafe fn destroy_background_popover(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn destroy_dock_items(dock: &mut LambdockState) {
-    let items = dock.dock_items;
-    // Cleared first: freeing an item may call back.
-    dock.dock_items = std::ptr::null_mut();
+    // Taken first: freeing an item may call back.
+    let items = std::mem::take(&mut dock.dock_items);
 
-    let mut node = items;
-    while !node.is_null() {
-        free_dock_item((*node).data.cast());
-        node = (*node).next;
+    for item in items {
+        free_dock_item(item);
     }
-
-    glib::ffi::g_list_free(items.cast());
 }
 
 /// Frees the Wayland toplevel window trackers.
@@ -2360,16 +2293,10 @@ unsafe fn destroy_dock_items(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn destroy_window_trackers(dock: &mut LambdockState) {
-    let trackers = dock.window_trackers;
-    dock.window_trackers = std::ptr::null_mut();
-
-    let mut node = trackers;
-    while !node.is_null() {
-        crate::toplevel_tracker::free_window_tracker((*node).data);
-        node = (*node).next;
+    // Taken first: freeing a record may call back.
+    for tracker in std::mem::take(&mut dock.window_trackers) {
+        crate::toplevel_tracker::free_window_tracker(tracker.cast());
     }
-
-    glib::ffi::g_list_free(trackers.cast());
 }
 
 /// Destroys the GTK window, safing the widget pointers before GTK can emit
@@ -2459,10 +2386,7 @@ pub unsafe fn destroy_dock_instance(state: *mut LambdockState) {
     destroy_window(dock);
 
     dock.size_group = None;
-    if !dock.item_centres.is_null() {
-        let pointer = std::mem::replace(&mut dock.item_centres, std::ptr::null_mut());
-        glib::ffi::g_array_unref(pointer.cast());
-    }
+    dock.item_centres = Vec::new();
     destroy_monitor(dock);
 
     for text in [&mut dock.config_path, &mut dock.theme] {

@@ -922,9 +922,10 @@ before anything else.  It groups a dock instance's whole world:
   ~orientation~.
 - Animation: ~tick_cb_id~, ~anim_start_time~, ~current_margin~, ~start_margin~,
   ~target_margin~, ~is_hidden~, ~hide_timer_id~.
-- Ownership lists: ~dock_items~ (~GList~ of ~DockItem*~, see
-  [[https://docs.gtk.org/glib/struct.List.html][GList]]) and ~window_trackers~
-  (~GList~ of raw ~zwlr_foreign_toplevel_handle_v1*~).
+- Two vectors, in row order: ~dock_items~ (the ~DockItem*~s the row is built
+  from) and ~window_trackers~ (the raw
+  ~zwlr_foreign_toplevel_handle_v1*~s the dock is tracking). The items themselves
+  are still GLib-allocated and freed by hand; the lists around them are Rust's.
 - ~monitor~ (the owned
   [[https://docs.gtk.org/gdk4/class.Monitor.html][GdkMonitor]] the dock was placed
   on, or ~None~), ~is_destroying~ re-entrancy guard, ~active_popovers~ counter,
@@ -1052,7 +1053,7 @@ The key names, their defaults and their meanings are tabulated for users in
    - ~'trash~ → ~create_trash_dock_item(...)~ (desktop trash, see
      =rust/src/ui/trash.rs=).
 3. Each ~create_*~ builds the GTK button/popover, appends it to ~dock.box_~, and
-   appends the ~DockItem*~ to ~state->dock_items~.
+   pushes the ~DockItem*~ onto ~dock.dock_items~.
 
 The record and constructors live in =items.scm=; the dispatch reads the
 *public* accessors (~dock-item-name~ etc.), so the internal ~%dock-item-*~
@@ -1324,7 +1325,7 @@ matters and is the canonical teardown sequence:
 - ~free_dock_item~: cancels the poll timer, unprotects and clears the Scheme
   thunk, disconnects popover/button handlers, unparents/unparents-and-removes
   widgets, frees every ~AppWindow~, then the strings and the struct.
-- ~clear_favorite_dock_items~: walks ~state->dock_items~ and frees only
+- ~clear_favorite_dock_items~: splits the row with ~partition~ and frees only
   ~is_favorite~ items, leaving tracked (non-favorite) items in place. Used by
   reload before repopulating.
 
@@ -2146,9 +2147,10 @@ code.
   records.
 - *Free through the right door.* Items → ~free_dock_item~; docks →
   ~destroy_dock_instance~. Never ~g_free~ a struct that has live timers/signals.
-- *Detach lists before freeing members.* ~destroy_dock_instance~ and
-  ~clear_favorite_dock_items~ both detach the list pointer before iterating so
-  re-entrant code cannot walk a half-freed list. Preserve this pattern.
+- *Take the list before freeing its members.* ~destroy_dock_instance~,
+  ~clear_favorite_dock_items~ and ~clear_tracked_windows~ all move the row out of
+  the state (or rebuild it) before anything is freed, so a callback cannot walk a
+  half-freed dock. Preserve this pattern.
 - *~window_trackers~ holds raw Wayland handles, not owned objects.*
   ~free_window_tracker~ and ~clear_window_tracker_dock_references~ are currently
   no-op stubs; do not assume they release anything.
@@ -2344,7 +2346,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
 | ~DockItem~             | A dock entry: favorite launcher, dynamic widget, separator, or tracked app |
 | ~AppWindow~            | A (Wayland handle, title) pair tracked by a ~DockItem~                     |
 | ~MasterToplevel~       | C struct pairing a raw toplevel handle with its title/app_id              |
-| ~window_trackers~      | Per-dock ~GList~ of raw toplevel handles used for show-when-clear logic    |
+| ~window_trackers~      | Per-dock vector of raw toplevel handles used for show-when-clear logic     |
 | ~<dock-config>~        | Scheme record holding one dock's configuration                             |
 | ~*dock-configs*~       | Scheme hash table of ~<dock-config>~ keyed by path and ~'default~          |
 | Scoped CSS            | Theme selectors rewritten to ~.theme-<name> ...~ so docks do not leak styles |
