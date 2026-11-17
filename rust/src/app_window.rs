@@ -79,17 +79,9 @@ pub unsafe fn app_window_new(
     }))
 }
 
-/// Replaces the title; a null window or title is ignored, so a late compositor
-/// event cannot blank or crash a window that is already gone.
-///
-/// # Safety
-///
-/// `window` must be null or a live `AppWindow`; `title` must be null or a C string.
-pub unsafe fn app_window_set_title(window: *mut AppWindow, title: Option<&CStr>) {
-    let Some(window) = window.as_mut() else {
-        return;
-    };
-
+/// Replaces the title; a missing one is ignored, so a late compositor event
+/// cannot blank a window that is already gone.
+pub fn app_window_set_title(window: &mut AppWindow, title: Option<&CStr>) {
     // Titles arrive on every compositor title event, often with the same text:
     // re-allocating and re-pushing it would wake the label, the accessible name
     // and the tooltip for nothing.
@@ -102,35 +94,14 @@ pub unsafe fn app_window_set_title(window: *mut AppWindow, title: Option<&CStr>)
 }
 
 /// Records the last known state, which is what the click policy reads.
-///
-/// # Safety
-///
-/// `window` must be null or a live `AppWindow`.
-pub unsafe fn app_window_set_state(
-    window: *mut AppWindow,
-    minimized: c_int,
-    activated: c_int,
-) {
-    if window.is_null() {
-        return;
-    }
-
-    (*window).minimized = minimized;
-    (*window).activated = activated;
+pub fn app_window_set_state(window: &mut AppWindow, minimized: c_int, activated: c_int) {
+    window.minimized = minimized;
+    window.activated = activated;
 }
 
 /// Whether this record is the one tracking `handle`.
-///
-/// # Safety
-///
-/// `window` must be null or a live `AppWindow`.
-pub unsafe fn app_window_matches(
-    window: *const AppWindow,
-    handle: *const LambdockToplevel,
-) -> bool {
-    window
-        .as_ref()
-        .is_some_and(|window| std::ptr::eq(window.handle, handle))
+pub fn app_window_matches(window: &AppWindow, handle: *const LambdockToplevel) -> bool {
+    std::ptr::eq(window.handle, handle)
 }
 
 /// Frees one record; null is a no-op.
@@ -158,9 +129,11 @@ pub unsafe fn app_window_free(window: *mut AppWindow) {
 pub unsafe fn app_windows_free(windows: *mut GList) {
     let mut node = windows;
 
-    while !node.is_null() {
-        app_window_free((*node).data.cast());
-        node = (*node).next;
+    // `as_ref`, not `is_null` then a deref: the loop body then cannot see a
+    // pointer it has not just proved.
+    while let Some(entry) = node.as_ref() {
+        app_window_free(entry.data.cast());
+        node = entry.next;
     }
 
     g_list_free(windows);
@@ -200,39 +173,34 @@ mod tests {
     #[test]
     fn setting_the_same_title_keeps_the_same_allocation() {
         let window = window(Some("Inbox"));
-        let before = unsafe { (*window).title.as_ref().map(|title| title.as_ptr()) };
+        let record = unsafe { window.as_mut() }.expect("a fresh record");
+        let before = record.title.as_ref().map(|title| title.as_ptr());
 
         let same = std::ffi::CString::new("Inbox").expect("no interior NUL");
-        unsafe { app_window_set_title(window, Some(same.as_c_str())) };
+        app_window_set_title(record, Some(same.as_c_str()));
 
         // The dedupe is what keeps a title event from waking the label: the same
         // text is the same allocation.
-        assert_eq!(
-            unsafe { (*window).title.as_ref().map(|title| title.as_ptr()) },
-            before
-        );
-
-        unsafe { app_window_free(window) };
+        assert_eq!(record.title.as_ref().map(|title| title.as_ptr()), before);
     }
 
     #[test]
     fn a_different_title_replaces_it() {
         let window = window(Some("Inbox"));
+        let record = unsafe { window.as_mut() }.expect("a fresh record");
         let next = std::ffi::CString::new("Sent").expect("no interior NUL");
 
-        unsafe { app_window_set_title(window, Some(next.as_c_str())) };
+        app_window_set_title(record, Some(next.as_c_str()));
 
-        assert_eq!(title_of(window), "Sent");
+        assert_eq!(record.title.as_deref(), Some(next.as_c_str()));
         unsafe { app_window_free(window) };
     }
 
     #[test]
-    fn a_null_window_or_title_is_ignored() {
-        let title = std::ffi::CString::new("Inbox").expect("no interior NUL");
-
+    fn a_null_pointer_is_a_no_op() {
+        // The free helpers are the ones that take a pointer, so they are the ones
+        // that have to tolerate null.
         unsafe {
-            app_window_set_title(std::ptr::null_mut(), Some(title.as_c_str()));
-            app_window_set_state(std::ptr::null_mut(), 1, 1);
             app_window_free(std::ptr::null_mut());
             app_windows_free(std::ptr::null_mut());
         }
@@ -245,21 +213,20 @@ mod tests {
         let title = std::ffi::CString::new("Inbox").expect("no interior NUL");
 
         let window = unsafe { app_window_new(handle, title.as_ptr()) };
+        let record = unsafe { window.as_ref() }.expect("a fresh record");
 
-        unsafe {
-            app_window_set_state(window, 1, 0);
-            assert_eq!((*window).minimized, 1);
-            assert_eq!((*window).activated, 0);
+        app_window_set_state(unsafe { window.as_mut() }.expect("a fresh record"), 1, 0);
 
-            assert!(app_window_matches(window, handle));
-            assert!(
-                !app_window_matches(window, std::ptr::null_mut()),
-                "a null handle matches nothing"
-            );
-            assert!(!app_window_matches(std::ptr::null(), handle));
+        assert_eq!(record.minimized, 1);
+        assert_eq!(record.activated, 0);
 
-            app_window_free(window);
-        }
+        assert!(app_window_matches(record, handle));
+        assert!(
+            !app_window_matches(record, std::ptr::null_mut()),
+            "a null handle matches nothing"
+        );
+
+        unsafe { app_window_free(window) };
     }
 
     #[test]

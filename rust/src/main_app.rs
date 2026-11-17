@@ -620,7 +620,12 @@ unsafe fn present(dock: *mut LambdockState) {
             crate::toplevel_tracker::lambdock_tracker_connected() != 0,
         );
     } else {
-        let message = crate::cstr::text((*error).message).unwrap_or_default();
+        // A backend that failed without filling the error in is still a backend
+        // that failed: say so rather than reading through a null pointer.
+        let message = error
+            .as_ref()
+            .map(|error| crate::cstr::text(error.message).unwrap_or_default())
+            .unwrap_or_else(|| "the compositor did not say why".to_owned());
         crate::log_warn!("Tracker", "window tracking unavailable: {message}");
     }
 

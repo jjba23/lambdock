@@ -3110,8 +3110,12 @@ pub unsafe fn free_dock_item(item: *mut DockItem) {
 
     // Every caller takes the item out of the row before freeing it: a freed
     // pointer left behind is walked by the next tracker event.
+    let still_in_its_dock = item_ref
+        .state
+        .as_ref()
+        .is_some_and(|state| state.dock_items.contains(&item));
     debug_assert!(
-        item_ref.state.is_null() || !(*item_ref.state).dock_items.contains(&item),
+        !still_in_its_dock,
         "a dock item was freed while the row still held it"
     );
 

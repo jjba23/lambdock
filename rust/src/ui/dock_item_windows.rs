@@ -134,18 +134,17 @@ pub fn item_matches_entry(item: &ItemNames<'_>, entry: &EntryNames<'_>) -> bool 
 ///
 /// `windows` must be null or a `GList` of live `AppWindow` records.
 pub unsafe fn all_windows_minimized(windows: *const GList) -> bool {
+    // A missing list is not a minimized one; an empty one is.
     if windows.is_null() {
         return false;
     }
 
     let mut node = windows;
-    while !node.is_null() {
-        let window = (*node).data.cast::<AppWindow>();
-        if window.is_null() || (*window).minimized == 0 {
-            return false;
+    while let Some(entry) = node.as_ref() {
+        match entry.data.cast::<AppWindow>().as_ref() {
+            Some(window) if window.minimized != 0 => node = entry.next,
+            _ => return false,
         }
-
-        node = (*node).next;
     }
 
     true
@@ -158,13 +157,17 @@ pub unsafe fn all_windows_minimized(windows: *const GList) -> bool {
 /// `windows` must be null or a `GList` of live `AppWindow` records.
 pub unsafe fn any_window_focused(windows: *const GList) -> bool {
     let mut node = windows;
-    while !node.is_null() {
-        let window = (*node).data.cast::<AppWindow>();
-        if !window.is_null() && (*window).activated != 0 {
+    while let Some(entry) = node.as_ref() {
+        if entry
+            .data
+            .cast::<AppWindow>()
+            .as_ref()
+            .is_some_and(|window| window.activated != 0)
+        {
             return true;
         }
 
-        node = (*node).next;
+        node = entry.next;
     }
 
     false
@@ -350,13 +353,16 @@ pub unsafe fn dock_item_add_window(
     // without this they would duplicate entries, leak records and inflate the
     // window count.
     let mut node = (*item).windows.cast::<GList>();
-    while !node.is_null() {
-        let existing = (*node).data.cast::<AppWindow>();
-        if crate::app_window::app_window_matches(existing, handle) {
+    while let Some(entry) = node.as_ref() {
+        let existing = entry.data.cast::<AppWindow>();
+        if existing
+            .as_ref()
+            .is_some_and(|existing| crate::app_window::app_window_matches(existing, handle))
+        {
             return existing;
         }
 
-        node = (*node).next;
+        node = entry.next;
     }
 
     let title = if (*item).name.is_null() {
@@ -388,15 +394,18 @@ pub unsafe fn dock_item_remove_window(
     }
 
     let mut node = (*item).windows.cast::<GList>();
-    while !node.is_null() {
-        let window = (*node).data.cast::<AppWindow>();
-        if crate::app_window::app_window_matches(window, handle) {
+    while let Some(entry) = node.as_ref() {
+        let window = entry.data.cast::<AppWindow>();
+        if window
+            .as_ref()
+            .is_some_and(|window| crate::app_window::app_window_matches(window, handle))
+        {
             (*item).windows = g_list_remove((*item).windows.cast(), window.cast()).cast();
             crate::app_window::app_window_free(window);
             break;
         }
 
-        node = (*node).next;
+        node = entry.next;
     }
 
     update_dock_item_status(item);
@@ -422,12 +431,17 @@ pub unsafe fn dock_item_has_window(
     }
 
     let mut node = (*item).windows.cast::<GList>();
-    while !node.is_null() {
-        if crate::app_window::app_window_matches((*node).data.cast::<AppWindow>(), handle) {
+    while let Some(entry) = node.as_ref() {
+        if entry
+            .data
+            .cast::<AppWindow>()
+            .as_ref()
+            .is_some_and(|window| crate::app_window::app_window_matches(window, handle))
+        {
             return 1;
         }
 
-        node = (*node).next;
+        node = entry.next;
     }
 
     0
@@ -595,7 +609,9 @@ mod tests {
             let title = std::ffi::CString::new("Window").expect("no interior NUL");
             let window = unsafe { app_window_new(std::ptr::null_mut(), title.as_ptr()) };
             unsafe {
-                app_window_set_state(window, i32::from(*minimized), i32::from(*activated));
+                if let Some(record) = window.as_mut() {
+                    app_window_set_state(record, i32::from(*minimized), i32::from(*activated));
+                }
                 list = g_list_append(list, window.cast());
             }
         }
@@ -609,11 +625,9 @@ mod tests {
 }
 
         let mut node = list;
-        while !node.is_null() {
-            unsafe {
-                app_window_free((*node).data.cast());
-                node = (*node).next;
-            }
+        while let Some(entry) = unsafe { node.as_ref() } {
+            unsafe { app_window_free(entry.data.cast()) };
+            node = entry.next;
         }
         unsafe { g_list_free(list) };
     }

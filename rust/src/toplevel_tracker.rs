@@ -351,7 +351,11 @@ unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) 
     while let Some(entry) = link.as_ref() {
         link = entry.next;
 
-        let window = entry.data.cast::<crate::app_window::AppWindow>();
+        // `as_mut`, not a raw pointer the body then dereferences: past this
+        // point the record is a reference or the loop has moved on.
+        let Some(window) = entry.data.cast::<crate::app_window::AppWindow>().as_mut() else {
+            continue;
+        };
         if !app_window_matches(window, top) {
             continue;
         }
@@ -359,7 +363,7 @@ unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) 
         // The session re-announces the title on every change, including changes
         // that do not touch the text shown. Nothing to do means nothing to
         // rebuild: no label, no accessible name, no title tooltip.
-        if (*window).title.as_deref() == top_ref.title.as_deref() {
+        if window.title.as_deref() == top_ref.title.as_deref() {
             return;
         }
 
@@ -393,7 +397,9 @@ unsafe fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) 
     while let Some(entry) = link.as_ref() {
         link = entry.next;
 
-        let window = entry.data.cast::<crate::app_window::AppWindow>();
+        let Some(window) = entry.data.cast::<crate::app_window::AppWindow>().as_mut() else {
+            continue;
+        };
         if !app_window_matches(window, top) {
             continue;
         }
@@ -482,9 +488,10 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
     }
 
     let top_ref = &*top;
-    let window = dock_item_add_window(item, top);
-    app_window_set_state(window, top_ref.minimized, top_ref.activated);
-    app_window_set_title(window, top_ref.title.as_deref());
+    if let Some(window) = dock_item_add_window(item, top).as_mut() {
+        app_window_set_state(window, top_ref.minimized, top_ref.activated);
+        app_window_set_title(window, top_ref.title.as_deref());
+    }
 
     if !(*state).window_trackers.contains(&top) {
         (*state).window_trackers.push(top);

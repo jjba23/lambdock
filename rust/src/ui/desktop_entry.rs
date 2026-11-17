@@ -1228,34 +1228,35 @@ mod tests {
 
         unsafe {
             let entry = lambdock_desktop_entry_new_from_data(data.as_ptr(), id.as_ptr());
-            assert!(!entry.is_null());
+            let record = entry.as_ref().expect("a valid entry parses");
 
             assert_eq!(
-                crate::cstr::text((*entry).stem).as_deref(),
+                crate::cstr::text(record.stem).as_deref(),
                 Some("org.gnome.Nautilus")
             );
-            assert_eq!(crate::cstr::text((*entry).name).as_deref(), Some("Files"));
+            assert_eq!(crate::cstr::text(record.name).as_deref(), Some("Files"));
             // The field code goes, and the space it leaves with it.
             assert_eq!(
-                crate::cstr::text((*entry).exec).as_deref(),
+                crate::cstr::text(record.exec).as_deref(),
                 Some("nautilus --new-window")
             );
             // Only the first class is what a compositor reports.
             assert_eq!(
-                crate::cstr::text((*entry).wm_class).as_deref(),
+                crate::cstr::text(record.wm_class).as_deref(),
                 Some("Org.gnome.Nautilus")
             );
             assert_eq!(
-                crate::cstr::text((*entry).categories).as_deref(),
+                crate::cstr::text(record.categories).as_deref(),
                 Some("System;FileManager;")
             );
-            assert_eq!((*entry).no_display, 0);
-            assert_eq!((*entry).hidden, 0);
-            assert_eq!(ptr_array_len((*entry).actions), 1);
+            assert_eq!(record.no_display, 0);
+            assert_eq!(record.hidden, 0);
+            assert_eq!(ptr_array_len(record.actions), 1);
 
-            let action = ptr_array_at((*entry).actions, 0).cast::<DesktopAction>();
-            assert_eq!(crate::cstr::text((*action).id).as_deref(), Some("new-window"));
-            assert_eq!(crate::cstr::text((*action).name).as_deref(), Some("New Window"));
+            let action = ptr_array_at(record.actions, 0).cast::<DesktopAction>();
+            let action = action.as_ref().expect("one action");
+            assert_eq!(crate::cstr::text(action.id).as_deref(), Some("new-window"));
+            assert_eq!(crate::cstr::text(action.name).as_deref(), Some("New Window"));
 
             assert_ne!(
                 lambdock_desktop_entry_has_category(entry, c"filemanager".as_ptr()),
@@ -1279,12 +1280,12 @@ mod tests {
 
         unsafe {
             let entry = lambdock_desktop_entry_new_from_data(data.as_ptr(), id.as_ptr());
-            assert!(!entry.is_null());
+            let entry_ref = entry.as_ref().expect("a valid entry parses");
             assert_eq!(
-                crate::cstr::text((*entry).icon).as_deref(),
+                crate::cstr::text(entry_ref.icon).as_deref(),
                 Some("application-x-executable")
             );
-            assert!((*entry).actions.is_null(), "no Actions= means no array");
+            assert!(entry_ref.actions.is_null(), "no Actions= means no array");
             lambdock_desktop_entry_free(entry);
         }
 
@@ -1315,13 +1316,13 @@ mod tests {
 
         unsafe {
             let entry = lambdock_desktop_entry_new_from_file(path_text.as_ptr());
-            assert!(!entry.is_null());
+            let record = entry.as_ref().expect("a valid file gives an entry");
             assert_eq!(
-                crate::cstr::text((*entry).path),
+                crate::cstr::text(record.path),
                 Some(path.to_string_lossy().into_owned())
             );
             assert_eq!(
-                crate::cstr::text((*entry).id).as_deref(),
+                crate::cstr::text(record.id).as_deref(),
                 Some("lambdock-entry-test.desktop")
             );
 
