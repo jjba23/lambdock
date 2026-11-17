@@ -113,7 +113,7 @@ Two details are worth calling out because they are fidelity, not taste:
   the glass -- which is exactly what the real light dock looked like; the dark
   variant drops the pool and lets the glow do the work. Brushed and Frost
   keep their blue bead. The dot the glass shelf draws itself (C side,
-  =src/ui/shelf.c=) uses the same bead/glow/pool stack, so it reads on both.
+  =rust/src/ui/shelf.rs=) uses the same bead/glow/pool stack, so it reads on both.
 - *Labels follow the slab, not the theme's family.* Frost and Platinum
   are light docks with dark window titles and dark meter text -- the colours the
   labels had on the real light dock -- while their dark variants are light.
@@ -820,7 +820,7 @@ the gaussian blur on the icon reflections.
 ~lambdock~ supports loading and specifying icons in different ways. It loads the
 active GTK 4 Icon theme and proceeds to load the icon.
 
-When you pass an icon string to ~app-item~, the C runtime's
+When you pass an icon string to ~app-item~, the runtime's
 ~create_image_for_icon~ function checks for the icon in this order:
 
 1. *Embedded Resource*: A ~resource://~ path, or one under
@@ -837,10 +837,8 @@ When you pass an icon string to ~app-item~, the C runtime's
 6. *Generic Fallback*: Displays the standard application-x-executable icon if no
    match is found.
 
-The pipeline lives in ~create_image_for_icon~
-([[file:../src/ui/icon_resolver.c][src/ui/icon_resolver.c]]);
-[[file:../HACKING.org::#module-reference-c][HACKING.org]] lists the same stages from
-the C side.
+The pipeline lives in ~rust/src/ui/icon_resolver.rs~;
+[[file:../HACKING.org][HACKING.org]] lists the same stages from the code side.
 
 You can also find available icons already in many ways, see some examples below:
 

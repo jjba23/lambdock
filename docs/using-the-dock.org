@@ -443,11 +443,11 @@ of smoke -- whose mean alpha falls from 139 to 11 over the animation while the
 visible cloud shrinks from the whole frame to about 76x86: the outside of the
 puff thins out first, which is what makes it read as smoke rather than as a fade.
 
-~lambdock~ reproduces that as arithmetic, in ~src/core/poof.h~: fourteen puffs,
+~lambdock~ reproduces that as arithmetic, in ~rust/src/core/poof.rs~: fourteen puffs,
 each with a direction, a reach of 0.12 to 0.28 icon, a radius of 0.06 to 0.18,
 a start delay and a lifetime -- the ones that travel furthest die first, so the
 cloud contracts the way the reference does -- plus the dense core they leave from.
-~src/ui/poof.c~ only draws what those functions return, as a frame-clock
+~rust/src/ui/poof.rs~ only draws what those functions return, as a frame-clock
 animation of one light-cored, grey-edged radial gradient per puff, in the icon's
 own square so it fits the slot it replaces.
 

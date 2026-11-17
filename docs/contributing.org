@@ -30,8 +30,8 @@ what happened instead -- plus your compositor and its version, your GTK, Guile
 and (if you use it) Guix versions, whether you are on a released tag or ~trunk~,
 and the contents of your =~/.config/lambdock/settings.scm=.  If the dock crashes
 or misbehaves, the output of ~lambdock~ from a terminal, plus
-~ninja -C build && ./build/lambdock~ if you can reproduce it on ~trunk~, saves a
-round trip.
+~cargo build --release --offline --locked && ./target/release/lambdock~ if you
+can reproduce it on ~trunk~, saves a round trip.
 
 You can also mail me <jjbigorra@gmail.com> to chat, discuss or send feedback.
 
@@ -42,15 +42,17 @@ You can also mail me <jjbigorra@gmail.com> to chat, discuss or send feedback.
 
 The branch is ~trunk~.  Small, focused commits are the easiest to review.
 
-- Build and test before you send: ~maak test~ should pass (it rebuilds
-  =build/= and runs everything on a virtual display), and the C compiler is
-  configured with ~-Werror~ for things like implicit conversions, so a warning
-  is a build failure.
-- New behaviour wants a test.  C behaviour goes in ~tests/~, the configuration
-  engine in ~tests/scheme/~, and both are cheap to extend.
-- New user-visible strings should be wrapped in ~(G_ "...")~ in C so they can be
-  translated, and the ~.po~ files refreshed with ~maak i18n-update~.
-- New themes are a CSS file in ~resources/css~ plus a build define; new presets
+- Build and test before you send: ~maak test~ should pass (it rebuilds the crate
+  in the pinned environment and runs the suite, then the lints), and
+  ~cargo clippy --all-targets~ does not warn.
+- New behaviour wants a test.  Rust decisions go next to the code, in a
+  ~#[cfg(test)]~ module, the configuration engine in ~tests/scheme/~, and both
+  are cheap to extend.
+- New user-visible strings go through ~translated()~ in Rust (or ~(G_ "...")~ in
+  Scheme) so they can be translated, and the ~.po~ files are refreshed with
+  ~maak i18n-update~.
+- New themes are a CSS file in ~resources/css~ listed in
+  ~resources/lambdock.gresource.xml~; new presets
   are an entry in [[file:../scheme/lambdock/presets.scm][presets.scm]], and a new
   whole-dock recipe is an entry in
   [[file:../scheme/lambdock/looks.scm][looks.scm]] (the scheme tests check that it

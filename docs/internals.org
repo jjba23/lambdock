@@ -53,7 +53,7 @@ dock with ~dock-exclude-apps~.
 Wayland has protocols for "list the windows" and "give me this edge"; X11 has
 *conventions* -- the Extended Window Manager Hints, which every desktop there
 implements, from Xfce and MATE to GNOME on Xorg and the tiling window managers.
-=src/x11_tracker.c= speaks them, on a connection of its own:
+=rust/src/x11_tracker.rs= speaks them, on a connection of its own:
 
 - *The window list* is the =_NET_CLIENT_LIST= property on the root window. A
   window is dropped from it when it closes, added when it opens, and the dock
@@ -79,7 +79,7 @@ none of them out, and this backend is built on =PropertyNotify= for windows it
 does not own. One extra socket watched like any other file descriptor keeps the
 tracker out of GDK's event path entirely -- the two only meet at a window id.
 
-Two rules that are decisions, not plumbing, live in =core/x11_rules.h= where they
+Two rules that are decisions, not plumbing, live in =rust/src/core/x11_rules.rs= where they
 are unit tested without an X server: which windows a dock lists
 (=lambdock_x11_shows_window=, =lambdock_x11_type_is_desktop_chrome=) and where the
 dock's window goes plus what it reserves (=lambdock_x11_placement_compute=, whose
@@ -190,7 +190,7 @@ therefore still draw the icon that actually exists,
 ~org.pulseaudio.pavucontrol~. When there is no entry either, the app id itself is
 used as the icon name, since icon themes often name an icon after the application.
 
-All of this is the C side of the dock -- ~src/ui/desktop_entry.c~ -- and needs no
+All of this is the Rust side of the dock -- ~rust/src/ui/desktop_entry.rs~ -- and needs no
 configuration. The launchpad and the drag-and-drop of =.desktop= files onto the
 dock use the same parsed entries, so there is exactly one interpretation of what an
 application is.
@@ -207,7 +207,7 @@ Lisp engine and runtime environment which complements a high-performance C
 application core and graphics engine. Execution flows bi-directionally between C
 and Guile.
 
-The entry point of the binary (~main.c~) boots the Guile interpreter using
+The entry point of the binary (~rust/src/main_app.rs~) boots the Guile interpreter using
 ~scm_boot_guile~. The C runtime acts as the host and invokes Scheme procedures to
 manage state and extract settings.
 
@@ -270,7 +270,7 @@ flowchart LR
 
 - *Module Loading*: C calls ~(init-dock!)~ via ~scm_c_public_ref~ to load and
   evaluate the user's =~/.config/lambdock/settings.scm=.
-- *Config Extraction*: Functions in ~guile_bridge.c~ inspect Scheme records and
+- *Config Extraction*: Functions in ~rust/src/bridge.rs~ inspect Scheme records and
   Lisp lists directly (~scm_call_0~, ~scm_to_utf8_string~, ~scm_to_bool~) to
   retrieve properties like ~get-dock-position~, ~get-dock-theme~, and
   ~get-dock-items~.
@@ -377,7 +377,7 @@ environment.
 :END:
 
 Lisp is built around live interactive development. With Guile embedded directly
-inside the C graphics core, you can connect a Unix domain socket REPL (via
+inside the Rust graphics core, you can connect a Unix domain socket REPL (via
 Emacs/Geiser or terminal tools like ~socat~) directly into the running dock
 process.  With ~lambdock~ you can inspect state variables, swap themes,
 dynamically insert launchers, or execute arbitrary Scheme functions on the fly,
@@ -441,8 +441,8 @@ system deployment.
   package builds, and full system configurations.
 
 And for the Nix people, ~flake.nix~ and ~package.nix~ provide the same guarantees
-in their ecosystem: the flake pins ~nixpkgs~, builds the C and Rust core with
-Meson, and runs the test suite under ~xvfb~ with a private DBus session, so
+in their ecosystem: the flake pins ~nixpkgs~, builds the crate with Cargo, and
+runs the display-free test suite, so
 ~nix flake check~ means something.
 
 ------------------

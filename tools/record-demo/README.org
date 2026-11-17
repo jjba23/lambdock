@@ -9,7 +9,7 @@ records the nested output with =wf-recorder=, and encodes a framed,
 palette-optimised GIF.
 
 #+begin_src sh
-meson setup build && meson compile -C build
+cargo build --release --offline --locked
 ./tools/record-demo/record-demo.sh
 # writes resources/img/lambdock-demo.gif
 #+end_src

@@ -15,11 +15,11 @@
 #+begin_quote
 A dock is a table of launchers with a little policy attached: what exists, what
 is running, what a click does.  ~lambdock~ keeps the table and the policy in
-Scheme and the pixels in C, so both can be rewritten in the process that is
+Scheme and the pixels in Rust, so both can be rewritten in the process that is
 drawing them.
 #+end_quote
 
-The rendering core is C against GTK4 and ~gtk4-layer-shell~.  The decisions --
+The rendering core is Rust against GTK4 and ~gtk4-layer-shell~.  The decisions --
 which items exist, which theme is in force, where the shelf sits, what a meter
 reads -- are bindings in an embedded GNU Guile image.  The configuration file is
 evaluated into that image at start and on every save, and a socket REPL evaluates
@@ -56,15 +56,15 @@ auto-hiding directly to your setup.
 :END:
 
 ~lambdock~ is powered by:
-*[[https://en.wikipedia.org/wiki/C_(programming_language)][C]]* and *GTK4* /
+*[[https://www.rust-lang.org/][Rust]]* and *GTK4* /
 *[[https://docs.gtk.org/gsk4/][GSK]]* for the graphics core and the
 frame-clock-driven animations,
 *[[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]* for the Wayland
 surface protocol,
 *[[https://www.gnu.org/software/guile/][GNU Guile 3.0]]* embedded in-process through
 [[https://www.gnu.org/software/guile/manual/html_node/libguile.html][libguile]],
-*[[https://mesonbuild.com/][Meson]]* and *[[https://ninja-build.org/][Ninja]]* for
-the build, *[[https://guix.gnu.org/][GNU Guix]]* and
+*[[https://doc.rust-lang.org/cargo/][Cargo]]* for the build,
+*[[https://guix.gnu.org/][GNU Guix]]* and
 *[[https://nixos.org/][Nix]]* for hermetic, reproducible environments,
 *[[https://codeberg.org/jjba23/maak][Maak]]* for the task runner,
 *[[https://www.gnu.org/software/gettext/][GNU gettext]]* for translations, and
@@ -105,12 +105,12 @@ one line away.  Skim it now, or come back when a word bites.
 | *XDG*                   | The freedesktop.org conventions for where desktop programs keep their files.  [[https://specifications.freedesktop.org/basedir-spec/basedir-spec-latest.html][base directory specification]]              |
 | */proc*                 | The pseudo-filesystem where the Linux kernel reports memory, CPU, temperature and battery state.  [[https://en.wikipedia.org/wiki/Procfs][procfs]]                                   |
 | *gettext, .po*          | GNU's translation system, and the per-language files it reads.  [[https://www.gnu.org/software/gettext/][gnu.org/software/gettext]]                                           |
-| *Meson, Ninja*          | The build system and the build runner.  [[https://mesonbuild.com/][mesonbuild.com]], [[https://ninja-build.org/][ninja-build.org]]                                                            |
+| *Cargo*                 | The Rust build tool and package manager.  [[https://doc.rust-lang.org/cargo/][doc.rust-lang.org/cargo]]                                                                  |
 | *Guix, Nix*             | Functional package managers that pin every dependency, including the compiler.  [[https://guix.gnu.org/][guix.gnu.org]], [[https://nixos.org/][nixos.org]]                              |
 | *Flatpak*               | A sandboxed application packaging format; the ~-flatpak~ presets launch apps through it.  [[https://flatpak.org/][flatpak.org]]                                               |
 | *Maak*                  | The Scheme task runner this project builds with instead of a Makefile.  [[https://codeberg.org/jjba23/maak][codeberg.org/jjba23/maak]]                                          |
 | *socat, ncat, rlwrap*   | Terminal tools for talking to the socket REPL, the last one adding line editing.                                                                                 |
-| *ccls, LSP*             | A C/C++ language server, and the Language Server Protocol editors speak:  [[https://github.com/MaskRay/ccls][ccls]], [[https://microsoft.github.io/language-server-protocol/][LSP]]                                                 |
+| *ccls, rust-analyzer, LSP* | Language servers, and the Language Server Protocol editors speak:  [[https://github.com/MaskRay/ccls][ccls]], [[https://rust-analyzer.github.io/][rust-analyzer]], [[https://microsoft.github.io/language-server-protocol/][LSP]] |
 
 ** Where to start
 :PROPERTIES:
@@ -121,7 +121,7 @@ one line away.  Skim it now, or come back when a word bites.
 | *Just want to see it?*           | Watch the GIF above, read [[file:../README.org#features][Features]], then [[#quick-start][Quick start]].                       |
 | *New to all of this?*            | Start with the [[#glossary][glossary]], then [[#which-compositors-are-supported][which compositors are supported]].                       |
 | *Want it on your desktop now?*   | [[#quick-start][Quick start]] gets a themed dock on screen in under a minute.  |
-| *Want to install it properly?*   | [[#installing-lambdock][Installing lambdock]] has Guix, Nix, Meson, distro and container paths. |
+| *Want to install it properly?*   | [[#installing-lambdock][Installing lambdock]] has Guix, Nix, source, distro and container paths. |
 | *Want to hack on it?*            | Read [[file:../HACKING.org][HACKING.org]], then [[file:development.org#developing][Developing lambdock]].                        |
 |----------------------------------+-----------------------------------------------------------------------|
 
@@ -306,20 +306,22 @@ dock into a full-width taskbar with window titles, set
 :CUSTOM_ID: dependencies
 :END:
 
-The project requires the following C, Rust and Scheme dependencies:
+The project requires the following Rust, C and Scheme libraries:
 
 - *GTK 4* (~gtk4~)
 - *GTK4 Layer Shell* (~gtk4-layer-shell~)
 - *GNU Guile 3.0* (~guile-3.0~)
-- *Rust toolchain* (~rustc~ and ~cargo~): it builds the modules ported from C to
-  Rust so far; see [[file:../HACKING.org::#the-rust-seam][HACKING: The Rust seam]].
+- *Rust toolchain* (~rustc~ and ~cargo~): the dock is a Rust crate; see
+  [[file:../HACKING.org::#the-rust-seam][HACKING: the crate and the shell]].
 - *Wayland development files* (~libwayland-dev~, ~wayland-protocols~,
   ~wlr-protocols~)
 - *X11 support* (~gtk4-x11~ and ~libx11-dev~, optional): with them the dock
   also runs on X11 desktops, where it needs no layer shell at all.  Without
   them the build is a Wayland-only dock, and the X11 backend compiles out.
-- [[https://mesonbuild.com/][Meson]] & [[https://ninja-build.org/][Ninja]], and
-  [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]]
+- [[https://en.wikipedia.org/wiki/Pkg-config][pkg-config]], and
+  [[https://glib.org/][glib-compile-resources]] plus
+  [[https://wayland.freedesktop.org/][wayland-scanner]], which ~build.rs~ runs to
+  embed the CSS and icons and to generate the protocol code
 - [[https://www.gnu.org/software/gettext/][GNU gettext]] (for building the
   translations)
 
@@ -363,24 +365,29 @@ nix --extra-experimental-features 'nix-command flakes' run .#
 
 -------
 
-*** Meson
+*** From source (Cargo)
 :PROPERTIES:
-:CUSTOM_ID: meson
+:CUSTOM_ID: from-source
 :END:
 
-The plain path, with [[https://mesonbuild.com/][Meson]] and
-[[https://ninja-build.org/][Ninja]] from your own distribution:
+The plain path, with a Rust toolchain from your own distribution, and the
+libraries above installed as development packages:
 
 #+begin_src sh
-# Setup build directory
-meson setup build
+# Build the dock (release profile)
+cargo build --release --offline --locked
 
-# Compile project
-meson compile -C build
+# Run it from the checkout
+./target/release/lambdock
 
-# Run locally
-./build/lambdock
+# Install it: the binary, the desktop entry, the AppStream data,
+# the Scheme modules and the compiled catalogues
+cargo run --offline --locked -p xtask -- install --prefix /usr/local
 #+end_src
+
+~--offline --locked~ is what the tree is built for: the crate graph is vendored
+under ~rust/vendor/~, and ~Cargo.lock~ is the version that was tested.  Drop both
+to build with a network and a fresh resolution.
 
 -------
 
@@ -455,7 +462,7 @@ maak task.
 #+begin_src shell
 # Install build dependencies on your Debian/the distro system
 sudo apt update
-sudo apt install build-essential debhelper devscripts meson ninja-build \
+sudo apt install build-essential debhelper devscripts rustc cargo \
                  pkg-config libgtk-4-dev libgtk4-layer-shell-dev \
                  guile-3.0-dev libwayland-dev wayland-protocols
 

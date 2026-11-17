@@ -28,9 +28,10 @@ status of translations for this project:
 | Spanish 🇪🇸     | 100%   |
 
 Translations live in ~po/~ and are managed with
-[[https://www.gnu.org/software/gettext/][GNU gettext]] through Meson.  The
-~i18n-update~ maak task regenerates the =.pot= template and merges it into every
-=.po=, and adding a new language is a matter of adding its code to ~po/LINGUAS~.
+[[https://www.gnu.org/software/gettext/][GNU gettext]]: ~cargo run -p xtask --
+i18n~ refreshes the =.pot= template and merges it into every =.po=, and the
+~maak i18n-update~ task is that command inside the pinned environment.  Adding a
+new language is a matter of adding its code to ~po/LINGUAS~.
 If your language is missing, or if a string reads badly in yours, that is a
 welcome patch -- and a good first contribution.
 
@@ -46,13 +47,13 @@ welcome patch -- and a good first contribution.
 :CUSTOM_ID: read-the-guide
 :END:
 
-New to the codebase? Start with the [[file:../HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the C and Rust core, the embedded GNU Guile Scheme
+New to the codebase? Start with the [[file:../HACKING.org][Developer Onboarding & Architecture Guide]], an extensive walkthrough of the Rust core, the embedded GNU Guile Scheme
 engine, the bi-directional data flow, the full dock/item/window lifecycles, the
 build and test workflow, and the common pitfalls to watch out for. It covers the
 threading model, memory ownership rules, GTK/GLib hazards and the invariants that
 used to be bugs.
 
-*** Hacking with ~maak~ & CCLS
+*** Hacking with ~maak~
 :PROPERTIES:
 :CUSTOM_ID: hacking-with-maak
 :END:
@@ -64,10 +65,11 @@ runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
 | Task               | What it does                                                          |
 |--------------------+-----------------------------------------------------------------------|
 | ~maak run~         | Build and run lambdock inside the pinned Guix environment.            |
-| ~maak meson-build~ | Plain Meson/Ninja build of the project.                               |
-| ~maak test~        | Rebuild and run the whole suite headlessly (Xvfb + X11 backend).      |
+| ~maak build~       | Build the dock, release profile, inside the pinned environment.       |
+| ~maak test~        | Rebuild and run the suite in the pinned Guix environment: the tests, then the lints. |
 | ~maak debug-run~   | Rebuild and launch under ~gdb --args~.                                 |
 | ~maak repl~        | Start a development REPL for the project.                             |
+| ~maak vendor~      | Regenerate ~rust/vendor/~ and ~.cargo/config.toml~ after a dependency change. |
 | ~maak add-libs~    | Regenerate ~.ccls~ with the right Guix package flags.                  |
 | ~maak i18n-update~ | Refresh the gettext =.pot= and =.po= files.                            |
 | ~maak deb-build~   | Build the Debian package (unsigned).                                  |
@@ -77,74 +79,74 @@ runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
 | ~maak flatpak-build~ | Build the Flatpak bundle.                                           |
 | ~maak container-build~ | Build the Podman/Docker image (~container-run~ runs it).          |
 
-If you use [[https://github.com/MaskRay/ccls][ccls]] or another
-[[https://microsoft.github.io/language-server-protocol/][LSP]] client, generate
-your local ~.ccls~ configuration using ~maak~. Otherwise read that code a bit and you can copy the
-solution.
+*** The development environment
+:PROPERTIES:
+:CUSTOM_ID: development-environment
+:END:
+
+~manifest.scm~ is the whole toolchain, pinned by ~channels.scm~, and ~flakes.nix~
+mirrors it for Nix.  Either way the shell carries what a Rust project needs and
+nothing that only the build machine needs:
+
+- ~rustc~ and ~cargo~ from the pinned Rust, and the same version's ~tools~ output:
+  ~cargo clippy~, ~rustfmt~ and ~rust-analyzer~.  They are one version on purpose
+  -- a clippy from the host is a second toolchain, and its artifacts do not run
+  in this shell.
+- ~rust-src~, which is the standard library's sources: ~rust-analyzer~ reads them
+  for std's signatures and documentation.  Guix's ~rust-analyzer~ wrapper exports
+  ~RUST_SRC_PATH~ for it; the Nix shell sets it in ~shellHook~.
+- ~gdb~, which is what ~maak debug-run~ launches, and ~adwaita-icon-theme~, which
+  is what makes the icon in the item tests resolvable.
+
+Enter it with ~guix shell -m manifest.scm~ (or ~nix develop~, or ~direnv allow~
+-- the repository ships an ~.envrc~ that evaluates the same manifest).  Then:
 
 #+begin_src sh
-# Generate .ccls with correct Guix package flags
-maak add-libs
-
-# Run lambdock inside time-machine environment
-maak run
+cargo build --offline --locked      # the dock
+cargo test --offline --locked       # the suite
+cargo clippy --offline --locked --all-targets
+cargo fmt
 #+end_src
+
+~maak test~ is those last two inside the shell, with the cargo home pinned so
+~cargo clippy~ finds the shell's clippy rather than the host's under rustup.
+
+If you use [[https://github.com/MaskRay/ccls][ccls]] for the C half of the
+history, ~maak add-libs~ regenerates ~.ccls~ with the right Guix package flags;
+for ~rust/src/~ the language server is ~rust-analyzer~, which needs no
+configuration in the shell.
 
 *** Tests
 :PROPERTIES:
 :CUSTOM_ID: tests
 :END:
 
-The suite has three halves, and all of them run under Meson:
+One command, from the repository root:
 
 #+begin_src sh
-meson setup build
-ninja -C build test
+maak test
 #+end_src
 
-- *C tests* (~tests/test_*.c~): dock items, dock window, Guile bridge, popover
-  menu, theme engine, icon resolver, the glass shelf, the desktop-entry parser,
-  stacks and drag and drop.  These build and exercise real GTK widgets through
-  Meson (~test_dock_item~, ~test_dock_window~, ~test_popover_menu~,
-  ~test_theme_engine~, ~test_icon_resolver~, ~test_shelf~, ~test_guile_bridge~,
-  ~test_desktop_entry~, ~test_stack~, ~test_dock_dnd~, ~test_meter~,
-  ~test_trash~), so they catch GTK behaviour, not just arithmetic.  The pure
-  halves of the C side have their own display-free tests: ~test_config_values~
-  (range rules, clamping, NaN handling, edge and mode names), ~test_dock_dims~
-  (the capsule/overlay/margin arithmetic) and ~test_x11_rules~ (which X11
-  windows a dock lists, and the X11 placement and strut arithmetic), plus
-  ~test_dock_registry~ for the active-dock list.  ~test_x11_dock~ goes the other
-  way: it presents a real dock window on the test display and reads the X11
-  properties back off the server, so it asserts what a window manager would see
-  (the dock window type, the state flags, the strut) rather than a computed
-  value, and it skips itself on a Wayland session or a build without X11.  The trash
-  tests build throwaway trash directories and cover the freedesktop.org layout,
-  the count, emptying (including read-only directories and orphans), moving
-  dropped files and folders in with GIO (including name collisions) and the
-  item's full/empty states; the stack tests cover the directory listing
-  (dot-files, ordering, missing folders) and the view-mode names; the drag
-  and drop tests cover the drop-position arithmetic, the list reordering and the
-  item identity that the layout overrides are built on.
-- *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, driven by
-  `cargo test`): the pure-Guile configuration engine -- state,
-  items, presets, loader, layout overrides and core -- with no display server and
-  no C runtime needed, so they are fast and easy to run in a loop.
-- *Rust unit tests* (~rust/src/core/*.rs~, run by ~cargo test~ through
-  ~rust_unit_tests~): the modules ported from C so far, each with the same cases
-  as the C binary it replaced.  The C binary stays in the suite while its header
-  still has C callers, so the two sides of the seam are checked against each
-  other.  ~cd rust && cargo test~ runs them on their own.
+That is ~cargo clean~, ~cargo test~ and ~cargo clippy --all-targets~ inside the
+pinned environment.  The suite needs no display: every test is a decision, so it
+runs where the shell does -- on a CI runner with no compositor, over SSH, in a
+container.
 
-The Nix package runs exactly this suite under
-[[https://en.wikipedia.org/wiki/Xvfb][Xvfb]] with a private D-Bus session and a
-controlled font configuration.
+- *Rust unit tests* (~rust/src~, ~#[cfg(test)]~ beside the code): 312 of them.
+  The pure decisions -- the dimension arithmetic, the easing and the slide, the
+  item wording, the EWMH rules, the poller budget, the render counters -- plus the
+  seams: ~state.rs~ pinned to the C layout field by field, the theme selector
+  rewriting, the settings export round trip.
+- *Scheme unit tests* (~tests/scheme/lambdock_tests.scm~, run by ~cargo test~ as
+  the ~scheme~ integration test): 342 assertions over the pure-Guile
+  configuration engine -- state, items, presets, the loader, layout overrides and
+  core -- with no display and no GTK.
+- *The widget layer* -- dock windows, popovers, the launchpad, drag and drop -- has
+  no automated coverage today: it was verified by running the dock, and porting it
+  as display-gated tests is the open work listed in
+  [[file:../HACKING.org][HACKING.org]].
 
-The Guix side does the same through ~maak test~: it rebuilds =build/ inside the
-pinned environment and runs the suite on a virtual X server with
-the X11 backend and an icon theme, so a CI runner with no compositor
-runs the real GTK tests instead of skipping them.  That is why the Guix
-manifest carries ~xvfb-run~ and ~adwaita-icon-theme~ alongside the compiler and
-Meson.
+~cd rust && cargo test --offline --locked~ runs the same suite outside the shell.
 
 *** Translations
 :PROPERTIES:

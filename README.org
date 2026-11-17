@@ -84,7 +84,7 @@ This page keeps the feature list, the licence and the project links.
 :END:
 
 - *Two languages, one process.* Rendering, layer-shell anchoring, protocol
-  listeners and the frame clock are C; every decision about what to draw is a
+  listeners and the frame clock are Rust; every decision about what to draw is a
   Scheme value bound in the embedded image.
 - *The configuration is a program.* =settings.scm= is evaluated, not parsed:
   every option is a top-level binding, presets are procedures, and the item list

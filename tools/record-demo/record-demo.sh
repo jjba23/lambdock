@@ -49,7 +49,7 @@ Options:
   --width N         GIF screen width in pixels (default: $WIDTH)
   --fps N           GIF frame rate (default: $FPS)
   --capture-width N width of the lossless capture (default: $CAPTURE_WIDTH)
-  --build           build/refresh build/lambdock before recording
+  --build           build/refresh target/release/lambdock before recording
   --keep-cursor     do not touch the host niri config at all
   -h, --help        this help
 EOF
@@ -103,16 +103,11 @@ if [[ "$(niri msg version 2>/dev/null || true)" == "" ]]; then
   exit 1
 fi
 
-LAMBDOCK_BIN="${LAMBDOCK_BIN:-$ROOT/build/lambdock}"
+LAMBDOCK_BIN="${LAMBDOCK_BIN:-$ROOT/target/release/lambdock}"
 if ((BUILD)); then
-  need meson
+  need cargo
   echo "building lambdock..."
-  if [[ -d "$ROOT/build" ]]; then
-    meson compile -C "$ROOT/build" >/dev/null
-  else
-    meson setup "$ROOT/build" "$ROOT" >/dev/null
-    meson compile -C "$ROOT/build" >/dev/null
-  fi
+  cargo build --release --offline --locked --manifest-path "$ROOT/rust/Cargo.toml" >/dev/null
 fi
 if [[ ! -x "$LAMBDOCK_BIN" ]]; then
   echo "error: $LAMBDOCK_BIN not found; build it first or pass --build" >&2
