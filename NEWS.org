@@ -11,6 +11,35 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.11 (2026-11-17)
+
+- *The documentation caught up with the code.* `VISION.md` still described a C
+  project -- `src/` built with `-Werror`, `dock_item.c` at 1,900 lines, thirty C
+  test programs, `test_accessibility.c` -- and had been describing it since before
+  the port. It now describes this one: the Rust tree and its four layers, the
+  ownership model the last ten releases built, and the honest remainder
+  (`DockItem` is the last C-shaped struct, the `lambdock_*` prefixes are the last
+  naming habit). Three things it used to list as missing have shipped and moved to
+  the "today" half: the item inspector, the settings export and the poller budget.
+- *The developer guide answers "who frees what" with a table.* `HACKING.org` now
+  opens its memory section with what owns each thing and what releases it, states
+  the boundary rule (a reference unless the boundary is the point -- and where the
+  one deliberate pointer cast lives), and its verification checklist gained the
+  X11 half of the tracker and the two-target-directory trap: `cargo build` from the
+  repo root writes `./target`, `maak test` builds in `rust/target`, and the second
+  one can be days old.
+- *The item inspector is in the user guide.* It was in the code and in the release
+  notes, and nowhere a reader of `docs/using-the-dock.org` would find it. The page
+  also has the four rows it shows and what each one means.
+- *Drift, fixed in the same pass*: the line counts in the rough-edges table, the
+  test counts (310 Rust tests, 348 Scheme assertions), the "Bi-Directionality of C
+  and Guile Scheme" section in `docs/internals.org` -- now Rust, diagram included --
+  and the port paragraph in `docs/getting-started.org`. `README.org` links
+  `VISION.md`.
+
+
+*[Released]*
+
 ** v2.1.10 (2026-11-17)
 
 - *The tracker's record owns its text.* `LambdockToplevel` -- the record the

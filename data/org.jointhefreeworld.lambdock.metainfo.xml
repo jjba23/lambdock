@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.11" date="2026-11-17">
+      <description>
+        <p>The documentation caught up with the code. The project's vision had been describing a C project since before the port; it now describes the Rust tree, the ownership model the recent releases built, and the honest remainder. The developer guide answers "who frees what" with a table, and states the rule that keeps the raw pointer at the boundary only. The item inspector -- the "Why is this item here?" rows -- is in the user guide for the first time, and the test counts, the line counts and the C-isms in the internals page were corrected. Nothing the program does changes.</p>
+      </description>
+    </release>
     <release version="2.1.10" date="2026-11-17">
       <description>
         <p>The tracker's record owns its text. The record the dock keeps for one window of the session held its title and app id as GLib strings it freed and re-duplicated on every event; both are owned values now, copied once where the compositor's pointer is valid, and the setters take a borrowed string instead of a pointer, so the X11 backend no longer duplicates what it just read. The app-id change that a late-loading profile triggers is also ordered by the compiler now: the old id is taken out of the record before the new one is written, because the detach looks the old item up by it. Nothing a user sees changes.</p>
