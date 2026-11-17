@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.13" date="2026-11-17">
+      <description>
+        <p>A dock that changed a setting used to stay slow afterwards: the reload rebuilt the row but left the hover bookkeeping describing the old one, so the dock believed its icons were still magnified, stopped reserving the room the fisheye paints into, and then grew its layer surface back one compositor reconfigure per hover frame. The reload puts the row back at rest before it re-applies the dimensions. Auto-hide no longer re-measures the whole row on the frame its slide starts, the clickable region of a hover is widened once instead of once per frame, and a destroyed dock takes the CSS provider that hides the theme's running-app dot with it. A theme written with the label the Preferences window shows -- <code>(dock-theme "Glass Dark")</code> -- is reduced to its stylesheet name instead of producing a class and a file name GTK cannot use, which left the dock with no theme at all.</p>
+      </description>
+    </release>
     <release version="2.1.12" date="2026-11-17">
       <description>
         <p>Pointer safety, as reported by the repository's code scanning. When window tracking is unavailable the dock logs the reason, and it read that reason from a <code>GError</code> a failing backend is not obliged to fill in -- a null dereference on exactly the sessions where tracking does not start. The error is read through an <code>Option</code> now. Eight further reports were the same shape, a null check in one statement and a dereference a few lines later: the walks over an item's windows, the tracker's title and state updates and a debug assertion take a reference once instead of re-deriving it per field, and three window helpers lost their pointers entirely. The array walker behind the desktop-entry cache checks the array and the index now, so a malformed array cannot be read past its end.</p>

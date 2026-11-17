@@ -11,6 +11,38 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.13 (2026-11-17)
+
+- *A dock stops being slow after a setting is changed.*  A reload rebuilt the row
+  but left the hover bookkeeping describing the old one, so the dock went on
+  believing its icons were magnified. `dock_reserve_hover_room` reserves nothing
+  for a magnifying dock, so the surface lost the room the fisheye paints into and
+  then grew it back, one compositor reconfigure per hover frame, until the
+  pointer left. The reload puts the row back at rest before it re-applies the
+  dimensions, which is also what the following hover expects.
+- *Auto-hide does not re-measure the row as it starts to slide.*  A pointer that
+  leaves already resets the icons; `hide_dock` reset them a second time, which
+  re-measured the whole row on the one frame that has to be cheap. The reset now
+  happens only when something is actually magnified.
+- *The hover's input region is widened once per hover instead of once per frame.*
+  The fisheye step moves the row's bounds every frame, and the clickable region
+  followed them, so a sweep sent the compositor a `wl_surface.set_input_region`
+  for almost every layout step. The region now covers the dock plus the room the
+  row grows into -- computed when the hover starts, and left alone for the rest
+  of it. The room is added along the dock's own axis, so a pointer still leaves
+  the surface where it used to.
+- *A theme written the way the Preferences window labels it now works.*
+  `(dock-theme "Glass Dark")` -- the label, not the symbol -- used to become the
+  CSS class `theme-Glass Dark` and the resource path `Glass Dark.css`: neither is
+  a name GTK can use, so the stylesheet was discarded and the dock came up with
+  no theme at all. The requested name is reduced to a stylesheet name
+  (`glass-dark`) before either use, which also keeps a path in a settings file
+  from choosing the file that is read.
+- *A destroyed dock takes its indicator guard with it.*  The provider that
+  silences a theme's running-app dot while the glass draws one was removed by a
+  reload but not by teardown, so every dock that went away left a provider
+  matching its theme class installed on the display for the rest of the session.
+
 ** v2.1.12 (2026-11-17)
 
 - *A tracker that fails without saying why no longer takes the dock with it.*
