@@ -798,9 +798,11 @@ And the checklist that goes with it:
 
 - ~maak test~ passes: the Rust suite, the Scheme suite, and ~cargo clippy
   --all-targets~ with no warning.
-- The X11 half compiles and lints too: ~LAMBDOCK_HAVE_X11=1 cargo clippy
-  --all-targets~.  It is a build option, not a runtime one, so a change that only
-  touches wayland can still break the other half of the tracker.
+- The X11 half compiles and lints too: ~maak clippy~ does both configurations,
+  because ~LAMBDOCK_HAVE_X11~ is a build option and not a runtime one -- a change
+  that only touches wayland can still break the other half of the tracker.  Use
+  the task rather than ~cargo clippy~: cargo finds a subcommand in
+  ~$CARGO_HOME/bin~ before the PATH, and rustup's ~cargo-clippy~ lives there.
 - You ran the *binary you built*.  There are two target directories: from the repo
   root ~cargo build~ writes ~./target~, while ~maak test~ builds in ~rust/target~
   because it changes into ~rust~ first.  ~./rust/target/debug/lambdock~ can

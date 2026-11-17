@@ -73,6 +73,33 @@ passing tests are the ones that match this commit."
              "; ")))
    #:verbose? #t))
 
+(define (clippy)
+  "Lint the crate in the pinned environment, in both build configurations.
+
+Both, because `LAMBDOCK_HAVE_X11' is a build option and not a runtime one: a
+change that only touches the Wayland half can still break the X11 one, and the
+suite's gate has to see it.
+
+It is a task of its own, and not just a line in `test', because of a cargo rule
+that bites whoever types `cargo clippy' by hand: cargo looks for a subcommand in
+`$CARGO_HOME/bin' *before* the PATH, and that is where rustup keeps the host's
+`cargo-clippy' -- a second toolchain, whose artifacts this shell cannot run. A
+cargo home of its own leaves the shell's clippy, the one that matches its rustc,
+to be found."
+  (time-machine-manifest-shell
+   (list "/bin/sh" "-c"
+         (~ "'~a'"
+            (string-join
+             (list "set -eu"
+                   ;; `clippy-driver' links the binaries it builds without the
+                   ;; rpath `rustc' bakes in, so the loader finds no
+                   ;; `libgcc_s.so.1' when cargo runs a workspace build script.
+                   "export LD_LIBRARY_PATH=\"$(dirname \"$(command -v rustc)\")/../lib\""
+                   "CARGO_HOME=\"$PWD/target/cargo-home\" cargo clippy --offline --locked --all-targets"
+                   "LAMBDOCK_HAVE_X11=1 CARGO_HOME=\"$PWD/target/cargo-home\" cargo clippy --offline --locked --all-targets")
+             "; ")))
+   #:verbose? #t))
+
 (define (repl)
   "Development REPL."
   (time-machine-manifest-shell

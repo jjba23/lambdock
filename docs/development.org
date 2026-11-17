@@ -67,6 +67,7 @@ runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
 | ~maak run~         | Build and run lambdock inside the pinned Guix environment.            |
 | ~maak build~       | Build the dock, release profile, inside the pinned environment.       |
 | ~maak test~        | Rebuild and run the suite in the pinned Guix environment: the tests, then the lints. |
+| ~maak clippy~      | Lint both build configurations (with and without ~LAMBDOCK_HAVE_X11~).   |
 | ~maak debug-run~   | Rebuild and launch under ~gdb --args~.                                 |
 | ~maak repl~        | Start a development REPL for the project.                             |
 | ~maak vendor~      | Regenerate ~rust/vendor/~ and ~.cargo/config.toml~ after a dependency change. |
@@ -84,7 +85,7 @@ runner, so the build recipes are readable Lisp rather than opaque Makefiles. Run
 :CUSTOM_ID: development-environment
 :END:
 
-~manifest.scm~ is the whole toolchain, pinned by ~channels.scm~, and ~flakes.nix~
+~manifest.scm~ is the whole toolchain, pinned by ~channels.scm~, and ~flake.nix~
 mirrors it for Nix.  Either way the shell carries what a Rust project needs and
 nothing that only the build machine needs:
 
@@ -104,12 +105,15 @@ Enter it with ~guix shell -m manifest.scm~ (or ~nix develop~, or ~direnv allow~
 #+begin_src sh
 cargo build --offline --locked      # the dock
 cargo test --offline --locked       # the suite
-cargo clippy --offline --locked --all-targets
 cargo fmt
 #+end_src
 
-~maak test~ is those last two inside the shell, with the cargo home pinned so
-~cargo clippy~ finds the shell's clippy rather than the host's under rustup.
+Linting is ~maak clippy~, not ~cargo clippy~: cargo looks for a subcommand in
+~$CARGO_HOME/bin~ *before* the PATH, and that is where rustup keeps the host's
+~cargo-clippy~ -- so a bare ~cargo clippy~ in this shell runs a second
+toolchain's lints against this one's rustc.  ~maak clippy~ pins ~CARGO_HOME~
+inside the shell and lints both build configurations (with and without
+~LAMBDOCK_HAVE_X11~).  ~maak test~ is the suite plus the same pinned clippy.
 
 For ~rust/src/~ the language server is ~rust-analyzer~, which needs no
 configuration in the shell.  Two target directories exist and neither is the

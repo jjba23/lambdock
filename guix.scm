@@ -72,7 +72,17 @@
                          ;; suite; `wayland-scanner' and `glib:bin' generate the
                          ;; protocol and the resource bundle.
                          rust
-                         (list rust "cargo")))
+                         (list rust "cargo")
+                         ;; This is the `dev' package, so it carries what a
+                         ;; developer needs and not just what the build does:
+                         ;; `cargo-clippy', `clippy-driver', `rustfmt' and
+                         ;; `rust-analyzer' from the toolchain's `tools' output,
+                         ;; and the standard library's sources, which is what the
+                         ;; language server reads instead of guessing at std's
+                         ;; signatures. One version of all of them, because a
+                         ;; clippy from somewhere else is a second toolchain.
+                         (list rust "tools")
+                         (list rust "rust-src")))
     (inputs (list gtk
                   gtk4-layer-shell
                   guile-3.0

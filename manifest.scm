@@ -48,15 +48,17 @@
                           (list rust "cargo")
                           ;; `cargo clippy' is the lints half of `maak test', and
                           ;; the tools output is where the toolchain keeps
-                          ;; `cargo-clippy' and `clippy-driver'. Without it cargo
-                          ;; finds the subcommand further down the PATH -- the
-                          ;; host's, under rustup -- and the two toolchains
-                          ;; collide: the build scripts that the borrowed
-                          ;; `clippy-driver' compiles carry no rpath to this
-                          ;; shell's `libgcc_s', so cargo cannot execute them.
-                          ;; The same output is the editor story: `rustfmt' and
-                          ;; `rust-analyzer', the latter wrapped to find its
-                          ;; sysroot.
+                          ;; `cargo-clippy' and `clippy-driver'. The same output
+                          ;; is the editor story: `rustfmt' and `rust-analyzer',
+                          ;; the latter wrapped to find its sysroot.
+                          ;;
+                          ;; Having them here is not enough on its own: cargo
+                          ;; looks for a subcommand in `$CARGO_HOME/bin' *before*
+                          ;; the PATH, and rustup keeps the host's `cargo-clippy'
+                          ;; in `~/.cargo/bin'. So `maak clippy' (and `maak test')
+                          ;; pin CARGO_HOME inside the shell, which is what makes
+                          ;; the shell's clippy -- the one matching this rustc --
+                          ;; the one that runs.
                           (list rust "tools")
                           ;; rust-analyzer reads the standard library's sources
                           ;; from the sysroot; without this it shows signatures
