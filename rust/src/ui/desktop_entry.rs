@@ -279,8 +279,17 @@ unsafe fn ptr_array_len(array: *const glib::ffi::GPtrArray) -> usize {
     }
 }
 
+/// The `index`th element of `array`, or null when there is no such element.
 unsafe fn ptr_array_at(array: *const glib::ffi::GPtrArray, index: usize) -> *mut c_void {
-    *(*array).pdata.add(index)
+    let Some(array) = array.as_ref() else {
+        return std::ptr::null_mut();
+    };
+
+    if index >= array.len as usize {
+        return std::ptr::null_mut();
+    }
+
+    array.pdata.add(index).read()
 }
 
 unsafe extern "C" fn free_action(data: *mut c_void) {
