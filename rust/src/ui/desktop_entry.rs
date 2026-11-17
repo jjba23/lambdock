@@ -871,12 +871,18 @@ unsafe fn cache_index_entry(
     index: &mut HashMap<String, *mut DesktopEntry>,
     entry: *mut DesktopEntry,
 ) {
-    cache_index_add(index, crate::cstr::text((*entry).id), entry);
+    // `record` for the fields, `entry` for the key: the index stores the
+    // pointer, and this reads through a reference it has just proved.
+    let Some(record) = entry.as_ref() else {
+        return;
+    };
 
-    let stem = crate::cstr::text((*entry).stem);
+    cache_index_add(index, crate::cstr::text(record.id), entry);
+
+    let stem = crate::cstr::text(record.stem);
     cache_index_add(index, stem.clone(), entry);
-    cache_index_add(index, crate::cstr::text((*entry).wm_class), entry);
-    cache_index_add(index, exec_base_name(crate::cstr::text((*entry).exec)), entry);
+    cache_index_add(index, crate::cstr::text(record.wm_class), entry);
+    cache_index_add(index, exec_base_name(crate::cstr::text(record.exec)), entry);
     cache_index_add(
         index,
         stem.as_deref().map(|stem| last_component(stem).to_owned()),
@@ -894,10 +900,13 @@ unsafe fn cache_build() {
 
         // The copies the grid does not list are indexed too, so a window of the
         // copy that lost still resolves to the application and its icon.
-        for alternate in 0..ptr_array_len((*entry).alternates) {
+        let Some(record) = entry.as_ref() else {
+            continue;
+        };
+        for alternate in 0..ptr_array_len(record.alternates) {
             cache_index_entry(
                 &mut index,
-                ptr_array_at((*entry).alternates, alternate).cast::<DesktopEntry>(),
+                ptr_array_at(record.alternates, alternate).cast::<DesktopEntry>(),
             );
         }
     }
