@@ -11,6 +11,31 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.8 (2026-11-17)
+
+- *Half of the dock's API takes a dock, not a pointer to one.* Thirty-three
+  functions opened with the same three lines -- "if this pointer is null, give up,
+  otherwise borrow what it points at" -- and then worked on the borrow for the rest
+  of the body. They take `&LambdockState` or `&mut LambdockState` now, so the null
+  branch is gone and the signature says which of the two the function needs: the
+  window's layout, input region, auto-hide and hover in `dock_window.rs`, the theme
+  load and its five provider helpers, the settings read and the item population in
+  `bridge.rs`, the shelf layout, the tracked-window teardown, the window-tracker
+  sync and the two read-only drag-and-drop helpers. Nineteen fewer null checks on
+  the window alone.
+- The boundary keeps its pointer, because that is where the pointer arrives: the
+  adapters GLib, GTK and Xlib call back take `*mut c_void` or `*mut LambdockState`
+  and hand the borrow on. Three of them needed a value that outlives the call --
+  a tick callback, a timeout and four signal handlers -- so
+  `dock_schedule_input_region`, `schedule_hide_timer` and
+  `setup_dock_motion_controller` take the raw pointer from the reference before it
+  becomes one, which is the same trick the code did by hand, said once.
+- What is left on a raw pointer is the item factory (an item remembers the dock
+  that built it) and the modules whose own signatures are the next batch.
+
+
+*[Released]*
+
 ** v2.1.7 (2026-11-17)
 
 - *The dock's lists are Rust's.* `dock_items` and `window_trackers` were `GList`s

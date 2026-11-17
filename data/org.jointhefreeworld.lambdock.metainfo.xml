@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.8" date="2026-11-17">
+      <description>
+        <p>Half of the dock's API takes a dock, not a pointer to one. Thirty-three functions opened by asking whether their argument was null and then worked on the borrow anyway; they take a reference now, so the null branch is gone and the signature says whether the function reads or writes. The callbacks GTK, GLib and Xlib invoke keep their raw pointer, because that is where the pointer arrives, and the one place that needs a value outliving the call takes it before the borrow becomes a reference. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.7" date="2026-11-17">
       <description>
         <p>The dock's lists are Rust's. The row and the tracked windows were <code>GList</code>s walked by hand with a null-checked cursor, and the fisheye's cached item centres were a <code>GArray</code> in a <code>void*</code>; they are a <code>Vec</code> of items, a <code>Vec</code> of windows and a <code>Vec</code> of centres now, so the walks are iterator chains and the mutations are <code>push</code>, <code>retain</code> and <code>partition</code>. The layout order no longer round-trips through duplicated GLib strings, and one use-after-free is gone: an item whose last window closed was freed while the row still held its pointer, so the next tracker event walked freed memory. Nothing a user sees changes.</p>
