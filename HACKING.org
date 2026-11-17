@@ -622,11 +622,18 @@ settings file, its monitor policy, the registered docks, the live monitors) into
 policies are unit-tested without a display, including the documented fallback for
 a connector that does not exist.
 
-=The C names are legacy, not a contract.= The crate still declares its functions
-~#[no_mangle] pub extern "C"~, because that is how each module moved out of C
-without its callers changing. Nothing outside the crate calls them any more, so a
-module that is being touched anyway can drop the ~no_mangle~ - and the ~unsafe~
-with it. That is the cheapest cleanup this tree has.
+=The C names are legacy, not a contract.= Every module used to declare its
+functions ~#[no_mangle] pub extern "C"~, because that is how each one moved out of
+C without its callers changing -- and modules called each other through
+~extern "C"~ blocks that named their own crate. Nothing outside the crate calls
+them any more, so that seam has been taken out: no ~#[no_mangle]~ is left, the
+cross-module calls are ~use crate::module::function~, 411 definitions moved to the
+Rust ABI, and the 57 that remain ~extern "C"~ are the ones C really calls (GLib
+timeouts and idles, GTK tick callbacks and signal handlers, the Wayland listener
+tables, the Xlib error handler, and the four Guile subrs). Of the ~400 functions
+whose signatures take no raw pointer, the ones whose bodies needed no unsafe are
+plain ~fn~ now; the rest kept the ~unsafe fn~ they earn. What is left of the C
+shape is the ~lambdock_*~ prefixes, which are names, not exports.
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
@@ -1496,10 +1503,9 @@ ideas each, and every one of them is a mechanical split:
 | =rust/src/ui/preferences.rs=   | 1659  | a data-driven form, its builders and its window in one file        | move the row builders next to the tables they serve           |
 | =rust/src/main_app.rs=         | 1742  | startup, disk sync, overlay CSS and the Scheme primitives together | the REPL primitives want their own module                     |
 
-The other thing worth doing is shrinking the C-shaped seam: the crate still
-declares several hundred ~#[no_mangle] pub extern "C"~ functions that nothing
-outside the crate calls.  A module that is touched anyway can drop the ~no_mangle~
-and the ~unsafe~ with it.
+What is left of the C-shaped seam is cosmetic: the ~lambdock_*~ prefixes on
+functions nothing outside the crate calls.  Renaming them is a mechanical follow-up
+that wants a quiet tree.
 
 Deprecated GTK3 patterns are *not* on this list: there are none left
 (~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and
@@ -2260,6 +2266,15 @@ They are kept here as guard-rails because each is easy to reintroduce.
   ~rust_2018_idioms~ in its ~[lints]~ table, so a warning fails ~maak test~.
   Suppress with a narrow ~#[allow(...)]~ and a reason, never by loosening the
   table.
+- *The generated objects come last, so their libraries are named again after
+  them.* ~rust/build.rs~ hands the GResource and protocol objects to the linker as
+  link *arguments*, and cargo puts the crate's own ~-l~ flags before those. With
+  ~--as-needed~ a library that appears before its first user is dropped, so a
+  target whose Rust side references neither glib nor libwayland -- the unit-test
+  binary is one -- failed to link with ~undefined reference to
+  g_static_resource_init~. ~build.rs~ therefore asks pkg-config for ~gio-2.0~,
+  ~glib-2.0~ and ~wayland-client~ again, after the objects. Adding a third
+  generated object means adding its library to that loop.
 - *Compile-time values matter at runtime:* ~LAMBDOCK_SCHEME_DIR~ (the installed
   scheme dir), ~LAMBDOCK_LOCALEDIR~, ~LAMBDOCK_VERSION~ and
   ~DEFAULT_GSK_RENDERER~ are read through ~option_env!~ in =rust/build.rs= and
