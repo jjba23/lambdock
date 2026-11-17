@@ -11,6 +11,25 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.4 (2026-11-17)
+
+- *The leaf APIs stop inventing unsafe.* A handful of modules kept an `unsafe`
+  contract they had made up rather than one the platform imposed. `tr` and `trn`
+  had a `# Safety` section about *ownership of the result*, which is not a
+  precondition on the caller -- gettext returns the static table or memory it
+  owns, and calling it with a `&CStr` cannot be unsound -- so translating is a
+  safe function now, and `cstr::translated_dup` with it. The CSS-class toggle
+  takes `&gtk4::Widget` and a `&str` instead of a `*mut GtkWidget` and a C string,
+  which is one less place that can be handed a dying widget; the "is the class
+  already there?" rule it exists for is a pure function with a test, since the
+  suite has no display to build a widget in. `shelf_edge_class` answers a
+  `&'static str` -- it always did, the C pointer was just how it was spelled --
+  so the shelf's four edge classes are set without a `CStr::from_ptr`. And the
+  two directory monitors are owned by a thread-local instead of being handed to
+  `mem::forget`, which is the same lifetime said out loud.
+
+
+
 ** v2.1.3 (2026-11-17)
 
 - *The translations load in the Nix package.* The wrapper the Nix build puts in

@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.4" date="2026-11-17">
+      <description>
+        <p>The leaf APIs stop inventing unsafe. Translating a message is a safe function now — gettext returns memory it owns, so a <code># Safety</code> section about the result's ownership was describing nothing the caller had to promise — and the CSS-class toggle takes a widget and a <code>&amp;str</code> instead of a raw <code>GtkWidget*</code> and a C string. <code>shelf_edge_class</code> answers a <code>&amp;'static str</code>, the shelf's four edge classes are set without a pointer round trip, and the two directory monitors are owned by the process instead of being passed to <code>mem::forget</code>. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.3" date="2026-11-17">
       <description>
         <p>The translations load in the Nix package. The wrapper the Nix build puts in front of the binary points GTK and GIO at its closure, but a C library's locales are a file of their own: without <code>LOCALE_ARCHIVE</code> the process locale is unsupported — GTK said so once — and gettext fell back to the C locale, so the dock stayed English however many catalogues the install had placed in <code>share/locale</code>. The package now carries <code>glibc-locales</code> and hands its archive to the wrapper.</p>
