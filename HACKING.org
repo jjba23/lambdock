@@ -2278,8 +2278,15 @@ They are kept here as guard-rails because each is easy to reintroduce.
 - *Compile-time values matter at runtime:* ~LAMBDOCK_SCHEME_DIR~ (the installed
   scheme dir), ~LAMBDOCK_LOCALEDIR~, ~LAMBDOCK_VERSION~ and
   ~DEFAULT_GSK_RENDERER~ are read through ~option_env!~ in =rust/build.rs= and
-  =rust/main_app.rs=, so a recipe that forgets one gets a dock that looks for its
-  modules in the wrong place.
+  =rust/main_app.rs=, so a recipe has to set the ones it has an opinion about --
+  and ~build.rs~ has to forward them with ~rustc-env~, because an environment
+  variable reaches rustc and not the crate. A build that sets neither directory
+  still works: the dock derives its prefix from its own location
+  (~<prefix>/bin/lambdock~ → ~<prefix>/share/guile/site/3.0~ and
+  ~<prefix>/share/locale~) and uses those when they exist. That fallback is what
+  makes ~xtask install --prefix ~/.local~ work, and it is why an installed copy
+  must not be tested only from the source tree: there the relative ~scheme~ path
+  hides the whole question.
 - *~%load-path~ pitfall.* ~setup_guile_load_path~ prepends the *relative* path
   ~"scheme"~, so running the binary from outside the repo root (uninstalled) will
   fail to find the modules unless ~LAMBDOCK_SCHEME_DIR~ (the installed path)
