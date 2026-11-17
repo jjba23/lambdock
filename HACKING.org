@@ -7,8 +7,8 @@
 #+startup: overview
 #+HTML_HEAD: <link rel="stylesheet" type="text/css" href="https://jointhefreeworld.org/static/css/jointhefreeworld.css" />
 
-[[https://jointhefreeworld.org/ggg/dist/lang-c.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/lang-rust.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
-[[https://img.shields.io/badge/license-MIT-2ea44f.svg]] [[https://jointhefreeworld.org/ggg/dist/jointhefreeworld-org.svg]] [[https://img.shields.io/badge/CI-Byggsteg%20%7C%20Woodpecker-2ea44f.svg]]
+[[https://jointhefreeworld.org/ggg/dist/rust-edition-2021.svg]] [[https://jointhefreeworld.org/ggg/dist/gtk4.svg]] [[https://jointhefreeworld.org/ggg/dist/scheme-guile.svg]] [[https://jointhefreeworld.org/ggg/dist/gnu-guix.svg]] [[https://jointhefreeworld.org/ggg/dist/nix-flake.svg]] [[https://jointhefreeworld.org/ggg/dist/maak.svg]] [[https://jointhefreeworld.org/ggg/dist/i18n-gnu-gettext.svg]]
+[[https://jointhefreeworld.org/ggg/dist/license-mit.svg]] [[https://jointhefreeworld.org/ggg/dist/jointhefreeworld-org.svg]]
 
 /the map of the territory, for people about to change it./
 
@@ -36,8 +36,8 @@ that will bite you. Read it once end to end, then keep it open as a reference.
 :CUSTOM_ID: what-this-document-is
 :END:
 
-lambdock is a small program with a deliberately unusual shape: a C and Rust core
-that draws, and an embedded Lisp that decides. This guide is the bridge between
+lambdock is a small program with a deliberately unusual shape: a Rust core that
+draws, and an embedded Lisp that decides. This guide is the bridge between
 reading the code and changing it safely.
 
 ** Who it is for
@@ -47,8 +47,8 @@ reading the code and changing it safely.
 
 - *You, if you are new to the tree.*  Read [[#introduction-and-mental-model][Introduction & mental model]],
   then [[#data-flow][Data flow]], then [[#pitfalls][Pitfalls]]. That is 80% of what you need.
-- *You, if you know C and GTK but not Lisp.*  [[#the-scheme-side][Module reference (Scheme)]]
-  and [[#interop-hazards][C ↔ Guile interop hazards]] are the parts that will surprise you.
+- *You, if you know Rust and GTK but not Lisp.*  [[#the-scheme-side][Module reference (Scheme)]]
+  and [[#interop-hazards][Rust ↔ Guile interop hazards]] are the parts that will surprise you.
 - *You, if you know Lisp but not GTK.*  [[#lifecycles][Lifecycles]] and
   [[#gtk-glib-hazards][GTK / GLib hazards]] are where the sharp edges are.
 - *You, if you are reviewing a patch.*  [[#verifying-a-change][Verifying a change]] and
@@ -64,14 +64,15 @@ reading the code and changing it safely.
 
 The document is layered on purpose: skim the tables and the quick tour, then drop
 into a section when you touch that part of the tree. Code names are written the
-way they appear in the source, so ~free_dock_item~ is a C function and
+way they appear in the source, so ~free_dock_item~ is a Rust function and
 ~get-dock-theme~ is a Scheme procedure.
 
+| What                              | Where it is written                                         |
 |-----------------------------------+-------------------------------------------------------------|
 | *Diagrams*                        | The flowcharts are [[https://mermaid.js.org/][Mermaid]] blocks; Emacs will not   |
 |                                   | render them, but GitHub does.                               |
 | *Source of truth*                 | =rust/src/= for behaviour, =Cargo.toml= for the build.      |
-| *Scheme source of truth*          | =scheme/lambdock/core.scm= for what C may call.             |
+| *Scheme source of truth*          | =scheme/lambdock/core.scm= for what the dock may call.      |
 | *Behavioural rules*               | [[#pitfalls][Pitfalls]] -- each one was a real bug once.              |
 |-----------------------------------+-------------------------------------------------------------|
 
@@ -143,15 +144,15 @@ See [[#extending-lambdock][Extending lambdock]] for the step-by-step versions.
 :END:
 
 /the shape of the tree in one screen. Per-file responsibilities are in
-[[#module-reference-c][Module reference (C)]], the decisions each module makes are
+[[#module-reference][Module reference]], the decisions each module makes are
 in the sections after [[#introduction-and-mental-model][Introduction & mental model]]./
 
 #+begin_src mermaid
 flowchart TB
-  cfg[("settings*.scm")] --> bridge[guile_bridge]
+  cfg[("settings*.scm")] --> bridge[bridge]
   comp[("compositor")] --> tracker[toplevel_tracker]
   tracker --> registry[dock_registry]
-  bridge --> main[main]
+  bridge --> main[main_app]
   registry --> main
   main --> prefs[ui/preferences]
   main --> window[dock_window]
@@ -211,7 +212,8 @@ Files are ordered the same way, so a reader always knows where to look:
 4. *callbacks* — thin adapters: read inputs, call the helpers above
 5. *public API / ~main~*
 
-=dock_window.c=, =toplevel_tracker.c=, =ui/launchpad.c= and =ui/preferences.c=
+=rust/src/dock_window.rs=, =rust/src/toplevel_tracker.rs=,
+=rust/src/ui/launchpad.rs= and =rust/src/ui/preferences.rs=
 all follow it and say so in their header comment; when a file needs a sixth
 section, it is usually two modules. Functions stay under ~40~ lines: the largest
 one left (=snapshot= in =rust/src/ui/meter.rs=) is the next thing to split.
@@ -226,10 +228,9 @@ Repeated cases are data, not switches. If you add a case, add a row:
 | Table                                | File                | One row is...                            |
 |--------------------------------------+---------------------+------------------------------------------|
 | =ITEM_KIND_OPS=                      | =rust/src/dock_item.rs= | one kind of dock item (app, stack, …) |
-| =DOCK_ITEM_BUILDERS=                 | =guile_bridge.c=    | one Scheme item type                     |
-| =k_*_switches=, =k_*_scales=, …      | =ui/preferences.c=  | one settings control                     |
-| =k_*_actions=                        | =ui/preferences.c=  | one "do something" row (e.g. add a widget) |
-| =DockVisitor= + ~dock_registry_foreach~ | =dock_registry.h= | one "do this to every dock" action (Rust) |
+| =ITEM_BUILDERS=                      | =rust/src/bridge.rs= | one Scheme item type                     |
+| =SECTIONS=, with =SwitchSpec= / =ChoiceSpec= inside | =rust/src/ui/preferences.rs= | one settings panel, one control |
+| =DockVisitor= + ~dock_registry_foreach~ | =rust/src/dock_registry.rs= | one "do this to every dock" action |
 
 The last one is how a compositor event reaches every dock: the tracker defines one
 visitor per event and hands it to ~dock_registry_foreach~, which walks a snapshot.
@@ -387,14 +388,11 @@ Documentation files: [[file:README.org][README.org]] (users), this file (develop
 
 #+begin_quote
 *Read this first.* The port from C is finished: there is no =src/=, no
-=meson.build= and no C test binary any more.  Every module below whose name ends
-in =.c= is now =rust/src/<same name>.rs= -- =dock_window.c= is
-=dock_window.rs=, =guile_bridge.c= is =bridge.rs=, =main.c= is =main_app.rs= --
-and the behaviour the prose describes is the behaviour the Rust module has.  The
-sections that still speak of C are the map of what was ported and why the seams
-are shaped the way they are; where a paragraph is about the old build
-(=meson test=, =build/=, a =test_*.c= binary), read
-[[file:docs/development.org#tests][the current test story]] instead.
+=meson.build= and no C test suite any more. =rust/src/= carries the same module
+names the C had, so an old paragraph maps one to one --
+=dock_window.c= → =dock_window.rs=, =guile_bridge.c= → =bridge.rs=,
+=main.c= → =main_app.rs= -- and the behaviour it describes is the behaviour the
+Rust module has.
 #+end_quote
 
 ** Toolchain
@@ -453,69 +451,42 @@ The crate declares ~clippy::all~ and ~rust_2018_idioms~ as denies in its
 test~ runs ~cargo clippy --all-targets~ after the suite, and a warning fails the
 run.
 
-How the port went: the whole of layer 1, the config-reading half of the Scheme
-bridge, the dock registry, and the first widget module. =core/poll_budget.c=,
-=core/dock_click.c=, =core/tracker_rules.c=, =core/dock_motion.c=,
-=core/clock_face.c=, =core/poof.c=, =core/item_text.c=, =core/config_values.c=,
-=core/dock_dims.c=, =core/x11_rules.c= and =core/render_stats.c= are now
-=rust/src/core/*.rs=, and =src/core/= keeps their headers as the C-side
-contract. =rust/src/bridge.rs= holds every getter and the load/export calls;
-=src/guile_bridge.c= keeps the item builders, the layout writes and the poll
-procedures. =rust/src/dock_registry.rs= owns the live-dock list, =rust/src/app_window.rs=
-owns the window records, =rust/src/accessibility.rs= decides whether the dock may
-animate and pushes accessible labels, and the whole of =src/ui/icon_resolver.c= --
-the icon search paths and the six-stage pipeline that turns a name into a
-=GtkImage= -- is =rust/src/ui/icon_resolver.rs=, with =src/ui/widget_utils.c=
-alongside it as =rust/src/ui/widget_utils.rs=. The widget layer has started too:
-=src/ui/poof.c= is =rust/src/ui/poof.rs=, =src/ui/icon_zoom.c= is
-=rust/src/ui/icon_zoom.rs= -- the first Rust widget that overrides measure, size
-allocation and snapshot at once, and the first to hand a floating reference back
-to C (see the floating-reference trap below) -- and =src/ui/meter.c= is
-=rust/src/ui/meter.rs=, the first one whose *drawing* is a value: the geometry and
-the colour thresholds are plain functions the gauge only paints. =src/ui/clock.c=
-is =rust/src/ui/clock.rs=, the same idea one step further -- the face asks
-=core/clock_face.rs= where the hands point and paints the answer, so the widget
-itself owns no more than the reading it was last given. =src/ui/dock_item_windows.c=
-is =rust/src/ui/dock_item_windows.rs=: the window model behind an item, because
-a file about building an icon should not also own which handles an item tracks.
-=src/ui/theme_engine.c= is =rust/src/ui/theme_engine.rs=, split the same way: the
-theme request and the selector scoping are values and string functions, and only
-the appliers touch GTK. =src/ui/desktop_entry.c= is =rust/src/ui/desktop_entry.rs=
-too, parsing and cache included: the field-code and camel-case tables are the
-sharp end of the tests, and the cache is a single value behind a mutex instead of
-three file statics. =LambdockDesktopEntry= is mirrored there field for field, so
-the C test still reads it by offset. =src/ui/app_actions.c= is
-=rust/src/ui/app_actions.rs=: what kind of application a set of names describes
-and what command opens another window of it are pure, and the playback controls
-are the one part that talks to the session bus. =src/ui/trash.c= is
-=rust/src/ui/trash.rs=, the one module allowed to touch the filesystem for trash
-purposes: the /proc/mounts walk and the octal escaping of a mount point are
-parsed as values, and the count and the emptying work on the directories the
-specification defines. =src/ui/stack.c= is gone, and the whole of it is
-=rust/src/ui/stack.rs=: the path arithmetic, the folder listing, the thumbnail
-decision, the decode and its crop, the pixbuf-to-texture step, the entry icons and
-the worker queue that decodes them one at a time, the two views with their cells
-and click actions, and the panel and popover above them.
+How the port went: layer 1 first, then the seams, then the widget layer last,
+because a widget module can only be written once the decisions it draws are
+values. The mapping is mechanical -- =core/dock_dims.c= became
+=core/dock_dims.rs=, =guile_bridge.c= became =bridge.rs=, =main.c= became
+=main_app.rs=, and a file under =ui/= kept its name -- which is why the sections
+below still speak of the C they replaced: the behaviour did not change, only the
+language it is written in.
 
-=Rust reading the central struct.= =rust/src/state.rs= mirrors ~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~
-field for field, because Rust now has modules that read a dock's fields
-(~reduce_motion~ today, more as the port goes). A wrong offset is not a compile
-error, it is a corrupted field two modules away, so the mirror carries a test
-pinning the size and the offsets of the fields Rust reads -- numbers taken from
-~offsetof~ in C. When =lambdock.h= grows a field, that test fails and says so.
+Three modules are worth knowing by name, because everything else goes through
+them: =rust/src/bridge.rs= (every Scheme read, the load and export calls, the item
+builders and the layout writes), =rust/src/state.rs= (the central struct, field for
+field) and =rust/src/ui/dock_item.rs= (one dock item, and the table that says what
+each kind of item can do).
+
+=The central struct is mirrored, not owned.= =rust/src/state.rs= mirrors
+~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~ field for field,
+because every module reads a dock's fields through them. A wrong offset is not a
+compile error, it is a corrupted field two modules away, so the mirror carries a
+test pinning the size and the offsets against the numbers the C header declared.
+When the struct grows a field in the wrong place, that test fails and says which
+one moved.
 
 =GTK from Rust has four traps=, all found by tests:
 
-- *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
-  leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
-  ~assert_initialized_main_thread!~ aborts with "GTK has not been initialized".
-  ~ui::ensure_gtk_initialized()~ calls ~gtk4::init()~ at each entry point, and a
-  module that only needs the settings object uses ~gtk_settings_get_default~ and
-  ~from_glib_borrow~ instead of the asserting ~Settings::default()~.
-- *A widget returned to C keeps its floating reference.* ~gtk_image_new_*~ hands
-  back a floating reference and the C callers sink it by appending the widget to a
-  box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
-  through the C constructors and only borrows the wrapper type on the way in.
+- *gtk-rs tracks initialization itself.* The process initializes GTK by running
+  the application (~g_application_run~), which gtk-rs's own flag never sees, so
+  the first Rust call into an API carrying ~assert_initialized_main_thread!~
+  aborts with "GTK has not been initialized". ~ui::ensure_gtk_initialized()~ calls
+  ~gtk4::init()~ at each entry point, and a module that only needs the settings
+  object uses ~gtk_settings_get_default~ and ~from_glib_borrow~ instead of the
+  asserting ~Settings::default()~.
+- *A widget handed over as a raw pointer keeps its floating reference.*
+  ~gtk_image_new_*~ hands back a floating reference and the caller sinks it by
+  appending the widget to a box; ~gtk4::Image~ sinks on construction, so the
+  pipeline builds its images through the C constructors and only borrows the
+  wrapper type on the way in.
 - *A getter returns an owned wrapper, and owning a floating widget means sinking
   it.* ~widget.parent()~, ~widget.first_child()~, ~button.child()~ and their
   siblings go through ~from_glib_none~: for a widget that is still floating that
@@ -525,8 +496,8 @@ pinning the size and the offsets of the fields Rust reads -- numbers taken from
   ~parent_of~, ~first_child_of~, ~next_sibling_of~ and ~button_child~, which
   borrow through the C getter instead; use them wherever the widget asked may not
   be parented yet, which is every widget a constructor has just built.
-- *A widget built in Rust has to be floated again before C gets it.* The same
-  contract runs the other way: ~lambdock_icon_zoom_new~ returns a widget the
+- *A widget built in Rust has to be floated again before it is handed over.* The
+  same contract runs the other way: ~lambdock_icon_zoom_new~ returns a widget the
   caller appends to a box, and appending sinks what it is given. A gtk4-rs
   ~build()~ sinks the object already, so the module forces the floating flag back
   on (~g_object_force_floating~) and hands its own reference over
@@ -535,29 +506,15 @@ pinning the size and the offsets of the fields Rust reads -- numbers taken from
 
 =The crate's lints live in its manifest.= ~rust/Cargo.toml~ declares ~clippy::all~
 and ~rust_2018_idioms~ as denies in a ~[lints]~ table, which applies them to every
-target the crate builds -- library, unit tests, doc tests. ~meson.build~ runs
-~cargo clippy~ as =rust_clippy= when the toolchain has clippy, so a warning is a
-failing test rather than a suggestion; a toolchain without it still builds, because
-a packager should not need the lint component to ship the dock.
+target the crate builds -- library, unit tests, doc tests. ~maak test~ runs
+~cargo clippy --all-targets~ after the suite, so a warning is a failing run rather
+than a suggestion.
 
-=GTK 4.14 or newer= is the floor now: the Rust half enables =gtk4-rs='s =v4_14=
-feature for ~Accessible::announce~, where the C code compiled that call out below
-4.14 with =GTK_CHECK_VERSION=. The
-diagnostics those modules write come from =rust/src/logging.rs=, which mirrors
-=src/logger.h= but tags its lines =[R:SUB]= instead of =[C:SUB]=, so a log says
-which side of the port emitted it.
-
-Two things about gtk4-rs that the seam has to remember:
-
-- *gtk-rs tracks initialization itself.* ~main.c~ initializes GTK through C, which
-  leaves gtk-rs's own flag unset, so the first Rust call into an API carrying
-  ~assert_initialized_main_thread!~ aborts with "GTK has not been initialized".
-  ~ui::ensure_gtk_initialized()~ calls ~gtk4::init()~ at each entry point: it
-  adopts the GTK that is already up and is a cheap check afterwards.
-- *A widget returned to C keeps its floating reference.* ~gtk_image_new_*~ hands
-  back a floating reference and the C callers sink it by appending the widget to a
-  box; ~gtk4::Image~ sinks on construction, so the pipeline builds its images
-  through the C constructors and only borrows the wrapper type on the way in.
+=GTK 4.14 or newer= is the floor: the crate enables gtk4-rs's =v4_14= feature for
+~Accessible::announce~, where the C code compiled that call out below 4.14 with
+=GTK_CHECK_VERSION=. The diagnostics those modules write come from
+=rust/src/logging.rs=, which mirrors the C logger but tags its lines =[R:SUB]=
+instead of =[C:SUB]=, so a log says which side of the port emitted it.
 
 ** GTK from Rust, and why the crates are vendored
 :PROPERTIES:
@@ -571,7 +528,7 @@ and =.cargo/config.toml= at the tree root replaces crates.io with it:
 
 #+begin_src sh
 maak vendor                      # after changing rust/Cargo.toml
-cargo build --offline --locked   # what meson runs
+cargo build --offline --locked   # the normal build
 #+end_src
 
 What it costs, measured rather than guessed: 58 MB and 3697 files in the working
@@ -583,62 +540,42 @@ has to have them all on disk.
 
 The alternative -- leave the graph to each packager, with Nix's ~cargoDeps~ and
 Guix's ~cargo-inputs~ -- buys a smaller tree at the cost of every recipe having to
-know the graph, and Guix has no ~cargo-inputs~ story for =meson-build-system= at
-all. To undo it instead: ~git rm -r rust/vendor .cargo~, drop ~--offline~ from
-=rust/cargo-build.sh= and the =rust_unit_tests= target, and give =package.nix= a
-~cargoDeps~.
+know the graph, and Guix's Rust support is not uniform enough to bet a dock on.
+To undo it instead: ~git rm -r rust/vendor .cargo~, drop ~--offline~ from
+=maak test= and the packaging recipes, and give =package.nix= a ~cargoDeps~.
 
-** One codegen unit per module, and two link dependencies
+** One codegen unit per module, and how the seam is shaped
 :PROPERTIES:
 :CUSTOM_ID: rust-link-boundary
 :END:
 
-=rust/Cargo.toml= sets ~codegen-units = 256~ for the release profile. Without it
-the crate compiles to a single object, so every C test binary that touched the
-archive had to resolve the GTK and libguile symbols the widget and bridge code
-reference -- even a test that only calls ~lambdock_tracker_should_hide()~. With
-one object per module the linker pulls in only what a target references, and
-=meson.build= has the two dependencies that go with it:
+=rust/Cargo.toml= sets ~codegen-units = 256~ for the release profile. It is
+history with a point: while the crate was a =staticlib= each C test binary that
+touched the archive had to resolve every GTK and libguile symbol the widget and
+bridge code referenced, even a test that only called
+~lambdock_tracker_should_hide()~. One object per module meant the linker pulled in
+only what a target referenced, and the release build also stays parallel. The
+binary is the crate now, so the link line is no longer the reason -- it costs
+nothing and it still keeps codegen parallel, which is why the profile keeps it.
 
-- ~rust_core_dep~ -- the archive and GLib. For the decision modules, whose tests
-  keep the property the project cares about: they link nothing but GLib
-  (~ldd build/test_tracker_rules~ names neither GTK nor Guile).
-- ~rust_lib_dep~ -- the archive, GLib, libguile and GTK. For anything that
-  reaches the bridge or a widget.
-
-A new module needs no thinking here: reach for ~rust_core_dep~ only while its test
-uses neither Guile nor a widget, and ~rust_lib_dep~ otherwise.
-
-A widget module keeps its C header and is reached exactly like a =core/= module,
-except that a widget crosses the seam as a borrowed pointer:
+A widget crosses the seam *borrowed*:
 
 #+begin_src rust
 let widget: Borrowed<Widget> = from_glib_borrow(pointer);  // never owned here
 #+end_src
 
-The behaviour of a widget module is tested by the C suite, which already owns a
-display and real widgets; =cargo test= stays display-free, so a Rust test here
-pins down only what needs no widget (a null pointer, a bad class name).
-
-*The archive is pulled by codegen unit, not by function.* One object per module
-is what keeps a decision test's link line small, but a module also needs the
-shards of monomorphised generic instances that its module did not define, and one
-of those shards can hold a neighbour's closure. So a C test binary that links a
-slice of the application sources can be asked for a C symbol it never mentions:
-=test_icon_zoom= reached =update_dock_dimensions= through =ui::poof='s idle
-callback, which shares a shard with the subclass registration the zoom needs.
-=tests/test_stubs.c= answers with a *weak* double, so the real definition in
-=dock_window.c= still wins in every binary that compiles it, and a binary that
-never shows a dock never calls either. Add the module's own weak double there
-when a new port trips the same way -- and give the target =test_stubs= and
-whatever dependency it needs to compile it.
+The full rule, and the three other traps that come with it, are in
+[[#gtk-glib-hazards][GTK / GLib hazards]]. =cargo test= stays display-free, so a
+Rust test of a widget module pins down only what needs no widget (a null pointer,
+a bad class name); the behaviour itself is checked by running the dock.
 
 What the Scheme boundary costs, learned the hard way:
 
 - *No `Scm` is ever stored in Rust.* A value is converted the moment it arrives
   (see =rust/src/guile.rs=), so the collector never has to trace a Rust-side
   owner. The one Scheme value that must outlive its call -- a stored poll
-  procedure -- still lives in C, with =scm_gc_protect_object=.
+  procedure -- is protected by Guile itself with =scm_gc_protect_object= and held
+  as an opaque word in =DockItem.poll_fn=.
 - *Two allocators meet here.* =scm_to_utf8_string= returns `malloc`'ed memory
   (freed with `free`); everything that leaves the bridge is `g_strdup`'ed and
   freed with `g_free`. The conversion stays inside =bridge.rs= so no caller has
@@ -649,136 +586,47 @@ What the Scheme boundary costs, learned the hard way:
   test. The linker is what tells you: an undefined reference to a name that the
   header shows as a `#define` means it has to be rebuilt in Rust.
 
-The whole of =src/core/=, the whole of =src/ui/=, and both trackers are Rust.
-=ui/dock_item.c= is gone too, and it was the heart of the widget layer: the item's
-scaffold, all six constructors, the alignment, the poller, the artwork, the menu,
-the teardown and the hot reload are =rust/src/dock_item.rs=, and =src/ui/dock_item.h=
-stays as the C-side contract the tests and the bridge still call. Its 1922 lines
-came down over five steps, each green.
+=The entry point is Guile's.= ~rust/src/main.rs~ is the process entry and nothing
+else: it hands the argument vector to ~lambdock_main~, which starts the Scheme
+interpreter with =scm_boot_guile= and creates the ~gtk4::Application~ inside that
+boot. GTK therefore comes up with the interpreter already alive, which is what
+lets a settings file be evaluated before the first dock exists.
 
-=ui/stack.c= is gone too -- the first widget file to be finished. Its listing, the
-thumbnail decision and decode, the two views with their cells and click actions,
-the panel header and the popover that walks folders are all =rust/src/ui/stack.rs=,
-and =src/ui/stack.h= stays as the C-side contract for what the tests and the item
-builder still call.
+=Both window trackers are FFI, and neither vendored a crate for its protocol.=
+libwayland and libX11 are C libraries like GTK, so the surfaces are declared as
+~extern "C"~ and linked from =rust/build.rs=. Two things to know:
 
-The Scheme bridge is one module now: =src/guile_bridge.c= is gone, and the reads
-and the writes that were either side of it are both =rust/src/bridge.rs=, with the
-libguile surface in =rust/src/guile.rs=. What used to be a rule -- "no `Scm` is
-stored in Rust" -- is still the rule; the one handle that must outlive its call (a
-poller's procedure) is kept by Guile itself with =scm_gc_protect_object= and held
-as an opaque word in =DockItem.poll_fn=.
+- *libwayland's request functions are =static inline=*, so =wl_registry_bind=,
+  =wl_display_get_registry= and the generated protocol's requests are not symbols
+  in the library at all; the tracker rebuilds them from the protocol's opcodes
+  over =wl_proxy_marshal_flags=.
+- *The X11 half keeps its own connection on purpose.* GDK reads the events of its
+  own and hands none out, and this backend is built on =PropertyNotify= on the
+  root window. One extra socket, watched with =g_unix_fd_add_full=, keeps the
+  tracker out of GDK's event path entirely.
 
-Two things about that seam are easy to get wrong and are now written down in the
-code: =scm_c_eval_string()= *evaluates* what it is given, so the empty list is
-="'()"= and not ="()"= (a syntax error), and =scm_reverse_x()= appends its second
-argument as the *tail*, so a list built by pushing is reversed onto the empty list
-rather than onto anything else, or the Scheme side receives an improper list.
+The X11 backend is a build option, not a runtime one: =rust/build.rs= defines
+~have_x11~ when pkg-config finds =gtk4-x11.pc=, and =x11_tracker.rs= compiles its
+no-op half otherwise, so a GTK built for Wayland alone still builds the dock.
 
-Both window trackers are Rust now: =toplevel_tracker.c= (the broadcast and the
-Wayland half) is =rust/src/toplevel_tracker.rs=, and =x11_tracker.c= is
-=rust/src/x11_tracker.rs=. The X11 one is behind the build option, as it was in C:
-meson tells cargo =LAMBDOCK_HAVE_X11= and the module compiles =#[cfg(have_x11)]=, so
-a GTK built for Wayland alone still builds and the no-op half answers instead.
+~rust/src/ui/layer_shell.rs~ is the one place the crate names =gtk4-layer-shell=:
+the FFI declarations, the layer and edge constants, and the two questions the
+rest of the crate asks -- "does this display host a layer surface at all" and "is
+this monitor still on the display". The order it is linked in is in
+[[#the-rust-seam][The crate, the shell and the build]].
 
-Neither vendored a crate for the protocols. libwayland and libX11 are C libraries
-like GTK, so both surfaces are declared as FFI -- with one thing to know about
-libwayland: the *generated* protocol's request functions are =static inline=, and
-so are wayland.xml's own =wl_registry_bind= and =wl_display_get_registry= (libwayland
-does not export them at all). Those are rebuilt from the protocol's opcodes over
-=wl_proxy_marshal_flags=.
-
-The X11 half keeps its own connection on purpose: GDK reads the events of its own
-and hands none out, and this backend is built on =PropertyNotify= on the root
-window. One extra socket, watched with =g_unix_fd_add_full=, keeps the tracker out
-of GDK's event path entirely.
-
-=ui/preferences.c= is Rust too, and it is the port's first *window*: the form is a
-table of rows (one per card, each naming its reader and the kind of value it
-edits), the debounced apply is unchanged, and =src/ui/preferences.h= stays as the
-contract =main.c= and the test call. Two things the C did by hand are now the
-language's: the registry of open windows is a thread-local map of weak references
--- a destroyed window is simply absent, not a pointer to type-check before use --
-and a control's state is an =Rc= hanging off its widget's data. Its readers and
-its setters call =rust/src/bridge.rs= directly rather than leaving through the C
-ABI and coming back.
-
-The one trap that file has of its own: gtk-rs's =ObjectExt::set_data= and =data=
-take a =&str= and key it as a =GQuark=, which is the same table =g_object_get_data=
-reads -- but =g_object_set_data_full= is an FFI call and needs a real =&CStr=,
-because a =&str='s bytes are not NUL-terminated. The option name is the second
-kind (the tests and any tooling read it as a string), the control and window state
-are the first.
-
-=ui/launchpad.c= is Rust as well, and it was the last whole widget file: the
-tiles and the menu of an application's other installed copies, the flow box with
-the arrow keys, the filtering and the column arithmetic, the header, the shelf of
-stacks and the trash, and the layer-shell overlay that shows and hides the whole
-thing. One launchpad per process, so the model is a thread-local value rather
-than a dock's: built on first use, destroyed on close and rescanned on every
-open. Two functions the dock's window owned moved with it, because a
-=#[no_mangle]= entry point that calls into C is a symbol a =cargo test= binary
-would have to resolve: =lambdock_layer_shell_available= and =is_monitor_valid=
-are now =rust/src/ui/layer_shell.rs=, with =gtk4-layer-shell= declared as FFI and
-named in =rust/build.rs= so the test binary links it too. =src/ui/launchpad.h=
-stays as the contract the tests call.
-
-=dock_window.c= is gone. One dock's window is =rust/src/dock_window.rs= end to
-end: the layer shell and both of its branches, the layout and the input region,
-the slide and its settling window, auto-hide and reveal, the fisheye, the
-backdrop menu, the pointer callbacks, the About dialog and the teardown. The
-header, =src/dock_window.h=, stays as the contract the rest of the C and the
-tests call, which is the seam rule the whole port has followed.
-
-Two things that file taught, both now written down where they bit:
-
-- A widget read out of a dock's state is *borrowed*. The fixtures build a dock
-  out of floating boxes, and an owning wrapper sinks one and frees it on the way
-  out; the layout code pays for a `&*` at the two call sites that want a
-  reference, which is cheaper than a dead pointer.
-- `g_signal_handlers_disconnect_by_data` is a macro in gobject's headers, not an
-  exported symbol, so teardown calls `g_signal_handlers_disconnect_matched` with
-  `G_SIGNAL_MATCH_DATA`. The handlers a dock connects to its *surface* are kept
-  by id in a thread-local instead: the state mirror has no room for ids, and the
-  surface outlives the state it reports to.
-
-The port is done: =src/main.c= is nineteen lines of C, and there is nothing else.
-It holds =main= and a call to =lambdock_main=, because the C runtime needs a
-=main= symbol and the Rust standard library is started by one -- a
-=#[no_mangle] main= inside a static library would run before std is initialized,
-which works until the first thread or the first =env= access. Everything else --
-the application's startup, its actions, the Guile subrs and their idles, the file
-watchers, the monitor hotplug listener, dock discovery and reconciliation, and
-every dock's whole life -- is =rust/src/=.
-
-The headers stay. =src/*.h= are the contract the C tests and the Scheme-facing
-half call through, and they are the reason a module could move without its callers
-following: the test binaries still link only the slice they exercise and still
-assert the ABI they were written against.
-
-Reconciling the docks is the clearest example of what the port did to the C's
-shape. It is two steps, and the first one is a value: =plan_for_file= turns (the
-settings file, its monitor policy, the registered docks, the live monitors) into
-a =FilePlan= -- which docks to destroy, which to reload, where to spawn -- and
+=Reconciling the docks is a plan and then an apply.= =plan_for_file= turns (the
+settings file, its monitor policy, the registered docks, the live monitors) into a
+=FilePlan= -- which docks to destroy, which to reload, where to spawn -- and
 =apply_plan= carries it out. The plan has no widgets in it, so the three monitor
 policies are unit-tested without a display, including the documented fallback for
 a connector that does not exist.
 
-the plan has no widgets in it, so the three monitor
-policies are unit-tested without a display, including the documented fallback for
-a connector that does not exist.
-
-One thing that moved with them, and is easy to get wrong again: a widget crosses
-the seam *borrowed*. `widget_from_pointer` in =rust/src/ui/mod.rs= is
-~from_glib_borrow~, not ~from_glib_none~, because the latter sinks a floating
-reference and unrefs it on drop -- so a C caller that had built a box and not yet
-appended it got a freed widget back, which is how /accessibility/stack_view_keyboard
-used to abort. The same rule runs the other way when Rust returns a widget: it
-comes back floating, for the caller to sink -- and a Rust *entry point* that takes
-a widget from C has to borrow it for the same reason, which is what
-=lambdock_launchpad_header_place_close= forgot once: it took the floating header
-with ~from_glib_none~, so the header was finalized when the wrapper dropped and
-the test's next assertion read a dead pointer.
+=The C names are legacy, not a contract.= The crate still declares its functions
+~#[no_mangle] pub extern "C"~, because that is how each module moved out of C
+without its callers changing. Nothing outside the crate calls them any more, so a
+module that is being touched anyway can drop the ~no_mangle~ - and the ~unsafe~
+with it. That is the cheapest cleanup this tree has.
 
 Two things the C ABI decides for a ported module, and both are now in
 =rust/src/glib.rs=:
@@ -987,6 +835,10 @@ item calibration and the reproducibility notes live in
 :CUSTOM_ID: runtime-architecture
 :END:
 
+What the process does between starting and drawing, what it keeps in globals, and
+what one dock is made of. Read this with =rust/src/main_app.rs= and
+=rust/src/dock_window.rs= open.
+
 ** Boot sequence
 :PROPERTIES:
 :CUSTOM_ID: boot-sequence
@@ -1010,34 +862,38 @@ flowchart TD
 
 Key facts:
 
-- ~main.c:main()~ optionally forces the renderer from ~DEFAULT_GSK_RENDERER~
-  (a compile-time define, default ~"gl"~), initializes i18n, then hands control
-  to Guile via ~scm_boot_guile~.
+- ~main.rs~ hands the process to ~main_app::run()~, which builds the argument
+  vector and calls ~lambdock_main~: that optionally forces the renderer from
+  ~DEFAULT_GSK_RENDERER~ (a compile-time define, default ~"gl"~), initializes
+  i18n, then hands control to Guile via ~scm_boot_guile~.
 - The GTK main loop runs /inside/ the Guile boot continuation. All UI work is on
   the GTK main thread.
-- ~setup_guile_primitives()~ defines the C subr ~reload-dock!~ inside the
-  ~(lambdock core)~ module and exports it.
+- ~setup_guile_primitives()~ defines the subr ~reload-dock!~ (and its three
+  siblings) inside the ~(lambdock core)~ module and exports it.
 - The monitor listener and the file monitor are the only two things that can
   create docks after boot; both funnel into ~sync_docks_with_disk~.
 
-** Global state in C
+** Global state
 :PROPERTIES:
 :CUSTOM_ID: global-state-in-c
 :END:
 
-There is exactly one global registry of live docks, in ~main.c~:
+There is exactly one registry of live docks, and it is =rust/src/dock_registry.rs=:
+a thread-local ~RefCell<Vec<*mut LambdockState>>~ that callers reach through
+~dock_registry_add~, ~dock_registry_remove~ and ~dock_registry_foreach~, never
+directly.  Four more pieces of state outlive a single dock:
 
-#+begin_src c
-static GList *g_active_states = NULL;   /* GList of LambdockState* */
-GList *get_active_dock_states(void);
-void unregister_dock_state(LambdockState *state);
-#+end_src
-
-Plus two globals used by the debounce and by the Wayland tracker:
-
-- ~static guint g_reload_timer_id~ -- the debounce timer for config reloads.
-- ~toplevel_tracker.c~ statics: ~toplevel_manager~, ~default_seat~,
-  ~tracker_initialized~, ~g_master_toplevels~ (a list of ~MasterToplevel~).
+- the debounce timers for config and state reloads, and the pending monitor-sync
+  idle, in the ~TIMERS~ thread-local of =rust/src/main_app.rs=;
+- the file monitors on =~/.config/lambdock= and on the state directory, kept for
+  the life of the process because their signal is the only thing that keeps them
+  watching;
+- the Wayland side, in one ~Tracker~ behind
+  ~static TRACKER: OnceLock<Mutex<Tracker>>~ in =rust/src/toplevel_tracker.rs=:
+  the manager proxy, the seat, the master list of toplevels and the initialized
+  flag;
+- the launchpad's model, a thread-local ~RefCell<Launchpad>~ in
+  =rust/src/ui/launchpad.rs=, built on first use and rescanned on every open.
 
 Everything else is per-dock, held in a ~LambdockState~ (see below).
 
@@ -1046,8 +902,9 @@ Everything else is per-dock, held in a ~LambdockState~ (see below).
 :CUSTOM_ID: the-central-struct
 :END:
 
-=lambdock.h= is the single source of truth for types. Read it before anything
-else. ~LambdockState~ groups a dock instance's entire C-side world:
+=rust/src/state.rs= is the single source of truth for ~LambdockState~, field for
+field, with a test pinning its size and offsets.  Read it before anything else.
+It groups a dock instance's whole world:
 
 - Widgets: ~window~, ~overlay~, ~bg_capsule~, ~scrolled_window~, ~box~,
   ~popover~, ~size_group~.
@@ -1079,7 +936,7 @@ One ~LambdockState~ == one GTK window == one ~settings*.scm~ (or the fallback).
 This is the heart of the guide. Follow a change from a file on disk to pixels,
 then back.
 
-** 1. Configuration: file → Scheme table → C mirror
+** 1. Configuration: file → Scheme table → state
 :PROPERTIES:
 :CUSTOM_ID: data-flow-configuration
 :END:
@@ -1091,7 +948,7 @@ flowchart LR
     AL --> CORE["(lambdock core)\nload-dock-config! maps keys\n(both 'dock-x and 'x)"]
     CORE --> CONF["configure-dock!\n(lambdock state)"]
     CONF --> HT["*dock-configs* hash-table\nkeyed by config-path AND 'default"]
-    BRIDGE["guile_bridge.c\nscm_c_public_ref + scm_call_*"] -->|reads| HT
+    BRIDGE["bridge.rs\nscm_c_public_ref + scm_call_*"] -->|reads| HT
     BRIDGE --> STATE["LambdockState fields"]
 #+end_src
 
@@ -1109,7 +966,7 @@ Details:
   under the file path. If the path is ~'default~ /or/ ends in ~settings.scm~, it
   /also/ writes the record under the ~'default~ key. This aliasing is why "the
   primary settings file" can be reached without a path.
-- C reads this table through =guile_bridge.c=, which resolves public procedures
+- The dock reads this table through =rust/src/bridge.rs=, which resolves public procedures
   (~scm_c_public_ref~) and calls them with the dock's ~config_path~, converting
   Scheme values to C.
 
@@ -1151,11 +1008,12 @@ for <path>: N ordered, N removed, N added=.
 
 The bridge helpers are the pattern to copy:
 
-#+begin_src c
-static SCM call_core_proc_with_path(const char *func_name, const char *path);
-static char *get_guile_string_for(const char *func, const char *module,
-                                  const char *path, const char *default_val);
-static gboolean get_guile_bool_for(const char *func, const char *path);
+#+begin_src rust
+unsafe fn call_core(name: &CStr, path: *const c_char) -> Option<Scm>;
+unsafe fn bool_for(name: &CStr, path: *const c_char) -> c_int;
+unsafe fn number_for(name: &CStr, path: *const c_char, fallback: f64) -> f64;
+unsafe fn string_for(name: &CStr, module: Option<&CStr>, path: *const c_char,
+                     default: *const c_char) -> *mut c_char;
 #+end_src
 
 Then thin typed wrappers: ~get_autohide_config_for~, ~get_position_config_for~,
@@ -1172,7 +1030,7 @@ The key names, their defaults and their meanings are tabulated for users in
 :CUSTOM_ID: data-flow-items
 :END:
 
-=populate_dock_items_for(state)= in ~guile_bridge.c~:
+=populate_dock_items_for(state)= in ~rust/src/bridge.rs~:
 
 1. Calls ~get-dock-items~ for ~state->config_path~ (an SCM list).
 2. For each element, reads ~dock-item-type~ and dispatches:
@@ -1200,7 +1058,7 @@ documented in [[file:docs/configuration.org::#the-dock-dsl][README: The dock DSL
 :END:
 
 A left click on an application item is one function:
-=core/dock_click.h:lambdock_click_action_for(window_count, window_minimized,
+=core/dock_click.rs:lambdock_click_action_for(window_count, window_minimized,
 window_active, launcher_command)= (implemented in =rust/src/core/dock_click.rs=)
 returns one of
 
@@ -1212,10 +1070,10 @@ returns one of
 | =LAMBDOCK_CLICK_MENU=      | two or more windows                                 | the window popover                                      |
 | =LAMBDOCK_CLICK_NOTHING=   | no window and no launcher command                   | nothing                                                 |
 
-The two flags come from the compositor: =toplevel_tracker.c= parses the ~state~
+The two flags come from the compositor: =toplevel_tracker.rs= parses the ~state~
 event's array into ~MasterToplevel.minimized~/~.activated~ and mirrors them onto
 every dock's ~AppWindow~ (the records ~DockItem.windows~ points at). That is why
-the rule is testable without a compositor -- =tests/test_dock_click.c= passes
+the rule is testable without a compositor -- a ~#[cfg(test)]~ case passes
 counts and booleans in.
 
 Two consequences worth knowing:
@@ -1253,12 +1111,12 @@ flowchart TD
   ~is_app_excluded()~ and matches/creates an item.
 - ~sync_window_trackers(state)~ replays all known toplevels into a dock's items;
   it is called when a dock is created and after every reload.
-- Popovers (=popover_menu.c=) render the per-item window list, with "focus",
+- Popovers (=ui/popover_menu.rs=) render the per-item window list, with "focus",
   "close", "new instance", and "close all". Every row carries a symbolic icon,
   the window holding the focus is marked and minimized windows are dimmed, and
   =lambdock_popover_menu_keys()= gives the menu Up/Down/Home/End while the same
   controller stays inert on a stack panel (it checks for the =popover-menu=
-  class), which handles its own arrows in =stack.c=.
+  class), which handles its own arrows in =ui/stack.rs=.
 
 The protocol itself is
 [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][zwlr_foreign_toplevel_management_unstable_v1]]
@@ -1352,10 +1210,10 @@ while a REPL-driven reload was rebuilding the dock with reflections on.
 
 Two defences are in place, and both are worth keeping:
 
-- =guile_bridge.c:resolve_item_accessors()= validates *every* accessor it will
+- =bridge.rs:resolve_item_accessors()= validates *every* accessor it will
   later call, not a sample. A module that failed to export one of them degrades
   to "no items" instead of applying ~#f~.
-- =ui/dock_item.c:refresh_dynamic_item()= returns early when the item has no
+- =dock_item.rs:refresh_dynamic_item()= returns early when the item has no
   poll procedure, so nothing can apply ~#f~ from a poll path.
 
 The remaining hazard is inherent to embedding a REPL in the same process: do not
@@ -1363,13 +1221,13 @@ assume a REPL-driven reload and a REPL expression are isolated from each other.
 Serialise them (wait for the reload to settle) when a script depends on the
 result, which is what the recorder's storyboard does.
 
-The GTK *Preferences* window (=src/ui/preferences.c=) is the other caller of the
+The GTK *Preferences* window (=rust/src/ui/preferences.rs=) is the other caller of the
 same setters. It runs on the main thread, so it can call them directly; each edit
 goes through the ~set-dock-preference!~ dispatch in =scheme/lambdock/prefs.scm=,
 which applies the ordinary setter and then records the value in a GUI override
 file under ~$XDG_STATE_HOME/lambdock~. ~load-dock-config!~ layers that file over
 the settings file, so a generated settings file can be regenerated without losing
-the choices made in the window. The debounced apply in =preferences.c= exists
+the choices made in the window. The debounced apply in =preferences.rs= exists
 because a slider emits ~value-changed~ on every pixel and each edit rebuilds the
 dock.
 
@@ -1380,12 +1238,16 @@ dock.
 :CUSTOM_ID: lifecycles
 :END:
 
+Three lifetimes to keep straight -- a dock, an item, and the sources and signals
+either of them owns -- and each one ends in a teardown order that is not
+negotiable.
+
 ** Dock instance lifecycle
 :PROPERTIES:
 :CUSTOM_ID: dock-instance-lifecycle
 :END:
 
-*Create* -- ~create_dock_instance(app, monitor, config_path)~ (in ~main.c~):
+*Create* -- ~create_dock_instance(app, monitor, config_path)~ (in ~main_app.rs~):
 
 1. Allocate ~LambdockState~, ~g_object_ref~ the monitor, connect its
    ~invalidate~ signal to immediately unbind layer-shell.
@@ -1396,24 +1258,24 @@ dock.
 4. Rebuild items (~populate_dock_items_for~).
 5. Build the app context popover (About/Quit) and the right-click gesture.
 6. ~setup_layer_shell_window~ + ~setup_dock_motion_controller~.
-7. Append to ~g_active_states~ and connect ~window "destroy" →
+7. ~dock_registry_add(dock)~, and connect ~window "destroy" →
    destroy_dock_instance~.
 8. ~gtk_window_present~, ~init_toplevel_tracker~, ~sync_window_trackers~.
 9. Apply initial auto-hide behavior.
 
-*Reload* -- ~reload_dock_instance(state)~ (in ~dock_item.c~): re-read theme and
+*Reload* -- ~reload_dock_instance(state)~ (in ~dock_item.rs~): re-read theme and
 CSS, cancel the hide timer, hot-swap edge/orientation (un-anchor old edge,
 re-anchor new), re-read booleans/icon size, ~clear_favorite_dock_items~ +
 ~populate_dock_items_for~, ~sync_window_trackers~, re-align all items,
 ~update_dock_dimensions~, and re-apply auto-hide/exclusive-zone policy.
 
-*Destroy* -- ~destroy_dock_instance(state)~ (in ~dock_window.c~). The order
+*Destroy* -- ~destroy_dock_instance(state)~ (in ~dock_window.rs~). The order
 matters and is the canonical teardown sequence:
 
 1. Set ~is_destroying = TRUE~ (re-entrancy guard; the ~"destroy"~ signal will
    re-enter this function).
 2. Remove CSS providers from the display; free ~active_theme_class~.
-3. ~unregister_dock_state(state)~ (removes it from ~g_active_states~).
+3. ~dock_registry_remove(state)~ (takes it out of the live-dock list).
 4. Remove the hide timer and the tick callback.
 5. ~g_signal_handlers_disconnect_by_data(window, state)~.
 6. Unparent the popover.
@@ -1430,7 +1292,7 @@ matters and is the canonical teardown sequence:
 :CUSTOM_ID: dock-item-lifecycle
 :END:
 
-=ui/dock_item.c= owns ~DockItem~:
+=rust/src/dock_item.rs= owns ~DockItem~:
 
 - ~create_dock_item~: favorite app launcher (button + image + popover + right
   click gesture). ~is_favorite = TRUE~.
@@ -1478,46 +1340,61 @@ pointer dies:
 
 ------------------
 
-* Module reference (C)
+* Module reference
 :PROPERTIES:
-:CUSTOM_ID: module-reference-c
+:CUSTOM_ID: module-reference
 :END:
 
-| Layer | File                   | Responsibility                                                                 |
-|-------+------------------------+--------------------------------------------------------------------------------+
-| 1     | =core/config_values.h= | Clamps/sanitisers and name→value rules (icon size, spacing, shelf, edges) -- Rust |
-| 1     | =core/dock_dims.h=     | ~LambdockDockDims~ arithmetic: capsule/overlay/margins from plain values -- Rust  |
-| 1     | =core/dock_click.h=    | Click policy: launch, minimize, restore, list -- GTK-free, in Rust               |
-| 1     | =core/dock_motion.h=   | Easing and slide/fisheye arithmetic -- GTK-free, in Rust                         |
-| 1     | =core/item_text.h=     | All item wording: labels, tooltips, gauges, plurals -- in Rust                |
-| 1     | =core/tracker_rules.h= | Window-tracking decisions: own app id, stale item, hide/reveal -- in Rust        |
-| 2     | =main.c=               | Boot, GtkApplication, monitor hotplug, settings watching, dock reconciliation    |
-| 2     | =guile_bridge.c=       | Table-driven item builders, layout writes, stored poll procedures (readers: Rust) |
-| 2     | =toplevel_tracker.c=   | Wayland manager/handle listeners; owns the proxies; one visitor per event        |
-| 2     | =dock_registry.h=      | The only owner of the active-dock list; snapshot + typed ~foreach~ -- in Rust   |
-| 2     | =app_window.c=         | ~AppWindow~ ownership: create, retitle, match by handle, free (NULL-safe)        |
-| 2     | =accessibility.c=      | Reduce-motion preference, GTK animation setting, accessible label text           |
-| 2     | =lambdock.h=           | THE central header: ~LambdockState~, ~DockItem~, ~AppWindow~, constants          |
-| 2     | =logger.h=             | ~LOG_C_DEBUG/INFO/WARN/ERROR~ colored logging macros                              |
-| 3     | =dock_window.c=        | ~LambdockState~ lifecycle, layer shell, margin animation, auto-hide, teardown    |
-| 3     | =ui/dock_item.c=       | Item widgets, window association, free paths, kind table, reload of a dock       |
-| 4     | =ui/dock_item_windows.h= | An item's windows: tracking, running styling, app-id lookup (body in Rust)      |
-| 4     | =ui/shelf.h=           | Glass shelf: frame, reflections, wrap + layout (body in Rust)                    |
-| 4     | =ui/shelf_follow.h=    | Separators that follow the shelf's projection instead of sitting flat (in Rust)  |
-| 4     | =ui/icon_zoom.h=       | Fisheye magnification by transform, not re-raster (body in Rust)                  |
-| 4     | =ui/meter.h=           | Circular gauge for meter items (snapshot drawing, body in Rust)                    |
-| 4     | =ui/clock.h=           | Analogue clock face: squircle body, ticks, hands, glass (body in Rust)             |
-| 4     | =ui/popover_menu.h=    | Dynamic popover building, focus/close/launch/close-all callbacks (in Rust)      |
-| 4     | =ui/stack.h=           | Folder stacks: directory listing, grid/list views, popover (body in Rust)        |
-| 4     | =ui/launchpad.c=       | The one launchpad: model, tile+copy menu builders, grid fill and key movement    |
-| 4     | =ui/trash.h=           | Freedesktop.org trash: roots, count, empty, open, taking dropped files (in Rust)|
-| 4     | =ui/preferences.c=     | Settings window: a declarative row table, debounced apply, window registry       |
-| 4     | =ui/theme_engine.h=    | GResource theme load, selector scoping, user ~styles.css~ override (body in Rust)|
-| 4     | =ui/icon_resolver.c=   | Icon search paths, GSettings fallback, 6-stage ~create_image_for_icon~ pipeline  |
-| 4     | =ui/desktop_entry.h=   | =.desktop= parsing, exec field codes, app-id alias cache (body in Rust)          |
-| 4     | =ui/app_actions.h=     | App actions: launch commands, MPRIS/D-Bus calls (body in Rust)                  |
-| 4     | =ui/dock_dnd.h=        | Drag and drop: reorder, add favourites, drop onto stack/trash (body in Rust)     |
-| 4     | =ui/widget_utils.c=    | CSS-class toggles for state-driven styling (the "is it a taskbar" decisions)      |
+One row per module, in the order the layers stack. The layer numbers match
+[[#map-at-a-glance][The map at a glance]], which explains what each layer may depend on.
+
+| Layer | Module                        | Responsibility                                                                 |
+|-------+-------------------------------+--------------------------------------------------------------------------------|
+| 1     | =core/config_values.rs=       | Clamps and sanitisers, name→value rules: icon size, spacing, shelf, edges        |
+| 1     | =core/dock_dims.rs=           | ~DockDims~ arithmetic: capsule, overlay and margins from plain values            |
+| 1     | =core/dock_click.rs=          | Click policy: launch, minimize, restore, list -- GTK-free                        |
+| 1     | =core/dock_motion.rs=         | Easing, slide, auto-hide margin, fisheye scaling                                 |
+| 1     | =core/item_text.rs=           | All item wording: labels, tooltips, gauges, plurals                             |
+| 1     | =core/tracker_rules.rs=       | Window-tracking decisions: own app id, stale item, hide or reveal               |
+| 1     | =core/x11_rules.rs=           | EWMH decisions: which windows a dock lists, where it goes, its struts           |
+| 1     | =core/render_stats.rs=        | The per-frame counters and their names                                          |
+| 1     | =core/poll_budget.rs=         | How many dynamic pollers may run, and what a configuration over budget does     |
+| 1     | =core/poof.rs=                | The burst as particles: fourteen of them, as arithmetic                         |
+| 1     | =core/clock_face.rs=          | Where the hands point and the squircle they are drawn in                        |
+| 2     | =main.rs=                     | The process entry: argv, then =lambdock_main= and Guile's boot                   |
+| 2     | =main_app.rs=                 | The application: startup, actions, Guile subrs, watchers, hotplug, reconciliation |
+| 2     | =bridge.rs=                   | Every Scheme read, the load and export calls, the item builders, layout writes   |
+| 2     | =state.rs=                    | ~LambdockState~, field for field                                                |
+| 2     | =dock_item.rs=                | ~DockItem~, its widgets, the kind table and the reload of a dock                 |
+| 2     | =dock_registry.rs=            | The only owner of the active-dock list: snapshot plus typed walk                |
+| 2     | =toplevel_tracker.rs=         | The Wayland half: manager and handle listeners, one visitor per event           |
+| 2     | =x11_tracker.rs=              | The X11/EWMH backend and the dock's own X11 surface                             |
+| 2     | =app_window.rs=               | ~AppWindow~ ownership: create, retitle, match by handle, free, all NULL-safe    |
+| 2     | =accessibility.rs=            | Reduce-motion preference, the GTK setting, accessible labels and announcements   |
+| 2     | =guile.rs=                    | The libguile surface, as FFI, and the macros that are not symbols               |
+| 2     | =glib.rs=                     | The one place the crate names GLib's allocator, and gettext                     |
+| 2     | =cstr.rs=                     | C strings at the boundary: in, out, and the translated ones                     |
+| 2     | =logging.rs=                  | ~[R:SUB]= lines in the same format as the original logger                       |
+| 3     | =dock_window.rs=              | One dock's window: layer shell, layout, input region, slide, auto-hide, teardown |
+| 3     | =ui/layer_shell.rs=           | =gtk4-layer-shell= as Rust sees it, and the two questions asked of a display     |
+| 4     | =ui/dock_item_windows.rs=     | An item's windows: tracking, running styling, app-id lookup                     |
+| 4     | =ui/popover_menu.rs=          | The popover: focus, close, launch, close-all, and the layouts per window count  |
+| 4     | =ui/stack.rs=                 | Folder stacks: listing, thumbnail decision and decode, the two views, the panel |
+| 4     | =ui/launchpad.rs=             | The one launchpad: model, tiles, grid fill, keyboard movement, its overlay      |
+| 4     | =ui/preferences.rs=           | The settings window: a declarative section table, debounced apply, window registry |
+| 4     | =ui/trash.rs=                 | Freedesktop.org trash: roots, count, empty, open, and taking dropped files      |
+| 4     | =ui/theme_engine.rs=          | GResource theme load, selector scoping, the user's ~styles.css~ override        |
+| 4     | =ui/icon_resolver.rs=         | Icon search paths, the theme fallback, the six-stage pipeline                   |
+| 4     | =ui/desktop_entry.rs=         | =.desktop= parsing, exec field codes, the app-id alias cache                    |
+| 4     | =ui/app_actions.rs=           | Launch commands and the MPRIS playback controls                                 |
+| 4     | =ui/dock_dnd.rs=              | Drag and drop: reorder, add a favourite, drop onto a stack or the trash         |
+| 4     | =ui/widget_utils.rs=          | CSS-class toggles for state-driven styling                                      |
+| 4     | =ui/shelf.rs=                 | The glass shelf: frame, reflections, wrap and layout                            |
+| 4     | =ui/shelf_follow.rs=          | Separators that follow the shelf's projection instead of sitting flat           |
+| 4     | =ui/icon_zoom.rs=             | Fisheye magnification by transform, never a re-raster                          |
+| 4     | =ui/meter.rs=                 | The circular gauge a meter item draws                                          |
+| 4     | =ui/clock.rs=                 | The analogue face as a widget, over ~core/clock_face.rs~                       |
+| 4     | =ui/poof.rs=                  | The smoke burst: a widget subclass that paints ~core/poof.rs~                  |
 
 The layer numbers match [[#map-at-a-glance][The map at a glance]], which explains what each layer
 may depend on.
@@ -1531,68 +1408,70 @@ other side in [[file:docs/theming.org::#finding-icon-names][README: Finding icon
 
 ------------------
 
-------------------
-
 * Code conventions: values in, values out
 :PROPERTIES:
 :CUSTOM_ID: code-conventions
 :END:
 
-The C side is deliberately boring about state.  A handful of rules cover most of
+The crate is deliberately boring about state.  A handful of rules cover most of
 it, and the places that already follow them are where a new feature should land.
 
-** Pure logic goes in =src/core/=
+** Pure logic goes in =rust/src/core/=
 If a decision can be made from numbers and strings alone -- how thick the capsule
 is, what a NaN shelf parameter should become, whether =taskbar= means taskbar --
-it belongs in =src/core/=, takes values and returns values, and is unit tested
-without a display or an interpreter (=tests/test_config_values.c=,
-=tests/test_dock_dims.c=).  =update_dock_dimensions()= is then only appliers: read
-a monitor, ask =lambdock_dock_dims_compute()= once, push the finished struct into
-widgets.
+it belongs in =rust/src/core/=, takes values and returns values, and is unit tested
+without a display or an interpreter (the ~#[cfg(test)]~ modules in
+=core/config_values.rs= and =core/dock_dims.rs=).
+=update_dock_dimensions()= is then only appliers: read a monitor, ask
+=lambdock_dock_dims_compute()= once, push the finished struct into widgets.
 
 ** One owner per piece of mutable state
-- The set of docks lives in rust/src/dock_registry.rs; nothing else keeps that list, and
-  callers either iterate a snapshot or, preferably, hand a =DockVisitor= to
-  ~dock_registry_foreach()~ -- destroying a dock inside the loop cannot corrupt
-  the iteration either way.
-- The foreign-toplevel tracker owns every Wayland proxy in one
-  =ToplevelTracker= (=g_tracker= in =toplevel_tracker.c=). Docks hold *borrowed*
-  handles in =state->window_trackers=, which is why ~free_window_tracker()~ is a
-  documented no-op: the tracker frees the proxy when the window closes or the
-  manager goes away.
-- The launchpad is one model value (=LambdockLaunchpad= in =ui/launchpad.c=)
-  rather than ten file statics, and the functions that act on it take it as a
-  parameter; only its public entry points reach for the instance.
-- ~AppWindow~ lists are freed through =app_window.c=, which is NULL-safe.
+- The set of docks lives in =rust/src/dock_registry.rs=; nothing else keeps that
+  list, and callers either iterate a snapshot or, preferably, hand a =DockVisitor=
+  to ~dock_registry_foreach()~ -- destroying a dock inside the loop cannot corrupt
+  the iteration either way.  It is a thread-local ~RefCell~, not a ~static mut~,
+  so a re-entrant walk panics instead of aliasing.
+- The foreign-toplevel tracker owns every Wayland proxy in one =Tracker= value
+  (the ~static TRACKER: OnceLock<Mutex<Tracker>>~ in =toplevel_tracker.rs=).  Docks
+  hold *borrowed* handles in =state->window_trackers=, which is why
+  ~free_window_tracker()~ is a documented no-op: the tracker frees the proxy when
+  the window closes or the manager goes away.
+- The launchpad is one model value (=struct Launchpad= in =ui/launchpad.rs=, held
+  in a thread-local) rather than ten file statics, and the functions that act on it
+  take it as a parameter; only its public entry points reach for the instance.
+- ~AppWindow~ lists are freed through =app_window.rs=, which is NULL-safe.
 - Timer ids are cleared with ~g_clear_handle_id()~, or reset by the callback that
   consumed them, so teardown never removes a dead (possibly recycled) source.
+- The counters in =core/render_stats.rs= are atomics: a bump is defined from any
+  thread, and reading them while the dock runs is not a data race.
 
 ** Decisions are extracted even when the caller is a protocol listener
 The tracker's listeners are three lines each: cast the event data, call the pure
 rule in =rust/src/core/tracker_rules.rs= (=lambdock_tracker_should_hide()=,
-~..._item_should_be_dropped()~, ~..._ignores_app_id()~), then call one helper or
-one visitor. "Should this dock hide?" is a function of three booleans, so it is
-tested by =tests/test_tracker_rules.c= without a compositor. When a condition in a
+~lambdock_tracker_item_should_be_dropped()~, ~lambdock_tracker_ignores_app_id()~),
+then call one helper or one visitor.  "Should this dock hide?" is a function of
+three booleans, so it is tested without a compositor.  When a condition in a
 callback needs more than one clause, it belongs in =core/= with a name.
 
 ** A kind is a table row, not a switch
-- A dock item kind is one row of =ITEM_KIND_OPS= in =ui/dock_item.c=: key name,
-  CSS class, click behaviour, accessibility text.  Adding a kind means adding a
-  row and, if it needs one, a small builder.
-- A Scheme item type is one row of =DOCK_ITEM_BUILDERS= in =guile_bridge.c=.
-- The stack panel walks folders with three pure helpers -- =lambdock_stack_child_path=,
-  =lambdock_stack_parent_path= and =lambdock_stack_breadcrumb= -- so the browsing
-  rules are unit tested without a display; =lambdock_stack_panel_new()= builds
-  the panel for any folder, and the popover only remembers *where* it is.
+- A dock item kind is one row of =ITEM_KIND_OPS= in =rust/src/dock_item.rs=: key
+  name, CSS class, click behaviour, accessibility text.  Adding a kind means
+  adding a row and, if it needs one, a small builder.
+- A Scheme item type is one row of =ITEM_BUILDERS= in =rust/src/bridge.rs=.
+- The stack panel walks folders with three pure helpers -- ~child_path()~,
+  ~parent_path()~ and ~breadcrumb()~ in =rust/src/ui/stack.rs= -- so the browsing
+  rules are unit tested without a display; the panel is built for any folder, and
+  the popover only remembers *where* it is.
 - A stack view is one arm of =view_for_entries()= in =rust/src/ui/stack.rs=, next
   to the two builders it chooses between; the symbol mapping is the =VIEWS= table
   above them. There were never enough views to justify a table of function
   pointers.
 
 ** Strings that leave the bridge are GLib strings
-=guile_bridge.c= converts ~SCM~ values with ~scm_to_utf8_string()~ and copies them
-with ~g_strdup()~; every caller frees with ~g_free()~.  Guile's ~malloc~'d strings
-never escape the bridge, so every free site can be checked by grep.
+The bridge (=rust/src/bridge.rs=) converts ~SCM~ values with
+~scm_to_utf8_string()~ and copies them with ~g_strdup()~; every caller frees with
+~g_free()~.  Guile's ~malloc~'d strings never escape the bridge, so every free
+site can be checked by grep.
 
 ** Small functions, lists of steps
 Public entry points read as a short list of named steps: =create_dock_instance()=
@@ -1606,30 +1485,25 @@ settings file/.
 :CUSTOM_ID: rough-edges
 :END:
 
-The list that used to live here is empty. Every row was taken off in v0.21.0,
-and this is what each one became -- kept because the *shape* of the fix is the
-point, not the row:
+What is left is size, not correctness.  The three biggest files hold several
+ideas each, and every one of them is a mechanical split:
 
-| Was rough                                                        | Now |
-|------------------------------------------------------------------+-----|
-| =ui/meter.c= mixed 122 lines of geometry with ~gtk_snapshot_*~ calls | ~LambdockMeterGeometry~ + ~lambdock_meter_geometry_compute()~ and ~lambdock_meter_tone_for_fraction()~ are pure and unit tested; the snapshot function only draws what they describe |
-| =core/dock_dims.h= and =core/config_values.h= included =lambdock.h= / =ui/shelf.h= | the shelf *values* live in =core/shelf_params.h=; the two core headers include glib and gtk4-layer-shell and nothing else, and =lambdock.h= no longer includes =libguile.h= |
-| =ui/desktop_entry.c= had three loose cache statics | one ~DesktopEntryCache~ value with one owner and one lifetime |
-| =main.c= and =ui/preferences.c= hand-rolled registry snapshot loops | ~dock_registry_foreach()~ visitors; the process-wide reload timer lives in a ~MainTimers~ value |
-| =ui/dock_item.c= (2247 lines) did items, window tracking and pollers | window tracking moved to =ui/dock_item_windows.c= (~330 lines, 18 functions), and pollers go through =guile_bridge.c= (~lambdock_poll_fn_*~) so no =scm_*~ call lives outside the bridge |
-| =ui/icon_resolver.c= assembled its search paths inline | ~lambdock_icon_search_paths_build()~ takes the directories as inputs and is tested; ~setup_icon_theme()~ applies the list |
+| Where                          | Lines | What is rough                                                     | First move                                                    |
+|--------------------------------+-------+-------------------------------------------------------------------+---------------------------------------------------------------|
+| =rust/src/dock_item.rs=        | 3611  | builds, mounts, styles, polls and frees an item, plus its kind table | split the per-kind constructors from the mounting helpers   |
+| =rust/src/dock_window.rs=      | 2969  | the window, the layout, the input region, the slide and auto-hide  | the surface policy and the animation want their own module    |
+| =rust/src/ui/stack.rs=         | 2468  | listing, thumbnails, two views, the panel and the popover          | the decode queue is a module of its own                       |
+| =rust/src/ui/preferences.rs=   | 1659  | a data-driven form, its builders and its window in one file        | move the row builders next to the tables they serve           |
+| =rust/src/main_app.rs=         | 1742  | startup, disk sync, overlay CSS and the Scheme primitives together | the REPL primitives want their own module                     |
 
-What is left, in the same spirit (none of it is a bug):
-
-| Where                        | What is rough                                                       | First move                                                       |
-|------------------------------+---------------------------------------------------------------------+------------------------------------------------------------------|
-| =ui/dock_item.c= (~1900 lines) | still the biggest file: it builds, mounts, styles and frees an item | split the per-kind constructors (=create_*_dock_item=) from the mounting helpers |
-| =ui/preferences.c= (~1300 lines) | a data-driven form, its builders and its window in one file      | move the row builders next to the tables they serve               |
-| =main.c=                     | startup, disk sync, overlay CSS and the Scheme primitives together   | the REPL primitives want their own =repl.c=                       |
+The other thing worth doing is shrinking the C-shaped seam: the crate still
+declares several hundred ~#[no_mangle] pub extern "C"~ functions that nothing
+outside the crate calls.  A module that is touched anyway can drop the ~no_mangle~
+and the ~unsafe~ with it.
 
 Deprecated GTK3 patterns are *not* on this list: there are none left
 (~gtk_container_*~, ~gtk_box_pack_start~, ~gtk_widget_show~, ~gtk_window_new~ and
-~gtk_widget_destroy~ all return nothing when grepped in =src/=).
+~gtk_widget_destroy~ all return nothing when grepped in =rust/src/=).
 
 ------------------
 
@@ -1652,7 +1526,7 @@ Deprecated GTK3 patterns are *not* on this list: there are none left
 
 The setter side matters for the REPL: every ~set-dock-*!~ goes through
 ~apply-to-targets~ and ends with ~trigger-ui-reload!~, which is what turns a
-Scheme mutation into a ~(reload-dock!)~ call on the C side.
+Scheme mutation into a ~(reload-dock!)~ call, which hops to the GTK thread with an idle.
 
 Setting up a working REPL (Geiser, ~socat~, ~ncat~) is described for users in
 [[file:docs/repl.org::#repl][README: Interactive lambdock REPL]].
@@ -1663,6 +1537,11 @@ Setting up a working REPL (Geiser, ~socat~, ~ncat~) is described for users in
 :PROPERTIES:
 :CUSTOM_ID: configuration-and-css-reference
 :END:
+
+The Scheme surface a settings file is written against, and the CSS the themes are
+written in. The user-facing versions of both pages are
+[[file:docs/configuration.org][Configuring lambdock]] and
+[[file:docs/theming.org][Theming and the shelf]].
 
 ** The DSL
 :PROPERTIES:
@@ -1716,7 +1595,7 @@ by ~(lambdock presets)~ and ~(lambdock core)~ so a settings file sees them witho
 importing anything: ~dock-looks~, ~look-aliases~, ~look-settings~,
 ~look-setting~, ~look-name~, ~look?~, plus ~apply-look!~ for the REPL. The loader
 resolves ~dock-look~ into that alist and reads it as a *fallback* beneath the
-file's own definitions. Nothing in the C side knows about looks: they are just
+file's own definitions. Nothing in the dock knows about looks: they are just
 the existing settings.
 
 Defaults, accepted values and the full preset list are in
@@ -1757,7 +1636,7 @@ is why a user override still needs to target the dock's own classes.
 :END:
 
 An item button carries ~dock-item~ and ~flat~ always, plus these as the running
-state changes (all applied by =dock_item.c:apply_running_state()=):
+state changes (all applied by =dock_item.rs:apply_running_state()=):
 
 | Class                | Means                                       | Typical use                                        |
 |----------------------+---------------------------------------------+----------------------------------------------------|
@@ -1801,8 +1680,10 @@ theme rules keep winning:
 | =css/shelf.css=   | ~lambdock_shelf_active()~ (see below)             |
 
 *** The glass shelf (one implementation, no modes)
-There is no "second dock" and no preset layer. ~LambdockShelfParams~
-(=src/lambdock.h=) describes the shape and the dock always runs the same widgets:
+There is no "second dock" and no preset layer. ~ShelfParams~
+(=rust/src/core/config_values.rs=, sanitised like every other config value and
+carried in ~LambdockState.shelf~) describes the shape, and the dock always runs the
+same widgets:
 
 - ~tilt_deg~ / ~perspective~: how the capsule is projected away from the viewer.
 - ~margin_px~ / ~front_px~: glass on the inner / outer side of the icons
@@ -1810,9 +1691,9 @@ There is no "second dock" and no preset layer. ~LambdockShelfParams~
 - ~reflection_ratio~ / ~reflection_intensity~ / ~reflection_blur_ratio~: the
   mirrored icon reflections.
 
-Geometry is derived in ~lambdock_shelf_geometry_for()~ (=ui/shelf.c=):
+Geometry is derived in ~lambdock_shelf_geometry_for()~ (=rust/src/ui/shelf.rs=):
 
-#+begin_src c
+#+begin_src text
 band    = round(icon * reflection_ratio);
 outer   = MAX(front_px, band);
 capsule = icon + margin_px + outer;          /* dock_capsule_cross_dim() */
@@ -1833,7 +1714,7 @@ classic ~icon + 24~ capsule, so the flat dock is untouched.
   ~gsk_transform_perspective~). GTK CSS transforms are affine only, which is why
   the tilt cannot live in the stylesheet; with ~tilt == 0~ the frame is a plain
   pass-through.
-- ~LambdockReflection~ (=ui/shelf.c=) paints, per item: the contact shadow under
+- ~LambdockReflection~ (=rust/src/ui/shelf.rs=) paints, per item: the contact shadow under
   the icon, the mirrored/blurred/faded copy, and the running-app glow dot near
   the outer edge. The fade uses a number of bands proportional to the band
   height (sub-pixel bands would be quantised away and leave gaps).
@@ -1855,17 +1736,20 @@ is behind it); the frosted glass is drawn with gradients instead.
 The dock animates whenever the pointer moves, so these rules exist to keep
 per-frame work proportional to *visible* items and nothing else.
 
-** Measure it: /perf/ tests and the render counters
-="src/core/render_stats.c"= keeps a handful of integer counters (hover frames,
-frames dropped before touching a widget, item layout steps, geometry-cache
-rebuilds, icon/reflection paints, surface resizes). They cost an increment and
-they turn the interesting questions into numbers: "did hovering relayout the row?"
-is answered by =layout_steps=, "did the surface keep its size?" by
-=surface_resizes=.
+** Measure it: the render counters
+=rust/src/core/render_stats.rs= keeps a handful of integer counters (hover
+frames, frames dropped before touching a widget, item layout steps,
+geometry-cache rebuilds, icon and reflection paints, surface resizes). They cost a
+relaxed atomic increment and they turn the interesting questions into numbers:
+"did hovering relayout the row?" is answered by =layout_steps=, "did the surface
+keep its size?" by =surface_resizes=. ~lambdock_stats_describe()~ prints them all
+on one line, for a bug report or a test log.
 
-=tests/test_render_budget.c= drives the real hover path against a hand-allocated
-row (no window, so no compositor is involved) and asserts the budget. Current
-numbers on a row of eight items, 40 frames sweeping the pointer across it:
+The widget layer has no automated test (see [[#tests][Tests]]), so these numbers are a
+measurement of a real session, not an assertion; what *is* asserted, in
+=core/render_stats.rs=, is the counters' own arithmetic -- reset, bump, add, an
+out-of-range index, and the exact =describe= line. On a row of eight items, 40
+frames sweeping the pointer across it:
 
 | Counter                | Measured | Why it is the budget                                  |
 |------------------------+----------+-------------------------------------------------------|
@@ -1952,7 +1836,7 @@ Two decisions follow from the metrics:
 
 ** One layout pass per frame, not per event
 Motion events only record a position and arm one one-shot frame-clock tick
-(=on_motion_notify= → =gtk_widget_add_tick_callback=, =dock_window.c=). The row is
+(=on_motion_notify= → =gtk_widget_add_tick_callback=, =dock_window.rs=). The row is
 scaled once per frame in =update_dock_items_fisheye()=, and skipped entirely when
 the dock is hidden, sliding, or motion is reduced.
 
@@ -1960,8 +1844,10 @@ the dock is hidden, sliding, or motion is reduced.
 The fisheye magnifies by painting a transform (=rust/src/ui/icon_zoom.rs=), so the icon
 follows the pointer exactly; only the *size request* steps. =lambdock_size_step()=
 rounds magnified sizes to =FISHEYE_LAYOUT_STEP_PX= (2 px), which halves the row's
-re-measures during a hover sweep -- =test_dock_motion.c= measures it: 23 distinct
-sizes without quantising, 12 with, while the painted scale still changes at every
+re-measures during a hover sweep -- the unit test
+~quantising_halves_the_layout_passes_of_a_hover_sweep~ in =core/dock_motion.rs=
+sweeps the same geometry and asserts that the quantised sweep asks for fewer
+distinct sizes than the exact one while the painted scale still changes at every
 sampled position. The resting size is never rounded.
 
 ** The surface keeps its size while hovering
@@ -2028,9 +1914,8 @@ own hand, so the log is the only way to see the sequence.
 - The dynamic-item and trash poll timers skip their work while the dock is off
   screen (=dock_is_off_screen()=), and =dock_items_refresh_polls()= catches every
   item up on reveal, so the first visible frame shows current values.
-- The declared poll intervals have a budget: =core/poll_budget.c= — now
-  =rust/src/core/poll_budget.rs= — totals them and
-  =populate_dock_items_for= logs a warning above
+- The declared poll intervals have a budget: =rust/src/core/poll_budget.rs=
+  totals them and =populate_dock_items_for= logs a warning above
   =LAMBDOCK_POLL_BUDGET_PER_SECOND= (12/s).  Every dynamic item is a Scheme thunk
   on the main thread, so a configuration that asks for more is an error worth
   reporting, not a taste.
@@ -2051,7 +1936,7 @@ is listed in [[#rough-edges][Known rough edges]].
 
 When you add work to a per-frame path, ask whether it runs per *item* or per
 *frame*, and whether it allocates. The two places to look are
-=update_dock_items_fisheye()= and the paint functions in =ui/shelf.c=.
+=update_dock_items_fisheye()= and the paint functions in =rust/src/ui/shelf.rs=.
 
 ------------------
 
@@ -2068,17 +1953,21 @@ both present) and X11 through XWayland (=GDK_BACKEND=x11=), which has neither.
 |--------------------------------------------+------------------------------------+--------------------------------------------------------------------|
 | Wayland with layer shell?                  | ~lambdock_layer_shell_available()~ | the dock is an ordinary window; one log line                       |
 | Will a ~gtk_layer_*~ call do anything?      | ~gtk_layer_is_layer_window()~      | callers skip margins, anchors and the exclusive zone               |
-| Is there a foreign-toplevel manager?       | =toplevel_tracker.c=               | no running-app items; one warning once the registry is dispatched  |
+| Is there a foreign-toplevel manager?       | =toplevel_tracker.rs=              | no running-app items; one warning once the registry is dispatched  |
 | Is there a ~wl_seat~?                       | =activate_toplevel_window()=       | activation is skipped with one warning; close/minimize still work  |
 
 Three rules that are easy to get wrong:
 
 - *Never call =gtk_layer_is_supported()= directly.* It asserts that the display is
   a Wayland one, so on X11 it logs a critical /before/ returning FALSE. Use
-  =lambdock_layer_shell_available()=, which checks the backend first.
+  =lambdock_layer_shell_available()=, which checks the backend first -- and note
+  that it also answers "no" while the library's own ~wl_proxy~ wrappers have not
+  run yet, which is the link-order trap in
+  [[#the-rust-seam][The crate, the shell and the build]].
 - *Auto-hide is a layer-shell feature.* =hide_dock()= returns early when the window
   is not a layer surface: pretending to hide would leave the dock visible with its
-  fisheye frozen. =test_accessibility.c= covers both branches.
+  fisheye frozen. The reduce-motion decision itself is unit-tested in
+  =rust/src/accessibility.rs=.
 - *The foreign-toplevel manager is bound at version 1.* Every event the code uses
   is v1, and the listener table still fills in the v3-only ~parent~ handler,
   because libwayland aborts the process when a compositor sends an opcode whose
@@ -2136,8 +2025,9 @@ Rules:
   loop.
 - ~G_DEBUG=fatal-warnings~ turns GLib criticals into a crash with a backtrace,
   which is often the quickest way to find a widget-lifecycle mistake.
-- ~meson test -C build --print-errorlogs~ shows the output of the failing test
-  rather than just its name.
+- ~cargo test --offline --locked -- --nocapture~ shows the output of a failing
+  test rather than just its name, and ~RUST_BACKTRACE=1~ turns a panic into
+  frames.
 
 ------------------
 
@@ -2145,6 +2035,10 @@ Rules:
 :PROPERTIES:
 :CUSTOM_ID: extending-lambdock
 :END:
+
+The recipes for the five changes people actually make, in the order the files
+want to be touched. Each one ends with the test that proves it and the page that
+has to say it.
 
 ** Add a new configuration option
 :PROPERTIES:
@@ -2160,10 +2054,12 @@ Touch these in order:
    ~apply-to-targets~.
 2. =scheme/lambdock/core.scm= -- re-export the new getter/setter, and map it in
    ~load-dock-config!~ (accept both ~dock-foo~ and ~foo~).
-3. =src/guile_bridge.h= / ~.c~ -- add a typed ~get_*_config_for(path)~ wrapper.
+3. =rust/src/bridge.rs= -- add a typed ~get_*_config_for(path)~ wrapper next to
+   its siblings.
 4. Consume it where relevant (usually ~create_dock_instance~ /
    ~reload_dock_instance~).
-5. Consider whether it belongs in the C struct in =src/lambdock.h=.
+5. If the dock has to remember it between frames, add the field to
+   ~LambdockState~ in =rust/src/state.rs= and to the test that pins the layout.
 6. Add a test (see below) and update =README.org= and this file's DSL section.
 
 ** Add a preset launcher or icon
@@ -2199,13 +2095,14 @@ sample instead of sleeping.
 :CUSTOM_ID: add-tests
 :END:
 
-C suites are one binary per unit driven by ~tests/test_<unit>.c~. Shared sources
-are listed in =meson.build= (~unit_tests~); add your file there. Use
-~gtk_init_check()~ to skip display-dependent cases. Extend =tests/test_stubs.c=
-if the unit needs ~get_active_dock_states~ / ~unregister_dock_state~.
+A Rust test is a ~#[cfg(test)]~ module beside the code, in the same file: no
+registration, no build-system change, and a decision test links nothing but GLib.
+Anything that needs a display is not a unit test here -- run the dock (see
+[[#verifying-a-change][Verifying a change]]) and say so in the commit.
 
-Scheme suites belong in ~tests/scheme/lambdock_tests.scm~ and are registered
-through ~tests/run_scheme_tests.sh~. Assertions run against the real modules
+Scheme suites belong in ~tests/scheme/lambdock_tests.scm~, run by ~cargo test~ as
+the ~scheme~ integration test (=rust/tests/scheme.rs=).  Assertions run against
+the real modules
 (no C), so they are the cheapest place to lock down ~state.scm=, =items.scm=,
 =presets.scm=, =looks.scm=, =loader.scm= and =core.scm= behaviour. The look
 recipes are checked there for completeness and range (a recipe that forgets a
@@ -2294,7 +2191,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
   unconditionally overflowed the buffer for short selectors such as ~.foo~.
   Keep the prefix check first.
 
-** C ↔ Guile interop hazards
+** Rust ↔ Guile interop hazards
 :PROPERTIES:
 :CUSTOM_ID: interop-hazards
 :END:
@@ -2354,32 +2251,37 @@ They are kept here as guard-rails because each is easy to reintroduce.
 :CUSTOM_ID: build-packaging-hazards
 :END:
 
-- *~-Werror~ everywhere.* ~meson.build~ builds with ~warning_level=3~,
-  ~werror=true~, plus extra pedantic flags (~-Wshadow~, ~-Wstrict-prototypes~,
-  ~-Wvla~, ~-Wformat=2~, ...). Clean compile is mandatory; suppress only in
-  vendored/system code.
-- *~gnu_symbol_visibility: 'hidden'~.* Non-exported C symbols are hidden. If you
-  need two translation units to share a function, declare it in a header (and
-  expect ~-Wmissing-prototypes~ to enforce it).
-- *Compile-time defines matter at runtime:* ~LAMBDOCK_SCHEME_DIR~ (installed
-  scheme dir), ~DEFAULT_GSK_RENDERER~, ~PACKAGE_VERSION~, ~LOCALEDIR~.
+- *Link order is a build decision.* ~gtk4-layer-shell~ before
+  ~libwayland-client~, or the dock silently stops docking on a compositor that
+  implements layer shell. The reason is in
+  [[#the-rust-seam][The crate, the shell and the build]]; =rust/build.rs= is where
+  it is written, and it is a line that wants its comment, not a typo to fix.
+- *The lints are the crate's.* ~rust/Cargo.toml~ denies ~clippy::all~ and
+  ~rust_2018_idioms~ in its ~[lints]~ table, so a warning fails ~maak test~.
+  Suppress with a narrow ~#[allow(...)]~ and a reason, never by loosening the
+  table.
+- *Compile-time values matter at runtime:* ~LAMBDOCK_SCHEME_DIR~ (the installed
+  scheme dir), ~LAMBDOCK_LOCALEDIR~, ~LAMBDOCK_VERSION~ and
+  ~DEFAULT_GSK_RENDERER~ are read through ~option_env!~ in =rust/build.rs= and
+  =rust/main_app.rs=, so a recipe that forgets one gets a dock that looks for its
+  modules in the wrong place.
 - *~%load-path~ pitfall.* ~setup_guile_load_path~ prepends the *relative* path
   ~"scheme"~, so running the binary from outside the repo root (uninstalled) will
   fail to find the modules unless ~LAMBDOCK_SCHEME_DIR~ (the installed path)
   applies. Run from the repo root during development, or install.
 - *The generated Wayland protocol sources are build artifacts.* Do not edit them;
-  edit ~protocols/*.xml~ or rely on the ~wlr-protocols~ package.
+  edit ~protocols/*.xml~ (or rely on the ~wlr-protocols~ package) and let
+  =rust/build.rs= regenerate them with ~wayland-scanner~.
 - *The Guix manifest needs the =bin= output of glib.* ~gtk~ propagates glib's
   default output only, and ~glib-compile-resources~ lives in =glib:bin=. Without
-  it ~meson~ aborts while measuring =gnome.compile_resources()=:
-  ~Dependency 'gio-2.0' tool variable 'glib_compile_resources' contains
-  erroneous value: 'glib-compile-resources'~. A development shell often hides
-  this because the host's copy is on ~PATH~; a CI container does not.
-  =manifest.scm= therefore lists ~(list glib "bin")~.
+  it =rust/build.rs= fails; a development shell often hides that because the
+  host's copy is on ~PATH~, and a CI container does not.  =manifest.scm=
+  therefore lists ~(list glib "bin")~.
+- *The crate graph is vendored.* ~--offline --locked~ is the normal build; after
+  changing ~rust/Cargo.toml~ run ~maak vendor~, which rewrites =rust/vendor/= and
+  =.cargo/config.toml=, and commit both with the lock file.
 - *Translations are generated too.* ~po/*.po~ are edited, ~lambdock.pot~ is
   produced by ~maak i18n-update~; do not edit the template by hand.
-- *Meson options are documented upstream* if you need to add a feature toggle:
-  [[https://mesonbuild.com/Builtin-options.html][built-in options]].
 
 ** Configuration semantics
 :PROPERTIES:
@@ -2392,7 +2294,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
   path and ~'default~. Multiple ~settings-*.scm~ files each get their own
   record; be deliberate about which key you read.
 - *~is_app_excluded~ is case-insensitive* (~g_ascii_strcasecmp~) and is applied to
-  name, icon, and exec on the C side and to ~app_id~ on the tracker side --
+  name, icon and exec in =bridge.rs= and ~app_id~ on the tracker side --
   exclusions can therefore suppress more than you expect.
 - *Item matching is heuristic.* ~find_dock_item_by_app_id~ matches ~app_id~,
   ~icon~, ~name~, and does substring matching on ~exec~; this can associate a
@@ -2445,7 +2347,7 @@ Everything below is upstream documentation for something this codebase uses.
 | GLib main loop & sources       | [[https://docs.gtk.org/glib/main-loop.html][Main loop]], [[https://docs.gtk.org/glib/struct.Source.html][GSource]]                     |
 | Wayland layer shell            | [[https://wayland.app/protocols/wlr-layer-shell-unstable-v1][the protocol]] , [[https://github.com/wmww/gtk4-layer-shell][gtk4-layer-shell]]       |
 | Wayland foreign toplevel       | [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][the protocol]]             |
-| Meson                          | [[https://mesonbuild.com/][mesonbuild.com]], [[https://mesonbuild.com/Unit-tests.html][unit tests]]                        |
+| Cargo                          | [[https://doc.rust-lang.org/cargo/][doc.rust-lang.org/cargo]]                                            |
 | Mermaid diagrams               | [[https://mermaid.js.org/][mermaid.js.org]]                                                                  |
 | ASan / UBSan                   | [[https://clang.llvm.org/docs/AddressSanitizer.html][AddressSanitizer]], [[https://gcc.gnu.org/onlinedocs/gcc/Instrumentation-Options.html][GCC instrumentation]] |
 
