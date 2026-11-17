@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.5" date="2026-11-17">
+      <description>
+        <p>An item's text owns itself. <code>ItemText</code> used to be two GLib strings that the caller freed through <code>lambdock_item_text_clear</code>, so every early return in every caller was a leak waiting to happen — and the wording module needed sixteen <code>unsafe</code> functions to fill them in. It is two <code>String</code>s now, the constructors take <code>Option&lt;&amp;CStr&gt;</code> and return the text by value, the free function is gone, and <code>core/item_text.rs</code> has no <code>unsafe</code> left. Translated messages with substitutions still go through <code>printf</code> so a translator may reorder placeholders, behind safe helpers that return a <code>String</code>. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.4" date="2026-11-17">
       <description>
         <p>The leaf APIs stop inventing unsafe. Translating a message is a safe function now — gettext returns memory it owns, so a <code># Safety</code> section about the result's ownership was describing nothing the caller had to promise — and the CSS-class toggle takes a widget and a <code>&amp;str</code> instead of a raw <code>GtkWidget*</code> and a C string. <code>shelf_edge_class</code> answers a <code>&amp;'static str</code>, the shelf's four edge classes are set without a pointer round trip, and the two directory monitors are owned by the process instead of being passed to <code>mem::forget</code>. Nothing a user sees changes.</p>

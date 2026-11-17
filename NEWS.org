@@ -11,6 +11,29 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.5 (2026-11-17)
+
+- *An item's text owns itself.* `ItemText` used to be two `g_strdup`ed C strings
+  that the caller freed through `lambdock_item_text_clear`, so every early return
+  in every caller was a leak waiting to happen -- and the wording module needed
+  sixteen `unsafe` functions to fill them in. It is two `String`s now: the
+  constructors take `Option<&CStr>` and return the text by value, the free
+  function is gone, and `core/item_text.rs` has no `unsafe` left in it at all.
+  The C strings GTK still wants -- the accessible properties it caches by pointer
+  -- are made at that one call site.
+- *Formatting moved behind safe helpers.* `g_strdup_printf` is still what formats
+  a translated message, so a translation may reorder its placeholders, but the
+  call now goes through `glib::translated_with`, `translated_with_two`,
+  `translated_with_count`, `translated_plural` and two untranslated joins, each
+  returning a `String`. That is where the suite caught a real bug in this change:
+  the first version freed what `tr` returned, and what `tr` returns belongs to
+  gettext -- the test binary aborted with `free(): invalid pointer` before it ever
+  reached a dock.
+- The rest is the safeify pass again: 13 more functions are plain `fn`, and 37
+  `unsafe` blocks are gone with them.
+
+
+
 ** v2.1.4 (2026-11-17)
 
 - *The leaf APIs stop inventing unsafe.* A handful of modules kept an `unsafe`
