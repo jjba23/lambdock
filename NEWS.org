@@ -11,6 +11,39 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.7 (2026-11-17)
+
+- *The dock's lists are Rust's.* `dock_items` and `window_trackers` were `GList`s
+  -- a linked list of boxed pointers, walked by hand with a `while !node.is_null()`
+  cursor in fifteen places -- and the fisheye's cached item centres were a `GArray`
+  in a `*mut c_void`. They are a `Vec<*mut DockItem>`, a
+  `Vec<*mut LambdockToplevel>` and a `Vec<c_int>` now. The walks that were cursors
+  are `iter().filter(..).nth(..)`, `position(..)`, `find(..)`, `any(..)` and a
+  `map(..).collect()`; the mutations are `push`, `retain`, `partition`, `remove`
+  and `insert`. Nothing reallocates a `GList` to append one icon any more, and
+  teardown is `std::mem::take` instead of a walk plus `g_list_free`.
+- *`move_to` replaced `dock_list_move`.* Reordering an icon was a GList find, a
+  delete and an insert, through three GLib calls and a null check. It is five
+  lines on a slice now, and the test that used to build a list of `char`s to prove
+  it proves the same thing about a `Vec`.
+- *The layout order no longer round-trips through GLib strings.*
+  `dock_layout_set_order` took a `GList` of `g_strdup`ed keys, which its caller
+  built by duplicating every item key and freed with `g_list_free_full(.., g_free)`.
+  It takes a `&[String]` and conses them straight into the Scheme list, so the
+  duplicates are gone, and with them the last `g_list_*` calls in the drag-and-drop
+  module.
+- *Fixed: an item whose last window closed outlived its own row entry.* When a
+  tracked window went away the tracker removed the *window* from the item list --
+  a pointer that is never in it, so nothing was removed -- and then freed the
+  item, leaving a dangling `DockItem*` where the next tracker event would walk it.
+  The item leaves the row first now, and `free_dock_item` asserts in debug builds
+  that it did.
+- `for_each_dock_item` (the C-shaped foreach over the row that nothing called),
+  `set_dock_items`, `centres_of` and `dock_list_move` are four fewer `unsafe`
+  functions; the two `for_each` helpers that stay take a slice instead of a list,
+  and the `GList` declarations in three modules went with their only users.
+
+
 ** v2.1.6 (2026-11-17)
 
 - *A dock's state owns its widgets.* `LambdockState` held nine `*mut c_void`

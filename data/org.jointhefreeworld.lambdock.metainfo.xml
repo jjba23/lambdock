@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.7" date="2026-11-17">
+      <description>
+        <p>The dock's lists are Rust's. The row and the tracked windows were <code>GList</code>s walked by hand with a null-checked cursor, and the fisheye's cached item centres were a <code>GArray</code> in a <code>void*</code>; they are a <code>Vec</code> of items, a <code>Vec</code> of windows and a <code>Vec</code> of centres now, so the walks are iterator chains and the mutations are <code>push</code>, <code>retain</code> and <code>partition</code>. The layout order no longer round-trips through duplicated GLib strings, and one use-after-free is gone: an item whose last window closed was freed while the row still held its pointer, so the next tracker event walked freed memory. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.6" date="2026-11-17">
       <description>
         <p>A dock's state owns its widgets. <code>LambdockState</code> kept nine widgets, the monitor, the size group and five CSS providers as raw <code>void*</code> fields, because it started life as a mirror of a C struct the C half read through a header. That half is gone, so the fields are owned <code>Option</code>s: setting one to <code>None</code> is how the dock lets go of a widget it is destroying, and dropping the state drops the rest. The state is boxed instead of <code>g_malloc0</code>ed, so the references are released rather than leaked past the free, and twenty-three functions that took a raw pointer, checked it for null and then dereferenced it anyway now take a reference. Nothing a user sees changes.</p>
