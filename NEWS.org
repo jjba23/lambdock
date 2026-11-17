@@ -11,6 +11,19 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.3 (2026-11-17)
+
+- *The translations load in the Nix package.* The wrapper the Nix build puts in
+  front of the binary points GTK and GIO at its closure, but a C library's
+  locales are a file of their own: without ~LOCALE_ARCHIVE~ the process locale is
+  unsupported -- GTK said so once -- and gettext falls back to the C locale, so
+  the dock stayed English however many catalogues the install had placed in
+  ~$out/share/locale~. =package.nix= now carries ~glibc-locales~ and hands its
+  archive to the wrapper. (Guix gets its locales from ~GUIX_LOCPATH~, which is
+  why only the Nix package needed this.)
+
+
+
 ** v2.1.2 (2026-11-17)
 
 - *An installed dock finds its Scheme modules again.* =~/.local/bin/lambdock~,

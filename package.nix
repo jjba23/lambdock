@@ -26,11 +26,12 @@
   wayland-protocols,
   wlr-protocols,
   libx11,
+  glibcLocales,
 }:
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "2.1.2";
+  version = "2.1.3";
 
   strictDeps = true;
   __structuredAttrs = true;
@@ -56,6 +57,16 @@ stdenv.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
+  # The wrapper points GTK and GIO at this closure; the locales are a file of
+  # their own. Without it the process locale is unsupported -- GTK says so once
+  # -- and gettext falls back to the C locale, so the dock is English no matter
+  # which catalogue the install put in $out/share/locale.
+  preFixup = ''
+    gappsWrapperArgs+=(
+      --set LOCALE_ARCHIVE ${glibcLocales}/lib/locale/locale-archive
+    )
+  '';
+
   nativeBuildInputs = [
     pkg-config
     wayland-scanner
@@ -68,6 +79,7 @@ stdenv.mkDerivation (finalAttrs: {
   ];
 
   buildInputs = [
+    glibcLocales
     gtk4
     gtk4-layer-shell
     guile

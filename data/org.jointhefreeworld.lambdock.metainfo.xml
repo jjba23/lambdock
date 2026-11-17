@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.3" date="2026-11-17">
+      <description>
+        <p>The translations load in the Nix package. The wrapper the Nix build puts in front of the binary points GTK and GIO at its closure, but a C library's locales are a file of their own: without <code>LOCALE_ARCHIVE</code> the process locale is unsupported — GTK said so once — and gettext fell back to the C locale, so the dock stayed English however many catalogues the install had placed in <code>share/locale</code>. The package now carries <code>glibc-locales</code> and hands its archive to the wrapper.</p>
+      </description>
+    </release>
     <release version="2.1.2" date="2026-11-17">
       <description>
         <p>An installed dock finds its Scheme modules again. Every packaged copy — a Nix profile, a Guix profile, a Flatpak, the container — died at startup with <code>no code for module (lambdock core)</code>, because the dock put one path on Guile's load path: the relative <code>scheme</code>, which only resolves when the binary is run from the source tree. The installed directory was compiled in only when the build set <code>LAMBDOCK_SCHEME_DIR</code>, and no recipe did. The dock now derives the prefix from its own location when the build named no directory, every recipe names one, and the same fallback gives the translations their <code>share/locale</code> — which <code>bindtextdomain</code> was never given, so the dock always spoke English.</p>
