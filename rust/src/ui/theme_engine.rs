@@ -55,6 +55,34 @@ pub struct ThemeRequest {
     pub shelf_indicator: c_int,
 }
 
+/// The theme name as a stylesheet name and a CSS class: lower case, whitespace
+/// and underscores as `-`, and every character neither can carry dropped.
+///
+/// Both uses of the name are strict -- a CSS class has to be an identifier, and
+/// the resource path is built from it -- and the name comes from a settings file
+/// a person wrote. `(dock-theme "Glass Dark")`, the label the Preferences window
+/// shows rather than the symbol it stores, used to produce an invalid class and
+/// a stylesheet GTK refused to parse: the dock then had no theme at all.
+fn theme_slug(requested: &str) -> String {
+    let mut slug = String::with_capacity(requested.len());
+
+    for character in requested.chars() {
+        let separator = character == '-' || character == '_' || character.is_whitespace();
+
+        if character.is_ascii_alphanumeric() {
+            slug.push(character.to_ascii_lowercase());
+        } else if separator && !slug.is_empty() && !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+
+    while slug.ends_with('-') {
+        slug.pop();
+    }
+
+    slug
+}
+
 /// Which theme to load and which modifiers to layer, from the dock's settings.
 ///
 /// `None` or an empty name means `vanilla`; the comparison for `none` is
@@ -66,10 +94,10 @@ pub fn resolve_theme(
     shelf_active: bool,
     shelf_indicator: bool,
 ) -> ThemeResolution {
-    let theme_name = match requested_theme {
-        Some(name) if !name.is_empty() => name,
-        _ => "vanilla",
-    };
+    let theme_name = requested_theme
+        .map(theme_slug)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "vanilla".to_owned());
 
     ThemeResolution {
         theme_name: theme_name.to_owned(),
@@ -606,6 +634,36 @@ mod tests {
         assert!(!resolve_theme(Some("vanilla"), false, false, true, false).shelf_indicator);
         // A shelf with no mirrors has no bead, so the theme's dot must stay.
         assert!(!resolve_theme(Some("vanilla"), false, false, false, true).shelf_indicator);
+    }
+
+    /// The name a settings file writes is turned into the stylesheet's: the
+    /// Preferences window shows labels, and a person copying one of those into
+    /// `settings.scm` has to get the shipped theme, not an unthemed dock.
+    #[test]
+    fn a_theme_name_becomes_a_stylesheet_name() {
+        assert_eq!(theme_slug("vanilla"), "vanilla");
+        assert_eq!(theme_slug("Glass Dark"), "glass-dark");
+        assert_eq!(theme_slug("  SolArIzed_Light  "), "solarized-light");
+        assert_eq!(theme_slug("glass--dark"), "glass-dark");
+        assert_eq!(theme_slug("glass-dark-"), "glass-dark");
+
+        // Neither a CSS class nor a resource path can carry these.
+        assert_eq!(theme_slug("../../etc/passwd"), "etcpasswd");
+        assert_eq!(theme_slug("a;b{c}"), "abc");
+        assert_eq!(theme_slug("???"), "");
+    }
+
+    #[test]
+    fn a_label_from_the_preferences_uses_the_shipped_theme() {
+        let theme = resolve_theme(Some("Glass Dark"), false, false, false, false);
+        assert_eq!(theme.theme_name, "glass-dark");
+        assert_eq!(theme.theme_class, "theme-glass-dark");
+        assert!(!theme.disabled);
+
+        // A name nothing is left of is vanilla, never an empty class.
+        let theme = resolve_theme(Some("???"), false, false, false, false);
+        assert_eq!(theme.theme_name, "vanilla");
+        assert_eq!(theme.theme_class, "theme-vanilla");
     }
 
     #[test]

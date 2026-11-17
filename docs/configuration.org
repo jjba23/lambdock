@@ -141,7 +141,7 @@ nothing at all.
 | ~dock-item-spacing~           | ~4~                          | Gap between dock items in px (0 … 64). The theme's padding adds to it.          |
 | ~dock-capsule-padding~        | ~12~                         | Room between the capsule's ends and the icons, in px (0 … 96). The theme's own button padding adds to it. |
 | ~dock-items~                  | ~'()~                        | The item list -- launchers, separators and dynamic widgets, in order.          |
-| ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK.                                 |
+| ~dock-theme~                  | ~'vanilla~                   | Built-in theme symbol, or ~'none~ for bare GTK. A name is read the way the Preferences window labels it too: ~"Glass Dark"~ is ~'glass-dark~. |
 | ~dock-look~                   | unset                        | Whole-dock recipe: theme, sizes, spacing, mode and shelf geometry in one name (see [[file:theming.org#looks][Looks]]). Anything you define wins over it. |
 | ~dock-monitor~                | ~'default~                   | ~'all~, ~'default~, or an output connector name such as ~"DP-1"~.               |
 | ~dock-mode~                   | ~'dock~                      | ~'dock~ (floating capsule) or ~'taskbar~ (full-width bar).                      |
