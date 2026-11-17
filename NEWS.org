@@ -9,6 +9,32 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- *The shell is a Rust development environment now.* The Guix manifest and the
+  Nix dev shell carry the pinned toolchain's `tools` output and its standard
+  library sources -- `cargo clippy`, `cargo fmt`, `rustfmt`, `rust-analyzer` with
+  a `RUST_SRC_PATH` that resolves std -- plus `gdb`, which is what `maak
+  debug-run` launches.  What the build no longer needs has gone with it: Meson,
+  Ninja and Xvfb left the shell, since the crate is built by cargo and the suite
+  needs no display.  None of it reaches the packaged binary.
+- *Three globals stopped being `unsafe`.* The render counters are a
+  `[AtomicU64; _]` instead of a `static mut` array, so a bump from more than one
+  thread is defined rather than assumed away; the dock registry is a thread-local
+  `RefCell<Vec<_>>` instead of a `static mut` behind `&'static mut`, so re-entry
+  is a panic and not aliasing; and the reduce-motion notify handler is declared
+  with the signature GLib actually calls it with, instead of two `transmute`s.
+  Behaviour, and the C ABI, are unchanged.
+- *`maak test` runs in the Guix shell again.* Two things were borrowed from the
+  host instead of the shell. `cargo clippy` looks for its subcommand in
+  `$CARGO_HOME/bin` before the PATH, which is where rustup keeps the host's
+  `cargo-clippy`: a second toolchain whose build scripts carry no rpath into the
+  shell's `libgcc_s`, so compiling anything after them died with "cannot open
+  shared object file". The task now gives clippy a cargo home of its own, and the
+  compiler's lib directory on `LD_LIBRARY_PATH`, which is what `clippy-driver`
+  leaves out of the binaries it links. The manifest also names the `tools` output
+  of `rust`, so the clippy that gets found is the one matching the shell's
+  `rustc` -- and, being the pinned one, it reported a `collapsible_match` the
+  newer host clippy had dropped from `clippy::all`: the music arm of the window
+  menu is a match guard now.
 - *The dock docks again.* ~gtk4-layer-shell~ exports its own
   ~wl_proxy_marshal_array_flags~ and ~wl_proxy_destroy~ so it can reach
   libwayland's private half, and it reports a display as supported -- and turns

@@ -354,12 +354,10 @@ pub fn actions(
                 }
             }
         }
-        KIND_MUSIC => {
-            // With no player on the bus these would be buttons that do nothing,
-            // which is worse than an item whose menu is only its launcher.
-            if music_bus.is_some_and(|bus| !bus.is_empty()) {
-                actions.extend([ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP]);
-            }
+        // With no player on the bus these would be buttons that do nothing,
+        // which is worse than an item whose menu is only its launcher.
+        KIND_MUSIC if music_bus.is_some_and(|bus| !bus.is_empty()) => {
+            actions.extend([ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP]);
         }
         _ => {}
     }

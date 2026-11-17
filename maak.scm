@@ -56,9 +56,20 @@ passing tests are the ones that match this commit."
          (~ "'~a'"
             (string-join
              (list "set -eu"
+                   ;; `clippy-driver' links the binaries it builds without the
+                   ;; rpath `rustc' bakes in, so the loader finds no
+                   ;; `libgcc_s.so.1' when cargo runs a workspace build script.
+                   ;; The compiler's own lib directory is what the missing
+                   ;; rpath would have said.
+                   "export LD_LIBRARY_PATH=\"$(dirname \"$(command -v rustc)\")/../lib\""
                    "cargo clean"
                    "cargo test --offline --locked"
-                   "cargo clippy --offline --locked --all-targets")
+                   ;; Cargo looks for a subcommand in `$CARGO_HOME/bin' before the
+                   ;; PATH, and that is where rustup keeps the host's
+                   ;; `cargo-clippy' -- a second toolchain whose artifacts this
+                   ;; shell cannot run. A home of its own leaves the shell's
+                   ;; clippy, the one that matches its rustc, to be found.
+                   "CARGO_HOME=\"$PWD/target/cargo-home\" cargo clippy --offline --locked --all-targets")
              "; ")))
    #:verbose? #t))
 

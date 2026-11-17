@@ -12,7 +12,6 @@
              (gnu packages nss)
              (gnu packages admin)
              (gnu packages web)
-             (gnu packages ninja)
              (gnu packages gnupg)
              (gnu packages guile-xyz)
              (gnu packages pkg-config)
@@ -30,6 +29,7 @@
              (gnu packages base)
              (gnu packages freedesktop)
              (gnu packages gettext)
+             (gnu packages gdb)
              (gnu packages build-tools)
              (gnu packages commencement)
              (gnu packages rust)
@@ -41,14 +41,29 @@
                           ;; for production Guile 3.0 is used
                           ;; for dev Arei REPL use Guile Next
                           gcc-toolchain
-                          ;; The Rust toolchain: `rustc' builds the ported
-                          ;; modules and `cargo' runs their tests, both driven
-                          ;; by meson. `rust' keeps cargo in its own output.
+                          ;; The Rust toolchain: `rustc' builds the crate and
+                          ;; `cargo' runs its tests.  `rust' keeps cargo in its
+                          ;; own output.
                           rust
                           (list rust "cargo")
+                          ;; `cargo clippy' is the lints half of `maak test', and
+                          ;; the tools output is where the toolchain keeps
+                          ;; `cargo-clippy' and `clippy-driver'. Without it cargo
+                          ;; finds the subcommand further down the PATH -- the
+                          ;; host's, under rustup -- and the two toolchains
+                          ;; collide: the build scripts that the borrowed
+                          ;; `clippy-driver' compiles carry no rpath to this
+                          ;; shell's `libgcc_s', so cargo cannot execute them.
+                          ;; The same output is the editor story: `rustfmt' and
+                          ;; `rust-analyzer', the latter wrapped to find its
+                          ;; sysroot.
+                          (list rust "tools")
+                          ;; rust-analyzer reads the standard library's sources
+                          ;; from the sysroot; without this it shows signatures
+                          ;; it inferred and no documentation.
+                          (list rust "rust-src")
                           gettext-minimal
                           pkg-config
-                          meson
                           ccls
                           gtk
                           gtk4-layer-shell
@@ -57,22 +72,22 @@
                           watchexec
                           guile-documenta
                           wlr-protocols
-                          ninja
                           guile-ares-rs
+                          ;; `maak debug-run' launches the dock under gdb, so the
+                          ;; debugger comes from the shell rather than from
+                          ;; whatever the host happens to have.
+                          gdb
                           ;; `libtiff-4.pc' (pulled in through gdk-pixbuf)
                           ;; lists liblzma in its Requires.private, and
                           ;; pkg-config resolves those even for `--cflags'. The
                           ;; library is not propagated into the shell, so
                           ;; without xz the gtk4 dependency lookup aborts with
-                          ;; "Package 'liblzma' ... not found" before meson can
-                          ;; configure anything.
+                          ;; "Package 'liblzma' ... not found".
                           xz
                           ;; `glib-compile-resources' lives in the "bin" output of
                           ;; glib, which is not what gtk propagates. Without it
-                          ;; meson aborts at gnome.compile_resources.
+                          ;; `build.rs' cannot compile the resource bundle.
                           (list glib "bin")
-                          ;; Headless display + X authority for the test stage.
-                          xvfb-run
                           ;; An icon theme is what makes `utilities-terminal'
                           ;; resolvable: without it the dock item tests treat the
                           ;; icon fallback warning as a failure.
