@@ -35,6 +35,8 @@ use std::collections::VecDeque;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::rc::Rc;
+use crate::bridge::{dock_layout_set_view};
+use crate::dock_item::{dock_item_key};
 
 /// `LambdockStackView`.
 pub const VIEW_GRID: c_int = 0;
@@ -193,8 +195,7 @@ fn dirname(path: &str) -> String {
 /// # Safety
 ///
 /// `path` must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_expand_path(path: *const c_char) -> *mut c_char {
+pub unsafe fn lambdock_stack_expand_path(path: *const c_char) -> *mut c_char {
     match expand_path(text(path).as_deref()) {
         Some(path) => strdup_string(&path),
         None => std::ptr::null_mut(),
@@ -206,8 +207,7 @@ pub unsafe extern "C" fn lambdock_stack_expand_path(path: *const c_char) -> *mut
 /// # Safety
 ///
 /// Both must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_child_path(
+pub unsafe fn lambdock_stack_child_path(
     dir: *const c_char,
     name: *const c_char,
 ) -> *mut c_char {
@@ -222,8 +222,7 @@ pub unsafe extern "C" fn lambdock_stack_child_path(
 /// # Safety
 ///
 /// Both must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_parent_path(
+pub unsafe fn lambdock_stack_parent_path(
     path: *const c_char,
     root: *const c_char,
 ) -> *mut c_char {
@@ -238,8 +237,7 @@ pub unsafe extern "C" fn lambdock_stack_parent_path(
 /// # Safety
 ///
 /// Every argument must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_breadcrumb(
+pub unsafe fn lambdock_stack_breadcrumb(
     path: *const c_char,
     root: *const c_char,
     root_label: *const c_char,
@@ -258,8 +256,7 @@ pub unsafe extern "C" fn lambdock_stack_breadcrumb(
 /// # Safety
 ///
 /// `name` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_from_string(name: *const c_char) -> c_int {
+pub unsafe fn lambdock_stack_view_from_string(name: *const c_char) -> c_int {
     let Some(name) = text(name) else {
         return VIEW_GRID;
     };
@@ -271,16 +268,16 @@ pub unsafe extern "C" fn lambdock_stack_view_from_string(name: *const c_char) ->
 }
 
 /// The Scheme name of a view mode.
-#[no_mangle]
-pub extern "C" fn lambdock_stack_view_to_string(view: c_int) -> *const c_char {
+pub fn lambdock_stack_view_to_string(view: c_int) -> *const c_char {
     match view {
         VIEW_LIST => c"list".as_ptr(),
         _ => c"grid".as_ptr(),
     }
 }
 
-/// One entry of a listed folder: `LambdockStackEntry` from the header, field for
-/// field. The C side reads these fields directly, so the order is the contract.
+/// One entry of a listed folder. The panel reads these fields directly, so the
+/// order is the contract, and a `GPtrArray` of them is what the listing hands
+/// back.
 #[repr(C)]
 pub struct StackEntry {
     pub name: *mut c_char,
@@ -308,8 +305,7 @@ unsafe extern "C" fn free_entry(data: *mut std::ffi::c_void) {
 /// # Safety
 ///
 /// `entry` must be null or a record this module allocated, not freed twice.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_entry_free(entry: *mut StackEntry) {
+pub unsafe fn lambdock_stack_entry_free(entry: *mut StackEntry) {
     if entry.is_null() {
         return;
     }
@@ -324,8 +320,7 @@ pub unsafe extern "C" fn lambdock_stack_entry_free(entry: *mut StackEntry) {
 /// # Safety
 ///
 /// `entries` must be null or an array this module created.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_entries_free(entries: *mut glib::ffi::GPtrArray) {
+pub unsafe fn lambdock_stack_entries_free(entries: *mut glib::ffi::GPtrArray) {
     if !entries.is_null() {
         glib::ffi::g_ptr_array_free(entries, glib::ffi::GTRUE);
     }
@@ -341,8 +336,7 @@ pub unsafe extern "C" fn lambdock_stack_entries_free(entries: *mut glib::ffi::GP
 ///
 /// `path` must be null or NUL-terminated; `truncated` must be null or point at a
 /// writable `gboolean`. The result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_list_directory_limited(
+pub unsafe fn lambdock_stack_list_directory_limited(
     path: *const c_char,
     limit: u32,
     truncated: *mut c_int,
@@ -421,8 +415,7 @@ pub unsafe extern "C" fn lambdock_stack_list_directory_limited(
 /// # Safety
 ///
 /// `path` must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_list_directory(
+pub unsafe fn lambdock_stack_list_directory(
     path: *const c_char,
 ) -> *mut glib::ffi::GPtrArray {
     lambdock_stack_list_directory_limited(path, MAX_ENTRIES, std::ptr::null_mut())
@@ -577,8 +570,7 @@ fn entry_icon(name: &str, is_dir: bool) -> gio::Icon {
 /// # Safety
 ///
 /// `path` must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_thumbnail_for_path(
+pub unsafe fn lambdock_stack_thumbnail_for_path(
     path: *const c_char,
     size: c_int,
 ) -> *mut gdk::ffi::GdkPaintable {
@@ -600,8 +592,7 @@ pub unsafe extern "C" fn lambdock_stack_thumbnail_for_path(
 /// # Safety
 ///
 /// `path` must be null or NUL-terminated; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_thumbnail_pixbuf(
+pub unsafe fn lambdock_stack_thumbnail_pixbuf(
     path: *const c_char,
     size: c_int,
 ) -> *mut gdk_pixbuf::ffi::GdkPixbuf {
@@ -620,8 +611,7 @@ pub unsafe extern "C" fn lambdock_stack_thumbnail_pixbuf(
 /// # Safety
 ///
 /// `pixbuf` must be null or a live `GdkPixbuf`; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_texture_from_pixbuf(
+pub unsafe fn lambdock_stack_texture_from_pixbuf(
     pixbuf: *mut gdk_pixbuf::ffi::GdkPixbuf,
 ) -> *mut gdk::ffi::GdkTexture {
     use gtk4::glib::translate::from_glib_borrow;
@@ -1144,8 +1134,8 @@ fn view_for_entries(
     }
 }
 
-/// A view for C to append to a box, which sinks what it is given: the reference
-/// handed over is floating, exactly like `gtk_*_new`.
+/// A view to append to a box, which sinks what it is given: the reference handed
+/// over is floating, exactly like `gtk_*_new`.
 fn into_floating_pointer(widget: gtk4::Widget) -> *mut gtk4::ffi::GtkWidget {
     unsafe { glib::gobject_ffi::g_object_force_floating(widget.as_ptr().cast()) };
 
@@ -1158,8 +1148,7 @@ fn into_floating_pointer(widget: gtk4::Widget) -> *mut gtk4::ffi::GtkWidget {
 ///
 /// `entries` must be null or an array of `StackEntry*`. The result is a
 /// floating widget, or null for no entries at all.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_new(
+pub unsafe fn lambdock_stack_view_new(
     entries: *mut glib::ffi::GPtrArray,
     view: c_int,
     icon_size: c_int,
@@ -1258,15 +1247,6 @@ unsafe fn stored_view(panel: &gtk4::Widget) -> Option<Borrowed<gtk4::Widget>> {
     Some(from_glib_borrow(view.cast::<gtk4::ffi::GtkWidget>()))
 }
 
-extern "C" {
-    /// `dock_item_key` in `src/ui/dock_item.c`: the identity a layout override
-    /// remembers an item under.
-    fn dock_item_key(item: *const DockItem) -> *mut c_char;
-
-    /// `dock_layout_set_view` in `src/guile_bridge.c`: remembers a stack's view
-    /// mode so it survives a restart.
-    fn dock_layout_set_view(config_path: *const c_char, key: *const c_char, view: *const c_char);
-}
 
 /// The view a name stands for; unknown names are the grid.
 fn view_from_name(name: Option<&str>) -> c_int {
@@ -1629,7 +1609,7 @@ fn first_entry(view: &gtk4::Widget) -> Option<gtk4::Widget> {
 /// The first entry is the useful place to land, so a keyboard user can start
 /// walking the folder immediately; the panel itself is only the fallback for an
 /// empty folder. Escape still bubbles from the entry to the popover's controller.
-fn popover_focus(popover: &gtk4::Popover) {
+unsafe fn popover_focus(popover: &gtk4::Popover) {
     let Some(child) = popover.child() else {
         return;
     };
@@ -1684,8 +1664,7 @@ fn popover_focus(popover: &gtk4::Popover) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_show(item: *mut DockItem) {
+pub unsafe fn lambdock_stack_show(item: *mut DockItem) {
     if item.is_null() {
         return;
     }
@@ -1711,8 +1690,7 @@ pub unsafe extern "C" fn lambdock_stack_show(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_set_view(item: *mut DockItem, view: c_int) {
+pub unsafe fn lambdock_stack_set_view(item: *mut DockItem, view: c_int) {
     if item.is_null() {
         return;
     }
@@ -1769,8 +1747,7 @@ unsafe fn set_view(item: *mut DockItem, view: c_int) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`; `path` must be null or a C string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_panel_new(
+pub unsafe fn lambdock_stack_panel_new(
     item: *mut DockItem,
     path: *const c_char,
 ) -> *mut gtk4::ffi::GtkWidget {
@@ -1984,8 +1961,7 @@ fn attach_keys(view: &gtk4::Widget) {
 /// # Safety
 ///
 /// `view` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_focus_step(
+pub unsafe fn lambdock_stack_view_focus_step(
     view: *mut gtk4::ffi::GtkWidget,
     dx: c_int,
     dy: c_int,
@@ -2003,8 +1979,7 @@ pub unsafe extern "C" fn lambdock_stack_view_focus_step(
 /// # Safety
 ///
 /// `view` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_stack_view_focus_edge(
+pub unsafe fn lambdock_stack_view_focus_edge(
     view: *mut gtk4::ffi::GtkWidget,
     last: c_int,
 ) -> c_int {

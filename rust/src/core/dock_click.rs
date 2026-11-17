@@ -14,9 +14,8 @@ use std::os::raw::{c_char, c_int};
 
 /// What a left click on an application item should do.
 ///
-/// The discriminants are the contract: `LambdockClickAction` in
-/// `src/core/dock_click.h` declares the same numbers, and the C side still
-/// switches on them.
+/// The discriminants are the contract: they were the C enum's values, the item
+/// kinds are numbered by the same table, and a configuration file may name one.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClickAction {
@@ -32,8 +31,7 @@ pub enum ClickAction {
 /// # Safety
 ///
 /// `launcher_command` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_click_action_for(
+pub unsafe fn lambdock_click_action_for(
     window_count: u32,
     window_minimized: c_int,
     window_active: c_int,

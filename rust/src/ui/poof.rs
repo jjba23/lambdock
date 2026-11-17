@@ -25,16 +25,13 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::os::raw::c_int;
+use crate::dock_window::{update_dock_dimensions};
 
 /// The reference artwork is five frames of one icon; at the dock's frame clock
 /// that is a little over a third of a second.
 const PARTICLES: usize = 14;
 const DURATION_MS: f64 = 320.0;
 
-extern "C" {
-    /// Re-derives the dock's layout from the finished row (`dock_window.h`).
-    fn update_dock_dimensions(state: *mut LambdockState);
-}
 
 mod imp {
     use super::*;
@@ -238,8 +235,7 @@ fn start_tick(poof: &Poof) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem` whose widget is in its dock's box.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poof_take_slot(item: *mut DockItem) -> c_int {
+pub unsafe fn lambdock_poof_take_slot(item: *mut DockItem) -> c_int {
     // gtk-rs asserts its own initialization flag inside the subclass machinery,
     // and C's gtk_init does not set it.
     crate::ui::ensure_gtk_initialized();

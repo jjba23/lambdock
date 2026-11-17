@@ -27,7 +27,6 @@
 //! cannot ask GDK for it. One extra socket, watched like any other file
 //! descriptor, keeps the tracker out of GDK's event path entirely.
 
-
 // ============================================================================
 // WHAT A NO-X11 BUILD LEAVES
 // ============================================================================
@@ -41,7 +40,6 @@ mod backend {
     use gtk4::glib::translate::IntoGlib;
     use std::os::raw::{c_int, c_void};
 
-    #[no_mangle]
     pub extern "C" fn lambdock_x11_session() -> c_int {
         0
     }
@@ -49,7 +47,6 @@ mod backend {
     /// # Safety
     ///
     /// `error` must be null or a `GError**`.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_start(error: *mut *mut gtk4::glib::ffi::GError) -> c_int {
         if !error.is_null() {
             let message = c"no-x11";
@@ -66,37 +63,31 @@ mod backend {
     /// # Safety
     ///
     /// Nothing to keep safe: the backend is off.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_replay() {}
 
     /// # Safety
     ///
     /// `window` is ignored.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_activate(_window: *mut c_void) {}
 
     /// # Safety
     ///
     /// `window` is ignored.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_minimize(_window: *mut c_void) {}
 
     /// # Safety
     ///
     /// `window` is ignored.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_close(_window: *mut c_void) {}
 
     /// # Safety
     ///
     /// `state` is ignored.
-    #[no_mangle]
     pub unsafe extern "C" fn lambdock_x11_dock_apply(_state: *mut LambdockState) {}
 
     /// # Safety
     ///
     /// `state` is ignored.
-    #[no_mangle]
     pub unsafe extern "C" fn lambdock_x11_dock_forget(_state: *mut LambdockState) {}
 }
 
@@ -116,7 +107,9 @@ mod backend {
     use std::os::raw::{c_char, c_int, c_long, c_uint, c_ulong, c_void};
 
     use crate::app_window::LambdockToplevel;
+    use crate::dock_window::{dock_capsule_cross_dim, dock_cross_axis_dim};
     use crate::state::LambdockState;
+    use crate::ui::layer_shell::is_monitor_valid;
 
     /// A widget field of a dock's state, borrowed: the state holds raw pointers,
     /// and a borrow is all this side needs.
@@ -345,12 +338,7 @@ mod backend {
         fn gdk_x11_surface_get_type() -> gtk4::glib::ffi::GType;
         fn gdk_x11_surface_get_xid(surface: *mut gdk::ffi::GdkSurface) -> Window;
 
-        /// `src/dock_window.c`: the dock's own measurements, which the placement
-        /// rules take as inputs.
-        fn is_monitor_valid(monitor: *mut c_void) -> c_int;
-        fn dock_cross_axis_dim(state: *const LambdockState) -> c_int;
-        fn dock_capsule_cross_dim(state: *const LambdockState) -> c_int;
-    }
+}
 
     /// Every atom the backend touches, in one table: EWMH's names, plus the two
     /// GTK properties that say what application a window belongs to.
@@ -990,7 +978,6 @@ mod backend {
     /// # Safety
     ///
     /// `window` must be null or a live record.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_activate(window: *mut LambdockToplevel) {
         let Some(window) = window.as_ref() else {
             return;
@@ -1019,7 +1006,6 @@ mod backend {
     /// # Safety
     ///
     /// `window` must be null or a live record.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_minimize(window: *mut LambdockToplevel) {
         let Some(window) = window.as_ref() else {
             return;
@@ -1038,7 +1024,6 @@ mod backend {
     /// # Safety
     ///
     /// `window` must be null or a live record.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_close(window: *mut LambdockToplevel) {
         let Some(window) = window.as_ref() else {
             return;
@@ -1293,7 +1278,7 @@ mod backend {
     ) -> Option<crate::core::x11_rules::Rect> {
         let display = gdk::Display::default()?;
 
-        let mut monitor = if is_monitor_valid(state.monitor) != 0 {
+        let mut monitor = if is_monitor_valid(state.monitor.cast()) != 0 {
             let monitor: *mut gdk::ffi::GdkMonitor = state.monitor.cast();
             Some(from_glib_none(monitor))
         } else {
@@ -1337,7 +1322,6 @@ mod backend {
     /// # Safety
     ///
     /// `state` must be null or a live `LambdockState`.
-    #[no_mangle]
     pub unsafe extern "C" fn lambdock_x11_dock_apply(state: *mut LambdockState) {
         let Some(state_ref) = state.as_mut() else {
             return;
@@ -1466,7 +1450,6 @@ mod backend {
     /// # Safety
     ///
     /// `state` must be null or a live `LambdockState`.
-    #[no_mangle]
     pub unsafe extern "C" fn lambdock_x11_dock_forget(state: *mut LambdockState) {
         let Some(state) = state.as_mut() else {
             return;
@@ -1481,7 +1464,6 @@ mod backend {
     // ------------------------------------------------------------------
 
     /// Whether this session is an X11 one.
-    #[no_mangle]
     pub extern "C" fn lambdock_x11_session() -> c_int {
         let Some(display) = gdk::Display::default() else {
             return 0;
@@ -1554,7 +1536,6 @@ mod backend {
     /// # Safety
     ///
     /// `error` must be null or a `GError**`.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_start(
         error: *mut *mut glib::ffi::GError,
     ) -> c_int {
@@ -1606,7 +1587,6 @@ mod backend {
     /// # Safety
     ///
     /// Must be called on the main thread, with the tracker's connection open.
-    #[no_mangle]
     pub unsafe extern "C" fn x11_tracker_replay() {
         if lock().display.is_null() {
             return;

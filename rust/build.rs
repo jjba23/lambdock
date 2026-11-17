@@ -130,6 +130,38 @@ fn generate(_what: &str) {
     for object in &objects {
         println!("cargo:rustc-link-arg-bins={}", object.display());
     }
+
+    // The libraries those two objects need, listed again *after* them. Link
+    // arguments come after the crate's own `-l` flags, and with `--as-needed` a
+    // library that appears before its first user is dropped: the resource bundle
+    // references `g_static_resource_init` and the protocol code references
+    // `wl_proxy_*`, so a target whose Rust side happens to reference neither
+    // (a test binary is one) lost glib and libwayland and failed to link.
+    for package in ["gio-2.0", "glib-2.0", "wayland-client"] {
+        for flag in pkg_config_libs(package) {
+            println!("cargo:rustc-link-arg-bins={flag}");
+        }
+    }
+}
+
+/// One package's `pkg-config --libs`, as the flags a linker takes.
+fn pkg_config_libs(package: &str) -> Vec<String> {
+    let output = Command::new("pkg-config")
+        .args(["--libs", package])
+        .output()
+        .unwrap_or_else(|error| panic!("pkg-config is needed for {package}: {error}"));
+
+    assert!(
+        output.status.success(),
+        "pkg-config --libs {package} failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    String::from_utf8(output.stdout)
+        .expect("pkg-config printed UTF-8")
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect()
 }
 
 /// Runs a build-time tool, and fails the build when it does: a missing resource

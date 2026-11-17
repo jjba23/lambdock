@@ -22,13 +22,11 @@
 //!
 //! There are no `cargo test` cases here on purpose: every one of these decisions
 //! needs a popover with rows in it and a window to hold the focus, and `cargo
-//! test` stays display-free. `tests/test_popover_menu.c` drives this code through
-//! the C ABI -- its `keyboard` and `escape_controller` subtests are exactly these
-//! two controllers.
+//! test` stays display-free. The keyboard and Escape controllers below are
+//! verified by running the dock.
 
-use crate::app_window::{AppWindow, GList, LambdockToplevel};
+use crate::app_window::{AppWindow, GList};
 use crate::dock_item::{DockItem, ITEM_APP, ITEM_LAUNCHPAD, ITEM_STACK, ITEM_TRASH};
-use crate::state::LambdockState;
 use crate::ui::dock_dnd::SendRef;
 use gtk4::gdk;
 use gtk4::glib;
@@ -37,6 +35,10 @@ use gtk4::glib::translate::from_glib_none;
 use gtk4::prelude::*;
 use gtk4::{ffi, pango};
 use std::os::raw::c_int;
+use crate::dock_item::{dock_item_from_widget, dock_item_key, dock_item_refresh_trash, lambdock_item_title};
+use crate::toplevel_tracker::{activate_toplevel_window, close_toplevel_window};
+use crate::ui::launchpad::{lambdock_launchpad_show};
+use crate::ui::stack::{lambdock_stack_set_view, lambdock_stack_view_from_string};
 
 /// Class of the popover child a menu builds, which is how the navigation below
 /// tells an item menu from a stack panel.
@@ -137,8 +139,7 @@ fn focus_step(popover: &gtk4::Popover, delta: i32) -> bool {
 /// # Safety
 ///
 /// `popover` must be null or a live `GtkPopover`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_popover_close_on_escape(popover: *mut ffi::GtkPopover) {
+pub unsafe fn lambdock_popover_close_on_escape(popover: *mut ffi::GtkPopover) {
     if popover.is_null() {
         return;
     }
@@ -184,8 +185,7 @@ pub unsafe extern "C" fn lambdock_popover_close_on_escape(popover: *mut ffi::Gtk
 /// # Safety
 ///
 /// `popover` must be null or a live `GtkPopover`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_popover_menu_keys(popover: *mut ffi::GtkPopover) {
+pub unsafe fn lambdock_popover_menu_keys(popover: *mut ffi::GtkPopover) {
     if popover.is_null() {
         return;
     }
@@ -234,8 +234,7 @@ pub unsafe extern "C" fn lambdock_popover_menu_keys(popover: *mut ffi::GtkPopove
 /// # Safety
 ///
 /// `popover` must be null or a live `GtkPopover`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_popover_menu_focus_first(popover: *mut ffi::GtkPopover) {
+pub unsafe fn lambdock_popover_menu_focus_first(popover: *mut ffi::GtkPopover) {
     if popover.is_null() {
         return;
     }
@@ -295,21 +294,6 @@ fn menu_row_new(icon_name: Option<&str>, label: &str) -> gtk4::Button {
     button.set_child(Some(&row));
 
     button
-}
-
-/// C strings this module borrows.
-type Text = *const std::ffi::c_char;
-
-extern "C" {
-    fn activate_toplevel_window(window: *mut LambdockToplevel);
-    fn close_toplevel_window(window: *mut LambdockToplevel);
-    fn dock_item_from_widget(widget: *mut ffi::GtkWidget) -> *mut DockItem;
-    fn dock_item_refresh_trash(item: *mut DockItem);
-    fn dock_item_key(item: *const DockItem) -> *mut std::ffi::c_char;
-    fn lambdock_item_title(item: *const DockItem, fallback: Text) -> Text;
-    fn lambdock_stack_set_view(item: *mut DockItem, view: i32);
-    fn lambdock_stack_view_from_string(name: Text) -> i32;
-    fn lambdock_launchpad_show(state: *mut LambdockState);
 }
 
 /// `POPOVER_*` in `lambdock.h`.
@@ -967,8 +951,7 @@ unsafe fn menu_finish(item: *mut DockItem, vbox: &gtk4::Box) {
 /// # Safety
 ///
 /// `item` must be null or a live dock item whose popover is set.
-#[no_mangle]
-pub unsafe extern "C" fn populate_popover_menu(item: *mut DockItem) {
+pub unsafe fn populate_popover_menu(item: *mut DockItem) {
     if item.is_null() || (*item).popover.is_null() {
         return;
     }

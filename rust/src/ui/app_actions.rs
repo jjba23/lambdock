@@ -292,8 +292,7 @@ pub fn action_command(exec: Option<&str>, action: c_int) -> Option<String> {
     Some(command)
 }
 
-/// `g_shell_quote`, so a quoted word is written the way the shell and the C side
-/// write it.
+/// `g_shell_quote`, so a quoted word is written the way the shell writes it.
 fn shell_quote(word: &str) -> String {
     let Ok(word) = CString::new(word) else {
         return String::new();
@@ -507,8 +506,7 @@ fn music_invoke(bus_name: &str, action: c_int) {
 /// # Safety
 ///
 /// Every argument must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_kind(
+pub unsafe fn lambdock_app_kind(
     app_id: *const c_char,
     name: *const c_char,
     exec: *const c_char,
@@ -528,8 +526,7 @@ pub unsafe extern "C" fn lambdock_app_kind(
 ///
 /// Every argument must be null or a NUL-terminated string; the result is
 /// `(transfer full)` and freed with `g_array_unref`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_actions(
+pub unsafe fn lambdock_app_actions(
     app_id: *const c_char,
     name: *const c_char,
     exec: *const c_char,
@@ -560,8 +557,7 @@ pub unsafe extern "C" fn lambdock_app_actions(
 /// # Safety
 ///
 /// The result must not be freed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_action_label(action: c_int) -> *const c_char {
+pub unsafe fn lambdock_app_action_label(action: c_int) -> *const c_char {
     let label = action_label(action);
 
     if label.is_empty() {
@@ -577,8 +573,7 @@ pub unsafe extern "C" fn lambdock_app_action_label(action: c_int) -> *const c_ch
 ///
 /// `exec` must be null or a NUL-terminated string; the result is `(transfer
 /// full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_action_command(
+pub unsafe fn lambdock_app_action_command(
     exec: *const c_char,
     action: c_int,
 ) -> *mut c_char {
@@ -589,8 +584,7 @@ pub unsafe extern "C" fn lambdock_app_action_command(
 }
 
 /// Whether the action is one of the playback controls.
-#[no_mangle]
-pub extern "C" fn lambdock_app_action_is_music(action: c_int) -> c_int {
+pub fn lambdock_app_action_is_music(action: c_int) -> c_int {
     c_int::from(action_is_music(action))
 }
 
@@ -600,8 +594,7 @@ pub extern "C" fn lambdock_app_action_is_music(action: c_int) -> c_int {
 ///
 /// Every argument must be null or a NUL-terminated string; the result is
 /// `(transfer full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_music_player_find(
+pub unsafe fn lambdock_app_music_player_find(
     app_id: *const c_char,
     name: *const c_char,
 ) -> *mut c_char {
@@ -616,8 +609,7 @@ pub unsafe extern "C" fn lambdock_app_music_player_find(
 /// # Safety
 ///
 /// `bus_name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_music_invoke(bus_name: *const c_char, action: c_int) {
+pub unsafe fn lambdock_app_music_invoke(bus_name: *const c_char, action: c_int) {
     if let Some(bus_name) = crate::cstr::text(bus_name).filter(|bus_name| !bus_name.is_empty()) {
         music_invoke(&bus_name, action);
     }

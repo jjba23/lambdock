@@ -3,12 +3,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-//! The Rust half of lambdock.
+//! lambdock, as a crate.
 //!
-//! The crate is a `staticlib` so meson can link it into the C executable and an
-//! `rlib` so `cargo test` can link the unit tests. Each module exports the C ABI
-//! that its header under `src/` declares, which is what lets the port go one
-//! module at a time: from C's point of view nothing moved.
+//! It is a `staticlib` and an `rlib`: the staticlib is what a C build of the dock
+//! would link, and the rlib is what `cargo test` links the unit tests against.
+//! Nothing outside the crate calls into it any more -- the port from C is
+//! finished -- so the modules are ordinary Rust modules, and the `lambdock_*`
+//! names that remain are history rather than exports.
 
 pub mod accessibility;
 pub mod app_window;

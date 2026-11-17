@@ -13,8 +13,7 @@ use std::f64::consts::PI;
 use std::os::raw::c_int;
 
 /// The fraction of a slide completed, clamped to `[0, 1]`.
-#[no_mangle]
-pub extern "C" fn lambdock_slide_progress(start_us: i64, now_us: i64, duration_us: i64) -> f64 {
+pub fn lambdock_slide_progress(start_us: i64, now_us: i64, duration_us: i64) -> f64 {
     if duration_us <= 0 {
         return 1.0;
     }
@@ -33,22 +32,19 @@ pub extern "C" fn lambdock_slide_progress(start_us: i64, now_us: i64, duration_u
 }
 
 /// `1 - (1 - t)^3`.
-#[no_mangle]
-pub extern "C" fn lambdock_ease_out_cubic(t: f64) -> f64 {
+pub fn lambdock_ease_out_cubic(t: f64) -> f64 {
     let remaining = 1.0 - t;
     1.0 - (remaining * remaining * remaining)
 }
 
 /// The margin the dock should sit at on this frame.
-#[no_mangle]
-pub extern "C" fn lambdock_slide_position(from_px: c_int, to_px: c_int, progress: f64) -> c_int {
+pub fn lambdock_slide_position(from_px: c_int, to_px: c_int, progress: f64) -> c_int {
     let eased = lambdock_ease_out_cubic(progress);
     from_px + ((to_px - from_px) as f64 * eased) as c_int
 }
 
 /// The (negative) layer-shell margin that hides the dock.
-#[no_mangle]
-pub extern "C" fn lambdock_hide_margin(
+pub fn lambdock_hide_margin(
     measured_main_px: c_int,
     cross_axis_px: c_int,
     tolerance_px: c_int,
@@ -67,8 +63,7 @@ pub extern "C" fn lambdock_hide_margin(
 }
 
 /// Whether crossings are echoes of the dock's own movement.
-#[no_mangle]
-pub extern "C" fn lambdock_settling(
+pub fn lambdock_settling(
     sliding: c_int,
     settled_at_us: i64,
     now_us: i64,
@@ -86,8 +81,7 @@ pub extern "C" fn lambdock_settling(
 }
 
 /// Whether the whole surface has to take input.
-#[no_mangle]
-pub extern "C" fn lambdock_dock_needs_full_input(
+pub fn lambdock_dock_needs_full_input(
     is_hidden: c_int,
     current_margin: c_int,
 ) -> c_int {
@@ -95,8 +89,7 @@ pub extern "C" fn lambdock_dock_needs_full_input(
 }
 
 /// A cosine bell from `max_scale` at the centre to `1.0` at `radius_px`.
-#[no_mangle]
-pub extern "C" fn lambdock_fisheye_scale(distance_px: f64, radius_px: f64, max_scale: f64) -> f64 {
+pub fn lambdock_fisheye_scale(distance_px: f64, radius_px: f64, max_scale: f64) -> f64 {
     if radius_px <= 0.0 {
         return 1.0;
     }
@@ -113,14 +106,12 @@ pub extern "C" fn lambdock_fisheye_scale(distance_px: f64, radius_px: f64, max_s
 }
 
 /// `base_px * scale`, rounded to the nearest whole pixel.
-#[no_mangle]
-pub extern "C" fn lambdock_scaled_size(base_px: c_int, scale: f64) -> c_int {
+pub fn lambdock_scaled_size(base_px: c_int, scale: f64) -> c_int {
     (f64::from(base_px) * scale).round() as c_int
 }
 
 /// Whether either coordinate moved by at least `epsilon_px`.
-#[no_mangle]
-pub extern "C" fn lambdock_points_differ(
+pub fn lambdock_points_differ(
     ax: f64,
     ay: f64,
     bx: f64,
@@ -131,8 +122,7 @@ pub extern "C" fn lambdock_points_differ(
 }
 
 /// `size_px` rounded up to the nearest multiple of `step_px`.
-#[no_mangle]
-pub extern "C" fn lambdock_size_step(size_px: c_int, step_px: c_int) -> c_int {
+pub fn lambdock_size_step(size_px: c_int, step_px: c_int) -> c_int {
     // The fisheye paints through a transform, so only the layout has to step:
     // rounding the size request to a few pixels means the dock re-measures its
     // row a fraction as often, and nothing visible changes.

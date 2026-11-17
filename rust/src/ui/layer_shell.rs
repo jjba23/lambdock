@@ -57,8 +57,7 @@ extern "C" {
 /// `gtk_layer_is_supported()` asserts that the display is a Wayland one, so it
 /// cannot be the guard on X11: it logs a critical right there, before it has a
 /// chance to answer "no". The backend is therefore checked first.
-#[no_mangle]
-pub extern "C" fn lambdock_layer_shell_available() -> c_int {
+pub fn lambdock_layer_shell_available() -> c_int {
     let Some(display) = gdk::Display::default() else {
         return 0;
     };
@@ -76,8 +75,7 @@ pub extern "C" fn lambdock_layer_shell_available() -> c_int {
 ///
 /// `monitor` must be null or a `GdkMonitor` this dock was handed; it may already
 /// have been destroyed by a hot unplug, which is exactly what this answers.
-#[no_mangle]
-pub unsafe extern "C" fn is_monitor_valid(monitor: *mut gdk::ffi::GdkMonitor) -> c_int {
+pub unsafe fn is_monitor_valid(monitor: *mut gdk::ffi::GdkMonitor) -> c_int {
     if monitor.is_null() {
         return 0;
     }

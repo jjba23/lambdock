@@ -20,9 +20,9 @@
 //! - [`translated`] / [`translated_dup`] are `gettext` messages, copied into Rust
 //!   or into GLib's allocator for a `(transfer full)` return.
 //!
-//! What does *not* happen here is allocation for C: a string that leaves the
-//! process is GLib's, because the C callers free it with `g_free`
-//! ([`crate::glib::strdup_string`] and `g_strdup_printf`).
+//! What does *not* happen here is allocation in Rust's allocator: a string that
+//! leaves the process is GLib's, because whoever receives it frees it with
+//! `g_free` ([`crate::glib::strdup_string`] and `g_strdup_printf`).
 
 use crate::glib::tr;
 use std::ffi::{CStr, CString};
@@ -88,7 +88,7 @@ pub(crate) fn translated(msgid: &CStr) -> String {
 ///
 /// Safe for the same reason as [`translated`]: the string is copied into GLib's
 /// allocator here, and the C caller owns that copy.
-pub(crate) fn translated_dup(msgid: &CStr) -> *mut c_char {
+pub(crate) unsafe fn translated_dup(msgid: &CStr) -> *mut c_char {
     // SAFETY: as above -- read only, and the copy is ours.
     let message = unsafe { tr(msgid) };
     if message.is_null() {
@@ -126,7 +126,7 @@ mod tests {
     fn a_translation_of_a_known_literal_is_never_empty() {
         assert!(!translated(c"Back").is_empty());
 
-        let owned = translated_dup(c"Back");
+        let owned = unsafe { translated_dup(c"Back") };
         assert!(!owned.is_null());
         unsafe {
             assert!(!CStr::from_ptr(owned).to_bytes().is_empty());

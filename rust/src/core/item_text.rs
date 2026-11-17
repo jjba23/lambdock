@@ -77,8 +77,7 @@ unsafe fn running_text(window_count: u32) -> *mut c_char {
 /// # Safety
 ///
 /// `text` must be null or point to a struct produced by one of the functions here.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_clear(text: *mut ItemText) {
+pub unsafe fn lambdock_item_text_clear(text: *mut ItemText) {
     if text.is_null() {
         return;
     }
@@ -102,8 +101,7 @@ pub unsafe extern "C" fn lambdock_item_text_clear(text: *mut ItemText) {
 ///
 /// Each argument must be null or a NUL-terminated string. The result is borrowed
 /// from one of them.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_display_name(
+pub unsafe fn lambdock_item_display_name(
     name: *const c_char,
     fallback: *const c_char,
 ) -> *const c_char {
@@ -119,8 +117,7 @@ pub unsafe extern "C" fn lambdock_item_display_name(
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_app(
+pub unsafe fn lambdock_item_text_app(
     name: *const c_char,
     window_count: u32,
 ) -> ItemText {
@@ -141,8 +138,7 @@ pub unsafe extern "C" fn lambdock_item_text_app(
 /// # Safety
 ///
 /// Each argument must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_dynamic(
+pub unsafe fn lambdock_item_text_dynamic(
     name: *const c_char,
     reading: *const c_char,
 ) -> ItemText {
@@ -189,8 +185,7 @@ pub unsafe extern "C" fn lambdock_item_text_dynamic(
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_stack(name: *const c_char) -> ItemText {
+pub unsafe fn lambdock_item_text_stack(name: *const c_char) -> ItemText {
     let title = lambdock_item_display_name(name, tr(c"Stack"));
 
     ItemText {
@@ -204,8 +199,7 @@ pub unsafe extern "C" fn lambdock_item_text_stack(name: *const c_char) -> ItemTe
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_launchpad(name: *const c_char) -> ItemText {
+pub unsafe fn lambdock_item_text_launchpad(name: *const c_char) -> ItemText {
     let title = lambdock_item_display_name(name, tr(c"Applications"));
 
     ItemText {
@@ -219,8 +213,7 @@ pub unsafe extern "C" fn lambdock_item_text_launchpad(name: *const c_char) -> It
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_text_trash(
+pub unsafe fn lambdock_item_text_trash(
     name: *const c_char,
     item_count: u32,
 ) -> ItemText {
@@ -256,8 +249,7 @@ pub unsafe extern "C" fn lambdock_item_text_trash(
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string; the result is `g_strdup`ed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_trash_tooltip(
+pub unsafe fn lambdock_item_trash_tooltip(
     name: *const c_char,
     item_count: u32,
 ) -> *mut c_char {
@@ -278,8 +270,7 @@ pub unsafe extern "C" fn lambdock_item_trash_tooltip(
 }
 
 /// The gauge's 0..1 fraction, clamped, and never non-finite.
-#[no_mangle]
-pub extern "C" fn lambdock_meter_reading_fraction(reading: f64, maximum: f64) -> f64 {
+pub fn lambdock_meter_reading_fraction(reading: f64, maximum: f64) -> f64 {
     // A gauge with no configured maximum is a percentage gauge.
     let full_scale = if maximum > 0.0 { maximum } else { 100.0 };
     let raw = if full_scale > 0.0 {
@@ -296,8 +287,7 @@ pub extern "C" fn lambdock_meter_reading_fraction(reading: f64, maximum: f64) ->
 /// # Safety
 ///
 /// `unit` must be null or a NUL-terminated string; the result is `g_strdup`ed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_reading_text(
+pub unsafe fn lambdock_meter_reading_text(
     reading: f64,
     unit: *const c_char,
 ) -> *mut c_char {
@@ -319,8 +309,7 @@ pub unsafe extern "C" fn lambdock_meter_reading_text(
 ///
 /// Each string argument must be null or NUL-terminated. The result is borrowed
 /// from one of them.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_window_title_text(
+pub unsafe fn lambdock_window_title_text(
     show_titles: c_int,
     has_windows: c_int,
     window_title: *const c_char,
@@ -351,8 +340,7 @@ pub unsafe extern "C" fn lambdock_window_title_text(
 /// # Safety
 ///
 /// Each argument must be null or NUL-terminated; the result is `g_strdup`ed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_inspector_launcher_text(
+pub unsafe fn lambdock_inspector_launcher_text(
     config_path: *const c_char,
     item_key: *const c_char,
 ) -> *mut c_char {
@@ -377,8 +365,7 @@ pub unsafe extern "C" fn lambdock_inspector_launcher_text(
 /// # Safety
 ///
 /// `icon` must be null or NUL-terminated; the result is `g_strdup`ed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_inspector_icon_text(
+pub unsafe fn lambdock_inspector_icon_text(
     icon: *const c_char,
     found_in_theme: c_int,
 ) -> *mut c_char {
@@ -400,8 +387,7 @@ pub unsafe extern "C" fn lambdock_inspector_icon_text(
 /// # Safety
 ///
 /// `poll_name` must be null or NUL-terminated; the result is `g_strdup`ed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_inspector_poller_text(
+pub unsafe fn lambdock_inspector_poller_text(
     poll_name: *const c_char,
     interval_ms: u32,
 ) -> *mut c_char {

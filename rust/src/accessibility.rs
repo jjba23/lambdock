@@ -72,8 +72,7 @@ fn default_settings() -> Option<gtk4::glib::translate::Borrowed<Settings>> {
 }
 
 /// Whether the desktop asks for animations.
-#[no_mangle]
-pub extern "C" fn lambdock_system_animations_enabled() -> c_int {
+pub fn lambdock_system_animations_enabled() -> c_int {
     if ANIMATIONS_QUERIED.load(Ordering::Relaxed) {
         return ANIMATIONS_ENABLED.load(Ordering::Relaxed) as c_int;
     }
@@ -96,8 +95,7 @@ pub extern "C" fn lambdock_system_animations_enabled() -> c_int {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_reduce_motion(state: *const LambdockState) -> c_int {
+pub unsafe fn lambdock_reduce_motion(state: *const LambdockState) -> c_int {
     if !state.is_null() && (*state).reduce_motion != 0 {
         return 1;
     }
@@ -110,8 +108,7 @@ pub unsafe extern "C" fn lambdock_reduce_motion(state: *const LambdockState) -> 
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_animations_enabled(state: *const LambdockState) -> c_int {
+pub unsafe fn lambdock_animations_enabled(state: *const LambdockState) -> c_int {
     (lambdock_reduce_motion(state) == 0) as c_int
 }
 
@@ -122,8 +119,7 @@ pub unsafe extern "C" fn lambdock_animations_enabled(state: *const LambdockState
 ///
 /// `widget` must be null or a valid `GtkWidget`; the strings must be null or
 /// NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_accessible_update(
+pub unsafe fn lambdock_accessible_update(
     widget: *mut gtk4::ffi::GtkWidget,
     label: *const c_char,
     description: *const c_char,
@@ -177,8 +173,7 @@ pub unsafe extern "C" fn lambdock_accessible_update(
 ///
 /// `widget` must be null or a valid `GtkWidget`; `message` must be null or
 /// NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_accessible_announce(
+pub unsafe fn lambdock_accessible_announce(
     widget: *mut gtk4::ffi::GtkWidget,
     message: *const c_char,
     assertive: c_int,
@@ -230,8 +225,7 @@ pub type MotionListener = unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_
 ///
 /// `callback` must be null or a valid `notify::` handler for the lifetime of the
 /// process.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_watch_system_motion(
+pub unsafe fn lambdock_watch_system_motion(
     callback: Option<MotionListener>,
     data: *mut c_void,
 ) -> c_uint {
@@ -266,7 +260,7 @@ mod tests {
 
     extern "C" {
         fn g_malloc0(size: usize) -> *mut c_void;
-    }
+}
 
     /// A zeroed state is what a partially built dock or a unit test has: no
     /// reduce-motion setting of its own.

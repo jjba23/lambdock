@@ -27,6 +27,9 @@ use gtk4::prelude::*;
 use gtk4::{ffi, graphene};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_void};
+use crate::bridge::{dock_layout_add_item, dock_layout_remove_item, dock_layout_set_order};
+use crate::dock_item::{create_dock_item, create_stack_dock_item, dock_item_from_widget, dock_item_key, dock_item_refresh_trash, free_dock_item};
+use crate::dock_window::{update_dock_dimensions};
 
 /// The prefix that makes a dragged dock icon its own kind of payload: a drag that
 /// started inside the dock carries it, a drag from a file manager does not.
@@ -34,38 +37,6 @@ const ITEM_PREFIX: &str = "lambdock-item:";
 
 // Where drop handling reaches back into the modules that are still C.
 extern "C" {
-    fn dock_item_key(item: *const DockItem) -> *mut c_char;
-    fn dock_item_from_widget(widget: *mut ffi::GtkWidget) -> *mut DockItem;
-    fn free_dock_item(item: *mut DockItem);
-    fn dock_item_refresh_trash(item: *mut DockItem);
-    fn create_dock_item(
-        state: *mut LambdockState,
-        name: *const c_char,
-        icon: *const c_char,
-        exec: *const c_char,
-        app_id: *const c_char,
-        is_favorite: c_int,
-        hover_animate: c_int,
-    ) -> *mut DockItem;
-    fn create_stack_dock_item(
-        state: *mut LambdockState,
-        name: *const c_char,
-        icon: *const c_char,
-        path: *const c_char,
-        view: *const c_char,
-        hover_animate: c_int,
-    ) -> *mut DockItem;
-    fn update_dock_dimensions(state: *mut LambdockState);
-    fn dock_layout_set_order(config_path: *const c_char, keys: *mut GList);
-    fn dock_layout_remove_item(config_path: *const c_char, key: *const c_char);
-    fn dock_layout_add_item(
-        config_path: *const c_char,
-        kind: *const c_char,
-        name: *const c_char,
-        icon: *const c_char,
-        exec: *const c_char,
-        extra: *const c_char,
-    );
     fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
     /// Only the tests free a list without its elements, so the library build sees
     /// this as unused.
@@ -86,8 +57,7 @@ extern "C" {
 ///
 /// `list` must be null or a `GList`; `data` must be one of its elements or not in
 /// it at all, in which case the list comes back unchanged.
-#[no_mangle]
-pub unsafe extern "C" fn dock_list_move(
+pub unsafe fn dock_list_move(
     list: *mut GList,
     data: *mut c_void,
     index: c_int,
@@ -122,8 +92,7 @@ pub fn drop_index_for_position(centers: &[f64], position: f64) -> usize {
 /// # Safety
 ///
 /// `centers` must be null or point at `n` doubles.
-#[no_mangle]
-pub unsafe extern "C" fn dock_drop_index_for_position(
+pub unsafe fn dock_drop_index_for_position(
     centers: *const c_double,
     n: c_int,
     position: c_double,
@@ -159,8 +128,7 @@ unsafe fn item_key(item: *const DockItem) -> Option<String> {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_dnd_persist_order(state: *mut LambdockState) {
+pub unsafe fn dock_dnd_persist_order(state: *mut LambdockState) {
     if state.is_null() || (*state).config_path.is_null() {
         return;
     }
@@ -183,7 +151,7 @@ pub unsafe extern "C" fn dock_dnd_persist_order(state: *mut LambdockState) {
         node = (*node).next;
     }
 
-    dock_layout_set_order((*state).config_path, keys);
+    dock_layout_set_order((*state).config_path, keys.cast());
     g_list_free_full(keys, Some(crate::glib::g_free));
 }
 
@@ -193,8 +161,7 @@ pub unsafe extern "C" fn dock_dnd_persist_order(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `item` must be null or a live item; `state` null or its dock.
-#[no_mangle]
-pub unsafe extern "C" fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
+pub unsafe fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
     if item.is_null() {
         return;
     }
@@ -246,8 +213,7 @@ pub unsafe extern "C" fn remove_dock_item(state: *mut LambdockState, item: *mut 
 /// # Safety
 ///
 /// `item` must be null or a live item whose button is set.
-#[no_mangle]
-pub unsafe extern "C" fn schedule_remove_dock_item(item: *mut DockItem) {
+pub unsafe fn schedule_remove_dock_item(item: *mut DockItem) {
     if item.is_null() || (*item).button.is_null() {
         return;
     }
@@ -320,8 +286,7 @@ unsafe fn item_child(item: *const DockItem) -> Option<gtk4::Widget> {
 ///
 /// `state` must be a live dock; `key` must be null or a C string. `x` and `y` are
 /// window coordinates, as the drop target reports them.
-#[no_mangle]
-pub unsafe extern "C" fn dock_drop_handle_item(
+pub unsafe fn dock_drop_handle_item(
     state: *mut LambdockState,
     key: *const c_char,
     x: c_double,
@@ -690,8 +655,7 @@ unsafe fn setup_trash_drop(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live item whose button is set.
-#[no_mangle]
-pub unsafe extern "C" fn dock_dnd_setup_item(item: *mut DockItem) {
+pub unsafe fn dock_dnd_setup_item(item: *mut DockItem) {
     if item.is_null() || (*item).button.is_null() {
         return;
     }
@@ -769,8 +733,7 @@ pub unsafe extern "C" fn dock_dnd_setup_item(item: *mut DockItem) {
 /// # Safety
 ///
 /// `state` must be null or a live dock whose window is set.
-#[no_mangle]
-pub unsafe extern "C" fn dock_dnd_setup(state: *mut LambdockState) {
+pub unsafe fn dock_dnd_setup(state: *mut LambdockState) {
     if state.is_null() || (*state).window.is_null() {
         return;
     }

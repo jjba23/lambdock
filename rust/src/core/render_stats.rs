@@ -75,44 +75,38 @@ fn index(stat: c_int) -> Option<usize> {
 }
 
 /// Clears every counter.
-#[no_mangle]
-pub extern "C" fn lambdock_stats_reset() {
+pub fn lambdock_stats_reset() {
     for counter in &COUNTERS {
         counter.store(0, Ordering::Relaxed);
     }
 }
 
 /// Adds one to `stat`.
-#[no_mangle]
-pub extern "C" fn lambdock_stats_bump(stat: c_int) {
+pub fn lambdock_stats_bump(stat: c_int) {
     if let Some(index) = index(stat) {
         COUNTERS[index].fetch_add(1, Ordering::Relaxed);
     }
 }
 
 /// Adds `count` to `stat`.
-#[no_mangle]
-pub extern "C" fn lambdock_stats_add(stat: c_int, count: u64) {
+pub fn lambdock_stats_add(stat: c_int, count: u64) {
     if let Some(index) = index(stat) {
         COUNTERS[index].fetch_add(count, Ordering::Relaxed);
     }
 }
 
 /// The current value of `stat`.
-#[no_mangle]
-pub extern "C" fn lambdock_stats_get(stat: c_int) -> u64 {
+pub fn lambdock_stats_get(stat: c_int) -> u64 {
     index(stat).map_or(0, |index| COUNTERS[index].load(Ordering::Relaxed))
 }
 
 /// A stable name for `stat` ("hover_frames", ...).
-#[no_mangle]
-pub extern "C" fn lambdock_stats_name(stat: c_int) -> *const c_char {
+pub fn lambdock_stats_name(stat: c_int) -> *const c_char {
     index(stat).map_or(c"?".as_ptr(), |index| NAMES[index].as_ptr())
 }
 
 /// "name=value name=value ..." for every counter, for test logs.
-#[no_mangle]
-pub extern "C" fn lambdock_stats_describe() -> *mut c_char {
+pub fn lambdock_stats_describe() -> *mut c_char {
     let mut text = String::new();
 
     for (index, name) in NAMES.iter().enumerate() {

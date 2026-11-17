@@ -47,8 +47,7 @@ fn join(base: &str, rest: &str) -> String {
 ///
 /// `system_data_dirs` must be null or a NULL-terminated array of C strings;
 /// `home` must be null or a C string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_search_paths_build(
+pub unsafe fn lambdock_icon_search_paths_build(
     system_data_dirs: *const *const c_char,
     home: *const c_char,
 ) -> *mut *mut c_char {
@@ -105,8 +104,7 @@ pub unsafe extern "C" fn lambdock_icon_search_paths_build(
 ///
 /// The result is `(transfer full)`: a null-terminated array of `g_strdup`ed paths
 /// that the caller frees with `g_strfreev`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_search_paths_new() -> *mut *mut c_char {
+pub unsafe fn lambdock_icon_search_paths_new() -> *mut *mut c_char {
     lambdock_icon_search_paths_build(
         crate::glib::g_get_system_data_dirs(),
         crate::glib::g_get_home_dir(),
@@ -166,8 +164,11 @@ fn gsettings_icon_theme() -> Option<String> {
 }
 
 /// Registers the search paths and resolves the icon theme name for the display.
-#[no_mangle]
-pub extern "C" fn setup_icon_theme() {
+///
+/// Safe to call on any thread from GTK's point of view -- it only touches the
+/// display's icon theme -- and the `unsafe` it wraps is the C strings it reads
+/// and frees: the search paths are built as a value, applied, and released.
+pub fn setup_icon_theme() {
     crate::ui::ensure_gtk_initialized();
 
     let Some(display) = gdk::Display::default() else {
@@ -243,8 +244,7 @@ pub extern "C" fn setup_icon_theme() {
 /// `theme` must be a valid `GtkIconTheme`; `icon` must be null or a C string.
 /// The result is a new floating widget reference, exactly like
 /// `gtk_image_new_*`, or null for a missing icon name.
-#[no_mangle]
-pub unsafe extern "C" fn create_image_for_icon(
+pub unsafe fn create_image_for_icon(
     theme: *mut ffi::GtkIconTheme,
     icon: *const c_char,
     icon_size: c_int,
@@ -369,7 +369,7 @@ mod tests {
 
     extern "C" {
         fn g_free(memory: *mut c_void);
-    }
+}
 
     fn temporary_root(name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("lambdock-{name}-{}", std::process::id()));

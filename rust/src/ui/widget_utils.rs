@@ -24,8 +24,7 @@ use std::os::raw::{c_char, c_int};
 ///
 /// `widget` must be null or a valid `GtkWidget`; `name` must be null or a
 /// NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_set_css_class(
+pub unsafe fn lambdock_set_css_class(
     widget: *mut GtkWidget,
     name: *const c_char,
     enabled: c_int,
@@ -58,8 +57,7 @@ pub unsafe extern "C" fn lambdock_set_css_class(
 ///
 /// `widget` must be null or a valid `GtkWidget`; `names` must be null or point to
 /// `n_names` C strings.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toggle_css_classes(
+pub unsafe fn lambdock_toggle_css_classes(
     widget: *mut GtkWidget,
     names: *const *const c_char,
     n_names: usize,

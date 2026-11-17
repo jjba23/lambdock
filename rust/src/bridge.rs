@@ -41,11 +41,8 @@ use crate::guile::{
 use std::ffi::CStr;
 use gtk4::glib::translate::IntoGlib;
 use std::os::raw::{c_char, c_int, c_void};
+use crate::dock_window::{update_dock_dimensions};
 
-extern "C" {
-    /// `src/dock_window.c`: re-derives the row's size from the widgets in it.
-    fn update_dock_dimensions(state: *mut LambdockState);
-}
 
 /// The module every setting is read from.
 const CORE_MODULE: &CStr = c"lambdock core";
@@ -145,8 +142,7 @@ unsafe fn string_for(
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_autohide_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_autohide_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-auto-hide?", config_path)
 }
 
@@ -155,8 +151,7 @@ pub unsafe extern "C" fn get_autohide_config_for(config_path: *const c_char) -> 
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_show_when_clear_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_show_when_clear_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-show-when-clear?", config_path)
 }
 
@@ -165,8 +160,7 @@ pub unsafe extern "C" fn get_show_when_clear_config_for(config_path: *const c_ch
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_hover_animate_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_hover_animate_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-hover-animate?", config_path)
 }
 
@@ -175,8 +169,7 @@ pub unsafe extern "C" fn get_hover_animate_config_for(config_path: *const c_char
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_icon_size_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_icon_size_config_for(config_path: *const c_char) -> c_int {
     let raw = number_for(
         c"get-dock-icon-size",
         config_path,
@@ -191,8 +184,7 @@ pub unsafe extern "C" fn get_icon_size_config_for(config_path: *const c_char) ->
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_item_spacing_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_item_spacing_config_for(config_path: *const c_char) -> c_int {
     let raw = number_for(
         c"get-dock-item-spacing",
         config_path,
@@ -207,8 +199,7 @@ pub unsafe extern "C" fn get_item_spacing_config_for(config_path: *const c_char)
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_capsule_padding_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_capsule_padding_config_for(config_path: *const c_char) -> c_int {
     let raw = number_for(
         c"get-dock-capsule-padding",
         config_path,
@@ -223,8 +214,7 @@ pub unsafe extern "C" fn get_capsule_padding_config_for(config_path: *const c_ch
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_launchpad_icon_size_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_launchpad_icon_size_config_for(config_path: *const c_char) -> c_int {
     let raw = number_for(
         c"get-dock-launchpad-icon-size",
         config_path,
@@ -239,8 +229,7 @@ pub unsafe extern "C" fn get_launchpad_icon_size_config_for(config_path: *const 
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_launchpad_columns_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_launchpad_columns_config_for(config_path: *const c_char) -> c_int {
     let raw = number_for(
         c"get-dock-launchpad-columns",
         config_path,
@@ -255,8 +244,7 @@ pub unsafe extern "C" fn get_launchpad_columns_config_for(config_path: *const c_
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_launchpad_blur_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_launchpad_blur_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-launchpad-blur?", config_path)
 }
 
@@ -265,8 +253,7 @@ pub unsafe extern "C" fn get_launchpad_blur_config_for(config_path: *const c_cha
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_launchpad_close_on_right_config_for(
+pub unsafe fn get_launchpad_close_on_right_config_for(
     config_path: *const c_char,
 ) -> c_int {
     let side = string_for(
@@ -286,8 +273,7 @@ pub unsafe extern "C" fn get_launchpad_close_on_right_config_for(
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_reduce_motion_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_reduce_motion_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-reduce-motion?", config_path)
 }
 
@@ -296,8 +282,7 @@ pub unsafe extern "C" fn get_reduce_motion_config_for(config_path: *const c_char
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_repl_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_repl_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-enable-repl?", config_path)
 }
 
@@ -306,8 +291,7 @@ pub unsafe extern "C" fn get_repl_config_for(config_path: *const c_char) -> c_in
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_theme_config_for(config_path: *const c_char) -> *mut c_char {
+pub unsafe fn get_theme_config_for(config_path: *const c_char) -> *mut c_char {
     string_for(c"get-dock-theme", None, config_path, c"vanilla".as_ptr())
 }
 
@@ -316,8 +300,7 @@ pub unsafe extern "C" fn get_theme_config_for(config_path: *const c_char) -> *mu
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_track_windows_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_track_windows_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-track-windows?", config_path)
 }
 
@@ -326,8 +309,7 @@ pub unsafe extern "C" fn get_track_windows_config_for(config_path: *const c_char
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_taskbar_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_taskbar_config_for(config_path: *const c_char) -> c_int {
     let mode = string_for(c"get-dock-mode", None, config_path, c"dock".as_ptr());
     let taskbar = lambdock_dock_mode_is_taskbar(mode);
     g_free(mode.cast());
@@ -340,8 +322,7 @@ pub unsafe extern "C" fn get_taskbar_config_for(config_path: *const c_char) -> c
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_show_window_titles_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_show_window_titles_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-show-window-titles?", config_path)
 }
 
@@ -355,8 +336,7 @@ pub unsafe extern "C" fn get_show_window_titles_config_for(config_path: *const c
 ///
 /// `config_path` must be null or a NUL-terminated string, and `out` must be null
 /// or point to a writable `LambdockShelfParams`.
-#[no_mangle]
-pub unsafe extern "C" fn get_shelf_config_for(config_path: *const c_char, out: *mut ShelfParams) {
+pub unsafe fn get_shelf_config_for(config_path: *const c_char, out: *mut ShelfParams) {
     if out.is_null() {
         return;
     }
@@ -406,8 +386,7 @@ pub unsafe extern "C" fn get_shelf_config_for(config_path: *const c_char, out: *
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_monitor_config_for(config_path: *const c_char) -> *mut c_char {
+pub unsafe fn get_monitor_config_for(config_path: *const c_char) -> *mut c_char {
     string_for(c"get-dock-monitor", None, config_path, c"default".as_ptr())
 }
 
@@ -416,8 +395,7 @@ pub unsafe extern "C" fn get_monitor_config_for(config_path: *const c_char) -> *
 /// # Safety
 ///
 /// The result is `(transfer full)`: free it with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn get_config_path_c() -> *mut c_char {
+pub unsafe fn get_config_path_c() -> *mut c_char {
     string_for(
         c"get-config-path",
         Some(c"lambdock loader"),
@@ -431,8 +409,7 @@ pub unsafe extern "C" fn get_config_path_c() -> *mut c_char {
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn get_position_config_for(config_path: *const c_char) -> c_int {
+pub unsafe fn get_position_config_for(config_path: *const c_char) -> c_int {
     let position = string_for(
         c"get-dock-position",
         None,
@@ -454,8 +431,7 @@ pub unsafe extern "C" fn get_position_config_for(config_path: *const c_char) -> 
 /// # Safety
 ///
 /// `config_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn export_dock_settings_to_file(config_path: *const c_char) -> *mut c_char {
+pub unsafe fn export_dock_settings_to_file(config_path: *const c_char) -> *mut c_char {
     let procedure = scm_c_public_ref(CORE_MODULE.as_ptr(), c"export-dock-settings!".as_ptr());
 
     if !is_true(scm_procedure_p(procedure)) {
@@ -481,8 +457,7 @@ pub unsafe extern "C" fn export_dock_settings_to_file(config_path: *const c_char
 /// # Safety
 ///
 /// `file_path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn load_dock_config_scm(file_path: *const c_char) {
+pub unsafe fn load_dock_config_scm(file_path: *const c_char) {
     if file_path.is_null() {
         return;
     }
@@ -498,8 +473,7 @@ pub unsafe extern "C" fn load_dock_config_scm(file_path: *const c_char) {
 /// # Safety
 ///
 /// Each argument must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn is_app_excluded(
+pub unsafe fn is_app_excluded(
     app_id: *const c_char,
     config_path: *const c_char,
 ) -> c_int {
@@ -577,8 +551,7 @@ unsafe fn empty_list() -> Scm {
 /// # Safety
 ///
 /// Guile must be initialized.
-#[no_mangle]
-pub unsafe extern "C" fn setup_guile_load_path() {
+pub unsafe fn setup_guile_load_path() {
     scm_c_eval_string(c"(set! %load-path (cons \"scheme\" %load-path))".as_ptr());
 
     if let Some(directory) = SCHEME_DIR.filter(|directory| !directory.is_empty()) {
@@ -595,8 +568,7 @@ pub unsafe extern "C" fn setup_guile_load_path() {
 /// # Safety
 ///
 /// Guile must be initialized.
-#[no_mangle]
-pub unsafe extern "C" fn reload_guile_config() {
+pub unsafe fn reload_guile_config() {
     log_info!("GuileBridge", "Re-evaluating Scheme configuration file...");
 
     let init = scm_c_public_ref(CORE_MODULE.as_ptr(), c"init-dock!".as_ptr());
@@ -961,8 +933,7 @@ unsafe fn resolve_item_accessors() -> Option<ItemAccessors> {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState` with its row already built.
-#[no_mangle]
-pub unsafe extern "C" fn populate_dock_items_for(state: *mut LambdockState) {
+pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };
@@ -1069,8 +1040,7 @@ const LAMBDOCK_POLL_BUDGET_PER_SECOND: f64 = 10.0;
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_read_settings(state: *mut LambdockState) {
+pub unsafe fn dock_read_settings(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };
@@ -1107,8 +1077,7 @@ fn optional_string(value: Option<&str>) -> Scm {
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn dock_layout_add_item(
+pub unsafe fn dock_layout_add_item(
     config_path: *const c_char,
     kind: *const c_char,
     name: *const c_char,
@@ -1144,8 +1113,7 @@ pub unsafe extern "C" fn dock_layout_add_item(
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn dock_layout_add_preset_item(
+pub unsafe fn dock_layout_add_preset_item(
     config_path: *const c_char,
     preset: *const c_char,
 ) {
@@ -1179,8 +1147,7 @@ pub unsafe extern "C" fn dock_layout_add_preset_item(
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn dock_layout_remove_item(
+pub unsafe fn dock_layout_remove_item(
     config_path: *const c_char,
     key: *const c_char,
 ) {
@@ -1208,8 +1175,7 @@ pub unsafe extern "C" fn dock_layout_remove_item(
 /// # Safety
 ///
 /// `config_path` must be null or NUL-terminated; `keys` a `GList` of strings.
-#[no_mangle]
-pub unsafe extern "C" fn dock_layout_set_order(config_path: *const c_char, keys: *mut c_void) {
+pub unsafe fn dock_layout_set_order(config_path: *const c_char, keys: *mut c_void) {
     let Some(config_path) = crate::cstr::non_empty_text(config_path) else {
         return;
     };
@@ -1244,8 +1210,7 @@ pub unsafe extern "C" fn dock_layout_set_order(config_path: *const c_char, keys:
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn dock_layout_set_view(
+pub unsafe fn dock_layout_set_view(
     config_path: *const c_char,
     key: *const c_char,
     view: *const c_char,
@@ -1295,8 +1260,7 @@ unsafe extern "C" fn handle_poll_error(_data: *mut c_void, _key: Scm, _args: Scm
 /// # Safety
 ///
 /// `procedure` must be null or an `Scm`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poll_fn_protect(procedure: *mut c_void) -> *mut c_void {
+pub unsafe fn lambdock_poll_fn_protect(procedure: *mut c_void) -> *mut c_void {
     // Null is the dock's own "no poller" handle, not a Scheme value: handing it to
     // `scm_*` would be a null dereference, since Scheme's false is a tagged
     // pointer rather than null.
@@ -1319,8 +1283,7 @@ pub unsafe extern "C" fn lambdock_poll_fn_protect(procedure: *mut c_void) -> *mu
 /// # Safety
 ///
 /// `poll_fn` must be null or a handle from [`lambdock_poll_fn_protect`].
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poll_fn_is_callable(poll_fn: *mut c_void) -> c_int {
+pub unsafe fn lambdock_poll_fn_is_callable(poll_fn: *mut c_void) -> c_int {
     if poll_fn.is_null() {
         return 0;
     }
@@ -1335,8 +1298,7 @@ pub unsafe extern "C" fn lambdock_poll_fn_is_callable(poll_fn: *mut c_void) -> c
 /// # Safety
 ///
 /// `poll_fn` must be null or a protected handle; `out` must be null or writable.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poll_fn_call(
+pub unsafe fn lambdock_poll_fn_call(
     poll_fn: *mut c_void,
     out: *mut crate::dock_item::Reading,
 ) -> c_int {
@@ -1384,8 +1346,7 @@ pub unsafe extern "C" fn lambdock_poll_fn_call(
 ///
 /// `poll_fn` must be null or a handle from [`lambdock_poll_fn_protect`], released
 /// once.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poll_fn_release(poll_fn: *mut c_void) {
+pub unsafe fn lambdock_poll_fn_release(poll_fn: *mut c_void) {
     if lambdock_poll_fn_is_callable(poll_fn) != 0 {
         scm_gc_unprotect_object(poll_fn.cast());
     }
@@ -1431,8 +1392,7 @@ unsafe fn call_set_preference(key: *const c_char, value: Scm, config_path: *cons
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn set_dock_setting_bool(
+pub unsafe fn set_dock_setting_bool(
     key: *const c_char,
     config_path: *const c_char,
     value: c_int,
@@ -1449,8 +1409,7 @@ pub unsafe extern "C" fn set_dock_setting_bool(
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn set_dock_setting_int(
+pub unsafe fn set_dock_setting_int(
     key: *const c_char,
     config_path: *const c_char,
     value: c_int,
@@ -1463,8 +1422,7 @@ pub unsafe extern "C" fn set_dock_setting_int(
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn set_dock_setting_double(
+pub unsafe fn set_dock_setting_double(
     key: *const c_char,
     config_path: *const c_char,
     value: f64,
@@ -1477,8 +1435,7 @@ pub unsafe extern "C" fn set_dock_setting_double(
 /// # Safety
 ///
 /// The strings must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn set_dock_setting_symbol(
+pub unsafe fn set_dock_setting_symbol(
     key: *const c_char,
     config_path: *const c_char,
     value: *const c_char,
@@ -1499,8 +1456,7 @@ pub unsafe extern "C" fn set_dock_setting_symbol(
 /// # Safety
 ///
 /// `config_path` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn reset_dock_preferences(config_path: *const c_char) {
+pub unsafe fn reset_dock_preferences(config_path: *const c_char) {
     let Some(config_path) = crate::cstr::non_empty_text(config_path) else {
         return;
     };

@@ -25,6 +25,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use std::cell::RefCell;
 use std::os::raw::{c_int, c_void};
+use crate::ui::shelf::{shelf_frame_cross_orientation, shelf_frame_is_frame, shelf_frame_is_projected, shelf_frame_project_point};
 
 /// The separator's lean is that of the slab under it, exaggerated. The shelf's
 /// keystone is gentle; doubling the shear gives a separator that reads as standing
@@ -45,12 +46,6 @@ struct ShelfPoint {
 }
 
 // Where this module reaches back into the C shelf.
-extern "C" {
-    fn shelf_frame_is_frame(widget: *mut ffi::GtkWidget) -> c_int;
-    fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) -> c_int;
-    fn shelf_frame_project_point(frame: *mut ffi::GtkWidget, point: *mut ShelfPoint) -> c_int;
-    fn shelf_frame_cross_orientation(frame: *mut ffi::GtkWidget) -> c_int;
-}
 
 /// The transform that leans the child with the slab under it, from the projection's
 /// Jacobian at the child's centre.
@@ -210,7 +205,7 @@ unsafe fn local_matrix(
     ];
 
     for point in &mut points {
-        if shelf_frame_project_point(frame, point) == 0 {
+        if shelf_frame_project_point(frame, point as *mut ShelfPoint as *mut graphene::ffi::graphene_point_t) == 0 {
             return None;
         }
     }
@@ -418,8 +413,7 @@ unsafe fn as_follow(
 /// `child`, `frame` and `slab` must be null or live widgets; the result is
 /// `(transfer full)` and the callers append it (which sinks it), like the
 /// `g_object_new` this replaces.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_follow_new(
+pub unsafe fn shelf_follow_new(
     child: *mut ffi::GtkWidget,
     frame: *mut ffi::GtkWidget,
     slab: *mut ffi::GtkWidget,
@@ -428,7 +422,7 @@ pub unsafe extern "C" fn shelf_follow_new(
 
     let follow: ShelfFollow = glib::Object::builder().build();
 
-    if !frame.is_null() && shelf_frame_is_frame(frame) != 0 {
+    if !frame.is_null() && shelf_frame_is_frame(frame.cast()) != 0 {
         let frame: gtk4::Widget = from_glib_none(frame);
         *follow.imp().frame.borrow_mut() = Some(frame.downgrade());
     }
@@ -455,8 +449,7 @@ pub unsafe extern "C" fn shelf_follow_new(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_follow_is_follow(widget: *mut c_void) -> c_int {
+pub unsafe fn shelf_follow_is_follow(widget: *mut c_void) -> c_int {
     c_int::from(as_follow(widget.cast()).is_some())
 }
 
@@ -465,8 +458,7 @@ pub unsafe extern "C" fn shelf_follow_is_follow(widget: *mut c_void) -> c_int {
 /// # Safety
 ///
 /// `follow` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_follow_is_projected(follow: *mut ffi::GtkWidget) -> c_int {
+pub unsafe fn shelf_follow_is_projected(follow: *mut ffi::GtkWidget) -> c_int {
     let Some(follow) = as_follow(follow) else {
         return 0;
     };

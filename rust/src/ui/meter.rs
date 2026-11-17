@@ -30,8 +30,9 @@ use std::os::raw::{c_char, c_int, c_void};
 /// so the curve is a polyline; this is how fine it is.
 const ARC_STEPS_PER_TURN: f64 = 180.0;
 
-/// `LambdockMeterGeometry` from `src/ui/meter.h`, field for field: the C side
-/// reads this struct by value, so a field added here has to be added there.
+/// The geometry of one gauge, as a value: computed from the size and the
+/// reading, painted by the snapshot, and asserted in the tests without a
+/// widget.
 ///
 /// Where every part of a gauge goes. The snapshot only draws what this describes,
 /// which is what lets the proportions be checked without painting anything.
@@ -358,8 +359,7 @@ unsafe fn as_meter(pointer: *mut ffi::GtkWidget) -> Option<Borrowed<Meter>> {
 ///
 /// Returns a floating reference, like the `g_object_new` this replaces: the
 /// callers hand it to a box, and the box sinks it.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_new() -> *mut ffi::GtkWidget {
+pub unsafe fn lambdock_meter_new() -> *mut ffi::GtkWidget {
     // gtk-rs asserts its own initialization flag inside the subclass machinery,
     // and C's gtk_init does not set it.
     crate::ui::ensure_gtk_initialized();
@@ -381,8 +381,7 @@ pub unsafe extern "C" fn lambdock_meter_new() -> *mut ffi::GtkWidget {
 ///
 /// `meter` must be null or a live `GtkWidget`; `text` must be null or a
 /// NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_set_value(
+pub unsafe fn lambdock_meter_set_value(
     pointer: *mut ffi::GtkWidget,
     fraction: f64,
     text: *const c_char,
@@ -413,8 +412,7 @@ pub unsafe extern "C" fn lambdock_meter_set_value(
 /// # Safety
 ///
 /// `meter` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_set_icon_size(
+pub unsafe fn lambdock_meter_set_icon_size(
     pointer: *mut ffi::GtkWidget,
     icon_size: c_int,
 ) {
@@ -436,8 +434,7 @@ pub unsafe extern "C" fn lambdock_meter_set_icon_size(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_is_meter(widget: *mut c_void) -> c_int {
+pub unsafe fn lambdock_meter_is_meter(widget: *mut c_void) -> c_int {
     i32::from(as_meter(widget.cast()).is_some())
 }
 
@@ -446,8 +443,7 @@ pub unsafe extern "C" fn lambdock_meter_is_meter(widget: *mut c_void) -> c_int {
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_meter_fraction(pointer: *mut ffi::GtkWidget) -> f64 {
+pub unsafe fn lambdock_meter_fraction(pointer: *mut ffi::GtkWidget) -> f64 {
     match as_meter(pointer) {
         Some(meter) => meter.imp().fraction.get(),
         None => 0.0,
@@ -455,14 +451,12 @@ pub unsafe extern "C" fn lambdock_meter_fraction(pointer: *mut ffi::GtkWidget) -
 }
 
 /// Where every part of a gauge in a `width` x `height` box goes.
-#[no_mangle]
-pub extern "C" fn lambdock_meter_geometry_compute(width: c_int, height: c_int) -> MeterGeometry {
+pub fn lambdock_meter_geometry_compute(width: c_int, height: c_int) -> MeterGeometry {
     geometry(width, height)
 }
 
 /// The colour of the value arc for a reading.
-#[no_mangle]
-pub extern "C" fn lambdock_meter_tone_for_fraction(fraction: f64) -> gdk::RGBA {
+pub fn lambdock_meter_tone_for_fraction(fraction: f64) -> gdk::RGBA {
     tone_for_fraction(fraction)
 }
 

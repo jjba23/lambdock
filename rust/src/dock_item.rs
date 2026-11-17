@@ -17,7 +17,7 @@
 //! taken from `offsetof` in C. When `lambdock.h` grows a field, that test is what
 //! says so.
 
-use crate::app_window::{AppWindow, GList, LambdockToplevel};
+use crate::app_window::{AppWindow, GList};
 use crate::core::dock_click::{lambdock_click_action_for, ClickAction};
 use crate::core::config_values::{EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP};
 use crate::core::item_text::{
@@ -36,6 +36,11 @@ use gtk4::pango;
 use gtk4::prelude::*;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
+use crate::bridge::{dock_read_settings, lambdock_poll_fn_call, lambdock_poll_fn_is_callable, lambdock_poll_fn_protect, lambdock_poll_fn_release, populate_dock_items_for};
+use crate::dock_window::{apply_dock_mode_classes, dock_apply_exclusive_zone, dock_apply_motion_preference, hide_dock, on_popover_closed, refresh_dock_mode, reveal_dock, update_dock_dimensions};
+use crate::toplevel_tracker::{activate_toplevel_window, clear_window_tracker_dock_references, minimize_toplevel_window, sync_window_trackers};
+use crate::ui::dock_dnd::{dock_dnd_persist_order};
+use crate::ui::launchpad::{lambdock_launchpad_hide, lambdock_launchpad_is_open, lambdock_launchpad_show};
 
 /// `LambdockItemKind`: app, dynamic, separator, stack, launchpad, trash.
 pub const ITEM_APP: c_int = 0;
@@ -159,21 +164,6 @@ const ITEM_KIND_OPS: [KindOps; 6] = [
     },
 ];
 
-extern "C" {
-    /// `dock_dnd_persist_order` in `src/guile_bridge.c`: remembers the new order.
-    fn dock_dnd_persist_order(state: *mut LambdockState);
-
-    /// `src/ui/launchpad.c`: the one launchpad, which Escape also closes.
-    fn lambdock_launchpad_is_open() -> c_int;
-    fn lambdock_launchpad_hide();
-
-    /// `lambdock_launchpad_show` in `src/ui/launchpad.c`.
-    fn lambdock_launchpad_show(state: *mut LambdockState);
-
-    /// `src/toplevel_tracker.c`: what a click does to one window.
-    fn activate_toplevel_window(window: *mut LambdockToplevel);
-    fn minimize_toplevel_window(window: *mut LambdockToplevel);
-}
 
 /// The descriptor of `kind`; unknown kinds behave like a plain application.
 fn kind_ops(kind: c_int) -> &'static KindOps {
@@ -193,8 +183,7 @@ fn non_empty(pointer: *const c_char) -> Option<*const c_char> {
 /// # Safety
 ///
 /// The result is a static string; the caller must not free it.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_kind_to_string(kind: c_int) -> *const c_char {
+pub fn dock_item_kind_to_string(kind: c_int) -> *const c_char {
     kind_ops(kind).key_name.as_ptr()
 }
 
@@ -203,8 +192,7 @@ pub unsafe extern "C" fn dock_item_kind_to_string(kind: c_int) -> *const c_char 
 /// # Safety
 ///
 /// The result is a static string; the caller must not free it.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_kind_css_class(kind: c_int) -> *const c_char {
+pub fn dock_item_kind_css_class(kind: c_int) -> *const c_char {
     kind_ops(kind)
         .css_class
         .map_or(std::ptr::null(), |class| class.as_ptr())
@@ -217,8 +205,7 @@ pub unsafe extern "C" fn dock_item_kind_css_class(kind: c_int) -> *const c_char 
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_key(item: *const DockItem) -> *mut c_char {
+pub unsafe fn dock_item_key(item: *const DockItem) -> *mut c_char {
     let Some(item) = item.as_ref() else {
         return std::ptr::null_mut();
     };
@@ -240,8 +227,7 @@ pub unsafe extern "C" fn dock_item_key(item: *const DockItem) -> *mut c_char {
 ///
 /// `item` must be null or a live `DockItem`; `fallback` must be null or a C
 /// string. Nothing is copied: the result points into the item or at `fallback`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_item_title(
+pub unsafe fn lambdock_item_title(
     item: *const DockItem,
     fallback: *const c_char,
 ) -> *const c_char {
@@ -370,8 +356,7 @@ unsafe fn describe_trash(item: &DockItem) -> ItemText {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_update_accessible(item: *mut DockItem) {
+pub unsafe fn dock_item_update_accessible(item: *mut DockItem) {
     let Some(item_ref) = item.as_ref() else {
         return;
     };
@@ -475,8 +460,7 @@ unsafe fn activate_trash(_item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_activate(item: *mut DockItem) {
+pub unsafe fn dock_item_activate(item: *mut DockItem) {
     if item.is_null() {
         return;
     }
@@ -551,13 +535,13 @@ mod kind_tests {
         assert_eq!(key_of(&item(-1, Some(c"odd"), None)), "app:odd");
         assert_eq!(key_of(&item(99, Some(c"odd"), None)), "app:odd");
 
-        let name = unsafe { dock_item_kind_to_string(99) };
+        let name = dock_item_kind_to_string(99);
         assert_eq!(unsafe { CStr::from_ptr(name) }.to_str(), Ok("app"));
 
         // Only the kinds that need a class have one.
-        assert!(unsafe { dock_item_kind_css_class(ITEM_APP) }.is_null());
-        assert!(unsafe { dock_item_kind_css_class(ITEM_SEPARATOR) }.is_null());
-        let class = unsafe { dock_item_kind_css_class(ITEM_STACK) };
+        assert!(dock_item_kind_css_class(ITEM_APP).is_null());
+        assert!(dock_item_kind_css_class(ITEM_SEPARATOR).is_null());
+        let class = dock_item_kind_css_class(ITEM_STACK);
         assert_eq!(unsafe { CStr::from_ptr(class) }.to_str(), Ok("stack-item"));
     }
 
@@ -577,7 +561,7 @@ mod kind_tests {
             let actual = unsafe { CStr::from_ptr(dock_item_kind_to_string(kind)) };
             assert_eq!(actual.to_str(), Ok(name), "kind {kind}");
 
-            let actual = unsafe { dock_item_kind_css_class(kind) };
+            let actual = dock_item_kind_css_class(kind);
             match class {
                 Some(class) => {
                     assert_eq!(unsafe { CStr::from_ptr(actual) }.to_str(), Ok(class))
@@ -866,8 +850,7 @@ unsafe fn grab_item_focus(item: *mut DockItem) -> bool {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_count(state: *const LambdockState) -> c_int {
+pub unsafe fn lambdock_dock_item_count(state: *const LambdockState) -> c_int {
     let mut count = 0;
     let mut link = dock_items(state);
 
@@ -884,8 +867,7 @@ pub unsafe extern "C" fn lambdock_dock_item_count(state: *const LambdockState) -
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_at_index(
+pub unsafe fn lambdock_dock_item_at_index(
     state: *const LambdockState,
     index: c_int,
 ) -> *mut DockItem {
@@ -901,8 +883,7 @@ pub unsafe extern "C" fn lambdock_dock_item_at_index(
 /// # Safety
 ///
 /// Both must be null or live.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_index_of(
+pub unsafe fn lambdock_dock_item_index_of(
     state: *const LambdockState,
     item: *const DockItem,
 ) -> c_int {
@@ -918,8 +899,7 @@ pub unsafe extern "C" fn lambdock_dock_item_index_of(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_focused(state: *mut LambdockState) -> *mut DockItem {
+pub unsafe fn lambdock_dock_item_focused(state: *mut LambdockState) -> *mut DockItem {
     if state.is_null() {
         return std::ptr::null_mut();
     }
@@ -932,8 +912,7 @@ pub unsafe extern "C" fn lambdock_dock_item_focused(state: *mut LambdockState) -
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_focus_step(
+pub unsafe fn lambdock_dock_item_focus_step(
     state: *mut LambdockState,
     delta: c_int,
 ) -> c_int {
@@ -958,8 +937,7 @@ pub unsafe extern "C" fn lambdock_dock_item_focus_step(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_focus_edge(
+pub unsafe fn lambdock_dock_item_focus_edge(
     state: *mut LambdockState,
     last: c_int,
 ) -> c_int {
@@ -1033,8 +1011,7 @@ unsafe fn set_dock_items(state: *mut LambdockState, list: *mut glib::ffi::GList)
 /// # Safety
 ///
 /// Both must be null or live.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_move(
+pub unsafe fn lambdock_dock_item_move(
     state: *mut LambdockState,
     item: *mut DockItem,
     delta: c_int,
@@ -1093,8 +1070,7 @@ pub unsafe extern "C" fn lambdock_dock_item_move(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_items_close_popovers(state: *mut LambdockState) -> c_int {
+pub unsafe fn lambdock_dock_items_close_popovers(state: *mut LambdockState) -> c_int {
     let Some(state_ref) = state.as_ref() else {
         return 0;
     };
@@ -1141,8 +1117,7 @@ pub unsafe extern "C" fn lambdock_dock_items_close_popovers(state: *mut Lambdock
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_items_handle_key(
+pub unsafe fn lambdock_dock_items_handle_key(
     state: *mut LambdockState,
     keyval: u32,
     modifiers: u32,
@@ -1207,8 +1182,7 @@ pub unsafe extern "C" fn lambdock_dock_items_handle_key(
 ///
 /// `root` must be null or a live `GtkWidget`; `state` must be a live
 /// `LambdockState` that outlives it.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_attach_key_navigation(
+pub unsafe fn lambdock_dock_attach_key_navigation(
     root: *mut gtk4::ffi::GtkWidget,
     state: *mut LambdockState,
 ) {
@@ -1342,14 +1316,6 @@ pub struct Reading {
 const SOURCE_REMOVE: c_int = 0;
 const SOURCE_CONTINUE: c_int = 1;
 
-extern "C" {
-    /// `guile_bridge.h`: whether the handle is still a callable procedure.
-    fn lambdock_poll_fn_is_callable(poll_fn: *mut c_void) -> c_int;
-
-    /// `guile_bridge.h`: calls the procedure once, turning a Scheme error into
-    /// `LAMBDOCK_READING_NONE`.
-    fn lambdock_poll_fn_call(poll_fn: *mut c_void, out: *mut Reading) -> c_int;
-}
 
 /// Whether `item` still has a callable Scheme poller.
 ///
@@ -1491,8 +1457,7 @@ unsafe fn refresh(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_has_poller(item: *const DockItem) -> c_int {
+pub unsafe fn dock_item_has_poller(item: *const DockItem) -> c_int {
     c_int::from(item.as_ref().is_some_and(|item| has_poller(item)))
 }
 
@@ -1501,8 +1466,7 @@ pub unsafe extern "C" fn dock_item_has_poller(item: *const DockItem) -> c_int {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_off_screen(item: *const DockItem) -> c_int {
+pub unsafe fn dock_item_off_screen(item: *const DockItem) -> c_int {
     let Some(state) = item.as_ref().and_then(|item| item.state.as_ref()) else {
         return 0;
     };
@@ -1515,8 +1479,7 @@ pub unsafe extern "C" fn dock_item_off_screen(item: *const DockItem) -> c_int {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_refresh_readings(item: *mut DockItem) {
+pub unsafe fn dock_item_refresh_readings(item: *mut DockItem) {
     refresh(item);
 }
 
@@ -1525,7 +1488,6 @@ pub unsafe extern "C" fn dock_item_refresh_readings(item: *mut DockItem) {
 /// # Safety
 ///
 /// `user_data` must be null or a live `DockItem` that outlives the source.
-#[no_mangle]
 pub unsafe extern "C" fn lambdock_dock_item_poll(user_data: *mut c_void) -> c_int {
     let item = user_data.cast::<DockItem>();
 
@@ -1563,8 +1525,7 @@ pub unsafe extern "C" fn lambdock_dock_item_poll(user_data: *mut c_void) -> c_in
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_items_refresh_polls(state: *mut LambdockState) {
+pub unsafe fn dock_items_refresh_polls(state: *mut LambdockState) {
     let Some(state_ref) = state.as_ref() else {
         return;
     };
@@ -1666,8 +1627,7 @@ fn icon_size(state: Option<&LambdockState>) -> i32 {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_icon_size(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_item_icon_size(state: *const LambdockState) -> c_int {
     icon_size(state.as_ref())
 }
 
@@ -1711,7 +1671,7 @@ fn apply_alignment(widget: &gtk4::Widget, alignment: Alignment) {
 /// # Safety
 ///
 /// `button` must be a live `GtkWidget`.
-unsafe fn centre_button_content(button: &gtk4::Widget) {
+fn centre_button_content(button: &gtk4::Widget) {
     let Some(button) = button.downcast_ref::<gtk4::Button>() else {
         return;
     };
@@ -1743,8 +1703,7 @@ unsafe fn centre_button_content(button: &gtk4::Widget) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn apply_dock_item_alignment(item: *mut DockItem) {
+pub unsafe fn apply_dock_item_alignment(item: *mut DockItem) {
     let Some(item_ref) = item.as_ref() else {
         return;
     };
@@ -1933,8 +1892,7 @@ unsafe fn trash_artwork_is_swappable(item: &DockItem) -> bool {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_refresh_trash(item: *mut DockItem) {
+pub unsafe fn dock_item_refresh_trash(item: *mut DockItem) {
     let Some(item_ref) = item.as_mut() else {
         return;
     };
@@ -1987,7 +1945,6 @@ pub unsafe extern "C" fn dock_item_refresh_trash(item: *mut DockItem) {
 /// # Safety
 ///
 /// `user_data` must be null or a live `DockItem` that outlives the source.
-#[no_mangle]
 pub unsafe extern "C" fn lambdock_dock_item_trash_poll(user_data: *mut c_void) -> c_int {
     let item = user_data.cast::<DockItem>();
     if item.as_ref().is_none() {
@@ -2086,17 +2043,6 @@ const ITEM_DATA_KEY: &std::ffi::CStr = c"lambdock-item";
 const CLICKED_HANDLER_KEY: &str = "lambdock-item-clicked-handler";
 const CLOSED_HANDLER_KEY: &str = "lambdock-item-closed-handler";
 
-extern "C" {
-    /// `src/dock_window.c`: releases the dock's popover slot when a menu closes.
-    fn on_popover_closed(popover: *mut gtk4::ffi::GtkPopover, user_data: *mut c_void);
-
-    /// `guile_bridge.h`: the Scheme poller handle, and its protection from the GC.
-    fn lambdock_poll_fn_protect(procedure: *mut c_void) -> *mut c_void;
-    fn lambdock_poll_fn_release(poll_fn: *mut c_void);
-
-    /// `src/toplevel_tracker.c`: drops the dock references the trackers hold.
-    fn clear_window_tracker_dock_references(state: *mut LambdockState);
-}
 
 /// What a constructor tells the shared scaffold about the item it is building.
 struct Shell<'a> {
@@ -2401,8 +2347,7 @@ unsafe fn detach_data(item: &DockItem) {
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_from_widget(widget: *mut gtk4::ffi::GtkWidget) -> *mut DockItem {
+pub unsafe fn dock_item_from_widget(widget: *mut gtk4::ffi::GtkWidget) -> *mut DockItem {
     if widget.is_null() {
         return std::ptr::null_mut();
     }
@@ -2563,8 +2508,7 @@ unsafe fn build_icon_content(item: &mut DockItem, image: *mut gtk4::ffi::GtkWidg
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`; the strings are C strings.
-#[no_mangle]
-pub unsafe extern "C" fn create_dock_item(
+pub unsafe fn create_dock_item(
     state: *mut LambdockState,
     name: *const c_char,
     icon: *const c_char,
@@ -2613,8 +2557,7 @@ pub unsafe extern "C" fn create_dock_item(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`; the strings are C strings.
-#[no_mangle]
-pub unsafe extern "C" fn create_dynamic_dock_item(
+pub unsafe fn create_dynamic_dock_item(
     state: *mut LambdockState,
     name: *const c_char,
     icon: *const c_char,
@@ -2681,8 +2624,7 @@ pub unsafe extern "C" fn create_dynamic_dock_item(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn create_separator_dock_item(
+pub unsafe fn create_separator_dock_item(
     state: *mut LambdockState,
     orientation: c_int,
 ) -> *mut DockItem {
@@ -2806,8 +2748,7 @@ unsafe fn create_icon_dock_item(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`; the strings are C strings.
-#[no_mangle]
-pub unsafe extern "C" fn create_stack_dock_item(
+pub unsafe fn create_stack_dock_item(
     state: *mut LambdockState,
     name: *const c_char,
     icon: *const c_char,
@@ -2848,8 +2789,7 @@ pub unsafe extern "C" fn create_stack_dock_item(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`; the strings are C strings.
-#[no_mangle]
-pub unsafe extern "C" fn create_launchpad_dock_item(
+pub unsafe fn create_launchpad_dock_item(
     state: *mut LambdockState,
     name: *const c_char,
     icon: *const c_char,
@@ -2882,8 +2822,7 @@ pub unsafe extern "C" fn create_launchpad_dock_item(
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`; the strings are C strings.
-#[no_mangle]
-pub unsafe extern "C" fn create_trash_dock_item(
+pub unsafe fn create_trash_dock_item(
     state: *mut LambdockState,
     name: *const c_char,
     icon: *const c_char,
@@ -2965,8 +2904,7 @@ unsafe fn replace_dynamic_content(
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_enable_meter(
+pub unsafe fn dock_item_enable_meter(
     item: *mut DockItem,
     unit: *const c_char,
     max_value: f64,
@@ -3014,8 +2952,7 @@ pub unsafe extern "C" fn dock_item_enable_meter(
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_enable_clock(item: *mut DockItem) {
+pub unsafe fn dock_item_enable_clock(item: *mut DockItem) {
     let Some(item_ref) = item.as_mut() else {
         return;
     };
@@ -3057,8 +2994,7 @@ pub unsafe extern "C" fn dock_item_enable_clock(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_popup_menu(item: *mut DockItem) {
+pub unsafe fn lambdock_dock_item_popup_menu(item: *mut DockItem) {
     let Some(item_ref) = item.as_ref() else {
         return;
     };
@@ -3087,8 +3023,7 @@ pub unsafe extern "C" fn lambdock_dock_item_popup_menu(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_item_show_menu(item: *mut DockItem) {
+pub unsafe fn lambdock_dock_item_show_menu(item: *mut DockItem) {
     let Some(item_ref) = item.as_ref() else {
         return;
     };
@@ -3255,8 +3190,7 @@ unsafe fn free_item_strings(item: &mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`; `name` a C string.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_set_poll_name(item: *mut DockItem, name: *const c_char) {
+pub unsafe fn dock_item_set_poll_name(item: *mut DockItem, name: *const c_char) {
     let Some(item) = item.as_mut() else {
         return;
     };
@@ -3270,8 +3204,7 @@ pub unsafe extern "C" fn dock_item_set_poll_name(item: *mut DockItem, name: *con
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`, and no longer used afterwards.
-#[no_mangle]
-pub unsafe extern "C" fn free_dock_item(item: *mut DockItem) {
+pub unsafe fn free_dock_item(item: *mut DockItem) {
     let Some(item_ref) = item.as_mut() else {
         return;
     };
@@ -3303,8 +3236,7 @@ pub unsafe extern "C" fn free_dock_item(item: *mut DockItem) {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn clear_favorite_dock_items(state: *mut LambdockState) {
+pub unsafe fn clear_favorite_dock_items(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };
@@ -3350,23 +3282,9 @@ const LAYER_EDGE_LEFT: c_int = 0;
 const LAYER_EDGE_RIGHT: c_int = 1;
 
 extern "C" {
-    /// `src/guile_bridge.c`: re-reads every setting into the dock's state.
-    fn dock_read_settings(state: *mut LambdockState);
 
-    /// `src/guile_bridge.c`: builds an item for every entry of the configuration.
-    fn populate_dock_items_for(state: *mut LambdockState);
 
-    /// `src/toplevel_tracker.c`: re-syncs the foreign-window handles.
-    fn sync_window_trackers(state: *mut LambdockState);
 
-    /// `src/dock_window.c`: the surface, its exclusive zone and its visibility.
-    fn dock_apply_exclusive_zone(state: *mut LambdockState);
-    fn reveal_dock(state: *mut LambdockState);
-    fn hide_dock(state: *mut LambdockState);
-    fn apply_dock_mode_classes(state: *mut LambdockState);
-    fn refresh_dock_mode(state: *mut LambdockState);
-    fn update_dock_dimensions(state: *mut LambdockState);
-    fn dock_apply_motion_preference(state: *mut LambdockState);
 
     /// `gtk4-layer-shell`: the anchors that put the surface on an edge. The crate
     /// is a C library with no bindings here, so these are the three calls the dock
@@ -3538,8 +3456,7 @@ unsafe fn apply_auto_hide_state(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn reload_dock_instance(state: *mut LambdockState) {
+pub unsafe fn reload_dock_instance(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };

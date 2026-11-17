@@ -63,8 +63,7 @@ pub fn seconds_in_day(seconds_of_day: c_int) -> c_int {
 /// The hour hand creeps forward with the minutes and the minute hand with the
 /// seconds, which is what makes the face read as a clock instead of three
 /// independent dials.
-#[no_mangle]
-pub extern "C" fn lambdock_clock_turns_for_seconds(seconds_of_day: c_int) -> ClockTurns {
+pub fn lambdock_clock_turns_for_seconds(seconds_of_day: c_int) -> ClockTurns {
     let seconds = seconds_in_day(seconds_of_day);
 
     let hours = seconds / 3600;
@@ -89,8 +88,7 @@ pub extern "C" fn lambdock_clock_turns_for_seconds(seconds_of_day: c_int) -> Clo
 /// # Safety
 ///
 /// `out_x` and `out_y` must each be null or point to a writable `double`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_squircle_point(
+pub unsafe fn lambdock_squircle_point(
     turn: f64,
     half_width: f64,
     half_height: f64,

@@ -115,8 +115,7 @@ unsafe fn eq_ascii(text: *const c_char, expected: &str) -> bool {
 }
 
 /// @value clamped into `[low, high]`; NaN or infinite yields @low.
-#[no_mangle]
-pub extern "C" fn lambdock_clamp_double(value: f64, low: f64, high: f64) -> f64 {
+pub fn lambdock_clamp_double(value: f64, low: f64, high: f64) -> f64 {
     if value.is_nan() {
         return low;
     }
@@ -133,8 +132,7 @@ pub extern "C" fn lambdock_clamp_double(value: f64, low: f64, high: f64) -> f64 
 }
 
 /// @value rounded into `[low, high]`; NaN yields @low.
-#[no_mangle]
-pub extern "C" fn lambdock_clamp_int(value: f64, low: c_int, high: c_int) -> c_int {
+pub fn lambdock_clamp_int(value: f64, low: c_int, high: c_int) -> c_int {
     if value.is_nan() {
         return low;
     }
@@ -160,8 +158,7 @@ pub extern "C" fn lambdock_clamp_int(value: f64, low: c_int, high: c_int) -> c_i
 }
 
 /// @value clamped, or @fallback when it is not a finite number.
-#[no_mangle]
-pub extern "C" fn lambdock_sanitize_double(
+pub fn lambdock_sanitize_double(
     value: f64,
     fallback: f64,
     low: f64,
@@ -175,8 +172,7 @@ pub extern "C" fn lambdock_sanitize_double(
 }
 
 /// @value rounded and clamped, or @fallback when it is not a finite number.
-#[no_mangle]
-pub extern "C" fn lambdock_sanitize_int(
+pub fn lambdock_sanitize_int(
     value: f64,
     fallback: c_int,
     low: c_int,
@@ -190,8 +186,7 @@ pub extern "C" fn lambdock_sanitize_int(
 }
 
 /// The icon size a user asked for, or the default for a broken request.
-#[no_mangle]
-pub extern "C" fn lambdock_icon_size_sanitize(raw: f64) -> c_int {
+pub fn lambdock_icon_size_sanitize(raw: f64) -> c_int {
     if !raw.is_finite() || raw <= 0.0 {
         return DEFAULT_ICON_SIZE;
     }
@@ -202,20 +197,17 @@ pub extern "C" fn lambdock_icon_size_sanitize(raw: f64) -> c_int {
 }
 
 /// The gap between dock items, or the default for a broken request.
-#[no_mangle]
-pub extern "C" fn lambdock_item_spacing_sanitize(raw: f64) -> c_int {
+pub fn lambdock_item_spacing_sanitize(raw: f64) -> c_int {
     lambdock_sanitize_int(raw, ITEM_SPACING_PX, 0, ITEM_SPACING_MAX_PX)
 }
 
 /// The capsule's end padding, or the default for a broken request.
-#[no_mangle]
-pub extern "C" fn lambdock_capsule_padding_sanitize(raw: f64) -> c_int {
+pub fn lambdock_capsule_padding_sanitize(raw: f64) -> c_int {
     lambdock_sanitize_int(raw, CAPSULE_PADDING_PX, 0, CAPSULE_PADDING_MAX_PX)
 }
 
 /// The launchpad tile size, or the default for a broken request.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_icon_size_sanitize(raw: f64) -> c_int {
+pub fn lambdock_launchpad_icon_size_sanitize(raw: f64) -> c_int {
     lambdock_sanitize_int(
         raw,
         LAUNCHPAD_ICON_SIZE,
@@ -225,8 +217,7 @@ pub extern "C" fn lambdock_launchpad_icon_size_sanitize(raw: f64) -> c_int {
 }
 
 /// The launchpad's column count, where any non-positive request means auto.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_columns_sanitize(raw: f64) -> c_int {
+pub fn lambdock_launchpad_columns_sanitize(raw: f64) -> c_int {
     if !raw.is_finite() || raw <= 0.0 {
         return LAUNCHPAD_COLUMNS_AUTO;
     }
@@ -240,8 +231,7 @@ pub extern "C" fn lambdock_launchpad_columns_sanitize(raw: f64) -> c_int {
 }
 
 /// The built-in shelf parameters: the classic flat capsule.
-#[no_mangle]
-pub extern "C" fn lambdock_shelf_params_default() -> ShelfParams {
+pub fn lambdock_shelf_params_default() -> ShelfParams {
     ShelfParams {
         tilt_deg: SHELF_DEFAULT_TILT,
         perspective: SHELF_DEFAULT_PERSPECTIVE,
@@ -259,8 +249,7 @@ pub extern "C" fn lambdock_shelf_params_default() -> ShelfParams {
 /// # Safety
 ///
 /// `raw` must be null or point to a readable `LambdockShelfRawValues`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_shelf_params_sanitize(
+pub unsafe fn lambdock_shelf_params_sanitize(
     raw: *const ShelfRawValues,
     defaults: ShelfParams,
 ) -> ShelfParams {
@@ -333,8 +322,7 @@ pub unsafe extern "C" fn lambdock_shelf_params_sanitize(
 /// # Safety
 ///
 /// `name` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_edge_from_name(name: *const c_char) -> c_int {
+pub unsafe fn lambdock_edge_from_name(name: *const c_char) -> c_int {
     if name.is_null() || *name == 0 {
         return EDGE_BOTTOM;
     }
@@ -355,8 +343,7 @@ pub unsafe extern "C" fn lambdock_edge_from_name(name: *const c_char) -> c_int {
 }
 
 /// The settings name of an edge; anything unknown is "bottom".
-#[no_mangle]
-pub extern "C" fn lambdock_edge_name(edge: c_int) -> *const c_char {
+pub fn lambdock_edge_name(edge: c_int) -> *const c_char {
     match edge {
         EDGE_TOP => c"top".as_ptr(),
         EDGE_LEFT => c"left".as_ptr(),
@@ -370,8 +357,7 @@ pub extern "C" fn lambdock_edge_name(edge: c_int) -> *const c_char {
 /// # Safety
 ///
 /// `mode` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_dock_mode_is_taskbar(mode: *const c_char) -> c_int {
+pub unsafe fn lambdock_dock_mode_is_taskbar(mode: *const c_char) -> c_int {
     eq_ascii(mode, "taskbar") as c_int
 }
 
@@ -380,8 +366,7 @@ pub unsafe extern "C" fn lambdock_dock_mode_is_taskbar(mode: *const c_char) -> c
 /// # Safety
 ///
 /// `side` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_close_on_right(side: *const c_char) -> c_int {
+pub unsafe fn lambdock_launchpad_close_on_right(side: *const c_char) -> c_int {
     eq_ascii(side, "right") as c_int
 }
 

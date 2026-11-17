@@ -425,8 +425,7 @@ unsafe fn as_clock(pointer: *mut ffi::GtkWidget) -> Option<Borrowed<Clock>> {
 ///
 /// Returns a floating reference, like the `g_object_new` this replaces: the
 /// callers hand it to a box, and the box sinks it.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_clock_new() -> *mut ffi::GtkWidget {
+pub unsafe fn lambdock_clock_new() -> *mut ffi::GtkWidget {
     // gtk-rs asserts its own initialization flag inside the subclass machinery,
     // and C's gtk_init does not set it.
     crate::ui::ensure_gtk_initialized();
@@ -447,8 +446,7 @@ pub unsafe extern "C" fn lambdock_clock_new() -> *mut ffi::GtkWidget {
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_clock_set_time(
+pub unsafe fn lambdock_clock_set_time(
     pointer: *mut ffi::GtkWidget,
     seconds_of_day: c_int,
 ) {
@@ -474,8 +472,7 @@ pub unsafe extern "C" fn lambdock_clock_set_time(
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_clock_get_time(pointer: *mut ffi::GtkWidget) -> c_int {
+pub unsafe fn lambdock_clock_get_time(pointer: *mut ffi::GtkWidget) -> c_int {
     match as_clock(pointer) {
         Some(clock) => clock.imp().seconds.get(),
         None => 0,
@@ -487,8 +484,7 @@ pub unsafe extern "C" fn lambdock_clock_get_time(pointer: *mut ffi::GtkWidget) -
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_clock_set_icon_size(
+pub unsafe fn lambdock_clock_set_icon_size(
     pointer: *mut ffi::GtkWidget,
     icon_size: c_int,
 ) {
@@ -509,8 +505,7 @@ pub unsafe extern "C" fn lambdock_clock_set_icon_size(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_clock_is_clock(widget: *mut c_void) -> c_int {
+pub unsafe fn lambdock_clock_is_clock(widget: *mut c_void) -> c_int {
     i32::from(as_clock(widget.cast()).is_some())
 }
 

@@ -21,8 +21,7 @@ use std::os::raw::c_int;
 /// # Safety
 ///
 /// `intervals` must point to `count` readable `guint`s, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_polls_per_second(intervals: *const u32, count: usize) -> f64 {
+pub unsafe fn lambdock_polls_per_second(intervals: *const u32, count: usize) -> f64 {
     if intervals.is_null() {
         return 0.0;
     }
@@ -39,8 +38,7 @@ pub unsafe extern "C" fn lambdock_polls_per_second(intervals: *const u32, count:
 /// # Safety
 ///
 /// `intervals` must point to `count` readable `guint`s, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poll_budget_exceeded(
+pub unsafe fn lambdock_poll_budget_exceeded(
     intervals: *const u32,
     count: usize,
     budget: f64,

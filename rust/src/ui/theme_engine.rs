@@ -13,7 +13,6 @@
 //! ([`scope_selectors`]), so both are tested without a display. Only the appliers
 //! at the bottom touch GTK, and they only do what the value says.
 
-use crate::core::dock_dims::ShelfGeometry;
 use crate::glib::{g_free, strdup_string};
 use crate::log_info;
 use crate::log_warn;
@@ -26,15 +25,9 @@ use gtk4::prelude::*;
 use gtk4::CssProvider;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
+use crate::ui::shelf::{lambdock_shelf_active, lambdock_shelf_geometry_for};
 
 // Where the theme engine reaches back into the modules that are still C.
-extern "C" {
-    /// Whether the glass shelf geometry is in use (`shelf.c`).
-    fn lambdock_shelf_active(state: *const LambdockState) -> c_int;
-
-    /// The shelf measured out for this dock and icon size (`shelf.c`).
-    fn lambdock_shelf_geometry_for(state: *const LambdockState, icon_size: c_int) -> ShelfGeometry;
-}
 
 /// What `load_custom_css` has to decide before it touches a widget.
 ///
@@ -201,7 +194,7 @@ unsafe fn dock_name(state: *const LambdockState) -> String {
 
 /// Scopes `raw_css` under `theme_class`, installs it on `display` and returns it;
 /// `None` when there is nothing to load, so callers can chain modifiers freely.
-unsafe fn provider_from_scoped_css(
+fn provider_from_scoped_css(
     display: &gdk::Display,
     raw_css: &str,
     theme_class: &str,
@@ -219,7 +212,7 @@ unsafe fn provider_from_scoped_css(
 }
 
 /// The same, for a stylesheet embedded in the GResource bundle.
-unsafe fn provider_from_resource(
+fn provider_from_resource(
     display: &gdk::Display,
     resource_path: &str,
     theme_class: &str,
@@ -231,7 +224,7 @@ unsafe fn provider_from_resource(
     provider_from_scoped_css(display, &raw_css, theme_class, priority)
 }
 
-/// Hands a provider's reference to `slot`, where the C side frees it with
+/// Hands a provider's reference to `slot`, where the dock frees it with
 /// `g_clear_object`. `true` when there was one to store.
 unsafe fn store_provider(provider: Option<CssProvider>, slot: *mut *mut c_void) -> bool {
     match provider {
@@ -437,8 +430,7 @@ unsafe fn attach_user_css(
 /// # Safety
 ///
 /// `state` must be null or a live dock whose window is set.
-#[no_mangle]
-pub unsafe extern "C" fn load_custom_css(state: *mut LambdockState) {
+pub unsafe fn load_custom_css(state: *mut LambdockState) {
     if state.is_null() || (*state).window.is_null() {
         return;
     }
@@ -491,8 +483,7 @@ pub unsafe extern "C" fn load_custom_css(state: *mut LambdockState) {
 ///
 /// `requested_theme` must be null or a C string; the two strings in the result
 /// are owned by the caller and freed with `lambdock_theme_request_clear`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_theme_request(
+pub unsafe fn lambdock_theme_request(
     requested_theme: *const c_char,
     taskbar: c_int,
     show_window_titles: c_int,
@@ -528,8 +519,7 @@ pub unsafe extern "C" fn lambdock_theme_request(
 /// # Safety
 ///
 /// `request` must be null or a record from `lambdock_theme_request`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_theme_request_clear(request: *mut ThemeRequest) {
+pub unsafe fn lambdock_theme_request_clear(request: *mut ThemeRequest) {
     if request.is_null() {
         return;
     }
@@ -560,8 +550,7 @@ pub unsafe extern "C" fn lambdock_theme_request_clear(request: *mut ThemeRequest
 ///
 /// `css` and `scope_class` must be null or C strings; the result is `(transfer
 /// full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn theme_scope_css_selectors(
+pub unsafe fn theme_scope_css_selectors(
     css: *const c_char,
     scope_class: *const c_char,
 ) -> *mut c_char {
@@ -723,8 +712,8 @@ mod tests {
         assert!(out.contains("* {"), "{out}");
     }
 
-    /// The record the C side reads is two pointers and four booleans, in the
-    /// header's order.
+    /// The record is two pointers and four booleans, in the order the callers
+    /// read it in.
     #[test]
     fn the_request_record_matches_the_header() {
         use std::mem::{offset_of, size_of};

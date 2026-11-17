@@ -79,8 +79,7 @@ pub struct Placement {
 /// # Safety
 ///
 /// `window_type` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_x11_type_is_desktop_chrome(
+pub unsafe fn lambdock_x11_type_is_desktop_chrome(
     window_type: *const c_char,
 ) -> c_int {
     if window_type.is_null() || *window_type == 0 {
@@ -96,8 +95,7 @@ pub unsafe extern "C" fn lambdock_x11_type_is_desktop_chrome(
 }
 
 /// Whether the dock should list the window.
-#[no_mangle]
-pub extern "C" fn lambdock_x11_shows_window(
+pub fn lambdock_x11_shows_window(
     desktop_chrome: c_int,
     skip_taskbar: c_int,
     own_window: c_int,
@@ -107,8 +105,7 @@ pub extern "C" fn lambdock_x11_shows_window(
 }
 
 /// The two flags the dock's click policy reads.
-#[no_mangle]
-pub extern "C" fn lambdock_x11_window_state(
+pub fn lambdock_x11_window_state(
     hidden: c_int,
     window: c_ulong,
     active_window: c_ulong,
@@ -178,8 +175,7 @@ fn reserved_strip(
 /// The window hugs the monitor's edge on the dock's side and is centred along the
 /// other axis; a size larger than the monitor is clamped to it, so the window is
 /// always on screen.
-#[no_mangle]
-pub extern "C" fn lambdock_x11_placement_compute(
+pub fn lambdock_x11_placement_compute(
     edge: c_int,
     root: Rect,
     monitor: Rect,

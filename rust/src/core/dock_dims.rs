@@ -105,8 +105,7 @@ fn hover_headroom_px(icon: c_int, hover_magnify: bool) -> c_int {
 }
 
 /// The dimensions for this dock. Pure: same inputs, same output.
-#[no_mangle]
-pub extern "C" fn lambdock_dock_dims_compute(
+pub fn lambdock_dock_dims_compute(
     icon_size: c_int,
     capsule_padding: c_int,
     shelf: ShelfGeometry,

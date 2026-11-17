@@ -18,8 +18,11 @@
 use crate::app_window::{AppWindow, GList, LambdockToplevel};
 use crate::dock_item::DockItem;
 use crate::state::LambdockState;
-use crate::ui::desktop_entry::DesktopEntry;
 use std::os::raw::{c_char, c_int, c_void};
+use crate::dock_item::{dock_item_update_accessible, free_dock_item};
+use crate::dock_window::{reveal_dock};
+use crate::ui::desktop_entry::{lambdock_desktop_entry_lookup};
+use crate::ui::shelf::{shelf_reflection_set_running};
 
 /// The names a dock item is known by, borrowed from the C struct that holds them.
 ///
@@ -168,23 +171,10 @@ pub unsafe fn any_window_focused(windows: *const GList) -> bool {
 
 // Where the window model reaches back into the modules that are still C.
 extern "C" {
-    /// Drops one item and everything it owns (`dock_item.c`).
-    fn free_dock_item(item: *mut DockItem);
 
-    /// Pushes the item's label and description to the accessibility tree
-    /// (`dock_item.c`).
-    fn dock_item_update_accessible(item: *mut DockItem);
 
-    /// The glass shelf draws its own running indicator near the outer edge
-    /// (`shelf.c`).
-    fn shelf_reflection_set_running(reflection: *mut c_void, running: c_int);
 
-    /// Shows the dock again; called when the last tracked window goes away
-    /// (`dock_window.c`).
-    fn reveal_dock(state: *mut LambdockState);
 
-    /// The desktop entry a reported app id resolves to (`desktop_entry.c`).
-    fn lambdock_desktop_entry_lookup(app_id: *const c_char) -> *const DesktopEntry;
 
     fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
     fn g_list_free(list: *mut GList);
@@ -256,7 +246,7 @@ unsafe fn apply_running_state(item: *const DockItem) {
 
     // The glass shelf draws its own running indicator near the outer edge.
     if !(*item).reflection.is_null() {
-        shelf_reflection_set_running((*item).reflection, running as c_int);
+        shelf_reflection_set_running((*item).reflection.cast(), running as c_int);
     }
 }
 
@@ -310,8 +300,7 @@ unsafe fn apply_window_title_label(item: *const DockItem) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn clear_tracked_windows(state: *mut LambdockState) {
+pub unsafe fn clear_tracked_windows(state: *mut LambdockState) {
     if state.is_null() {
         return;
     }
@@ -357,8 +346,7 @@ pub unsafe extern "C" fn clear_tracked_windows(state: *mut LambdockState) {
 ///
 /// `item` must be null or a live `DockItem`; `handle` must be null or a live
 /// toplevel handle owned by the tracker.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_add_window(
+pub unsafe fn dock_item_add_window(
     item: *mut DockItem,
     handle: *mut LambdockToplevel,
 ) -> *mut AppWindow {
@@ -400,8 +388,7 @@ pub unsafe extern "C" fn dock_item_add_window(
 ///
 /// `item` must be null or a live `DockItem`; `handle` must be null or a handle the
 /// tracker owns.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_remove_window(
+pub unsafe fn dock_item_remove_window(
     item: *mut DockItem,
     handle: *const LambdockToplevel,
 ) {
@@ -435,8 +422,7 @@ pub unsafe extern "C" fn dock_item_remove_window(
 ///
 /// `item` must be null or a live `DockItem`; `handle` must be null or a
 /// `LambdockToplevel` pointer to compare, never dereferenced here.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_has_window(
+pub unsafe fn dock_item_has_window(
     item: *const DockItem,
     handle: *const LambdockToplevel,
 ) -> c_int {
@@ -462,8 +448,7 @@ pub unsafe extern "C" fn dock_item_has_window(
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn update_dock_item_status(item: *mut DockItem) {
+pub unsafe fn update_dock_item_status(item: *mut DockItem) {
     if item.is_null() || (*item).button.is_null() {
         return;
     }
@@ -481,8 +466,7 @@ pub unsafe extern "C" fn update_dock_item_status(item: *mut DockItem) {
 /// # Safety
 ///
 /// `item` must be null or a live `DockItem`.
-#[no_mangle]
-pub unsafe extern "C" fn dock_item_refresh_window_state(item: *mut DockItem) {
+pub unsafe fn dock_item_refresh_window_state(item: *mut DockItem) {
     if item.is_null() || (*item).button.is_null() {
         return;
     }
@@ -525,8 +509,7 @@ unsafe fn find_item(
 /// # Safety
 ///
 /// `state` must be null or a live dock; `app_id` must be null or a C string.
-#[no_mangle]
-pub unsafe extern "C" fn find_dock_item_by_app_id(
+pub unsafe fn find_dock_item_by_app_id(
     state: *mut LambdockState,
     app_id: *const c_char,
 ) -> *mut DockItem {
@@ -616,7 +599,7 @@ mod tests {
     fn windows(states: &[(bool, bool)]) -> *mut GList {
         extern "C" {
             fn g_list_append(list: *mut GList, data: *mut std::ffi::c_void) -> *mut GList;
-        }
+}
 
         let mut list: *mut GList = std::ptr::null_mut();
         for (minimized, activated) in states {
@@ -634,7 +617,7 @@ mod tests {
     fn free_windows(list: *mut GList) {
         extern "C" {
             fn g_list_free(list: *mut GList);
-        }
+}
 
         let mut node = list;
         while !node.is_null() {

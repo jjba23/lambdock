@@ -290,8 +290,7 @@ unsafe fn as_zoom(pointer: *mut ffi::GtkWidget) -> Option<Borrowed<IconZoom>> {
 /// # Safety
 ///
 /// `child` must be null or a live, unparented `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_new(
+pub unsafe fn lambdock_icon_zoom_new(
     child: *mut ffi::GtkWidget,
     base_size: c_int,
     max_size: c_int,
@@ -351,8 +350,7 @@ pub unsafe extern "C" fn lambdock_icon_zoom_new(
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_set_scale(pointer: *mut ffi::GtkWidget, scale: f64) {
+pub unsafe fn lambdock_icon_zoom_set_scale(pointer: *mut ffi::GtkWidget, scale: f64) {
     let Some(zoom) = as_zoom(pointer) else {
         return;
     };
@@ -381,8 +379,7 @@ pub unsafe extern "C" fn lambdock_icon_zoom_set_scale(pointer: *mut ffi::GtkWidg
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_get_scale(pointer: *mut ffi::GtkWidget) -> f64 {
+pub unsafe fn lambdock_icon_zoom_get_scale(pointer: *mut ffi::GtkWidget) -> f64 {
     match as_zoom(pointer) {
         Some(zoom) => zoom.imp().scale.get(),
         None => 1.0,
@@ -394,8 +391,7 @@ pub unsafe extern "C" fn lambdock_icon_zoom_get_scale(pointer: *mut ffi::GtkWidg
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_target_size(pointer: *mut ffi::GtkWidget) -> c_int {
+pub unsafe fn lambdock_icon_zoom_target_size(pointer: *mut ffi::GtkWidget) -> c_int {
     match as_zoom(pointer) {
         Some(zoom) => allocated_size(zoom.imp().base_size.get(), zoom.imp().scale.get()),
         None => 0,
@@ -407,8 +403,7 @@ pub unsafe extern "C" fn lambdock_icon_zoom_target_size(pointer: *mut ffi::GtkWi
 /// # Safety
 ///
 /// `pointer` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_get_child(
+pub unsafe fn lambdock_icon_zoom_get_child(
     pointer: *mut ffi::GtkWidget,
 ) -> *mut ffi::GtkWidget {
     let Some(zoom) = as_zoom(pointer) else {
@@ -429,8 +424,7 @@ pub unsafe extern "C" fn lambdock_icon_zoom_get_child(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_icon_zoom_is_zoom(widget: *mut c_void) -> c_int {
+pub unsafe fn lambdock_icon_zoom_is_zoom(widget: *mut c_void) -> c_int {
     i32::from(as_zoom(widget.cast()).is_some())
 }
 

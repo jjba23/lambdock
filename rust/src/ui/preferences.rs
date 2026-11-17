@@ -53,6 +53,7 @@ use crate::core::config_values::{
     LAUNCHPAD_ICON_SIZE_MIN, SHELF_PERSPECTIVE_MAX, SHELF_PERSPECTIVE_MIN, SHELF_TILT_MAX_DEG,
 };
 use crate::{log_info, log_warn};
+use crate::dock_item::{reload_dock_instance};
 
 /// How long a control must be still before its value is written.
 const APPLY_DEBOUNCE_MS: u32 = 140;
@@ -69,10 +70,6 @@ const KEY_KEY: &CStr = c"lambdock-key";
 /// Where a preferences window keeps its own state.
 const WINDOW_KEY: &str = "lambdock-prefs-window";
 
-extern "C" {
-    /// `src/dock_window.c`: rebuilds one dock from the settings it is bound to.
-    fn reload_dock_instance(state: *mut crate::state::LambdockState);
-}
 
 // ============================================================================
 // 1. TYPES
@@ -130,9 +127,9 @@ struct Choice {
 
 /// A reader: "what is the value right now?", from the settings file.
 ///
-/// The switch readers are the bridge's own getters, so they keep the C ABI they
-/// already have; the numeric and choice readers are adapters local to this file.
-type ReadSwitch = unsafe extern "C" fn(*const c_char) -> c_int;
+/// The switch readers are the bridge's own getters; the numeric and choice
+/// readers are adapters local to this file.
+type ReadSwitch = unsafe fn(*const c_char) -> c_int;
 type ReadNumber = unsafe fn(*const c_char) -> f64;
 type ReadChoice = unsafe fn(*const c_char) -> c_uint;
 
@@ -276,7 +273,7 @@ unsafe fn read_shelf_reflection_blur(path: *const c_char) -> f64 {
 /// A dock-wide integer setting, read as the number a scale row wants.
 unsafe fn int_reader(
     path: *const c_char,
-    getter: unsafe extern "C" fn(*const c_char) -> c_int,
+    getter: unsafe fn(*const c_char) -> c_int,
 ) -> f64 {
     f64::from(getter(path))
 }
@@ -1317,8 +1314,7 @@ fn build_content(config_path: Option<&str>) -> gtk4::Widget {
 /// # Safety
 ///
 /// `config_path` must be null or NUL-terminated. The result is a new widget.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_preferences_content_for(
+pub unsafe fn lambdock_preferences_content_for(
     config_path: *const c_char,
 ) -> *mut gtk4::ffi::GtkWidget {
     crate::ui::ensure_gtk_initialized();
@@ -1339,7 +1335,7 @@ pub unsafe extern "C" fn lambdock_preferences_content_for(
 fn reload_docks_for(config_path: &str) {
     /// What `reload_docks_for` hands the registry walk: the settings path to
     /// reload, as the C string the visitor reads.
-    unsafe extern "C" fn visit(state: *mut crate::state::LambdockState, wanted: *mut c_void) {
+    unsafe fn visit(state: *mut crate::state::LambdockState, wanted: *mut c_void) {
         let Some(state) = state.as_ref() else {
             return;
         };
@@ -1517,8 +1513,7 @@ fn show_window(app: &gtk4::Application, config_path: Option<&str>) {
 /// # Safety
 ///
 /// `config_path` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_preferences_show(config_path: *const c_char) {
+pub unsafe fn lambdock_preferences_show(config_path: *const c_char) {
     // `g_application_get_default`, downcast the way the C cast it with
     // `GTK_APPLICATION` -- but refused instead of assumed.
     let Some(app) =
@@ -1540,8 +1535,7 @@ pub unsafe extern "C" fn lambdock_preferences_show(config_path: *const c_char) {
 /// # Safety
 ///
 /// `parameter` must be null or a `GVariant *`; `user_data` the `GtkApplication`.
-#[no_mangle]
-pub unsafe extern "C" fn on_preferences_action(
+pub unsafe fn on_preferences_action(
     _action: *mut gtk4::gio::ffi::GSimpleAction,
     parameter: *mut glib::ffi::GVariant,
     user_data: *mut c_void,
@@ -1566,8 +1560,7 @@ pub unsafe extern "C" fn on_preferences_action(
 }
 
 /// Destroys every open preferences window, on application teardown.
-#[no_mangle]
-pub extern "C" fn lambdock_preferences_shutdown() {
+pub fn lambdock_preferences_shutdown() {
     // Collected first: destroying a window forgets it, which borrows the
     // registry again.
     let windows: Vec<gtk4::Window> = REGISTRY.with_borrow(|registry| {

@@ -345,8 +345,7 @@ unsafe fn content_main_px(state: *const LambdockState, horizontal: bool) -> c_in
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_reserve_hover_room(state: *mut LambdockState) {
+pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -515,7 +514,7 @@ fn slack_rect(x: f32, y: f32, width: f32, height: f32) -> (c_int, c_int, c_int, 
 /// # Safety
 ///
 /// `state` must be a live dock.
-unsafe fn input_region_is_current(state: &LambdockState, whole: bool, rect: (c_int, c_int, c_int, c_int)) -> bool {
+fn input_region_is_current(state: &LambdockState, whole: bool, rect: (c_int, c_int, c_int, c_int)) -> bool {
     if state.input_region_set == 0 || (state.input_region_whole != 0) != whole {
         return false;
     }
@@ -713,8 +712,7 @@ unsafe extern "C" fn on_input_region_tick(
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_schedule_input_region(state: *mut LambdockState) {
+pub unsafe fn dock_schedule_input_region(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -745,8 +743,7 @@ pub unsafe extern "C" fn dock_schedule_input_region(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn update_dock_dimensions(state: *mut LambdockState) {
+pub unsafe fn update_dock_dimensions(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -838,8 +835,7 @@ pub struct DockSurfacePolicy {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_icon_size(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_icon_size(state: *const LambdockState) -> c_int {
     match state.as_ref() {
         Some(state) if state.icon_size > 0 => state.icon_size,
         _ => DEFAULT_ICON_SIZE,
@@ -851,8 +847,7 @@ pub unsafe extern "C" fn dock_icon_size(state: *const LambdockState) -> c_int {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_capsule_cross_dim(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_capsule_cross_dim(state: *const LambdockState) -> c_int {
     lambdock_shelf_geometry_for(state, dock_icon_size(state)).capsule_px
 }
 
@@ -862,8 +857,7 @@ pub unsafe extern "C" fn dock_capsule_cross_dim(state: *const LambdockState) -> 
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_cross_axis_dim(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_cross_axis_dim(state: *const LambdockState) -> c_int {
     let icon_px = dock_icon_size(state);
     let geometry = lambdock_shelf_geometry_for(state, icon_px);
     let hover_magnify = state.as_ref().map_or(0, |state| state.hover_animate);
@@ -885,8 +879,7 @@ pub unsafe extern "C" fn dock_cross_axis_dim(state: *const LambdockState) -> c_i
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_is_settling(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_is_settling(state: *const LambdockState) -> c_int {
     let Some(state) = state.as_ref() else {
         return 0;
     };
@@ -900,8 +893,7 @@ pub unsafe extern "C" fn dock_is_settling(state: *const LambdockState) -> c_int 
 }
 
 /// CSS class naming the screen edge a shelf is docked to.
-#[no_mangle]
-pub extern "C" fn shelf_edge_class(edge: c_int) -> *const c_char {
+pub fn shelf_edge_class(edge: c_int) -> *const c_char {
     match edge {
         EDGE_TOP => c"shelf-top".as_ptr(),
         EDGE_LEFT => c"shelf-left".as_ptr(),
@@ -912,8 +904,7 @@ pub extern "C" fn shelf_edge_class(edge: c_int) -> *const c_char {
 
 /// Sign of the shelf tilt: the edge touching the screen stays pinned while the
 /// inner edge recedes away from the viewer, so top and left docks tilt backwards.
-#[no_mangle]
-pub extern "C" fn shelf_tilt_for_edge(edge: c_int, degrees: f64) -> f64 {
+pub fn shelf_tilt_for_edge(edge: c_int, degrees: f64) -> f64 {
     match edge {
         EDGE_TOP | EDGE_LEFT => -degrees,
         _ => degrees,
@@ -943,8 +934,7 @@ fn cross_orientation(edge: c_int) -> gtk4::Orientation {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_surface_policy_for(state: *const LambdockState) -> DockSurfacePolicy {
+pub unsafe fn dock_surface_policy_for(state: *const LambdockState) -> DockSurfacePolicy {
     let Some(state) = state.as_ref() else {
         return DockSurfacePolicy::default();
     };
@@ -1055,8 +1045,7 @@ unsafe fn stop_pointer_tick_inner(dock: &mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn stop_pointer_tick(state: *mut LambdockState) {
+pub unsafe fn stop_pointer_tick(state: *mut LambdockState) {
     if let Some(dock) = state.as_mut() {
         stop_pointer_tick_inner(dock);
     }
@@ -1072,8 +1061,7 @@ pub unsafe extern "C" fn stop_pointer_tick(state: *mut LambdockState) {
 ///
 /// `items` must be null or a live `GList` of `DockItem`s; `visit` must be able
 /// to take each of them.
-#[no_mangle]
-pub unsafe extern "C" fn for_each_dock_item(
+pub unsafe fn for_each_dock_item(
     items: *mut GList,
     visit: Option<unsafe extern "C" fn(*mut DockItem, *mut c_void)>,
     data: *mut c_void,
@@ -1116,8 +1104,7 @@ unsafe fn for_each_item(items: *mut GList, mut visit: impl FnMut(&DockItem)) {
 /// # Safety
 ///
 /// `item` must be null or a live item.
-#[no_mangle]
-pub unsafe extern "C" fn get_item_zoom_widget(item: *const DockItem) -> *mut gtk4::ffi::GtkWidget {
+pub unsafe fn get_item_zoom_widget(item: *const DockItem) -> *mut gtk4::ffi::GtkWidget {
     let Some(item) = item.as_ref() else {
         return std::ptr::null_mut();
     };
@@ -1217,8 +1204,7 @@ unsafe fn reset_dock_items_scale_inner(dock: &mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn reset_dock_items_scale(state: *mut LambdockState) {
+pub unsafe fn reset_dock_items_scale(state: *mut LambdockState) {
     if let Some(dock) = state.as_mut() {
         reset_dock_items_scale_inner(dock);
     }
@@ -1326,8 +1312,7 @@ unsafe fn start_margin_animation(dock: &mut LambdockState, target_margin: c_int)
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_apply_motion_preference(state: *mut LambdockState) {
+pub unsafe fn dock_apply_motion_preference(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -1377,8 +1362,7 @@ unsafe fn cancel_hide_timer_inner(dock: &mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn cancel_hide_timer(state: *mut LambdockState) {
+pub unsafe fn cancel_hide_timer(state: *mut LambdockState) {
     if let Some(dock) = state.as_mut() {
         cancel_hide_timer_inner(dock);
     }
@@ -1389,8 +1373,7 @@ pub unsafe extern "C" fn cancel_hide_timer(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn schedule_hide_timer(state: *mut LambdockState, delay_ms: c_uint) {
+pub unsafe fn schedule_hide_timer(state: *mut LambdockState, delay_ms: c_uint) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -1422,8 +1405,7 @@ unsafe fn measured_main_axis_px(dock: &LambdockState) -> c_int {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn reveal_dock(state: *mut LambdockState) {
+pub unsafe fn reveal_dock(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -1452,8 +1434,7 @@ pub unsafe extern "C" fn reveal_dock(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn hide_dock(state: *mut LambdockState) {
+pub unsafe fn hide_dock(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -1605,8 +1586,7 @@ unsafe fn apply_shelf_shape(dock: &LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn apply_dock_mode_classes(state: *mut LambdockState) {
+pub unsafe fn apply_dock_mode_classes(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -1651,8 +1631,7 @@ unsafe fn apply_surface_anchors(window: &gtk4::Window, policy: &DockSurfacePolic
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_apply_exclusive_zone(state: *mut LambdockState) {
+pub unsafe fn dock_apply_exclusive_zone(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -1678,8 +1657,7 @@ pub unsafe extern "C" fn dock_apply_exclusive_zone(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock with its window built.
-#[no_mangle]
-pub unsafe extern "C" fn setup_layer_shell_window(state: *mut LambdockState) {
+pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -1753,8 +1731,7 @@ pub unsafe extern "C" fn setup_layer_shell_window(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn refresh_dock_mode(state: *mut LambdockState) {
+pub unsafe fn refresh_dock_mode(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -1779,8 +1756,7 @@ pub unsafe extern "C" fn refresh_dock_mode(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn schedule_initial_autohide(state: *mut LambdockState) {
+pub unsafe fn schedule_initial_autohide(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
@@ -1808,8 +1784,7 @@ const AUTOHIDE_POPOVER_DELAY_MS: u32 = 400;
 /// # Safety
 ///
 /// `user_data` must be null or a live dock; the signal arguments are ignored.
-#[no_mangle]
-pub unsafe extern "C" fn on_right_click(
+pub unsafe fn on_right_click(
     _gesture: *mut gtk4::ffi::GtkGestureClick,
     _n_press: c_int,
     x: f64,
@@ -1847,8 +1822,7 @@ pub unsafe extern "C" fn on_right_click(
 /// # Safety
 ///
 /// `user_data` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn on_popover_closed(
+pub unsafe fn on_popover_closed(
     _popover: *mut gtk4::ffi::GtkPopover,
     user_data: *mut c_void,
 ) {
@@ -2082,8 +2056,7 @@ unsafe fn refresh_item_centres(dock: &mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
+pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -2189,8 +2162,7 @@ const ABOUT_LOGO_RESOURCE: &str = "/org/jointhefreeworld/lambdock/img/agnus-dei.
 /// # Safety
 ///
 /// `user_data` must be the live `GtkApplication`.
-#[no_mangle]
-pub unsafe extern "C" fn on_quit_action(
+pub unsafe fn on_quit_action(
     _action: *mut gtk4::gio::ffi::GSimpleAction,
     _parameter: *mut glib::ffi::GVariant,
     user_data: *mut c_void,
@@ -2288,8 +2260,7 @@ fn about_dialog_build(app: &gtk4::Application) -> gtk4::Window {
 /// # Safety
 ///
 /// `user_data` must be the live `GtkApplication`.
-#[no_mangle]
-pub unsafe extern "C" fn on_about_action(
+pub unsafe fn on_about_action(
     _action: *mut gtk4::gio::ffi::GSimpleAction,
     _parameter: *mut glib::ffi::GVariant,
     user_data: *mut c_void,
@@ -2507,8 +2478,7 @@ unsafe fn destroy_monitor(dock: &mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock this module created.
-#[no_mangle]
-pub unsafe extern "C" fn destroy_dock_instance(state: *mut LambdockState) {
+pub unsafe fn destroy_dock_instance(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
@@ -2581,8 +2551,7 @@ pub unsafe extern "C" fn destroy_dock_instance(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_window_set_tracker_connected(
+pub unsafe fn dock_window_set_tracker_connected(
     state: *mut LambdockState,
     connected: bool,
 ) {
@@ -2832,8 +2801,7 @@ unsafe fn on_window_map(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock with its window built.
-#[no_mangle]
-pub unsafe extern "C" fn setup_dock_motion_controller(state: *mut LambdockState) {
+pub unsafe fn setup_dock_motion_controller(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };

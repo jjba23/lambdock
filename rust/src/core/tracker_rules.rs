@@ -22,8 +22,7 @@ const OWN_APP_IDS: [&str; 2] = ["lambdock", "org.jointhefreeworld.lambdock"];
 /// # Safety
 ///
 /// `app_id` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_tracker_ignores_app_id(app_id: *const c_char) -> c_int {
+pub unsafe fn lambdock_tracker_ignores_app_id(app_id: *const c_char) -> c_int {
     if app_id.is_null() {
         return 1;
     }
@@ -43,8 +42,7 @@ pub unsafe extern "C" fn lambdock_tracker_ignores_app_id(app_id: *const c_char) 
 }
 
 /// Whether an item that exists only because a window did should go.
-#[no_mangle]
-pub extern "C" fn lambdock_tracker_item_should_be_dropped(
+pub fn lambdock_tracker_item_should_be_dropped(
     has_windows: c_int,
     is_favorite: c_int,
 ) -> c_int {
@@ -52,8 +50,7 @@ pub extern "C" fn lambdock_tracker_item_should_be_dropped(
 }
 
 /// Whether a window just appeared and the dock should slide away.
-#[no_mangle]
-pub extern "C" fn lambdock_tracker_should_hide(
+pub fn lambdock_tracker_should_hide(
     auto_hide: c_int,
     show_when_clear: c_int,
     has_tracked_windows: c_int,
@@ -62,8 +59,7 @@ pub extern "C" fn lambdock_tracker_should_hide(
 }
 
 /// Whether the last tracked window closed and the dock should come back.
-#[no_mangle]
-pub extern "C" fn lambdock_tracker_should_reveal(
+pub fn lambdock_tracker_should_reveal(
     show_when_clear: c_int,
     has_tracked_windows: c_int,
 ) -> c_int {
@@ -78,9 +74,8 @@ pub extern "C" fn lambdock_tracker_should_reveal(
 /// # Safety
 ///
 /// Returns a pointer owned by gettext, or null when there is nothing to announce.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_tracker_status_text(connected: c_int) -> *const c_char {
-    // NULL means "connected: show nothing", so the C side can use the result
+pub unsafe fn lambdock_tracker_status_text(connected: c_int) -> *const c_char {
+    // NULL means "connected: show nothing", so the caller can use the result
     // directly as "is there something to say?".
     if connected != 0 {
         return std::ptr::null();

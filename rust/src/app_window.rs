@@ -59,8 +59,7 @@ extern "C" {
 /// # Safety
 ///
 /// `handle` is borrowed and `title` must be null or a C string.
-#[no_mangle]
-pub unsafe extern "C" fn app_window_new(
+pub unsafe fn app_window_new(
     handle: *mut LambdockToplevel,
     title: *const c_char,
 ) -> *mut AppWindow {
@@ -78,8 +77,7 @@ pub unsafe extern "C" fn app_window_new(
 /// # Safety
 ///
 /// `window` must be null or a live `AppWindow`; `title` must be null or a C string.
-#[no_mangle]
-pub unsafe extern "C" fn app_window_set_title(window: *mut AppWindow, title: *const c_char) {
+pub unsafe fn app_window_set_title(window: *mut AppWindow, title: *const c_char) {
     if window.is_null() || title.is_null() {
         return;
     }
@@ -100,8 +98,7 @@ pub unsafe extern "C" fn app_window_set_title(window: *mut AppWindow, title: *co
 /// # Safety
 ///
 /// `window` must be null or a live `AppWindow`.
-#[no_mangle]
-pub unsafe extern "C" fn app_window_set_state(
+pub unsafe fn app_window_set_state(
     window: *mut AppWindow,
     minimized: c_int,
     activated: c_int,
@@ -119,8 +116,7 @@ pub unsafe extern "C" fn app_window_set_state(
 /// # Safety
 ///
 /// `window` must be null or a live `AppWindow`.
-#[no_mangle]
-pub unsafe extern "C" fn app_window_matches(
+pub unsafe fn app_window_matches(
     window: *const AppWindow,
     handle: *const LambdockToplevel,
 ) -> c_int {
@@ -132,8 +128,7 @@ pub unsafe extern "C" fn app_window_matches(
 /// # Safety
 ///
 /// `window` must be null or a record from `app_window_new` that is not freed twice.
-#[no_mangle]
-pub unsafe extern "C" fn app_window_free(window: *mut AppWindow) {
+pub unsafe fn app_window_free(window: *mut AppWindow) {
     if window.is_null() {
         return;
     }
@@ -151,8 +146,7 @@ pub unsafe extern "C" fn app_window_free(window: *mut AppWindow) {
 ///
 /// `windows` must be null or a list whose data are all `AppWindow*` from
 /// `app_window_new`.
-#[no_mangle]
-pub unsafe extern "C" fn app_windows_free(windows: *mut GList) {
+pub unsafe fn app_windows_free(windows: *mut GList) {
     let mut node = windows;
 
     while !node.is_null() {
@@ -274,10 +268,10 @@ mod tests {
 
     #[test]
     fn a_list_of_windows_is_freed_with_its_records() {
-        // Built the way the C side builds it: a GList of borrowed records.
+        // Built the way the trackers build it: a GList of borrowed records.
         extern "C" {
             fn g_list_append(list: *mut GList, data: *mut c_void) -> *mut GList;
-        }
+}
 
         let mut list: *mut GList = std::ptr::null_mut();
         for title in ["One", "Two"] {

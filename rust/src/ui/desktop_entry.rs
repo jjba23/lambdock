@@ -201,8 +201,7 @@ fn app_id_words(value: &str) -> Vec<String> {
 ///
 /// `exec` must be null or a NUL-terminated string; the result is `(transfer
 /// full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_exec_strip_field_codes(exec: *const c_char) -> *mut c_char {
+pub unsafe fn lambdock_exec_strip_field_codes(exec: *const c_char) -> *mut c_char {
     if exec.is_null() {
         return std::ptr::null_mut();
     }
@@ -218,8 +217,7 @@ pub unsafe extern "C" fn lambdock_exec_strip_field_codes(exec: *const c_char) ->
 ///
 /// `app_id` must be null or a NUL-terminated string; the result is `(transfer
 /// full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_id_to_name(app_id: *const c_char) -> *mut c_char {
+pub unsafe fn lambdock_app_id_to_name(app_id: *const c_char) -> *mut c_char {
     if app_id.is_null() || *app_id == 0 {
         return std::ptr::null_mut();
     }
@@ -381,8 +379,7 @@ unsafe fn parse_actions(key_file: &KeyFile) -> *mut glib::ffi::GPtrArray {
 ///
 /// `data` and `id` must be null or NUL-terminated strings; the result is
 /// `(transfer full)` and freed with `lambdock_desktop_entry_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_new_from_data(
+pub unsafe fn lambdock_desktop_entry_new_from_data(
     data: *const c_char,
     id: *const c_char,
 ) -> *mut DesktopEntry {
@@ -464,8 +461,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_new_from_data(
 ///
 /// `path` must be null or a NUL-terminated string; the result is `(transfer
 /// full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_new_from_file(
+pub unsafe fn lambdock_desktop_entry_new_from_file(
     path: *const c_char,
 ) -> *mut DesktopEntry {
     let Some(path) = crate::cstr::text(path) else {
@@ -504,8 +500,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_new_from_file(
 /// # Safety
 ///
 /// `entry` must be null or a record this module allocated, not freed twice.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_free(entry: *mut DesktopEntry) {
+pub unsafe fn lambdock_desktop_entry_free(entry: *mut DesktopEntry) {
     if entry.is_null() {
         return;
     }
@@ -541,8 +536,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_free(entry: *mut DesktopEntry) {
 /// # Safety
 ///
 /// `entry` must be null or a live entry; the result is `(transfer full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_source_label(
+pub unsafe fn lambdock_desktop_entry_source_label(
     entry: *const DesktopEntry,
 ) -> *mut c_char {
     if entry.is_null() {
@@ -573,8 +567,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_source_label(
 ///
 /// `entry` and `category` must be null or valid; the comparison is
 /// case-insensitive, as the freedesktop.org categories are written.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_has_category(
+pub unsafe fn lambdock_desktop_entry_has_category(
     entry: *const DesktopEntry,
     category: *const c_char,
 ) -> c_int {
@@ -737,8 +730,8 @@ unsafe fn collapse_duplicates(entries: &mut Vec<*mut DesktopEntry>) {
     }
 }
 
-/// Turns owned entries into the `GPtrArray` the C side frees with
-/// `lambdock_desktop_entries_free`.
+/// Turns owned entries into the `GPtrArray` that holds them, with the free
+/// function that releases each one.
 unsafe fn into_ptr_array(entries: Vec<*mut DesktopEntry>) -> *mut glib::ffi::GPtrArray {
     let array = glib::ffi::g_ptr_array_new_with_free_func(Some(free_entry));
 
@@ -754,8 +747,7 @@ unsafe fn into_ptr_array(entries: Vec<*mut DesktopEntry>) -> *mut glib::ffi::GPt
 /// # Safety
 ///
 /// The result is `(transfer full)`; free it with `lambdock_desktop_entries_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entries_scan() -> *mut glib::ffi::GPtrArray {
+pub unsafe fn lambdock_desktop_entries_scan() -> *mut glib::ffi::GPtrArray {
     let mut entries = Vec::new();
     let mut seen_ids = HashSet::new();
 
@@ -782,8 +774,7 @@ pub unsafe extern "C" fn lambdock_desktop_entries_scan() -> *mut glib::ffi::GPtr
 /// # Safety
 ///
 /// `entries` must be null or an array this module created.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entries_free(entries: *mut glib::ffi::GPtrArray) {
+pub unsafe fn lambdock_desktop_entries_free(entries: *mut glib::ffi::GPtrArray) {
     if !entries.is_null() {
         glib::ffi::g_ptr_array_free(entries, glib::ffi::GTRUE);
     }
@@ -843,7 +834,7 @@ unsafe fn cache_index_add(
 }
 
 /// The first argument of a command line that is an executable, as a file name.
-unsafe fn exec_base_name(exec: Option<String>) -> Option<String> {
+fn exec_base_name(exec: Option<String>) -> Option<String> {
     let exec = exec.filter(|exec| !exec.is_empty())?;
 
     for token in exec.split([' ', '\t']).filter(|token| !token.is_empty()) {
@@ -938,8 +929,7 @@ unsafe fn cache_ensure() {
 ///
 /// Safe to call from any thread: the cache is behind a mutex, and the entries it
 /// held are freed here.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_cache_invalidate() {
+pub unsafe fn lambdock_desktop_cache_invalidate() {
     let mut guard = cache();
 
     if let Some(cache) = guard.take() {
@@ -953,8 +943,7 @@ pub unsafe extern "C" fn lambdock_desktop_cache_invalidate() {
 ///
 /// The result is `(transfer none)`: the cache owns it, and it is stale after the
 /// next rebuild.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entries_cached() -> *mut glib::ffi::GPtrArray {
+pub unsafe fn lambdock_desktop_entries_cached() -> *mut glib::ffi::GPtrArray {
     cache_ensure();
 
     cache()
@@ -968,8 +957,7 @@ pub unsafe extern "C" fn lambdock_desktop_entries_cached() -> *mut glib::ffi::GP
 ///
 /// `app_id` must be null or a NUL-terminated string; the result is owned by the
 /// cache and is stale after the next rebuild.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_desktop_entry_lookup(
+pub unsafe fn lambdock_desktop_entry_lookup(
     app_id: *const c_char,
 ) -> *const DesktopEntry {
     let Some(app_id) = crate::cstr::text(app_id).filter(|app_id| !app_id.is_empty()) else {
@@ -1011,8 +999,7 @@ pub unsafe extern "C" fn lambdock_desktop_entry_lookup(
 ///
 /// `app_id` must be null or a NUL-terminated string; the result is `(transfer
 /// full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_name_for(app_id: *const c_char) -> *mut c_char {
+pub unsafe fn lambdock_app_name_for(app_id: *const c_char) -> *mut c_char {
     let Some(id) = crate::cstr::text(app_id).filter(|id| !id.is_empty()) else {
         return std::ptr::null_mut();
     };
@@ -1038,8 +1025,7 @@ pub unsafe extern "C" fn lambdock_app_name_for(app_id: *const c_char) -> *mut c_
 ///
 /// `app_id` must be null or a NUL-terminated string; the result is `(transfer
 /// full)`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_app_icon_for(app_id: *const c_char) -> *mut c_char {
+pub unsafe fn lambdock_app_icon_for(app_id: *const c_char) -> *mut c_char {
     let Some(id) = crate::cstr::text(app_id).filter(|id| !id.is_empty()) else {
         return std::ptr::null_mut();
     };
@@ -1060,8 +1046,7 @@ pub unsafe extern "C" fn lambdock_app_icon_for(app_id: *const c_char) -> *mut c_
 /// # Safety
 ///
 /// `command` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_spawn_command(command: *const c_char) -> c_int {
+pub unsafe fn lambdock_spawn_command(command: *const c_char) -> c_int {
     let Some(command) = crate::cstr::text(command).filter(|command| !command.is_empty()) else {
         return 0;
     };
@@ -1080,8 +1065,7 @@ pub unsafe extern "C" fn lambdock_spawn_command(command: *const c_char) -> c_int
 /// # Safety
 ///
 /// `path` must be null or a NUL-terminated string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_open_path(path: *const c_char) -> c_int {
+pub unsafe fn lambdock_open_path(path: *const c_char) -> c_int {
     let Some(path) = crate::cstr::text(path).filter(|path| !path.is_empty()) else {
         return 0;
     };

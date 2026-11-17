@@ -54,8 +54,7 @@ fn next_unit(state: &mut u32) -> f64 {
 /// # Safety
 ///
 /// `particles` must point to `n` writable particles, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poof_particles_init(
+pub unsafe fn lambdock_poof_particles_init(
     particles: *mut PoofParticle,
     n: usize,
     seed: u32,
@@ -101,8 +100,7 @@ pub unsafe extern "C" fn lambdock_poof_particles_init(
 ///
 /// `out` must point to `n` writable puffs, or be null; `particles` must point to
 /// `n` readable particles, or be null.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poof_particles_at(
+pub unsafe fn lambdock_poof_particles_at(
     particles: *const PoofParticle,
     n: usize,
     t: f64,
@@ -157,8 +155,7 @@ pub unsafe extern "C" fn lambdock_poof_particles_at(
 /// # Safety
 ///
 /// `out` must be null or point to a writable puff.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_poof_core_at(t: f64, out: *mut PoofPuff) {
+pub unsafe fn lambdock_poof_core_at(t: f64, out: *mut PoofPuff) {
     if out.is_null() {
         return;
     }
@@ -177,8 +174,7 @@ pub unsafe extern "C" fn lambdock_poof_core_at(t: f64, out: *mut PoofPuff) {
 
 /// The global fade, multiplied into every puff, so the animation is guaranteed
 /// to end invisible whatever the individual lifetimes are.
-#[no_mangle]
-pub extern "C" fn lambdock_poof_progress_alpha(t: f64) -> f64 {
+pub fn lambdock_poof_progress_alpha(t: f64) -> f64 {
     if t >= 1.0 {
         return 0.0;
     }

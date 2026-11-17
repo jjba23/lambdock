@@ -58,8 +58,7 @@ const MIN_BANDS: c_int = 6;
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_shelf_params_effective(
+pub unsafe fn lambdock_shelf_params_effective(
     state: *const LambdockState,
 ) -> ShelfParams {
     if state.is_null() {
@@ -85,8 +84,7 @@ pub unsafe extern "C" fn lambdock_shelf_params_effective(
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_shelf_active(state: *const LambdockState) -> c_int {
+pub unsafe fn lambdock_shelf_active(state: *const LambdockState) -> c_int {
     if state.is_null() {
         return 0;
     }
@@ -132,8 +130,7 @@ pub fn geometry(params: &ShelfParams, icon_size: c_int) -> ShelfGeometry {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_shelf_geometry_for(
+pub unsafe fn lambdock_shelf_geometry_for(
     state: *const LambdockState,
     icon_size: c_int,
 ) -> ShelfGeometry {
@@ -145,8 +142,7 @@ pub unsafe extern "C" fn lambdock_shelf_geometry_for(
 /// The fade is painted as a stack of bands, so this is the per-repaint budget of
 /// the whole widget: a pure function, and tested, because "a few bands" is not a
 /// budget.
-#[no_mangle]
-pub extern "C" fn lambdock_reflection_band_count(axis_len: f64) -> c_int {
+pub fn lambdock_reflection_band_count(axis_len: f64) -> c_int {
     // NaN and a zero-length axis both get the full budget: there is nothing to
     // fade, and a widget must still paint the bands it promised.
     if axis_len.is_nan() || axis_len <= 0.0 {
@@ -251,8 +247,7 @@ pub fn keystone(
 /// # Safety
 ///
 /// `out` must be null or point at a writable `graphene_matrix_t`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_shelf_keystone_matrix(
+pub unsafe fn lambdock_shelf_keystone_matrix(
     width: c_int,
     height: c_int,
     horizontal: c_int,
@@ -525,8 +520,7 @@ unsafe fn as_frame(pointer: *mut ffi::GtkWidget) -> Option<glib::translate::Borr
 ///
 /// `child` must be null or an unparented widget; the result is `(transfer full)`
 /// and the C callers append it, like the `g_object_new` this replaces.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_new(child: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
+pub unsafe fn shelf_frame_new(child: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
     crate::ui::ensure_gtk_initialized();
 
     let frame: ShelfFrame = glib::Object::builder().build();
@@ -547,8 +541,7 @@ pub unsafe extern "C" fn shelf_frame_new(child: *mut ffi::GtkWidget) -> *mut ffi
 /// # Safety
 ///
 /// `frame` must be null or a live frame.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_set_tilt(
+pub unsafe fn shelf_frame_set_tilt(
     frame: *mut ffi::GtkWidget,
     edge: c_int,
     degrees: c_double,
@@ -567,8 +560,7 @@ pub unsafe extern "C" fn shelf_frame_set_tilt(
 /// # Safety
 ///
 /// `frame` must be null or a live frame.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_set_shape(
+pub unsafe fn shelf_frame_set_shape(
     frame: *mut ffi::GtkWidget,
     edge: c_int,
     degrees: c_double,
@@ -604,8 +596,7 @@ pub unsafe extern "C" fn shelf_frame_set_shape(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_is_frame(widget: *mut c_void) -> c_int {
+pub unsafe fn shelf_frame_is_frame(widget: *mut c_void) -> c_int {
     c_int::from(as_frame(widget.cast()).is_some())
 }
 
@@ -614,8 +605,7 @@ pub unsafe extern "C" fn shelf_frame_is_frame(widget: *mut c_void) -> c_int {
 /// # Safety
 ///
 /// `frame` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) -> c_int {
+pub unsafe fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) -> c_int {
     match as_frame(frame) {
         Some(frame) => c_int::from(frame.imp().tilt.get() != 0.0 || frame.imp().flare.get() != 0),
         None => 0,
@@ -628,8 +618,7 @@ pub unsafe extern "C" fn shelf_frame_is_projected(frame: *mut ffi::GtkWidget) ->
 /// # Safety
 ///
 /// `frame` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_cross_orientation(frame: *mut ffi::GtkWidget) -> c_int {
+pub unsafe fn shelf_frame_cross_orientation(frame: *mut ffi::GtkWidget) -> c_int {
     let Some(frame) = as_frame(frame) else {
         return gtk4::Orientation::Vertical.into_glib();
     };
@@ -649,8 +638,7 @@ pub unsafe extern "C" fn shelf_frame_cross_orientation(frame: *mut ffi::GtkWidge
 ///
 /// `frame` must be null or a live frame; `point` must be null or point at a
 /// writable `graphene_point_t`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_frame_project_point(
+pub unsafe fn shelf_frame_project_point(
     frame: *mut ffi::GtkWidget,
     point: *mut graphene::ffi::graphene_point_t,
 ) -> c_int {
@@ -1224,8 +1212,7 @@ unsafe fn as_reflection(
 ///
 /// `source` must be null or a live widget; the result is `(transfer full)` and the C
 /// callers append it, like the `g_object_new` this replaces.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_new(source: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
+pub unsafe fn shelf_reflection_new(source: *mut ffi::GtkWidget) -> *mut ffi::GtkWidget {
     crate::ui::ensure_gtk_initialized();
 
     let reflection: Reflection = glib::Object::builder().build();
@@ -1265,8 +1252,7 @@ pub unsafe extern "C" fn shelf_reflection_new(source: *mut ffi::GtkWidget) -> *m
 /// # Safety
 ///
 /// `reflection` must be null or a live reflection.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_configure(
+pub unsafe fn shelf_reflection_configure(
     reflection: *mut ffi::GtkWidget,
     edge: c_int,
     icon_size: c_int,
@@ -1304,8 +1290,7 @@ pub unsafe extern "C" fn shelf_reflection_configure(
 /// # Safety
 ///
 /// `reflection` must be null or a live reflection.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_clear_source(reflection: *mut ffi::GtkWidget) {
+pub unsafe fn shelf_reflection_clear_source(reflection: *mut ffi::GtkWidget) {
     let Some(reflection) = as_reflection(reflection) else {
         return;
     };
@@ -1323,8 +1308,7 @@ pub unsafe extern "C" fn shelf_reflection_clear_source(reflection: *mut ffi::Gtk
 /// # Safety
 ///
 /// `reflection` must be null or a live reflection.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_set_extent(
+pub unsafe fn shelf_reflection_set_extent(
     reflection: *mut ffi::GtkWidget,
     icon_size: c_int,
     band_size: c_int,
@@ -1348,8 +1332,7 @@ pub unsafe extern "C" fn shelf_reflection_set_extent(
 /// # Safety
 ///
 /// `reflection` must be null or a live reflection.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_set_icon_size(
+pub unsafe fn shelf_reflection_set_icon_size(
     reflection: *mut ffi::GtkWidget,
     icon_size: c_int,
 ) {
@@ -1374,8 +1357,7 @@ pub unsafe extern "C" fn shelf_reflection_set_icon_size(
 /// # Safety
 ///
 /// `reflection` must be null or a live reflection.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_set_running(
+pub unsafe fn shelf_reflection_set_running(
     reflection: *mut ffi::GtkWidget,
     running: c_int,
 ) {
@@ -1396,8 +1378,7 @@ pub unsafe extern "C" fn shelf_reflection_set_running(
 /// # Safety
 ///
 /// `widget` must be null or a live `GtkWidget`.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_reflection_is_reflection(widget: *mut c_void) -> c_int {
+pub unsafe fn shelf_reflection_is_reflection(widget: *mut c_void) -> c_int {
     c_int::from(as_reflection(widget.cast()).is_some())
 }
 
@@ -1464,8 +1445,7 @@ unsafe fn item_icon_size(item: *const DockItem) -> i32 {
 ///
 /// `button` must be null or a live widget; `reflection` null or a live widget;
 /// `state` null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn shelf_wrap_item(
+pub unsafe fn shelf_wrap_item(
     state: *const LambdockState,
     button: *mut ffi::GtkWidget,
     reflection: *mut ffi::GtkWidget,
@@ -1528,8 +1508,7 @@ pub unsafe extern "C" fn shelf_wrap_item(
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn apply_shelf_layout(state: *mut LambdockState) {
+pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
     if state.is_null() || (*state).dock_items.is_null() {
         return;
     }

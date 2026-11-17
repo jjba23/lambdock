@@ -12,9 +12,8 @@
 //! watchers. This module takes the discovery and its decisions first -- they are
 //! values, so they are testable -- and the glue follows them file by file.
 //!
-//! The rule kept here: a `#[no_mangle]` entry point is thin and unsafe only where
-//! it must be; the work happens in functions that take `&str`, `&[]` and return
-//! values.
+//! The rule kept here: an entry point is thin and unsafe only where it must be;
+//! the work happens in functions that take `&str`, `&[]` and return values.
 
 use gtk4::gdk;
 use gtk4::glib;
@@ -66,8 +65,7 @@ fn is_settings_filename(filename: &str) -> bool {
 /// # Safety
 ///
 /// `filename` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn is_settings_filename_c(filename: *const c_char) -> c_int {
+pub unsafe fn is_settings_filename_c(filename: *const c_char) -> c_int {
     if filename.is_null() {
         return 0;
     }
@@ -96,8 +94,7 @@ fn scrolled_value(value: f64, delta: f64, page_size: f64, upper: f64, lower: f64
 /// # Safety
 ///
 /// `user_data` must be null or a live dock with its scrolled window built.
-#[no_mangle]
-pub unsafe extern "C" fn on_dock_scroll(
+pub unsafe fn on_dock_scroll(
     _controller: *mut gtk4::ffi::GtkEventControllerScroll,
     dx: c_double,
     dy: c_double,
@@ -144,8 +141,7 @@ pub unsafe extern "C" fn on_dock_scroll(
 /// # Safety
 ///
 /// `connector` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn find_monitor_by_connector(
+pub unsafe fn find_monitor_by_connector(
     connector: *const c_char,
 ) -> *mut gdk::ffi::GdkMonitor {
     if connector.is_null() {
@@ -251,24 +247,21 @@ fn dup_path(path: &std::path::Path) -> *mut c_char {
 }
 
 /// `~/.config/lambdock`, for the C half. `(transfer full)`.
-#[no_mangle]
-pub extern "C" fn get_config_dir_c() -> *mut c_char {
+pub fn get_config_dir_c() -> *mut c_char {
     dup_path(&config_dir())
 }
 
 /// `~/.local/state/lambdock`, for the C half. `(transfer full)`.
-#[no_mangle]
-pub extern "C" fn get_state_dir_c() -> *mut c_char {
+pub fn get_state_dir_c() -> *mut c_char {
     dup_path(&state_dir())
 }
 
 /// The settings files, as a `GList` of `g_strdup`ed paths the caller frees with
 /// `g_list_free_full(list, g_free)`.
-#[no_mangle]
-pub extern "C" fn scan_settings_files() -> *mut crate::app_window::GList {
+pub fn scan_settings_files() -> *mut crate::app_window::GList {
     extern "C" {
         fn g_list_append(list: *mut crate::app_window::GList, data: *mut c_void) -> *mut crate::app_window::GList;
-    }
+}
 
     let mut list: *mut crate::app_window::GList = std::ptr::null_mut();
 
@@ -284,7 +277,7 @@ pub extern "C" fn scan_settings_files() -> *mut crate::app_window::GList {
 // ===========================================================================
 
 /// Every dock re-reads the desktop's motion setting.
-extern "C" fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void) {
+fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void) {
     unsafe { dock_apply_motion_preference(state) };
 }
 
@@ -298,7 +291,6 @@ extern "C" fn apply_motion_visitor(state: *mut LambdockState, _data: *mut c_void
 /// # Safety
 ///
 /// Connected as a `notify::` handler, so it is called from GLib.
-#[no_mangle]
 pub unsafe extern "C" fn on_system_motion_changed(
     _settings: *mut c_void,
     _pspec: *mut c_void,
@@ -315,8 +307,7 @@ pub unsafe extern "C" fn on_system_motion_changed(
 ///
 /// `parameter` must be null or a string `GVariant` holding the dock's settings
 /// path, "" for the fallback dock.
-#[no_mangle]
-pub unsafe extern "C" fn on_export_settings_action(
+pub unsafe fn on_export_settings_action(
     _action: *mut gtk4::gio::ffi::GSimpleAction,
     parameter: *mut glib::ffi::GVariant,
     _user_data: *mut c_void,
@@ -668,8 +659,7 @@ unsafe fn present(dock: *mut LambdockState) {
 ///
 /// `app` must be the live application; `monitor` must be null or a live
 /// `GdkMonitor`; `config_path` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn create_dock_instance(
+pub unsafe fn create_dock_instance(
     app: *mut gtk4::ffi::GtkApplication,
     monitor: *mut gdk::ffi::GdkMonitor,
     config_path: *const c_char,
@@ -860,7 +850,7 @@ fn plan_for_file(
 
 /// The docks registered right now.
 fn registry_snapshot() -> Vec<*mut LambdockState> {
-    extern "C" fn collect(state: *mut LambdockState, data: *mut c_void) {
+    fn collect(state: *mut LambdockState, data: *mut c_void) {
         unsafe { &mut *data.cast::<Vec<*mut LambdockState>>() }.push(state);
     }
 
@@ -1016,8 +1006,7 @@ unsafe fn facts_of(dock: *mut LambdockState) -> DockFacts {
 /// # Safety
 ///
 /// `app` must be the live application.
-#[no_mangle]
-pub unsafe extern "C" fn sync_docks_with_disk(app: *mut gtk4::ffi::GtkApplication) {
+pub unsafe fn sync_docks_with_disk(app: *mut gtk4::ffi::GtkApplication) {
     if app.is_null() {
         return;
     }
@@ -1162,7 +1151,7 @@ extern "C" fn reload_idle(_data: *mut c_void) -> c_int {
     glib::ffi::GFALSE
 }
 
-extern "C" fn redraw_visitor(state: *mut LambdockState, _data: *mut c_void) {
+fn redraw_visitor(state: *mut LambdockState, _data: *mut c_void) {
     unsafe { crate::dock_item::reload_dock_instance(state) };
 }
 
@@ -1295,7 +1284,7 @@ extern "C" fn on_state_reload_timeout(_data: *mut c_void) -> c_int {
     glib::ffi::GFALSE
 }
 
-extern "C" fn state_reload_visitor(state: *mut LambdockState, _data: *mut c_void) {
+fn state_reload_visitor(state: *mut LambdockState, _data: *mut c_void) {
     let Some(path) = (unsafe { state.as_ref() })
         .and_then(|dock| unsafe { crate::cstr::non_empty_text(dock.config_path) })
     else {
@@ -1336,7 +1325,7 @@ extern "C" fn on_state_changed(_monitor: *mut c_void, _file: *mut c_void, _other
 ///
 /// The monitors are deliberately kept: they are process-lifetime objects whose
 /// signal is the only thing that keeps them doing their job.
-unsafe fn setup_config_file_monitors(app: &gtk4::Application) {
+fn setup_config_file_monitors(app: &gtk4::Application) {
     let app_pointer: *mut c_void = app.as_ptr().cast();
 
     for (directory, label, callback) in [
@@ -1437,7 +1426,7 @@ fn add_action(
     app: &gtk4::Application,
     name: &str,
     parameter_type: Option<&glib::VariantTy>,
-    handler: unsafe extern "C" fn(*mut gtk4::gio::ffi::GSimpleAction, *mut glib::ffi::GVariant, *mut c_void),
+    handler: unsafe fn(*mut gtk4::gio::ffi::GSimpleAction, *mut glib::ffi::GVariant, *mut c_void),
 ) {
     let action = gtk4::gio::SimpleAction::new(name, parameter_type);
 
@@ -1523,8 +1512,7 @@ extern "C" fn inner_main(_data: *mut c_void, argc: c_int, argv: *mut *mut c_char
 /// # Safety
 ///
 /// `argv` must be the process's own argument vector.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
+pub unsafe fn lambdock_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
     // The renderer can be pinned at build time.
     if let Some(renderer) = option_env!("DEFAULT_GSK_RENDERER") {
         glib::ffi::g_setenv(c"GSK_RENDERER".as_ptr(), cstring(renderer).as_ptr(), 0);

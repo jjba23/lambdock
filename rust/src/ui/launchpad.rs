@@ -154,7 +154,7 @@ fn model_mut<R>(write: impl FnOnce(&mut Launchpad) -> R) -> R {
 fn casefold(text: &str) -> String {
     extern "C" {
         fn g_utf8_casefold(text: *const c_char, len: isize) -> *mut c_char;
-    }
+}
 
     let text = cstring(text);
     unsafe {
@@ -195,8 +195,7 @@ unsafe fn alternate_at(entry: &DesktopEntry, index: usize) -> Option<&DesktopEnt
 /// # Safety
 ///
 /// `entry` must be null or a live entry; `query` null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_entry_matches(
+pub unsafe fn lambdock_launchpad_entry_matches(
     entry: *const DesktopEntry,
     query: *const c_char,
 ) -> c_int {
@@ -223,8 +222,7 @@ pub unsafe extern "C" fn lambdock_launchpad_entry_matches(
 }
 
 /// How many tiles fit in a row.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_columns_for(
+pub fn lambdock_launchpad_columns_for(
     usable_width: c_int,
     icon_size: c_int,
     configured_columns: c_int,
@@ -1088,8 +1086,7 @@ unsafe fn make_shelf_button(item: *const DockItem) -> gtk4::Button {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_shelf_new(
+pub unsafe fn lambdock_launchpad_shelf_new(
     state: *mut LambdockState,
 ) -> *mut gtk4::ffi::GtkWidget {
     let Some(state) = state.as_ref() else {
@@ -1448,7 +1445,7 @@ unsafe fn make_window(state: *mut LambdockState) -> Option<gtk4::ApplicationWind
 }
 
 /// Loads a fresh application list, replacing the previous one.
-fn rescan() {
+unsafe fn rescan() {
     let entries = unsafe { lambdock_desktop_entries_scan() };
     let previous = model_mut(|launchpad| std::mem::replace(&mut launchpad.entries, entries));
 
@@ -1500,8 +1497,7 @@ fn release_window() {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_show(state: *mut LambdockState) {
+pub unsafe fn lambdock_launchpad_show(state: *mut LambdockState) {
     crate::ui::ensure_gtk_initialized();
 
     let appearance = appearance_for(state);
@@ -1565,14 +1561,12 @@ pub unsafe extern "C" fn lambdock_launchpad_show(state: *mut LambdockState) {
 }
 
 /// Hides the launchpad and releases its window; the next show rebuilds it.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_hide() {
+pub fn lambdock_launchpad_hide() {
     release_window();
 }
 
 /// Whether the launchpad overlay is shown.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_is_open() -> c_int {
+pub fn lambdock_launchpad_is_open() -> c_int {
     model(|launchpad| {
         launchpad
             .window
@@ -1582,8 +1576,7 @@ pub extern "C" fn lambdock_launchpad_is_open() -> c_int {
 }
 
 /// The launchpad's search field, or null while the launchpad is closed.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_search_entry() -> *mut gtk4::ffi::GtkWidget {
+pub fn lambdock_launchpad_search_entry() -> *mut gtk4::ffi::GtkWidget {
     model(|launchpad| {
         launchpad
             .search
@@ -1598,8 +1591,7 @@ pub extern "C" fn lambdock_launchpad_search_entry() -> *mut gtk4::ffi::GtkWidget
 /// # Safety
 ///
 /// `query` must be null or NUL-terminated.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_set_query(query: *const c_char) {
+pub unsafe fn lambdock_launchpad_set_query(query: *const c_char) {
     crate::ui::ensure_gtk_initialized();
 
     let Some(search) = model(|launchpad| launchpad.search.clone()) else {
@@ -1612,8 +1604,7 @@ pub unsafe extern "C" fn lambdock_launchpad_set_query(query: *const c_char) {
 }
 
 /// Destroys the launchpad window, on application teardown.
-#[no_mangle]
-pub extern "C" fn lambdock_launchpad_shutdown() {
+pub fn lambdock_launchpad_shutdown() {
     release_window();
 
     let entries = model_mut(|launchpad| {
@@ -1635,8 +1626,7 @@ pub extern "C" fn lambdock_launchpad_shutdown() {
 ///
 /// `_entries` is unused: the grid is filled from the launchpad's own model. The
 /// result is a new floating widget.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_grid_new(
+pub unsafe fn lambdock_launchpad_grid_new(
     _entries: *mut glib::ffi::GPtrArray,
 ) -> *mut gtk4::ffi::GtkWidget {
     crate::ui::ensure_gtk_initialized();
@@ -1650,8 +1640,7 @@ pub unsafe extern "C" fn lambdock_launchpad_grid_new(
 ///
 /// `entry` must be null or a live entry. The result is a new floating widget, or
 /// null for a null entry.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_tile_new(
+pub unsafe fn lambdock_launchpad_tile_new(
     entry: *const DesktopEntry,
     icon_size: c_int,
 ) -> *mut gtk4::ffi::GtkWidget {
@@ -1670,8 +1659,7 @@ pub unsafe extern "C" fn lambdock_launchpad_tile_new(
 ///
 /// `out_close` must be null or writable. The result is a new floating widget,
 /// and the button it writes is borrowed.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_header_new(
+pub unsafe fn lambdock_launchpad_header_new(
     out_close: *mut *mut gtk4::ffi::GtkWidget,
 ) -> *mut gtk4::ffi::GtkWidget {
     crate::ui::ensure_gtk_initialized();
@@ -1690,8 +1678,7 @@ pub unsafe extern "C" fn lambdock_launchpad_header_new(
 /// # Safety
 ///
 /// `header` and `close` must be null or live widgets.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_launchpad_header_place_close(
+pub unsafe fn lambdock_launchpad_header_place_close(
     header: *mut gtk4::ffi::GtkWidget,
     close: *mut gtk4::ffi::GtkWidget,
     on_right: c_int,

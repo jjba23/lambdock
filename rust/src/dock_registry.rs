@@ -46,8 +46,7 @@ thread_local! {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_registry_add(state: *mut LambdockState) {
+pub unsafe fn dock_registry_add(state: *mut LambdockState) {
     if state.is_null() || dock_registry_contains(state) != 0 {
         return;
     }
@@ -61,8 +60,7 @@ pub unsafe extern "C" fn dock_registry_add(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a dock that was registered and is still alive.
-#[no_mangle]
-pub unsafe extern "C" fn dock_registry_remove(state: *mut LambdockState) {
+pub unsafe fn dock_registry_remove(state: *mut LambdockState) {
     if state.is_null() {
         return;
     }
@@ -79,8 +77,7 @@ pub unsafe extern "C" fn dock_registry_remove(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `state` must be null or a live dock.
-#[no_mangle]
-pub unsafe extern "C" fn dock_registry_contains(state: *const LambdockState) -> c_int {
+pub unsafe fn dock_registry_contains(state: *const LambdockState) -> c_int {
     if state.is_null() {
         return 0;
     }
@@ -94,22 +91,19 @@ pub unsafe extern "C" fn dock_registry_contains(state: *const LambdockState) -> 
 }
 
 /// How many docks are registered right now.
-#[no_mangle]
-pub extern "C" fn dock_registry_count() -> c_uint {
+pub fn dock_registry_count() -> c_uint {
     DOCKS.with_borrow(|docks| docks.len() as c_uint)
 }
 
 /// Whether the registry is empty.
-#[no_mangle]
-pub extern "C" fn dock_registry_is_empty() -> c_int {
+pub fn dock_registry_is_empty() -> c_int {
     DOCKS.with_borrow(|docks| docks.is_empty() as c_int)
 }
 
 /// A new array of borrowed docks, in registration order.
 ///
 /// The caller owns the array (unref it) but not the docks.
-#[no_mangle]
-pub extern "C" fn dock_registry_snapshot() -> *mut GPtrArray {
+pub fn dock_registry_snapshot() -> *mut GPtrArray {
     DOCKS.with_borrow(|docks| {
         let states = unsafe { g_ptr_array_sized_new(docks.len() as c_uint) };
 
@@ -131,9 +125,8 @@ pub extern "C" fn dock_registry_snapshot() -> *mut GPtrArray {
 /// # Safety
 ///
 /// `visit` must be null or a valid C callback for the duration of the call.
-#[no_mangle]
-pub unsafe extern "C" fn dock_registry_foreach(
-    visit: Option<unsafe extern "C" fn(*mut LambdockState, *mut c_void)>,
+pub unsafe fn dock_registry_foreach(
+    visit: Option<unsafe fn(*mut LambdockState, *mut c_void)>,
     user_data: *mut c_void,
 ) {
     let Some(visit) = visit else {
@@ -148,7 +141,6 @@ pub unsafe extern "C" fn dock_registry_foreach(
 }
 
 /// Forgets every dock without touching the states themselves.
-#[no_mangle]
-pub extern "C" fn dock_registry_clear() {
+pub fn dock_registry_clear() {
     DOCKS.with_borrow_mut(Vec::clear);
 }

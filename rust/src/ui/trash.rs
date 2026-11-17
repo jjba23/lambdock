@@ -426,8 +426,7 @@ unsafe fn path_option(pointer: *const c_char) -> Option<PathBuf> {
 /// # Safety
 ///
 /// The result is `(transfer full)` and freed with `g_free`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_trash_home_path() -> *mut c_char {
+pub fn lambdock_trash_home_path() -> *mut c_char {
     strdup_string(&home_trash_path().to_string_lossy())
 }
 
@@ -436,8 +435,7 @@ pub unsafe extern "C" fn lambdock_trash_home_path() -> *mut c_char {
 /// # Safety
 ///
 /// The result is `(transfer full)` and freed with `g_ptr_array_unref`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_trash_roots() -> *mut glib::ffi::GPtrArray {
+pub unsafe fn lambdock_trash_roots() -> *mut glib::ffi::GPtrArray {
     let roots = glib::ffi::g_ptr_array_new_with_free_func(Some(g_free));
 
     for root in trash_roots() {
@@ -452,21 +450,18 @@ pub unsafe extern "C" fn lambdock_trash_roots() -> *mut glib::ffi::GPtrArray {
 /// # Safety
 ///
 /// `root` must be null or a NUL-terminated path.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_trash_count_at(root: *const c_char) -> c_uint {
+pub unsafe fn lambdock_trash_count_at(root: *const c_char) -> c_uint {
     path_option(root).map_or(0, |root| count_at(&root))
 }
 
 /// How many items the user's trash holds, across the home trash and the volume
 /// trashes.
-#[no_mangle]
-pub extern "C" fn lambdock_trash_count() -> c_uint {
+pub fn lambdock_trash_count() -> c_uint {
     trash_roots().iter().map(|root| count_at(root)).sum()
 }
 
 /// Whether the user's trash holds nothing.
-#[no_mangle]
-pub extern "C" fn lambdock_trash_is_empty() -> c_int {
+pub fn lambdock_trash_is_empty() -> c_int {
     c_int::from(lambdock_trash_count() == 0)
 }
 
@@ -475,14 +470,12 @@ pub extern "C" fn lambdock_trash_is_empty() -> c_int {
 /// # Safety
 ///
 /// `root` must be null or a NUL-terminated path.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_trash_empty_at(root: *const c_char) -> c_uint {
+pub unsafe fn lambdock_trash_empty_at(root: *const c_char) -> c_uint {
     path_option(root).map_or(0, |root| empty_at(&root))
 }
 
 /// Empties every trash of the user and says how many items were removed.
-#[no_mangle]
-pub extern "C" fn lambdock_trash_empty() -> c_uint {
+pub fn lambdock_trash_empty() -> c_uint {
     empty_all()
 }
 
@@ -499,8 +492,7 @@ pub extern "C" fn lambdock_trash_empty() -> c_uint {
 ///
 /// `file` must be null or a live `GFile`; `error` must be null or point at a null
 /// `GError*`.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_trash_file(
+pub unsafe fn lambdock_trash_file(
     file: *mut gio::ffi::GFile,
     error: *mut *mut glib::ffi::GError,
 ) -> c_int {
@@ -520,8 +512,7 @@ pub unsafe extern "C" fn lambdock_trash_file(
 }
 
 /// Opens the trash in the desktop's file manager.
-#[no_mangle]
-pub extern "C" fn lambdock_trash_open() -> c_int {
+pub fn lambdock_trash_open() -> c_int {
     c_int::from(open_trash())
 }
 

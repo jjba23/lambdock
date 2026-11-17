@@ -42,6 +42,8 @@ use crate::dock_item::{create_dock_item, free_dock_item, DockItem};
 use crate::log_info;
 use crate::log_warn;
 use crate::state::LambdockState;
+use crate::dock_window::{dock_window_set_tracker_connected, hide_dock, reveal_dock};
+use crate::x11_tracker::{x11_tracker_activate, x11_tracker_close, x11_tracker_minimize, x11_tracker_replay, x11_tracker_start};
 use crate::ui::dock_item_windows::{
     clear_tracked_windows, dock_item_add_window, dock_item_refresh_window_state,
     dock_item_remove_window, find_dock_item_by_app_id, update_dock_item_status,
@@ -129,17 +131,7 @@ extern "C" {
     /// GDK's X11 backend, for the type test only.
     fn gdk_x11_display_get_type() -> glib::ffi::GType;
 
-    /// `src/x11_tracker.c`: the other backend, until its own port.
-    fn x11_tracker_start(error: *mut *mut glib::ffi::GError) -> c_int;
-    fn x11_tracker_replay();
-    fn x11_tracker_activate(window: *mut LambdockToplevel);
-    fn x11_tracker_minimize(window: *mut LambdockToplevel);
-    fn x11_tracker_close(window: *mut LambdockToplevel);
 
-    /// `src/dock_window.c`: what a window event does to a dock.
-    fn hide_dock(state: *mut LambdockState);
-    fn reveal_dock(state: *mut LambdockState);
-    fn dock_window_set_tracker_connected(state: *mut LambdockState, connected: c_int);
 }
 
 // ============================================================================
@@ -342,7 +334,7 @@ unsafe fn create_item_for_app_id(
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`; `data` a `LambdockToplevel`.
-unsafe extern "C" fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) {
+unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) {
     let top = data.cast::<LambdockToplevel>();
     let Some(top_ref) = top.as_ref() else {
         return;
@@ -384,7 +376,7 @@ unsafe extern "C" fn dock_apply_window_title(state: *mut LambdockState, data: *m
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`; `data` a `LambdockToplevel`.
-unsafe extern "C" fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) {
+unsafe fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) {
     let top = data.cast::<LambdockToplevel>();
     let Some(top_ref) = top.as_ref() else {
         return;
@@ -423,7 +415,7 @@ unsafe extern "C" fn dock_apply_window_state(state: *mut LambdockState, data: *m
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`; `data` an `AppIdEvent`.
-unsafe extern "C" fn dock_detach_previous_app_id(state: *mut LambdockState, data: *mut c_void) {
+unsafe fn dock_detach_previous_app_id(state: *mut LambdockState, data: *mut c_void) {
     let Some(event) = (data as *const AppIdEvent).as_ref() else {
         return;
     };
@@ -453,7 +445,7 @@ unsafe extern "C" fn dock_detach_previous_app_id(state: *mut LambdockState, data
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`; `data` an `AppIdEvent`.
-unsafe extern "C" fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_void) {
+unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_void) {
     let Some(event) = (data as *const AppIdEvent).as_ref() else {
         return;
     };
@@ -513,7 +505,7 @@ unsafe extern "C" fn dock_attach_current_app_id(state: *mut LambdockState, data:
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`; `data` a `LambdockToplevel`.
-unsafe extern "C" fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void) {
+unsafe fn dock_forget_closed_window(state: *mut LambdockState, data: *mut c_void) {
     let Some(top) = (data as *const LambdockToplevel).as_ref() else {
         return;
     };
@@ -555,7 +547,7 @@ unsafe extern "C" fn dock_forget_closed_window(state: *mut LambdockState, data: 
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`.
-unsafe extern "C" fn dock_forget_all_windows(state: *mut LambdockState, _data: *mut c_void) {
+unsafe fn dock_forget_all_windows(state: *mut LambdockState, _data: *mut c_void) {
     clear_tracked_windows(state);
 }
 
@@ -564,8 +556,8 @@ unsafe extern "C" fn dock_forget_all_windows(state: *mut LambdockState, _data: *
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`.
-unsafe extern "C" fn dock_tracker_state(state: *mut LambdockState, data: *mut c_void) {
-    dock_window_set_tracker_connected(state, data as c_int);
+unsafe fn dock_tracker_state(state: *mut LambdockState, data: *mut c_void) {
+    dock_window_set_tracker_connected(state, !data.is_null());
 }
 
 /// The same answer for every dock: `connected` is a session fact, not a per-dock
@@ -585,7 +577,7 @@ fn notify_docks_of_tracker(connected: bool) {
 ///
 /// `visitor` must be valid for the call, and `data` whatever it expects.
 unsafe fn foreach(
-    visitor: unsafe extern "C" fn(*mut LambdockState, *mut c_void),
+    visitor: unsafe fn(*mut LambdockState, *mut c_void),
     data: *mut c_void,
 ) {
     crate::dock_registry::dock_registry_foreach(Some(visitor), data);
@@ -600,8 +592,7 @@ unsafe fn foreach(
 /// # Safety
 ///
 /// The result is `(transfer full)`: free it with [`lambdock_toplevel_free`].
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_new() -> *mut LambdockToplevel {
+pub unsafe fn lambdock_toplevel_new() -> *mut LambdockToplevel {
     crate::glib::g_malloc0(std::mem::size_of::<LambdockToplevel>()).cast()
 }
 
@@ -611,8 +602,7 @@ pub unsafe extern "C" fn lambdock_toplevel_new() -> *mut LambdockToplevel {
 /// # Safety
 ///
 /// `window` must be null or a record from [`lambdock_toplevel_new`].
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
+pub unsafe fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
     let Some(window) = window.as_mut() else {
         return;
     };
@@ -627,8 +617,7 @@ pub unsafe extern "C" fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
 /// # Safety
 ///
 /// `window` must be null or a live record; `app_id` a C string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_set_app_id(
+pub unsafe fn lambdock_toplevel_set_app_id(
     window: *mut LambdockToplevel,
     app_id: *const c_char,
 ) {
@@ -671,8 +660,7 @@ pub unsafe extern "C" fn lambdock_toplevel_set_app_id(
 /// # Safety
 ///
 /// `window` must be null or a live record; `title` a C string.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_set_title(
+pub unsafe fn lambdock_toplevel_set_title(
     window: *mut LambdockToplevel,
     title: *const c_char,
 ) {
@@ -694,8 +682,7 @@ pub unsafe extern "C" fn lambdock_toplevel_set_title(
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_set_state(
+pub unsafe fn lambdock_toplevel_set_state(
     window: *mut LambdockToplevel,
     minimized: c_int,
     activated: c_int,
@@ -716,8 +703,7 @@ pub unsafe extern "C" fn lambdock_toplevel_set_state(
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_deliver(window: *mut LambdockToplevel) {
+pub unsafe fn lambdock_toplevel_deliver(window: *mut LambdockToplevel) {
     let Some(window_ref) = window.as_ref() else {
         return;
     };
@@ -739,8 +725,7 @@ pub unsafe extern "C" fn lambdock_toplevel_deliver(window: *mut LambdockToplevel
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn lambdock_toplevel_withdraw(window: *mut LambdockToplevel) {
+pub unsafe fn lambdock_toplevel_withdraw(window: *mut LambdockToplevel) {
     if window.is_null() {
         return;
     }
@@ -1267,8 +1252,7 @@ fn warn_if_untrackable(tracker: &Tracker) {
 // ============================================================================
 
 /// Whether the compositor's window list is being tracked right now.
-#[no_mangle]
-pub extern "C" fn lambdock_tracker_connected() -> c_int {
+pub fn lambdock_tracker_connected() -> c_int {
     match backend() {
         Backend::Wayland => {
             let connected = tracker()
@@ -1291,8 +1275,7 @@ pub extern "C" fn lambdock_tracker_connected() -> c_int {
 /// # Safety
 ///
 /// `error` must be null or a `GError**`.
-#[no_mangle]
-pub unsafe extern "C" fn init_toplevel_tracker(error: *mut *mut glib::ffi::GError) -> c_int {
+pub unsafe fn init_toplevel_tracker(error: *mut *mut glib::ffi::GError) -> c_int {
     if backend() != Backend::None {
         return 1;
     }
@@ -1338,8 +1321,7 @@ pub unsafe extern "C" fn init_toplevel_tracker(error: *mut *mut glib::ffi::GErro
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-#[no_mangle]
-pub unsafe extern "C" fn sync_window_trackers(state: *mut LambdockState) {
+pub unsafe fn sync_window_trackers(state: *mut LambdockState) {
     let Some(state_ref) = state.as_ref() else {
         return;
     };
@@ -1385,14 +1367,13 @@ unsafe fn is_wayland(window: *const LambdockToplevel) -> bool {
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn activate_toplevel_window(window: *mut LambdockToplevel) {
+pub unsafe fn activate_toplevel_window(window: *mut LambdockToplevel) {
     if window.is_null() {
         return;
     }
 
     if !is_wayland(window) {
-        x11_tracker_activate(window);
+        x11_tracker_activate(window.cast());
         return;
     }
 
@@ -1446,14 +1427,13 @@ pub unsafe extern "C" fn activate_toplevel_window(window: *mut LambdockToplevel)
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn minimize_toplevel_window(window: *mut LambdockToplevel) {
+pub unsafe fn minimize_toplevel_window(window: *mut LambdockToplevel) {
     if window.is_null() {
         return;
     }
 
     if !is_wayland(window) {
-        x11_tracker_minimize(window);
+        x11_tracker_minimize(window.cast());
         return;
     }
 
@@ -1472,14 +1452,13 @@ pub unsafe extern "C" fn minimize_toplevel_window(window: *mut LambdockToplevel)
 /// # Safety
 ///
 /// `window` must be null or a live record.
-#[no_mangle]
-pub unsafe extern "C" fn close_toplevel_window(window: *mut LambdockToplevel) {
+pub unsafe fn close_toplevel_window(window: *mut LambdockToplevel) {
     if window.is_null() {
         return;
     }
 
     if !is_wayland(window) {
-        x11_tracker_close(window);
+        x11_tracker_close(window.cast());
         return;
     }
 
@@ -1499,8 +1478,7 @@ pub unsafe extern "C" fn close_toplevel_window(window: *mut LambdockToplevel) {
 /// # Safety
 ///
 /// `state` is ignored.
-#[no_mangle]
-pub unsafe extern "C" fn clear_window_tracker_dock_references(_state: *mut LambdockState) {}
+pub unsafe fn clear_window_tracker_dock_references(_state: *mut LambdockState) {}
 
 /// A no-op on purpose, for the same reason as
 /// [`clear_window_tracker_dock_references`].
@@ -1508,5 +1486,4 @@ pub unsafe extern "C" fn clear_window_tracker_dock_references(_state: *mut Lambd
 /// # Safety
 ///
 /// `tracker_ptr` is ignored.
-#[no_mangle]
-pub unsafe extern "C" fn free_window_tracker(_tracker_ptr: *mut c_void) {}
+pub unsafe fn free_window_tracker(_tracker_ptr: *mut c_void) {}

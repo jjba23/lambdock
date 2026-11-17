@@ -114,7 +114,7 @@ pub fn false_value() -> Scm {
 /// # Safety
 ///
 /// Guile must be initialized, as it must be for every other call here.
-pub unsafe fn is_true(value: Scm) -> bool {
+pub fn is_true(value: Scm) -> bool {
     value != false_value()
 }
 
