@@ -11,6 +11,29 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.1 (2026-11-17)
+
+- *A dock on the software renderer is a rectangle instead of a hot-pink screen.*
+  The shelf's keystone and tilt are a projective `GskTransform`, and the cairo
+  renderer -- what GTK falls back to when it cannot create an EGL display -- has
+  no projective transform at all: rather than skipping the node it paints the
+  whole surface in its "unsupported node" colour, which arrives as a flat
+  hot pink slab with square corners. Measured on one machine: with
+  `GSK_RENDERER=cairo` the surface is hot pink from the first reload (the first
+  one is when the keystone was applied -- see below) until the dock is restarted,
+  and every pixel of it reads (255, 105, 180). `frame_transform` now asks the
+  surface's renderer first (`renderer_can_project`) and leaves the slab flat when
+  it cannot project, and the log says once which renderer the dock got, that the
+  slab is flat because of it, and that CPU compositing is why the fish-eye is
+  slow. The pointer mapping reads the same answer, so a flat slab gets an
+  unprojected pointer.
+- *A fresh dock wears its shelf's keystone from the first frame.*
+  `build_capsule` called `apply_dock_mode_classes` before the state owned the
+  shelf frame, and `apply_shelf_shape` reaches the frame through that field: a
+  dock therefore came up flat -- and laid out without the room the flare
+  reserves -- until the first reload applied the shape, which is what made the
+  shelf jump when a setting was changed.
+
 ** v2.2.0 (2026-11-17)
 
 - *Changing a theme (or any setting) no longer crashes the dock.*  A dynamic

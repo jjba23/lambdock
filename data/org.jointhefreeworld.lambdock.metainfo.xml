@@ -78,6 +78,12 @@
   </screenshots>
 
   <releases>
+    <release version="2.2.1" date="2026-11-17">
+      <description>
+        <p>A dock whose GTK cannot create an EGL display is a rectangle instead of a hot-pink screen. GTK falls back to the cairo renderer there, and the shelf's keystone and tilt are a projective transform that cairo does not have: rather than skipping it, cairo paints the whole surface in its "unsupported node" colour, which is a flat hot pink slab with square corners -- and the CPU compositing behind it is also why the fish-eye was slow. The dock now asks the surface's renderer first, leaves the slab flat when it cannot project, keeps the pointer mapping in step, and says in the log which renderer it got and why it is slow.</p>
+        <p>A fresh dock also wears its shelf's keystone from the first frame. The shape was applied before the state owned the shelf frame, so a dock came up flat -- and laid out without the room the flare reserves -- until the first reload, which is what made the shelf jump when a setting was changed.</p>
+      </description>
+    </release>
     <release version="2.2.0" date="2026-11-17">
       <description>
         <p>Changing a theme no longer crashes the dock. A dynamic item kept a borrowed copy of its poller's name: the string was freed when the item was built and freed again on the next reload, which glibc reports as a double free and turns into an abort, so the dock vanished the moment any setting rebuilt its row. The item keeps its own copy now.</p>
