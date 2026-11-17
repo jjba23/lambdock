@@ -73,6 +73,26 @@ fn main() {
 
     println!("cargo:rerun-if-changed=../resources/lambdock.gresource.xml");
     println!("cargo:rerun-if-changed=../protocols");
+
+    // Every file the bundle embeds, not just the manifest that lists them: a
+    // stylesheet edit changes no other input, so without this a rebuild kept the
+    // old CSS compiled in and the change only appeared after a clean build.
+    for file in bundled_files("../resources/lambdock.gresource.xml") {
+        println!("cargo:rerun-if-changed=../resources/{file}");
+    }
+}
+
+/// The `<file>...</file>` entries of a resource manifest, in order.
+fn bundled_files(manifest: &str) -> Vec<String> {
+    let text = std::fs::read_to_string(manifest)
+        .unwrap_or_else(|error| panic!("{manifest} is needed for the build: {error}"));
+
+    text.split("<file>")
+        .skip(1)
+        .filter_map(|entry| entry.split("</file>").next())
+        .map(|entry| entry.trim().to_owned())
+        .filter(|entry| !entry.is_empty())
+        .collect()
 }
 
 /// Compiles the two generated C sources and archives them, so `cargo build`
