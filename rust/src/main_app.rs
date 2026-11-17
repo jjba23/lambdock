@@ -1519,8 +1519,18 @@ pub unsafe fn lambdock_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
     }
 
     setlocale(LC_ALL, c"".as_ptr());
-    if let Some(locale_dir) = option_env!("LAMBDOCK_LOCALEDIR") {
-        bindtextdomain(c"lambdock".as_ptr(), cstring(locale_dir).as_ptr());
+    // The path the build named, or the prefix the binary sits in -- see
+    // `bridge::setup_guile_load_path` for the same fallback and why it exists.
+    let locale_dir = option_env!("LAMBDOCK_LOCALEDIR")
+        .filter(|directory| !directory.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| crate::bridge::installed_share_dir("locale"));
+
+    if let Some(locale_dir) = locale_dir {
+        bindtextdomain(
+            c"lambdock".as_ptr(),
+            cstring(&locale_dir.to_string_lossy()).as_ptr(),
+        );
     }
     bind_textdomain_codeset(c"lambdock".as_ptr(), c"UTF-8".as_ptr());
     textdomain(c"lambdock".as_ptr());

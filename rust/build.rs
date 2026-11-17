@@ -22,6 +22,7 @@ fn main() {
     // Wayland alone has no Xlib to link, and meson says so by not setting this.
     println!("cargo:rerun-if-env-changed=LAMBDOCK_HAVE_X11");
     println!("cargo:rerun-if-env-changed=LAMBDOCK_SCHEME_DIR");
+    println!("cargo:rerun-if-env-changed=LAMBDOCK_LOCALEDIR");
     println!("cargo:rerun-if-env-changed=LAMBDOCK_VERSION");
     // The version meson stamps into the C half reaches the About dialog from
     // here, so there is still one version string in the project.
@@ -31,6 +32,12 @@ fn main() {
     // Compiled in, like the -D the C half used: where `(lambdock core)` lives.
     if let Ok(directory) = std::env::var("LAMBDOCK_SCHEME_DIR") {
         println!("cargo:rustc-env=LAMBDOCK_SCHEME_DIR={directory}");
+    }
+    // `option_env!("LAMBDOCK_LOCALEDIR")` in `main_app.rs` only sees this when the
+    // build script forwards it: an environment variable reaches rustc, not the
+    // crate, so the translation domain was never told where its catalogues are.
+    if let Ok(directory) = std::env::var("LAMBDOCK_LOCALEDIR") {
+        println!("cargo:rustc-env=LAMBDOCK_LOCALEDIR={directory}");
     }
     println!("cargo:rustc-check-cfg=cfg(have_x11)");
     if std::env::var_os("LAMBDOCK_HAVE_X11").is_some() {

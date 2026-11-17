@@ -30,7 +30,7 @@
 
 stdenv.mkDerivation (finalAttrs: {
   pname = "lambdock";
-  version = "2.1.1";
+  version = "2.1.2";
 
   strictDeps = true;
   __structuredAttrs = true;
@@ -39,6 +39,13 @@ stdenv.mkDerivation (finalAttrs: {
 
   buildPhase = ''
     runHook preBuild
+
+    # Compiled in, because the dock finds its Scheme modules and its catalogues
+    # by path, not by a wrapper: without these an installed binary only works
+    # when it is run from the source tree, where "./scheme" happens to resolve.
+    export LAMBDOCK_SCHEME_DIR=$out/share/guile/site/3.0
+    export LAMBDOCK_LOCALEDIR=$out/share/locale
+
     cargo build --offline --locked --release
     runHook postBuild
   '';

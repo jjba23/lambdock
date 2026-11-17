@@ -75,6 +75,10 @@ RUN --mount=type=cache,target=/root/.cache \
 RUN --mount=type=cache,target=/root/.cache \
     set -eu; \
     echo "==> Building Lambdock"; \
+    # Compiled in: the dock finds its Scheme modules and catalogues by path, not
+    # through a wrapper, so these have to name where the install step puts them.
+    export LAMBDOCK_SCHEME_DIR=/usr/local/share/guile/site/3.0; \
+    export LAMBDOCK_LOCALEDIR=/usr/local/share/locale; \
     cargo build --offline --locked --release; \
     echo "==> Build completed successfully"
 

@@ -533,7 +533,7 @@ pub unsafe fn is_app_excluded(
 //   by Guile itself (`scm_gc_protect_object`) and held as an opaque word in
 //   `DockItem.poll_fn`, exactly as before.
 
-/// `LAMBDOCK_SCHEME_DIR`, the installed Scheme path, when meson set it.
+/// `LAMBDOCK_SCHEME_DIR`, the installed Scheme path, when the build named it.
 const SCHEME_DIR: Option<&str> = option_env!("LAMBDOCK_SCHEME_DIR");
 
 /// `SCM_EOL`: the empty list, asked of the interpreter because the constant itself
@@ -543,10 +543,32 @@ unsafe fn empty_list() -> Scm {
     scm_c_eval_string(c"'()".as_ptr())
 }
 
+/// An installed dock's data directory, derived from the executable's own
+/// location: `<prefix>/bin/lambdock` → `<prefix>/share/<what>`.
+///
+/// `None` for an executable with no parent, and for a path with nothing above
+/// the binary (`lambdock`, or `/lambdock`).
+fn share_dir_for_exe(exe: &std::path::Path, what: &str) -> Option<std::path::PathBuf> {
+    let prefix = exe.parent()?.parent()?;
+
+    (!prefix.as_os_str().is_empty()).then(|| prefix.join("share").join(what))
+}
+
+/// [`share_dir_for_exe`] for this process, when it exists on disk.
+pub(crate) fn installed_share_dir(what: &str) -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let directory = share_dir_for_exe(&exe, what)?;
+
+    directory.is_dir().then_some(directory)
+}
+
 /// Tells Guile where to look for `(lambdock core)`.
 ///
 /// The local `scheme` directory first, so a checkout runs from its own sources,
-/// then the installed one when the build named it.
+/// then the installed one -- the path the build named, or failing that the prefix
+/// the executable sits in. That second fallback is what makes a plain
+/// `cargo run -p xtask -- install --prefix ~/.local` work without the installer
+/// having to know that a build-time variable exists.
 ///
 /// # Safety
 ///
@@ -554,12 +576,53 @@ unsafe fn empty_list() -> Scm {
 pub unsafe fn setup_guile_load_path() {
     scm_c_eval_string(c"(set! %load-path (cons \"scheme\" %load-path))".as_ptr());
 
-    if let Some(directory) = SCHEME_DIR.filter(|directory| !directory.is_empty()) {
+    let directory = SCHEME_DIR
+        .filter(|directory| !directory.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| installed_share_dir("guile/site/3.0"));
+
+    if let Some(directory) = directory {
         let expression = crate::cstr::cstring(&format!(
             "(set! %load-path (cons \"{}\" %load-path))",
-            directory.replace('\\', "\\\\").replace('"', "\\\"")
+            directory
+                .to_string_lossy()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
         ));
         scm_c_eval_string(expression.as_ptr());
+    }
+}
+
+#[cfg(test)]
+mod share_dir_tests {
+    use super::share_dir_for_exe;
+    use std::path::Path;
+
+    /// The prefix is the directory the binary's own directory sits in.
+    #[test]
+    fn a_binary_in_a_prefix_names_that_prefix() {
+        let derived = share_dir_for_exe(
+            Path::new("/home/me/.nix-profile/bin/lambdock"),
+            "guile/site/3.0",
+        );
+
+        assert_eq!(
+            derived.as_deref(),
+            Some(Path::new("/home/me/.nix-profile/share/guile/site/3.0"))
+        );
+    }
+
+    /// A bare name has no prefix, and neither has a path with nothing above it.
+    #[test]
+    fn a_path_without_a_prefix_derives_nothing() {
+        assert_eq!(
+            share_dir_for_exe(Path::new("lambdock"), "guile/site/3.0"),
+            None
+        );
+        assert_eq!(
+            share_dir_for_exe(Path::new("/lambdock"), "guile/site/3.0"),
+            None
+        );
     }
 }
 

@@ -58,6 +58,10 @@ modules:
     # build.rs) and `cargo xtask' installs it with the data files.
     buildsystem: simple
     build-commands:
+      # Compiled in, or the installed dock only finds its Scheme modules when
+      # it happens to be run from the source tree.
+      - export LAMBDOCK_SCHEME_DIR=/app/share/guile/site/3.0
+      - export LAMBDOCK_LOCALEDIR=/app/share/locale
       - cargo build --offline --locked --release
       - cargo run --offline --locked -p xtask -- install --prefix /app
     build-options:

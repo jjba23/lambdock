@@ -41,6 +41,15 @@
                         (delete 'configure)
                         (replace 'build
                           (lambda _
+                            ;; Compiled in: the dock finds its Scheme modules and
+                            ;; its catalogues by path, not through a wrapper, so
+                            ;; a build that leaves these unset produces a binary
+                            ;; that only runs from the source tree.
+                            (setenv "LAMBDOCK_SCHEME_DIR"
+                                    (string-append #$output
+                                                   "/share/guile/site/3.0"))
+                            (setenv "LAMBDOCK_LOCALEDIR"
+                                    (string-append #$output "/share/locale"))
                             (invoke "cargo" "build" "--offline" "--locked"
                                     "--release")))
                         (replace 'check
