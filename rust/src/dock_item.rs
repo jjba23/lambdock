@@ -709,14 +709,8 @@ fn stepped_index(focus: Focus, delta: i32, count: usize) -> Option<usize> {
 }
 
 /// `state->dock_items`, the list the dock is built from.
-///
-/// # Safety
-///
-/// `state` must be null or a live `LambdockState`.
-unsafe fn dock_items(state: *const LambdockState) -> *mut GList {
-    state
-        .as_ref()
-        .map_or(std::ptr::null_mut(), |state| state.dock_items)
+fn dock_items(state: &LambdockState) -> *mut GList {
+    state.dock_items
 }
 
 /// Whether the keyboard can reach `item`: it has a button, and is not a separator
@@ -735,7 +729,7 @@ unsafe fn keyboard_reachable(item: *const DockItem) -> bool {
 /// # Safety
 ///
 /// `state` must be a live `LambdockState`.
-unsafe fn item_at_index(state: *const LambdockState, index: usize) -> *mut DockItem {
+unsafe fn item_at_index(state: &LambdockState, index: usize) -> *mut DockItem {
     let mut seen = 0;
     let mut link = dock_items(state);
 
@@ -760,7 +754,7 @@ unsafe fn item_at_index(state: *const LambdockState, index: usize) -> *mut DockI
 ///
 /// `state` must be a live `LambdockState`; `target` must be null or a live
 /// `DockItem`.
-unsafe fn index_of(state: *const LambdockState, target: *const DockItem) -> Option<i32> {
+unsafe fn index_of(state: &LambdockState, target: *const DockItem) -> Option<i32> {
     if target.is_null() {
         return None;
     }
@@ -788,20 +782,16 @@ unsafe fn index_of(state: *const LambdockState, target: *const DockItem) -> Opti
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-unsafe fn focused_item(state: *mut LambdockState) -> *mut DockItem {
-    let Some(state_ref) = state.as_ref() else {
-        return std::ptr::null_mut();
-    };
-
-    let Some(window) = widget_of(state_ref.window) else {
+/// The widget pointers in `state` must still be live.
+unsafe fn focused_item(state: &LambdockState) -> *mut DockItem {
+    let Some(window) = state.window.as_ref() else {
         return std::ptr::null_mut();
     };
     let Some(window) = window.downcast_ref::<gtk4::Window>() else {
         return std::ptr::null_mut();
     };
 
-    let root = state_ref.window.cast::<gtk4::ffi::GtkWidget>();
+    let root = state.window.as_ref().map_or(std::ptr::null_mut(), |root| root.as_ptr().cast());
     let mut focus = gtk4::prelude::GtkWindowExt::focus(window);
 
     while let Some(widget) = focus {
@@ -823,8 +813,8 @@ unsafe fn focused_item(state: *mut LambdockState) -> *mut DockItem {
 ///
 /// # Safety
 ///
-/// `state` must be a live `LambdockState`.
-unsafe fn focus_position(state: *mut LambdockState) -> Focus {
+/// The widget pointers in `state` must still be live.
+unsafe fn focus_position(state: &LambdockState) -> Focus {
     let item = focused_item(state);
 
     if item.is_null() {
@@ -857,7 +847,7 @@ unsafe fn grab_item_focus(item: *mut DockItem) -> bool {
 /// # Safety
 ///
 /// `state` must be null or a live `LambdockState`.
-pub unsafe fn lambdock_dock_item_count(state: *const LambdockState) -> c_int {
+pub unsafe fn lambdock_dock_item_count(state: &LambdockState) -> c_int {
     let mut count = 0;
     let mut link = dock_items(state);
 
@@ -873,12 +863,9 @@ pub unsafe fn lambdock_dock_item_count(state: *const LambdockState) -> c_int {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn lambdock_dock_item_at_index(
-    state: *const LambdockState,
-    index: c_int,
-) -> *mut DockItem {
-    if state.is_null() || index < 0 {
+/// `state`'s item list and widgets must be live.
+pub unsafe fn lambdock_dock_item_at_index(state: &LambdockState, index: c_int) -> *mut DockItem {
+    if index < 0 {
         return std::ptr::null_mut();
     }
 
@@ -889,15 +876,8 @@ pub unsafe fn lambdock_dock_item_at_index(
 ///
 /// # Safety
 ///
-/// Both must be null or live.
-pub unsafe fn lambdock_dock_item_index_of(
-    state: *const LambdockState,
-    item: *const DockItem,
-) -> c_int {
-    if state.is_null() {
-        return -1;
-    }
-
+/// `state`'s item list must be live; `item` must be null or live.
+pub unsafe fn lambdock_dock_item_index_of(state: &LambdockState, item: *const DockItem) -> c_int {
     index_of(state, item).unwrap_or(-1)
 }
 
@@ -905,12 +885,8 @@ pub unsafe fn lambdock_dock_item_index_of(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn lambdock_dock_item_focused(state: *mut LambdockState) -> *mut DockItem {
-    if state.is_null() {
-        return std::ptr::null_mut();
-    }
-
+/// The widget pointers in `state` must still be live.
+pub unsafe fn lambdock_dock_item_focused(state: &LambdockState) -> *mut DockItem {
     focused_item(state)
 }
 
@@ -918,12 +894,9 @@ pub unsafe fn lambdock_dock_item_focused(state: *mut LambdockState) -> *mut Dock
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn lambdock_dock_item_focus_step(
-    state: *mut LambdockState,
-    delta: c_int,
-) -> c_int {
-    if state.is_null() || delta == 0 {
+/// The widget pointers in `state` must still be live.
+pub unsafe fn lambdock_dock_item_focus_step(state: &LambdockState, delta: c_int) -> c_int {
+    if delta == 0 {
         return 0;
     }
 
@@ -943,15 +916,8 @@ pub unsafe fn lambdock_dock_item_focus_step(
 ///
 /// # Safety
 ///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn lambdock_dock_item_focus_edge(
-    state: *mut LambdockState,
-    last: c_int,
-) -> c_int {
-    if state.is_null() {
-        return 0;
-    }
-
+/// The widget pointers in `state` must still be live.
+pub unsafe fn lambdock_dock_item_focus_edge(state: &LambdockState, last: c_int) -> c_int {
     let count = lambdock_dock_item_count(state) as usize;
     if count == 0 {
         return 0;
@@ -968,7 +934,7 @@ pub unsafe fn lambdock_dock_item_focus_edge(
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn reorder_dock_widgets(state: &LambdockState) {
-    let Some(box_) = widget_of(state.box_) else {
+    let Some(box_) = state.box_.as_ref() else {
         return;
     };
     let Some(box_) = box_.downcast_ref::<gtk4::Box>() else {
@@ -1027,8 +993,8 @@ pub unsafe fn lambdock_dock_item_move(
         return 0;
     };
 
-    let count = lambdock_dock_item_count(state) as usize;
-    let Some(index) = index_of(state, item) else {
+    let count = lambdock_dock_item_count(state_ref) as usize;
+    let Some(index) = index_of(state_ref, item) else {
         return 0;
     };
     let target = index + delta;
@@ -1036,7 +1002,7 @@ pub unsafe fn lambdock_dock_item_move(
         return 0;
     }
 
-    let Some(other) = item_at_index(state, target as usize).as_ref() else {
+    let Some(other) = item_at_index(state_ref, target as usize).as_ref() else {
         return 0;
     };
     let other = other as *const DockItem as *mut DockItem;
@@ -1099,7 +1065,7 @@ pub unsafe fn lambdock_dock_items_close_popovers(state: *mut LambdockState) -> c
         }
     }
 
-    if let Some(popover) = popover_of(state_ref.popover) {
+    if let Some(popover) = state_ref.popover.as_ref().and_then(|popover| popover.downcast_ref::<gtk4::Popover>().cloned()) {
         if crate::ui::is_shown(popover.upcast_ref()) {
             popover.popdown();
             closed = true;
@@ -1140,7 +1106,7 @@ pub unsafe fn lambdock_dock_items_handle_key(
         return lambdock_dock_items_close_popovers(state);
     }
 
-    let focused = focused_item(state);
+    let focused = focused_item(state_ref);
 
     if key_opens_menu(key, modifiers) {
         if focused.is_null() {
@@ -1170,14 +1136,14 @@ pub unsafe fn lambdock_dock_items_handle_key(
             return lambdock_dock_item_move(state, focused, step);
         }
 
-        return lambdock_dock_item_focus_step(state, step);
+        return lambdock_dock_item_focus_step(state_ref, step);
     }
 
     if key == gdk::Key::Home {
-        return lambdock_dock_item_focus_edge(state, 0);
+        return lambdock_dock_item_focus_edge(state_ref, 0);
     }
     if key == gdk::Key::End {
-        return lambdock_dock_item_focus_edge(state, 1);
+        return lambdock_dock_item_focus_edge(state_ref, 1);
     }
 
     0
@@ -1344,7 +1310,7 @@ fn off_screen(hidden: bool, destroying: bool, mapped: bool) -> bool {
 ///
 /// `state` must be a live `LambdockState`.
 unsafe fn state_is_off_screen(state: &LambdockState) -> bool {
-    let mapped = widget_of(state.window).is_some_and(|window| crate::ui::is_mapped(&window));
+    let mapped = state.window.as_ref().is_some_and(crate::ui::is_mapped);
 
     off_screen(state.is_hidden != 0, state.is_destroying != 0, mapped)
 }
@@ -1627,12 +1593,8 @@ fn icon_size(state: Option<&LambdockState>) -> i32 {
 }
 
 /// The icon size a dock lays out at.
-///
-/// # Safety
-///
-/// `state` must be null or a live `LambdockState`.
-pub unsafe fn dock_item_icon_size(state: *const LambdockState) -> c_int {
-    icon_size(state.as_ref())
+pub fn dock_item_icon_size(state: &LambdockState) -> c_int {
+    icon_size(Some(state))
 }
 
 /// Whether a dock runs along the top or bottom of the screen.
@@ -1815,10 +1777,9 @@ mod align_tests {
     /// default icon size, not at zero.
     #[test]
     fn the_icon_size_falls_back_to_the_default() {
-        let dock = |icon_size| {
-            let mut state = unsafe { std::mem::zeroed::<LambdockState>() };
-            state.icon_size = icon_size;
-            state
+        let dock = |icon_size| LambdockState {
+            icon_size,
+            ..LambdockState::default()
         };
 
         assert_eq!(icon_size(None), DEFAULT_ICON_SIZE);
@@ -2113,13 +2074,13 @@ unsafe fn box_append(box_: &gtk4::Widget, child: *mut gtk4::ffi::GtkWidget) {
 }
 
 /// An item's artwork from the icon theme, at the dock's icon size.
-unsafe fn load_icon(state: *const LambdockState, icon: *const c_char) -> *mut gtk4::ffi::GtkWidget {
+unsafe fn load_icon(state: &LambdockState, icon: *const c_char) -> *mut gtk4::ffi::GtkWidget {
     let theme = crate::ui::icon_theme();
 
     crate::ui::icon_resolver::create_image_for_icon(
         theme.map_or(std::ptr::null_mut(), |theme| theme.as_ptr().cast()),
         icon,
-        icon_size(state.as_ref()),
+        icon_size(Some(state)),
     )
 }
 
@@ -2275,9 +2236,12 @@ unsafe fn mount(item: *mut DockItem) -> *mut DockItem {
     // sinks the floating reference a constructor hands over, and a reader that
     // arrives first would sink it itself and let it go.
     if let Some(state) = state.as_mut() {
-        if let Some(dock_box) = widget_of(state.box_).and_then(|dock_box| {
-            dock_box.as_ref().downcast_ref::<gtk4::Box>().map(|dock_box| dock_box.as_ptr())
-        }) {
+        if let Some(dock_box) = state
+            .box_
+            .as_ref()
+            .and_then(|dock_box| dock_box.downcast_ref::<gtk4::Box>())
+            .map(|dock_box| dock_box.as_ptr())
+        {
             let child = if item_ref.container.is_null() {
                 item_ref.button
             } else {
@@ -2541,7 +2505,7 @@ pub unsafe fn create_dock_item(
     let Some(content) = begin_content(&mut *item, 6) else {
         return item;
     };
-    let image = load_icon(state, (*item).icon);
+    let image = load_icon(&*state, (*item).icon);
     append_icon(content.as_ref(), image, icon_size(state.as_ref()));
     add_window_title_label(&mut *item, content.as_ref());
     attach_reflection(&mut *item, image);
@@ -2592,7 +2556,7 @@ pub unsafe fn create_dynamic_dock_item(
         let image = if (*item).icon.is_null() || *(*item).icon == 0 {
             std::ptr::null_mut()
         } else {
-            load_icon(state, (*item).icon)
+            load_icon(&*state, (*item).icon)
         };
         append_icon(content.as_ref(), image, icon_size(state.as_ref()));
         add_dynamic_label(&mut *item, content.as_ref(), name_text.as_deref().unwrap_or(""));
@@ -2676,8 +2640,12 @@ pub unsafe fn create_separator_dock_item(
     // upright in front of it. On a flat capsule the follower is a pass-through.
     let mut body = cell;
     if let Some(state) = state.as_ref() {
-        if !state.bg_shelf.is_null() {
-            body = crate::ui::shelf_follow::shelf_follow_new(cell, state.bg_shelf.cast(), state.bg_capsule.cast());
+        if let (Some(shelf), Some(capsule)) = (state.bg_shelf.as_ref(), state.bg_capsule.as_ref()) {
+            body = crate::ui::shelf_follow::shelf_follow_new(
+                cell,
+                shelf.as_ptr().cast(),
+                capsule.as_ptr().cast(),
+            );
             item_ref.separator_follow = body.cast();
         }
     }
@@ -2693,13 +2661,13 @@ pub unsafe fn create_separator_dock_item(
     }
 
     if let Some(state) = state.as_mut() {
-        if !state.box_.is_null() {
+        if let Some(dock_box) = state.box_.as_ref() {
             let child = if item_ref.container.is_null() {
                 item_ref.cell
             } else {
                 item_ref.container
             };
-            gtk4::ffi::gtk_box_append(state.box_.cast(), child.cast());
+            gtk4::ffi::gtk_box_append(dock_box.as_ptr().cast(), child.cast());
         }
 
         state.dock_items = glib::ffi::g_list_append(state.dock_items.cast(), item.cast()).cast();
@@ -2735,7 +2703,7 @@ unsafe fn create_icon_dock_item(
         hover_animate,
     });
 
-    let image = load_icon(state, (*item).icon);
+    let image = load_icon(&*state, (*item).icon);
     build_icon_content(&mut *item, image, 0);
 
     mount(item)
@@ -3343,12 +3311,12 @@ unsafe fn apply_settings(state: &mut LambdockState) {
         state.hide_timer_id = 0;
     }
 
-    if let Some(dock_box) = widget_of(state.box_).and_then(|dock_box| {
-        dock_box
-            .as_ref()
-            .downcast_ref::<gtk4::Box>()
-            .map(|dock_box| dock_box.as_ptr())
-    }) {
+    if let Some(dock_box) = state
+        .box_
+        .as_ref()
+        .and_then(|dock_box| dock_box.downcast_ref::<gtk4::Box>())
+        .map(|dock_box| dock_box.as_ptr())
+    {
         gtk4::ffi::gtk_box_set_spacing(dock_box, state.item_spacing);
     }
 }
@@ -3363,14 +3331,19 @@ unsafe fn apply_edge_change(state: &mut LambdockState, edge: c_int) {
         return;
     }
 
-    if state.tick_cb_id != 0 && !state.window.is_null() {
-        gtk4::ffi::gtk_widget_remove_tick_callback(state.window.cast(), state.tick_cb_id);
+    if state.tick_cb_id != 0 {
+        if let Some(window) = state.window.as_ref() {
+            gtk4::ffi::gtk_widget_remove_tick_callback(window.as_ptr().cast(), state.tick_cb_id);
+        }
         state.tick_cb_id = 0;
     }
 
     // The edge lives in layer-shell anchors; without a layer surface (X11, GNOME)
     // there is nothing to re-anchor, and every call would log a critical.
-    let window = state.window.cast::<gtk4::ffi::GtkWindow>();
+    let window: *mut gtk4::ffi::GtkWindow = state
+        .window
+        .as_ref()
+        .map_or(std::ptr::null_mut(), |window| window.as_ptr().cast());
     if !window.is_null() && gtk_layer_is_layer_window(window) != 0 {
         gtk_layer_set_margin(window, state.edge, 0);
         gtk_layer_set_anchor(window, state.edge, 0);
@@ -3390,10 +3363,11 @@ unsafe fn apply_edge_change(state: &mut LambdockState, edge: c_int) {
     state.orientation = orientation.into_glib();
 
     // Both are orientables: the row itself and the capsule drawn behind it.
-    for widget in [state.box_, state.bg_capsule] {
-        if !widget.is_null() {
-            gtk4::ffi::gtk_orientable_set_orientation(widget.cast(), orientation.into_glib());
-        }
+    for widget in [state.box_.as_ref(), state.bg_capsule.as_ref()]
+        .into_iter()
+        .flatten()
+    {
+        gtk4::ffi::gtk_orientable_set_orientation(widget.as_ptr().cast(), orientation.into_glib());
     }
 
     // A dock that just changed edges is on screen, at rest.

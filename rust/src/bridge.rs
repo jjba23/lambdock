@@ -1000,7 +1000,7 @@ pub unsafe fn populate_dock_items_for(state: *mut LambdockState) {
     let Some(state_ref) = state.as_mut() else {
         return;
     };
-    if state_ref.box_.is_null() {
+    if state_ref.box_.is_none() {
         return;
     }
 

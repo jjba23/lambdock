@@ -3,35 +3,36 @@
 // SPDX-License-Identifier: MIT
 // Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
-//! One dock instance, as C sees it: `LambdockState` from `src/lambdock.h`.
+//! One dock instance: its widgets, its settings, and the state the frame loop
+//! carries.
 //!
-//! Rust reads this struct through a pointer C owns; it never allocates one and
-//! never frees it. The mirror has to match the header field for field, in order,
-//! because a wrong offset is not a compile error -- it is a corrupted field two
-//! modules away. The test at the bottom pins the size and the offsets the Rust
-//! modules read, taken from `offsetof` in C; when `lambdock.h` grows a field,
-//! that test is what says so.
+//! The widgets and GObjects this dock builds are held here as owned `Option`s, so
+//! the state keeps its tree alive rather than remembering addresses: dropping the
+//! struct drops the references, and a field set back to `None` is the one way to
+//! let go of a widget that is being destroyed. Nothing in here is a C mirror; the
+//! layout is the compiler's business.
 //!
-//! Widgets and other GObject pointers are `*mut c_void` here: which type each one
-//! is belongs to the module that uses it, and a module that needs a widget
-//! borrows it at the call site.
+//! The C strings (`theme`, `active_theme_class`, `config_path`) and the two
+//! `GList`s are still allocated by GLib: the settings readers hand out `g_strdup`ed
+//! text and the item list is a `GList` the dock mutates in place.
 
 use crate::core::config_values::ShelfParams;
+use gtk4::gdk;
 use std::os::raw::{c_char, c_int, c_uint, c_ulong, c_void};
 
-/// The record, field for field.
-#[repr(C)]
+/// The record.
+#[derive(Default)]
 pub struct LambdockState {
-    pub window: *mut c_void,
-    pub overlay: *mut c_void,
-    pub bg_shelf: *mut c_void,
-    pub bg_capsule: *mut c_void,
-    pub scrolled_window: *mut c_void,
-    pub box_: *mut c_void,
-    pub popover: *mut c_void,
-    pub reconnect_label: *mut c_void,
+    pub window: Option<gtk4::Widget>,
+    pub overlay: Option<gtk4::Widget>,
+    pub bg_shelf: Option<gtk4::Widget>,
+    pub bg_capsule: Option<gtk4::Widget>,
+    pub scrolled_window: Option<gtk4::Widget>,
+    pub box_: Option<gtk4::Widget>,
+    pub popover: Option<gtk4::Widget>,
+    pub reconnect_label: Option<gtk4::Widget>,
     pub tracker_connected: c_int,
-    pub size_group: *mut c_void,
+    pub size_group: Option<gtk4::SizeGroup>,
     pub auto_hide: c_int,
     pub show_when_clear: c_int,
     pub track_windows: c_int,
@@ -49,7 +50,7 @@ pub struct LambdockState {
     pub active_theme_class: *mut c_char,
     pub config_path: *mut c_char,
     pub is_destroying: c_int,
-    pub monitor: *mut c_void,
+    pub monitor: Option<gdk::Monitor>,
     pub edge: c_int,
     pub orientation: c_int,
     pub tick_cb_id: c_uint,
@@ -94,45 +95,9 @@ pub struct LambdockState {
     /// The windows this dock is tracking: a `GList` of borrowed
     /// `LambdockToplevel *`, owned by the tracker.
     pub window_trackers: *mut crate::app_window::GList,
-    pub base_css_provider: *mut c_void,
-    pub taskbar_css_provider: *mut c_void,
-    pub shelf_css_provider: *mut c_void,
-    pub indicator_guard_css_provider: *mut c_void,
-    pub user_css_provider: *mut c_void,
-}
-
-    /// The C offsets, measured with `offsetof` against `lambdock.h`. A wrong one is
-    /// not a compile error: it is a write into the neighbouring field.
-    #[test]
-    fn the_state_mirror_matches_the_header() {
-        use std::mem::{offset_of, size_of};
-
-        assert_eq!(size_of::<LambdockState>(), 512);
-        assert_eq!(offset_of!(LambdockState, box_), 40);
-        assert_eq!(offset_of!(LambdockState, centres_dirty), 376);
-        assert_eq!(offset_of!(LambdockState, orientation), 236);
-        assert_eq!(offset_of!(LambdockState, is_hidden), 184);
-        assert_eq!(offset_of!(LambdockState, is_destroying), 216);
-        assert_eq!(offset_of!(LambdockState, dock_items), 456);
-        assert_eq!(offset_of!(LambdockState, active_popovers), 280);
-        assert_eq!(offset_of!(LambdockState, config_path), 208);
-        assert_eq!(offset_of!(LambdockState, icon_size), 168);
-    }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::mem::{offset_of, size_of};
-
-    /// The numbers come from a `printf("%zu", sizeof/offsetof)` against
-    /// `lambdock.h`. A failure here means the header moved and this mirror has to
-    /// move with it -- before a module reads a field at the wrong address.
-    #[test]
-    fn the_mirror_matches_the_header() {
-        assert_eq!(size_of::<LambdockState>(), 512);
-        assert_eq!(offset_of!(LambdockState, reduce_motion), 96);
-        assert_eq!(offset_of!(LambdockState, shelf), 112);
-        assert_eq!(offset_of!(LambdockState, x11_surface), 432);
-        assert_eq!(offset_of!(LambdockState, user_css_provider), 504);
-    }
+    pub base_css_provider: Option<gtk4::CssProvider>,
+    pub taskbar_css_provider: Option<gtk4::CssProvider>,
+    pub shelf_css_provider: Option<gtk4::CssProvider>,
+    pub indicator_guard_css_provider: Option<gtk4::CssProvider>,
+    pub user_css_provider: Option<gtk4::CssProvider>,
 }

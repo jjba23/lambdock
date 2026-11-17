@@ -31,7 +31,7 @@ use crate::dock_window::{
     apply_dock_mode_classes, destroy_dock_instance, dock_apply_motion_preference,
     dock_window_set_tracker_connected, hide_dock, on_popover_closed, on_right_click,
     orientation_of, schedule_initial_autohide, setup_dock_motion_controller,
-    setup_layer_shell_window, update_dock_dimensions, widget_of, window_of,
+    setup_layer_shell_window, update_dock_dimensions, window_of,
 };
 use crate::state::LambdockState;
 use crate::ui::layer_shell::{self, EDGE_LEFT, EDGE_RIGHT};
@@ -103,11 +103,13 @@ pub unsafe fn on_dock_scroll(
     let Some(dock) = user_data.cast::<crate::state::LambdockState>().as_ref() else {
         return 0;
     };
-    if dock.scrolled_window.is_null() {
+    let Some(scrolled) = dock
+        .scrolled_window
+        .as_ref()
+        .and_then(|widget| widget.downcast_ref::<gtk4::ScrolledWindow>())
+    else {
         return 0;
-    }
-
-    let scrolled: gtk4::ScrolledWindow = gtk4::glib::translate::from_glib_none(dock.scrolled_window.cast());
+    };
 
     let horizontal = dock.orientation == gtk4::Orientation::Horizontal.into_glib();
     let adjustment = if horizontal {
@@ -115,10 +117,6 @@ pub unsafe fn on_dock_scroll(
     } else {
         scrolled.vadjustment()
     };
-
-    if dock.scrolled_window.is_null() {
-        return 0;
-    }
 
     // A horizontal dock is scrolled by whichever way the wheel went; a vertical
     // one only by the vertical component.
@@ -343,31 +341,11 @@ pub unsafe fn on_export_settings_action(
 // function, so a step can be read without holding the whole construction in your
 // head.
 //
-// One ownership rule runs through all of them, and it is the reason this file is
-// `unsafe` at all: the state holds *raw pointers* to its widgets, because the C
-// header, the ABI and the tests all read them from there. So a widget is either
-// parented inside the step that built it -- the tree holds the only reference
-// that matters, and the wrapper may drop -- or it is handed over floating
-// (`keep_floating`), so the step that adopts it later sinks that reference and
-// nothing leaks. A `GObject` that is not a widget (the size group) is handed over
-// owning its reference instead (`keep_owned`), which is what teardown unrefs.
-
-/// Hands `widget` to the state as a floating reference, for a later parent to
-/// sink.
-fn keep_floating(widget: gtk4::Widget) -> *mut c_void {
-    unsafe { glib::gobject_ffi::g_object_force_floating(widget.as_ptr().cast()) };
-
-    let pointer: *mut gtk4::ffi::GtkWidget = widget.into_glib_ptr();
-
-    pointer.cast()
-}
-
-/// Hands a `GObject` to the state, which owns the reference from here on.
-fn keep_owned(object: glib::Object) -> *mut c_void {
-    let pointer: *mut glib::gobject_ffi::GObject = object.into_glib_ptr();
-
-    pointer.cast()
-}
+// One ownership rule runs through all of them: the state *owns* the widgets and
+// objects it builds, in `Option` fields. A widget that the tree already parents
+// gets a second reference from the state, which is what keeps it reachable from
+// a signal handler without copying addresses around; teardown sets the field back
+// to `None`, and the references go with it.
 
 /// Called by GDK when a monitor is unplugged: unbinds layer shell from the dead
 /// output immediately, before the next dispatch cycle fails.
@@ -398,7 +376,7 @@ unsafe fn on_monitor_invalidated(state: *mut LambdockState) {
 /// # Safety
 ///
 /// `dock` must be a live dock under construction.
-unsafe fn build_viewport(dock: &mut LambdockState) -> *mut c_void {
+unsafe fn build_viewport(dock: &mut LambdockState) {
     let scrolled = gtk4::ScrolledWindow::new();
     scrolled.set_overflow(gtk4::Overflow::Visible);
     scrolled.set_propagate_natural_width(true);
@@ -408,7 +386,7 @@ unsafe fn build_viewport(dock: &mut LambdockState) -> *mut c_void {
     box_.set_overflow(gtk4::Overflow::Visible);
     // Parented right here: the scroller owns it from now on.
     scrolled.set_child(Some(&box_));
-    dock.box_ = box_.as_ptr().cast();
+    dock.box_ = Some(box_.upcast());
 
     // The viewport only ever scrolls along the dock's main axis.
     if orientation_of(dock) == gtk4::Orientation::Horizontal {
@@ -428,7 +406,7 @@ unsafe fn build_viewport(dock: &mut LambdockState) -> *mut c_void {
     });
     scrolled.add_controller(scroll);
 
-    keep_floating(scrolled.upcast())
+    dock.scrolled_window = Some(scrolled.upcast());
 }
 
 /// The capsule (and its shelf frame) inside the window's overlay.
@@ -436,19 +414,19 @@ unsafe fn build_viewport(dock: &mut LambdockState) -> *mut c_void {
 /// # Safety
 ///
 /// `dock` must be a live dock with its window built.
-unsafe fn build_capsule(dock: &mut LambdockState) -> *mut c_void {
+unsafe fn build_capsule(dock: &mut LambdockState) {
     let Some(window) = window_of(dock) else {
-        return std::ptr::null_mut();
+        return;
     };
 
     let overlay = gtk4::Overlay::new();
     overlay.set_overflow(gtk4::Overflow::Visible);
     window.set_child(Some(&overlay));
-    dock.overlay = overlay.as_ptr().cast();
+    dock.overlay = Some(overlay.upcast());
 
     let capsule = gtk4::Box::new(orientation_of(dock), 0);
     capsule.add_css_class("lambdock-window");
-    dock.bg_capsule = capsule.as_ptr().cast();
+    dock.bg_capsule = Some(capsule.clone().upcast());
 
     // Wrap the styled capsule in the shelf frame, which parents the capsule.
     // With the default shelf parameters (no tilt) the frame passes through.
@@ -456,12 +434,10 @@ unsafe fn build_capsule(dock: &mut LambdockState) -> *mut c_void {
     apply_dock_mode_classes(dock as *mut LambdockState);
 
     if !frame.is_null() {
+        // The frame arrives floating: this is what sinks that reference.
         let frame: gtk4::Widget = from_glib_none(frame);
         frame.set_overflow(gtk4::Overflow::Visible);
-        dock.bg_shelf = frame.as_ptr().cast();
-        keep_floating(frame)
-    } else {
-        std::ptr::null_mut()
+        dock.bg_shelf = Some(frame);
     }
 }
 
@@ -475,27 +451,32 @@ unsafe fn build_widgets(dock: &mut LambdockState) {
         return;
     };
 
-    // The overlay and the shelf frame come from this step, as in the C: the frame
-    // was handed over floating, so adopting it here is what sinks it.
-    let frame_pointer = build_capsule(dock);
+    build_capsule(dock);
 
-    let overlay_pointer = dock.overlay;
-    if overlay_pointer.is_null() {
+    // Cloned, so the borrow of `dock` ends before the steps that mutate it.
+    let Some(overlay) = dock
+        .overlay
+        .as_ref()
+        .and_then(|widget| widget.downcast_ref::<gtk4::Overlay>())
+        .cloned()
+    else {
         return;
-    }
-    let overlay: gtk4::Overlay = from_glib_none(overlay_pointer.cast());
+    };
 
-    if !frame_pointer.is_null() {
-        let frame: gtk4::Widget = from_glib_none(frame_pointer.cast());
-        overlay.set_child(Some(&frame));
+    if let Some(frame) = dock.bg_shelf.as_ref() {
+        overlay.set_child(Some(frame));
     }
 
-    let scrolled_pointer = build_viewport(dock);
-    if scrolled_pointer.is_null() {
+    build_viewport(dock);
+
+    let Some(scrolled) = dock
+        .scrolled_window
+        .as_ref()
+        .and_then(|widget| widget.downcast_ref::<gtk4::ScrolledWindow>())
+        .cloned()
+    else {
         return;
-    }
-    let scrolled: gtk4::ScrolledWindow = from_glib_none(scrolled_pointer.cast());
-    dock.scrolled_window = scrolled_pointer;
+    };
     overlay.add_overlay(&scrolled);
 
     update_dock_dimensions(dock as *mut LambdockState);
@@ -506,10 +487,10 @@ unsafe fn build_widgets(dock: &mut LambdockState) {
     };
     let size_group = gtk4::SizeGroup::new(mode);
     size_group.add_widget(&scrolled);
-    if let Some(capsule) = widget_of(dock.bg_capsule) {
-        size_group.add_widget(&*capsule);
+    if let Some(capsule) = dock.bg_capsule.as_ref() {
+        size_group.add_widget(capsule);
     }
-    dock.size_group = keep_owned(size_group.upcast());
+    dock.size_group = Some(size_group);
 
     // The compositor restarting drops the foreign-toplevel proxies; this says so
     // while the tracker re-binds, and is hidden the rest of the time.
@@ -521,9 +502,9 @@ unsafe fn build_widgets(dock: &mut LambdockState) {
     label.set_can_target(false);
     label.set_visible(false);
     overlay.add_overlay(&label);
-    dock.reconnect_label = label.as_ptr().cast();
+    dock.reconnect_label = Some(label.upcast());
 
-    if let Some(box_) = widget_of(dock.box_) {
+    if let Some(box_) = dock.box_.as_ref() {
         box_.set_overflow(gtk4::Overflow::Visible);
     }
     window.set_overflow(gtk4::Overflow::Visible);
@@ -571,7 +552,7 @@ unsafe fn build_menu_popover(dock: &mut LambdockState) {
         on_popover_closed(popover.as_ptr().cast(), pointer.cast());
     });
 
-    dock.popover = popover.as_ptr().cast();
+    dock.popover = Some(popover.upcast());
 }
 
 /// Right click, drag and drop, motion tracking and keyboard navigation.
@@ -668,18 +649,16 @@ pub unsafe fn create_dock_instance(
         return;
     }
 
-    // Allocated with GLib, like the C did, because `destroy_dock_instance` frees
-    // it with `g_free`.
-    let memory = crate::glib::g_malloc0(std::mem::size_of::<LambdockState>());
-    let state = memory.cast::<LambdockState>();
+    // The dock owns its state; `destroy_dock_instance` boxes it back up.
+    let state = Box::into_raw(Box::new(LambdockState::default()));
     let dock = &mut *state;
 
     if !monitor.is_null() {
-        glib::gobject_ffi::g_object_ref(monitor.cast());
-        dock.monitor = monitor.cast();
+        // The state owns this reference from here on.
+        let monitor: gdk::Monitor = from_glib_none(monitor);
+        dock.monitor = Some(monitor.clone());
 
         // Listen for this monitor disappearing out from under the dock.
-        let monitor: gdk::Monitor = from_glib_none(monitor);
         let pointer = state;
         monitor.connect_invalidate(move |_| on_monitor_invalidated(pointer));
     }
@@ -704,7 +683,7 @@ pub unsafe fn create_dock_instance(
     // A window without a title is announced as an unnamed frame; name the dock
     // so a screen reader says what surface the focus just landed on.
     window.set_title(Some(&translated(c"Lambdock dock")));
-    dock.window = window.as_ptr().cast();
+    dock.window = Some(window.clone().upcast());
 
     // The theme stylesheet needs the window's CSS context, hence this order.
     crate::ui::theme_engine::load_custom_css(state);
@@ -715,8 +694,8 @@ pub unsafe fn create_dock_instance(
     build_input(dock);
     present(state);
 
-    // The application owns the window from here on; the state keeps the pointer
-    // the C header and the tests read.
+    // The application owns the window from here on; the state's reference goes
+    // with the dock.
     let _: *mut gtk4::ffi::GtkApplicationWindow = window.into_glib_ptr();
 }
 
@@ -995,7 +974,7 @@ unsafe fn facts_of(dock: *mut LambdockState) -> DockFacts {
 
     DockFacts {
         config: crate::cstr::non_empty_text(dock.config_path),
-        monitor: Some(dock.monitor as usize).filter(|monitor| *monitor != 0),
+        monitor: dock.monitor.as_ref().map(|monitor| monitor.as_ptr() as usize),
     }
 }
 

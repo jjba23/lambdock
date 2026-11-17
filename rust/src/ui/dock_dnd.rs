@@ -292,7 +292,7 @@ pub unsafe fn dock_drop_handle_item(
     x: c_double,
     y: c_double,
 ) -> c_int {
-    if state.is_null() || (*state).box_.is_null() || key.is_null() {
+    if state.is_null() || (*state).box_.is_none() || key.is_null() {
         return 0;
     }
 
@@ -304,8 +304,13 @@ pub unsafe fn dock_drop_handle_item(
         return 0;
     }
 
-    let window: gtk4::Widget = from_glib_none((*state).window.cast::<ffi::GtkWidget>());
-    let dock_box: gtk4::Box = from_glib_none((*state).box_.cast::<ffi::GtkBox>());
+    let (Some(window), Some(dock_box)) = ((*state).window.clone(), (*state).box_.clone()) else {
+        return 0;
+    };
+    let dock_box: gtk4::Box = match dock_box.downcast() {
+        Ok(dock_box) => dock_box,
+        Err(_) => return 0,
+    };
 
     let Some(box_point) =
         window.compute_point(&dock_box, &graphene::Point::new(x as f32, y as f32))
@@ -734,13 +739,15 @@ pub unsafe fn dock_dnd_setup_item(item: *mut DockItem) {
 ///
 /// `state` must be null or a live dock whose window is set.
 pub unsafe fn dock_dnd_setup(state: *mut LambdockState) {
-    if state.is_null() || (*state).window.is_null() {
+    if state.is_null() || (*state).window.is_none() {
         return;
     }
 
     crate::ui::ensure_gtk_initialized();
 
-    let window: gtk4::Widget = from_glib_none((*state).window.cast::<ffi::GtkWidget>());
+    let Some(window) = (*state).window.clone() else {
+        return;
+    };
 
     // Both kinds of payload are offered to the same drop target: a drag that
     // started inside the dock carries a "lambdock-item:" string, while a drag from

@@ -94,15 +94,16 @@ If you read nothing else, read this.
    ~<dock-config>~ record in ~*dock-configs*~ → Rust reads it through
    =rust/src/bridge.rs= into ~LambdockState~.
 5. *Items path:* Scheme ~<dock-item>~ records → ~populate_dock_items_for~ →
-   GTK buttons/dynamic labels/separators appended to ~state->box~.
+   GTK buttons/dynamic labels/separators appended to ~dock.box_~.
 6. *taskbar path:* the compositor's foreign-toplevel manager →
    =rust/src/toplevel_tracker.rs= → ~DockItem~ + ~AppWindow~ → running indicator
    and the window popover.
 7. *Reload path:* =GFileMonitor= on =~/.config/lambdock= → 150 ms debounce →
    ~sync_docks_with_disk~ → create/reload/destroy dock instances.
-8. *Ownership:* ~LambdockState~ owns its items, window trackers, monitor ref,
-   size group and CSS providers. Free items through ~free_dock_item~ and docks
-   through ~destroy_dock_instance~ -- never ~g_free~.
+8. *Ownership:* ~LambdockState~ owns its items, window trackers, widgets,
+   monitor, size group and CSS providers. Free items through ~free_dock_item~ and
+   docks through ~destroy_dock_instance~ -- the dock boxes its state back up, so
+   never ~g_free~ one.
 9. *Stored Scheme values must be protected* with ~scm_gc_protect_object~ (see
    ~DockItem::poll_fn~) and unprotected when freed.
 10. *Test with ~maak test~* (it rebuilds the crate in the pinned environment and
@@ -194,10 +195,12 @@ expensive, because the state they move is widgets.
 - *Everything is on the GTK main thread, except the REPL*, which hops over with
   ~g_idle_add~. There are no locks anywhere and adding one is a sign the design
   went wrong.
-- *Widgets are borrowed, state is owned.* A ~GtkWidget*~ field in ~LambdockState~
-  or ~DockItem~ is a borrowed pointer that GTK destroys; lists of items, window
-  trackers, CSS providers and strings are owned and freed by the module that
-  created them. See [[#lifecycles][Lifecycles]].
+- *The state owns its widgets.* ~LambdockState~ holds the widgets, the monitor
+  and the CSS providers it builds as owned ~Option~s: setting a field back to
+  ~None~ is how it lets one go, and the reference goes with the state. ~DockItem~
+  is the other way round -- its ~GtkWidget*~ fields are borrowed pointers that GTK
+  destroys. Lists of items, window trackers and strings are owned and freed by
+  the module that created them. See [[#lifecycles][Lifecycles]].
 
 ** Inside a file, top to bottom
 :PROPERTIES:
@@ -303,7 +306,7 @@ lambdock/
 │       ├── dock_window.rs     # LambdockState lifecycle: layer shell, animation, auto-hide, teardown
 │       ├── dock_registry.rs   # The active-dock list, and its only owner
 │       ├── dock_item.rs       # DockItem, field for field
-│       ├── state.rs           # LambdockState, field for field
+│       ├── state.rs           # LambdockState: owned widgets and settings
 │       ├── app_window.rs      # AppWindow ownership: new/set-title/matches/free
 │       ├── bridge.rs          # The Scheme→state config readers and the export writer
 │       ├── guile.rs           # The libguile surface, and what it costs
@@ -465,13 +468,12 @@ builders and the layout writes), =rust/src/state.rs= (the central struct, field 
 field) and =rust/src/ui/dock_item.rs= (one dock item, and the table that says what
 each kind of item can do).
 
-=The central struct is mirrored, not owned.= =rust/src/state.rs= mirrors
-~LambdockState~ and =rust/src/dock_item.rs= mirrors ~DockItem~ field for field,
-because every module reads a dock's fields through them. A wrong offset is not a
-compile error, it is a corrupted field two modules away, so the mirror carries a
-test pinning the size and the offsets against the numbers the C header declared.
-When the struct grows a field in the wrong place, that test fails and says which
-one moved.
+=The central struct is owned, not mirrored.= =rust/src/state.rs= is the one
+definition of ~LambdockState~: the widgets it builds, as owned ~Option~s, and the
+settings it read. There is no C header behind it any more and no layout test to
+keep in step -- the compiler checks every field. =rust/src/dock_item.rs= still
+mirrors ~DockItem~ field for field, because its widgets are borrowed from a tree
+GTK owns.
 
 =GTK from Rust has four traps=, all found by tests:
 
@@ -909,12 +911,12 @@ Everything else is per-dock, held in a ~LambdockState~ (see below).
 :CUSTOM_ID: the-central-struct
 :END:
 
-=rust/src/state.rs= is the single source of truth for ~LambdockState~, field for
-field, with a test pinning its size and offsets.  Read it before anything else.
-It groups a dock instance's whole world:
+=rust/src/state.rs= is the single source of truth for ~LambdockState~.  Read it
+before anything else.  It groups a dock instance's whole world:
 
-- Widgets: ~window~, ~overlay~, ~bg_capsule~, ~scrolled_window~, ~box~,
-  ~popover~, ~size_group~.
+- Widgets, owned: ~window~, ~overlay~, ~bg_shelf~, ~bg_capsule~,
+  ~scrolled_window~, ~box_~, ~popover~, ~reconnect_label~ and the ~size_group~.
+  Each is an ~Option~, and ~None~ means "not built yet" or "just destroyed".
 - Config mirror (read from Scheme): ~auto_hide~, ~show_when_clear~,
   ~track_windows~, ~hover_animate~, ~icon_size~, ~theme~, ~config_path~, ~edge~,
   ~orientation~.
@@ -923,10 +925,10 @@ It groups a dock instance's whole world:
 - Ownership lists: ~dock_items~ (~GList~ of ~DockItem*~, see
   [[https://docs.gtk.org/glib/struct.List.html][GList]]) and ~window_trackers~
   (~GList~ of raw ~zwlr_foreign_toplevel_handle_v1*~).
-- ~monitor~ (a /referenced/
-  [[https://docs.gtk.org/gdk4/class.Monitor.html][GdkMonitor]] or NULL),
-  ~is_destroying~ re-entrancy guard, ~active_popovers~ counter, per-instance CSS
-  providers.
+- ~monitor~ (the owned
+  [[https://docs.gtk.org/gdk4/class.Monitor.html][GdkMonitor]] the dock was placed
+  on, or ~None~), ~is_destroying~ re-entrancy guard, ~active_popovers~ counter,
+  and the five per-instance CSS providers, owned.
 
 =AppWindow= is the (window-handle, title) pair tracked per dock item. ~DockItem~
 is described in [[#dock-item-lifecycle][Dock item lifecycle]].
@@ -1049,7 +1051,7 @@ The key names, their defaults and their meanings are tabulated for users in
    - ~'launchpad~ → ~create_launchpad_dock_item(...)~.
    - ~'trash~ → ~create_trash_dock_item(...)~ (desktop trash, see
      =rust/src/ui/trash.rs=).
-3. Each ~create_*~ builds the GTK button/popover, appends it to ~state->box~, and
+3. Each ~create_*~ builds the GTK button/popover, appends it to ~dock.box_~, and
    appends the ~DockItem*~ to ~state->dock_items~.
 
 The record and constructors live in =items.scm=; the dispatch reads the
@@ -1256,8 +1258,8 @@ negotiable.
 
 *Create* -- ~create_dock_instance(app, monitor, config_path)~ (in ~main_app.rs~):
 
-1. Allocate ~LambdockState~, ~g_object_ref~ the monitor, connect its
-   ~invalidate~ signal to immediately unbind layer-shell.
+1. Box a default ~LambdockState~, store the monitor it was placed on, connect
+   that monitor's ~invalidate~ signal to immediately unbind layer-shell.
 2. Read position/orientation, create the window, load theme CSS, read the rest of
    the config into fields.
 3. Build the widget tree: overlay → background capsule + scrolled viewport → box;
@@ -1288,8 +1290,9 @@ matters and is the canonical teardown sequence:
 6. Unparent the popover.
 7. Free all dock items (list is detached first so nothing can walk it during
    free), then free the window-tracker list.
-8. Null out ~window~ / refs, ~gtk_window_destroy~, unref ~size_group~, unref
-   ~monitor~, free ~config_path~, ~theme~, and finally the ~state~.
+8. Empty ~window~ / ~bg_shelf~ / ~bg_capsule~ / ~popover~ / ~size_group~ /
+   ~monitor~ (each ~Option~ drops its reference), ~gtk_window_destroy~, free
+   ~config_path~ and ~theme~, and finally box the ~state~ back up and drop it.
 
 *Never* free a ~LambdockState~ by hand; always go through
 ~destroy_dock_instance~ so timers/handlers/providers are cleaned up.
@@ -1371,7 +1374,7 @@ One row per module, in the order the layers stack. The layer numbers match
 | 2     | =main.rs=                     | The process entry: argv, then =lambdock_main= and Guile's boot                   |
 | 2     | =main_app.rs=                 | The application: startup, actions, Guile subrs, watchers, hotplug, reconciliation |
 | 2     | =bridge.rs=                   | Every Scheme read, the load and export calls, the item builders, layout writes   |
-| 2     | =state.rs=                    | ~LambdockState~, field for field                                                |
+| 2     | =state.rs=                    | ~LambdockState~: the widgets a dock owns and the settings it read                |
 | 2     | =dock_item.rs=                | ~DockItem~, its widgets, the kind table and the reload of a dock                 |
 | 2     | =dock_registry.rs=            | The only owner of the active-dock list: snapshot plus typed walk                |
 | 2     | =toplevel_tracker.rs=         | The Wayland half: manager and handle listeners, one visitor per event           |
@@ -1497,11 +1500,11 @@ ideas each, and every one of them is a mechanical split:
 
 | Where                          | Lines | What is rough                                                     | First move                                                    |
 |--------------------------------+-------+-------------------------------------------------------------------+---------------------------------------------------------------|
-| =rust/src/dock_item.rs=        | 3611  | builds, mounts, styles, polls and frees an item, plus its kind table | split the per-kind constructors from the mounting helpers   |
-| =rust/src/dock_window.rs=      | 2969  | the window, the layout, the input region, the slide and auto-hide  | the surface policy and the animation want their own module    |
-| =rust/src/ui/stack.rs=         | 2468  | listing, thumbnails, two views, the panel and the popover          | the decode queue is a module of its own                       |
-| =rust/src/ui/preferences.rs=   | 1659  | a data-driven form, its builders and its window in one file        | move the row builders next to the tables they serve           |
-| =rust/src/main_app.rs=         | 1742  | startup, disk sync, overlay CSS and the Scheme primitives together | the REPL primitives want their own module                     |
+| =rust/src/dock_item.rs=        | 3500  | builds, mounts, styles, polls and frees an item, plus its kind table | split the per-kind constructors from the mounting helpers   |
+| =rust/src/dock_window.rs=      | 2872  | the window, the layout, the input region, the slide and auto-hide  | the surface policy and the animation want their own module    |
+| =rust/src/ui/stack.rs=         | 2443  | listing, thumbnails, two views, the panel and the popover          | the decode queue is a module of its own                       |
+| =rust/src/ui/preferences.rs=   | 1652  | a data-driven form, its builders and its window in one file        | move the row builders next to the tables they serve           |
+| =rust/src/main_app.rs=         | 1726  | startup, disk sync, overlay CSS and the Scheme primitives together | the REPL primitives want their own module                     |
 
 What is left of the C-shaped seam is cosmetic: the ~lambdock_*~ prefixes on
 functions nothing outside the crate calls.  Renaming them is a mechanical follow-up
@@ -2065,7 +2068,8 @@ Touch these in order:
 4. Consume it where relevant (usually ~create_dock_instance~ /
    ~reload_dock_instance~).
 5. If the dock has to remember it between frames, add the field to
-   ~LambdockState~ in =rust/src/state.rs= and to the test that pins the layout.
+   ~LambdockState~ in =rust/src/state.rs= (and give it a default if zero is not
+   one).
 6. Add a test (see below) and update =README.org= and this file's DSL section.
 
 ** Add a preset launcher or icon
@@ -2136,8 +2140,10 @@ code.
 :END:
 
 - *One owner per resource.* ~LambdockState~ owns its ~dock_items~,
-  ~window_trackers~, ~monitor~ ref, ~size_group~, and CSS providers. GTK owns the
-  widgets once parented/appended. Scheme owns the ~SCM~ records.
+  ~window_trackers~, its widgets, its ~monitor~, its ~size_group~ and its CSS
+  providers -- all of the last four as ~Option~s it drops to let go. GTK parents
+  them, so the reference the state holds is one of several; Scheme owns the ~SCM~
+  records.
 - *Free through the right door.* Items → ~free_dock_item~; docks →
   ~destroy_dock_instance~. Never ~g_free~ a struct that has live timers/signals.
 - *Detach lists before freeing members.* ~destroy_dock_instance~ and
@@ -2334,7 +2340,7 @@ They are kept here as guard-rails because each is easy to reintroduce.
 
 | Term                  | Meaning                                                                 |
 |-----------------------+-------------------------------------------------------------------------+
-| ~LambdockState~        | Per-dock C state; one GTK window                                           |
+| ~LambdockState~        | Per-dock state, owned: its widgets and settings; one GTK window            |
 | ~DockItem~             | A dock entry: favorite launcher, dynamic widget, separator, or tracked app |
 | ~AppWindow~            | A (Wayland handle, title) pair tracked by a ~DockItem~                     |
 | ~MasterToplevel~       | C struct pairing a raw toplevel handle with its title/app_id              |

@@ -190,7 +190,7 @@ fn schedule_removal(poof: &Poof) {
         }
 
         // The gap closes now, not while the smoke was still there.
-        if !state.is_null() && unsafe { !(*state).window.is_null() } {
+        if !state.is_null() && unsafe { !(*state).window.is_none() } {
             unsafe { update_dock_dimensions(state) };
         }
 
@@ -247,11 +247,13 @@ pub unsafe fn lambdock_poof_take_slot(item: *mut DockItem) -> c_int {
     let item = &*item;
     let state = item.state;
 
-    if state.is_null() || (*state).window.is_null() || (*state).box_.is_null() {
+    if state.is_null() || (*state).window.is_none() || (*state).box_.is_none() {
         return 0;
     }
 
-    let dock_box: gtk4::Box = from_glib_none((*state).box_.cast::<gtk4::ffi::GtkBox>());
+    let Some(dock_box) = (*state).box_.as_ref().and_then(|box_| box_.downcast_ref::<gtk4::Box>()) else {
+        return 0;
+    };
 
     // The slot the icon occupies: the shelf wrapper when there is one.
     let slot = [item.container, item.cell, item.button]

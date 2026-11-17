@@ -91,12 +91,8 @@ pub fn lambdock_system_animations_enabled() -> c_int {
 
 /// Whether the dock should reduce its motion: the dock's setting first, then the
 /// desktop's.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn lambdock_reduce_motion(state: *const LambdockState) -> c_int {
-    if !state.is_null() && (*state).reduce_motion != 0 {
+pub fn lambdock_reduce_motion(state: &LambdockState) -> c_int {
+    if state.reduce_motion != 0 {
         return 1;
     }
 
@@ -104,11 +100,7 @@ pub unsafe fn lambdock_reduce_motion(state: *const LambdockState) -> c_int {
 }
 
 /// Whether the dock may animate.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn lambdock_animations_enabled(state: *const LambdockState) -> c_int {
+pub fn lambdock_animations_enabled(state: &LambdockState) -> c_int {
     (lambdock_reduce_motion(state) == 0) as c_int
 }
 
@@ -258,25 +250,19 @@ pub unsafe fn lambdock_watch_system_motion(
 mod tests {
     use super::*;
 
-    extern "C" {
-        fn g_malloc0(size: usize) -> *mut c_void;
-}
-
     /// A zeroed state is what a partially built dock or a unit test has: no
     /// reduce-motion setting of its own.
-    fn empty_state() -> *mut LambdockState {
-        unsafe { g_malloc0(std::mem::size_of::<LambdockState>()).cast() }
+    fn empty_state() -> Box<LambdockState> {
+        Box::new(LambdockState::default())
     }
 
     #[test]
     fn the_docks_own_setting_reduces_motion() {
-        let state = empty_state();
+        let mut state = empty_state();
+        state.reduce_motion = 1;
 
-        unsafe {
-            (*state).reduce_motion = 1;
-            assert_eq!(lambdock_reduce_motion(state), 1);
-            assert_eq!(lambdock_animations_enabled(state), 0);
-        }
+        assert_eq!(lambdock_reduce_motion(&state), 1);
+        assert_eq!(lambdock_animations_enabled(&state), 0);
     }
 
     #[test]
@@ -285,12 +271,9 @@ mod tests {
         // documented default is "animations on".
         let state = empty_state();
 
-        unsafe {
-            assert_eq!(lambdock_system_animations_enabled(), 1);
-            assert_eq!(lambdock_reduce_motion(state), 0);
-            assert_eq!(lambdock_animations_enabled(state), 1);
-            assert_eq!(lambdock_reduce_motion(std::ptr::null()), 0);
-        }
+        assert_eq!(lambdock_system_animations_enabled(), 1);
+        assert_eq!(lambdock_reduce_motion(&state), 0);
+        assert_eq!(lambdock_animations_enabled(&state), 1);
     }
 
     #[test]

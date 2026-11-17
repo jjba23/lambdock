@@ -47,7 +47,7 @@ thread_local! {
 ///
 /// `state` must be null or a live dock.
 pub unsafe fn dock_registry_add(state: *mut LambdockState) {
-    if state.is_null() || dock_registry_contains(state) != 0 {
+    if state.is_null() || dock_registry_contains(&*state) != 0 {
         return;
     }
 
@@ -73,15 +73,7 @@ pub unsafe fn dock_registry_remove(state: *mut LambdockState) {
 }
 
 /// Whether this dock is registered.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_registry_contains(state: *const LambdockState) -> c_int {
-    if state.is_null() {
-        return 0;
-    }
-
+pub fn dock_registry_contains(state: &LambdockState) -> c_int {
     DOCKS.with_borrow(|docks| {
         docks
             .iter()

@@ -54,18 +54,8 @@ const MIN_BANDS: c_int = 6;
 /// A zero-initialised state (a partially built dock, a unit test) carries no shelf
 /// configuration at all; it is treated as the plain dock rather than as a capsule
 /// with zero margin, which would collapse the layout.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn lambdock_shelf_params_effective(
-    state: *const LambdockState,
-) -> ShelfParams {
-    if state.is_null() {
-        return lambdock_shelf_params_default();
-    }
-
-    let params = (*state).shelf;
+pub fn lambdock_shelf_params_effective(state: &LambdockState) -> ShelfParams {
+    let params = state.shelf;
 
     if params.margin_px == 0
         && params.front_px == 0
@@ -80,15 +70,7 @@ pub unsafe fn lambdock_shelf_params_effective(
 }
 
 /// Whether the shelf look is in force for `state`.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn lambdock_shelf_active(state: *const LambdockState) -> c_int {
-    if state.is_null() {
-        return 0;
-    }
-
+pub fn lambdock_shelf_active(state: &LambdockState) -> c_int {
     let defaults = lambdock_shelf_params_default();
     let params = lambdock_shelf_params_effective(state);
 
@@ -126,14 +108,7 @@ pub fn geometry(params: &ShelfParams, icon_size: c_int) -> ShelfGeometry {
 }
 
 /// The shelf measured out for `state` at `icon_size`.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn lambdock_shelf_geometry_for(
-    state: *const LambdockState,
-    icon_size: c_int,
-) -> ShelfGeometry {
+pub fn lambdock_shelf_geometry_for(state: &LambdockState, icon_size: c_int) -> ShelfGeometry {
     geometry(&lambdock_shelf_params_effective(state), icon_size)
 }
 
@@ -1513,13 +1488,13 @@ pub unsafe fn apply_shelf_layout(state: *mut LambdockState) {
         return;
     }
 
-    let params = lambdock_shelf_params_effective(state);
+    let params = lambdock_shelf_params_effective(&*state);
     let default_icon = if (*state).icon_size > 0 {
         (*state).icon_size
     } else {
         DEFAULT_ICON_SIZE
     };
-    let geometry = lambdock_shelf_geometry_for(state, default_icon);
+    let geometry = lambdock_shelf_geometry_for(&*state, default_icon);
 
     let mut node = (*state).dock_items.cast::<GList>();
     while !node.is_null() {
@@ -1635,32 +1610,30 @@ mod tests {
     /// state whose shelf is all zeroes and from one that configures it.
     #[test]
     fn a_zeroed_state_measures_the_plain_dock() {
-        let mut state: LambdockState = unsafe { std::mem::zeroed() };
+        let mut state = LambdockState::default();
 
-        unsafe {
-            assert_eq!(
-                lambdock_shelf_active(&state),
-                0,
-                "all zeroes is not a shelf"
-            );
+        assert_eq!(
+            lambdock_shelf_active(&state),
+            0,
+            "all zeroes is not a shelf"
+        );
 
-            // A zeroed shelf is treated as the defaults, not as a zero-margin
-            // capsule that would collapse the layout.
-            let geometry = lambdock_shelf_geometry_for(&state, 48);
-            assert_eq!(
-                geometry.capsule_px,
-                48 + lambdock_shelf_params_default().margin_px
-            );
+        // A zeroed shelf is treated as the defaults, not as a zero-margin
+        // capsule that would collapse the layout.
+        let geometry = lambdock_shelf_geometry_for(&state, 48);
+        assert_eq!(
+            geometry.capsule_px,
+            48 + lambdock_shelf_params_default().margin_px
+        );
 
-            // A reflection and a tilt turn the shelf look on.
-            state.shelf.reflection_ratio = 0.3;
-            assert_ne!(lambdock_shelf_active(&state), 0);
-            assert!(lambdock_shelf_geometry_for(&state, 48).band_px > 0);
+        // A reflection and a tilt turn the shelf look on.
+        state.shelf.reflection_ratio = 0.3;
+        assert_ne!(lambdock_shelf_active(&state), 0);
+        assert!(lambdock_shelf_geometry_for(&state, 48).band_px > 0);
 
-            state.shelf.reflection_ratio = 0.0;
-            state.shelf.tilt_deg = 8.0;
-            assert_ne!(lambdock_shelf_active(&state), 0);
-        }
+        state.shelf.reflection_ratio = 0.0;
+        state.shelf.tilt_deg = 8.0;
+        assert_ne!(lambdock_shelf_active(&state), 0);
     }
 
     /// The keystone leaves the far edge alone and magnifies the edge on the
@@ -1737,23 +1710,15 @@ mod tests {
     /// The parameters in force are the dock's, unless it configured none.
     #[test]
     fn an_unconfigured_dock_gets_the_defaults() {
-        unsafe {
-            let defaults = lambdock_shelf_params_default();
-            let mut state: LambdockState = std::mem::zeroed();
+        let defaults = lambdock_shelf_params_default();
+        let mut state = LambdockState::default();
 
-            let effective = lambdock_shelf_params_effective(&state);
-            assert_eq!(effective.margin_px, defaults.margin_px);
-            assert_eq!(effective.front_px, defaults.front_px);
+        let effective = lambdock_shelf_params_effective(&state);
+        assert_eq!(effective.margin_px, defaults.margin_px);
+        assert_eq!(effective.front_px, defaults.front_px);
 
-            state.shelf.front_px = 9;
-            assert_eq!(lambdock_shelf_params_effective(&state).front_px, 9);
-
-            // A null state is the defaults too.
-            assert_eq!(
-                lambdock_shelf_params_effective(std::ptr::null()).front_px,
-                defaults.front_px
-            );
-        }
+        state.shelf.front_px = 9;
+        assert_eq!(lambdock_shelf_params_effective(&state).front_px, 9);
     }
     /// A frame with no tilt and no flare hands the widget straight through: the
     /// flat dock must stay pixel-identical to the unwrapped capsule.

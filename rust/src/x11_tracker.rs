@@ -111,22 +111,7 @@ mod backend {
     use crate::state::LambdockState;
     use crate::ui::layer_shell::is_monitor_valid;
 
-    /// A widget field of a dock's state, borrowed: the state holds raw pointers,
-    /// and a borrow is all this side needs.
-    ///
-    /// # Safety
-    ///
-    /// `pointer` must be null or a live `GtkWidget`.
-    unsafe fn widget_of(pointer: *mut c_void) -> Option<gtk4::glib::translate::Borrowed<gtk4::Widget>> {
-        use gtk4::glib::translate::from_glib_borrow;
-
-        if pointer.is_null() {
-            return None;
-        }
-
-        Some(from_glib_borrow(pointer.cast()))
-    }
-    use gtk4::glib::translate::{from_glib_none, IntoGlib};
+    use gtk4::glib::translate::IntoGlib;
     use gtk4::prelude::*;
     use gtk4::glib::object::Cast;
 
@@ -1050,14 +1035,11 @@ mod backend {
     /// # Safety
     ///
     /// `state` must be null or a live `LambdockState`.
-    unsafe fn dock_xid(state: *const LambdockState) -> Window {
-        let Some(state) = state.as_ref() else {
+    unsafe fn dock_xid(state: &LambdockState) -> Window {
+        let Some(window) = state.window.as_ref() else {
             return 0;
         };
-        let Some(window) = widget_of(state.window) else {
-            return 0;
-        };
-        let Some(window) = window.as_ref().downcast_ref::<gtk4::Window>() else {
+        let Some(window) = window.downcast_ref::<gtk4::Window>() else {
             return 0;
         };
 
@@ -1278,19 +1260,18 @@ mod backend {
     ) -> Option<crate::core::x11_rules::Rect> {
         let display = gdk::Display::default()?;
 
-        let mut monitor = if is_monitor_valid(state.monitor.cast()) != 0 {
-            let monitor: *mut gdk::ffi::GdkMonitor = state.monitor.cast();
-            Some(from_glib_none(monitor))
-        } else {
-            None
-        };
+        let mut monitor: Option<gdk::Monitor> = state
+            .monitor
+            .clone()
+            .filter(|monitor| is_monitor_valid(monitor.as_ptr()) != 0);
 
         if monitor.is_none() {
-            let surface = widget_of(state.window)
-                .and_then(|window| window.as_ref().downcast_ref::<gtk4::Window>().cloned())
+            let surface = state
+                .window
+                .as_ref()
+                .and_then(|window| window.downcast_ref::<gtk4::Window>().cloned())
                 .and_then(|window| window.surface());
-            monitor = surface
-                .and_then(|surface| display.monitor_at_surface(&surface));
+            monitor = surface.and_then(|surface| display.monitor_at_surface(&surface));
         }
 
         let owned;
@@ -1326,18 +1307,18 @@ mod backend {
         let Some(state_ref) = state.as_mut() else {
             return;
         };
-        if state_ref.overlay.is_null() || !x11_connect() {
+        if state_ref.overlay.is_none() || !x11_connect() {
             return;
         }
 
-        let xid = dock_xid(state);
+        let xid = dock_xid(state_ref);
         if xid == 0 {
             return;
         }
 
         // Typed before the window manager sees the window, and typed again once it
         // is mapped, because mapping is when GTK writes its own window state.
-        let mapped = widget_of(state_ref.window)
+        let mapped = state_ref.window.as_ref()
             .is_some_and(|window| window.is_mapped());
 
         if state_ref.x11_window != xid || mapped {
@@ -1363,7 +1344,7 @@ mod backend {
         // monitor. Reading them back keeps one source of truth for the dock's size.
         let horizontal = state_ref.orientation == gtk4::Orientation::Horizontal.into_glib();
         let (mut requested_width, mut requested_height) = (-1, -1);
-        if let Some(overlay) = widget_of(state_ref.overlay) {
+        if let Some(overlay) = state_ref.overlay.as_ref() {
             let (width, height) = (overlay.width(), overlay.height());
             if horizontal {
                 requested_width = overlay.width_request();
@@ -1379,14 +1360,14 @@ mod backend {
             if requested > 0 {
                 requested
             } else {
-                dock_cross_axis_dim(state)
+                dock_cross_axis_dim(state_ref)
             }
         } else {
             let requested = requested_width_request(state_ref);
             if requested > 0 {
                 requested
             } else {
-                dock_cross_axis_dim(state)
+                dock_cross_axis_dim(state_ref)
             }
         };
 
@@ -1396,7 +1377,7 @@ mod backend {
             monitor,
             if horizontal { requested_width } else { requested_height },
             cross_px,
-            dock_capsule_cross_dim(state),
+            dock_capsule_cross_dim(state_ref),
         );
 
         // Compare against where the window actually *is*, not against what was
@@ -1439,12 +1420,12 @@ mod backend {
 
     /// The overlay's height request, as a number.
     unsafe fn requested_height_request(state: &LambdockState) -> c_int {
-        widget_of(state.overlay).map_or(-1, |overlay| overlay.height_request())
+        state.overlay.as_ref().map_or(-1, |overlay| overlay.height_request())
     }
 
     /// The overlay's width request, as a number.
     unsafe fn requested_width_request(state: &LambdockState) -> c_int {
-        widget_of(state.overlay).map_or(-1, |overlay| overlay.width_request())
+        state.overlay.as_ref().map_or(-1, |overlay| overlay.width_request())
     }
 
     /// # Safety

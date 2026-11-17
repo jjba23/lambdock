@@ -9,6 +9,31 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- *A dock's state owns its widgets.* `LambdockState` held nine `*mut c_void`
+  widget fields, a `GdkMonitor`, a `SizeGroup` and five `CssProvider`s as raw
+  pointers, because it started life as a mirror of a C struct that the C half
+  read through a header. The C half is gone, so the fields are owned `Option`s
+  now: the window, the overlay, the shelf frame, the capsule, the scroller, the
+  row, the popover, the reconnecting label, the size group, the monitor and the
+  providers. Setting a field to `None` is the one way to let go of a widget that
+  is being destroyed, and dropping the state drops the rest. Two pieces of
+  plumbing existed only to launder ownership through a pointer and are gone with
+  it: `keep_floating`, which forced a floating reference so a later step could
+  sink it, and `size_group_of`, which un-cast a pointer the field no longer is.
+  The two layout tests that pinned the struct's size and offsets, and the
+  `#[repr(C)]` they guarded, went the same way -- the compiler checks the fields
+  now.
+- *The state is boxed, not `g_malloc0`ed.* `create_dock_instance` allocates with
+  `Box::new(LambdockState::default())` and `destroy_dock_instance` takes it back
+  with `Box::from_raw`, so the widget references it holds are dropped rather than
+  leaked past the free.
+- *Twenty-three functions took `*const LambdockState`* and began by checking for
+  null, then dereferenced it anyway: they take `&LambdockState` now, and their
+  callers already hold one. Twelve of them turned out not to need `unsafe` at all
+  once the parameter was a reference, and so did the shelf-parameter reader they
+  call.
+
+
 *[Released]*
 
 ** v2.1.5 (2026-11-17)

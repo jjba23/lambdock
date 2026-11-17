@@ -1138,14 +1138,9 @@ fn into_floating_pointer(widget: gtk4::Widget) -> *mut gtk4::ffi::GtkWidget {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn application_for(state: *const LambdockState) -> Option<gtk4::Application> {
-    let state = state.as_ref()?;
-    if state.window.is_null() {
-        return None;
-    }
-
-    let window: gtk4::Window = from_glib_none(state.window.cast());
+/// `state.window` must be null or a live widget.
+unsafe fn application_for(state: &LambdockState) -> Option<gtk4::Application> {
+    let window: gtk4::Window = state.window.as_ref()?.clone().downcast().ok()?;
 
     window.application()?.downcast::<gtk4::Application>().ok()
 }
@@ -1297,14 +1292,14 @@ fn fit_columns(window: &gtk4::ApplicationWindow) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn appearance_for(state: *const LambdockState) -> Appearance {
+/// `state.config_path` must be null or a live C string.
+unsafe fn appearance_for(state: &LambdockState) -> Appearance {
     use crate::bridge::{
         get_launchpad_blur_config_for, get_launchpad_close_on_right_config_for,
         get_launchpad_columns_config_for, get_launchpad_icon_size_config_for,
     };
 
-    let config_path = state.as_ref().map_or(std::ptr::null(), |state| state.config_path);
+    let config_path = state.config_path;
 
     Appearance {
         icon_size: get_launchpad_icon_size_config_for(config_path),
@@ -1389,8 +1384,8 @@ fn install_window_controllers(window: &gtk4::ApplicationWindow) {
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn configure_layer_shell(window: &gtk4::ApplicationWindow, state: *const LambdockState) {
+/// `state.monitor` must be null or a live monitor.
+unsafe fn configure_layer_shell(window: &gtk4::ApplicationWindow, state: &LambdockState) {
     use crate::ui::layer_shell::{
         self, EDGE_BOTTOM, EDGE_LEFT, EDGE_RIGHT, EDGE_TOP, KEYBOARD_MODE_EXCLUSIVE, LAYER_OVERLAY,
     };
@@ -1410,8 +1405,10 @@ unsafe fn configure_layer_shell(window: &gtk4::ApplicationWindow, state: *const 
         layer_shell::set_anchor(surface, edge, true);
     }
 
-    let monitor = state.as_ref().map_or(std::ptr::null_mut(), |state| state.monitor);
-    let monitor = monitor.cast::<gdk::ffi::GdkMonitor>();
+    let monitor = state
+        .monitor
+        .as_ref()
+        .map_or(std::ptr::null_mut(), |monitor| monitor.as_ptr());
     if layer_shell::is_monitor_valid(monitor) != 0 {
         layer_shell::set_monitor(surface, monitor);
     }
@@ -1423,7 +1420,7 @@ unsafe fn configure_layer_shell(window: &gtk4::ApplicationWindow, state: *const 
 ///
 /// `state` must be null or a live dock.
 unsafe fn make_window(state: *mut LambdockState) -> Option<gtk4::ApplicationWindow> {
-    let app = application_for(state)?;
+    let app = application_for(&*state)?;
 
     let window = gtk4::ApplicationWindow::new(&app);
     window.add_css_class("launchpad");
@@ -1439,7 +1436,7 @@ unsafe fn make_window(state: *mut LambdockState) -> Option<gtk4::ApplicationWind
     window.set_child(Some(&surface));
 
     install_window_controllers(&window);
-    configure_layer_shell(&window, state);
+    configure_layer_shell(&window, &*state);
 
     Some(window)
 }
@@ -1500,7 +1497,7 @@ fn release_window() {
 pub unsafe fn lambdock_launchpad_show(state: *mut LambdockState) {
     crate::ui::ensure_gtk_initialized();
 
-    let appearance = appearance_for(state);
+    let appearance = appearance_for(&*state);
 
     // Borrowed for the window's life: the shelf reads this dock's items.
     model_mut(|launchpad| launchpad.state = state);
@@ -1540,7 +1537,7 @@ pub unsafe fn lambdock_launchpad_show(state: *mut LambdockState) {
 
     // Fade in, unless motion is reduced: the class is dropped on the next idle
     // so the first frame is drawn transparent and the CSS transition runs.
-    if crate::accessibility::lambdock_animations_enabled(state) != 0 {
+    if crate::accessibility::lambdock_animations_enabled(&*state) != 0 {
         window.add_css_class("launchpad-fading-in");
 
         let weak = window.downgrade();

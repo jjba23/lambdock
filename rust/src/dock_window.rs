@@ -111,20 +111,6 @@ pub(crate) unsafe fn widget_of(pointer: *mut c_void) -> Option<Borrowed<gtk4::Wi
     Some(crate::ui::widget_from_pointer(pointer.cast()))
 }
 
-/// The dock's size group, which is not a widget: a plain `GObject` that only
-/// ever groups widgets.
-///
-/// # Safety
-///
-/// `pointer` must be null or a live `GtkSizeGroup`.
-unsafe fn size_group_of(pointer: *mut c_void) -> Option<Borrowed<gtk4::SizeGroup>> {
-    if pointer.is_null() {
-        return None;
-    }
-
-    Some(gtk4::glib::translate::from_glib_borrow(pointer.cast()))
-}
-
 /// The surface a widget is drawn on, or `None` before it is realized.
 ///
 /// # Safety
@@ -179,8 +165,8 @@ fn first_monitor() -> Option<gdk::Monitor> {
 ///
 /// `state` must be a live dock.
 unsafe fn surface_monitor(state: &LambdockState) -> Option<gdk::Monitor> {
-    let window = widget_of(state.window)?;
-    let surface = surface_of(&window)?;
+    let window = state.window.as_ref()?;
+    let surface = surface_of(window)?;
 
     gdk::Display::default()?.monitor_at_surface(&surface)
 }
@@ -191,19 +177,20 @@ unsafe fn surface_monitor(state: &LambdockState) -> Option<gdk::Monitor> {
 ///
 /// `state` must be a live dock.
 unsafe fn monitor_size(state: &LambdockState) -> (c_int, c_int) {
-    let monitor = state.monitor.cast::<gdk::ffi::GdkMonitor>();
-
     // A monitor that has been unplugged is a dangling pointer: only trust one
-    // the display still lists.
-    let monitor = if !monitor.is_null() && layer_shell::is_monitor_valid(monitor) != 0 {
-        gtk4::glib::translate::from_glib_none::<_, gdk::Monitor>(monitor)
-    } else {
-        // A dock with no monitor of its own is placed by the compositor, which
-        // may well be a monitor that is not the first one: measure the surface's.
-        match surface_monitor(state).or_else(first_monitor) {
-            Some(monitor) => monitor,
-            None => return (0, 0),
-        }
+    // the display still lists. A dock with no monitor of its own is placed by the
+    // compositor, which may well be a monitor that is not the first one: measure
+    // the surface's, then the first.
+    let monitor = state
+        .monitor
+        .as_ref()
+        .filter(|monitor| layer_shell::is_monitor_valid(monitor.as_ptr()) != 0)
+        .cloned()
+        .or_else(|| surface_monitor(state))
+        .or_else(first_monitor);
+
+    let Some(monitor) = monitor else {
+        return (0, 0);
     };
 
     let geometry = monitor.geometry();
@@ -221,7 +208,7 @@ unsafe fn monitor_size(state: &LambdockState) -> (c_int, c_int) {
 ///
 /// `state` must be a live dock.
 unsafe fn apply_size_group(state: &LambdockState) {
-    let Some(group) = size_group_of(state.size_group) else {
+    let Some(group) = state.size_group.as_ref() else {
         return;
     };
 
@@ -237,7 +224,7 @@ unsafe fn apply_size_group(state: &LambdockState) {
 ///
 /// `state` must be a live dock.
 unsafe fn apply_scroll_policy(state: &LambdockState, dims: &DockDims) {
-    let Some(scrolled) = widget_of(state.scrolled_window) else {
+    let Some(scrolled) = state.scrolled_window.as_ref() else {
         return;
     };
     let Some(scrolled) = scrolled.downcast_ref::<gtk4::ScrolledWindow>() else {
@@ -259,7 +246,7 @@ unsafe fn apply_scroll_policy(state: &LambdockState, dims: &DockDims) {
 ///
 /// `state` must be a live dock with its box built.
 unsafe fn apply_box_margins(state: &LambdockState, dims: &DockDims, horizontal: bool) {
-    let Some(box_) = widget_of(state.box_) else {
+    let Some(box_) = state.box_.as_ref() else {
         return;
     };
 
@@ -306,12 +293,9 @@ unsafe fn apply_box_margins(state: &LambdockState, dims: &DockDims, horizontal: 
 ///
 /// # Safety
 ///
-/// `state` must be null or a live dock.
-unsafe fn content_main_px(state: *const LambdockState, horizontal: bool) -> c_int {
-    let Some(state) = state.as_ref() else {
-        return 0;
-    };
-    let Some(scrolled) = widget_of(state.scrolled_window) else {
+/// The widget pointers in `state` must still be live.
+unsafe fn content_main_px(state: &LambdockState, horizontal: bool) -> c_int {
+    let Some(scrolled) = state.scrolled_window.as_ref() else {
         return 0;
     };
 
@@ -348,7 +332,7 @@ pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
-    let Some(overlay) = widget_of(dock.overlay) else {
+    let Some(overlay) = dock.overlay.as_ref() else {
         return;
     };
 
@@ -362,7 +346,7 @@ pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
         0
     };
     let main_px = if headroom > 0 {
-        content_main_px(state, horizontal) + 2 * headroom
+        content_main_px(dock, horizontal) + 2 * headroom
     } else {
         -1
     };
@@ -383,7 +367,7 @@ pub unsafe fn dock_reserve_hover_room(state: *mut LambdockState) {
 ///
 /// `state` must be a live dock with its widgets built.
 unsafe fn apply_size_requests(state: &LambdockState, dims: &DockDims, horizontal: bool) {
-    let (Some(overlay), Some(capsule)) = (widget_of(state.overlay), widget_of(state.bg_capsule)) else {
+    let (Some(overlay), Some(capsule)) = (state.overlay.as_ref(), state.bg_capsule.as_ref()) else {
         return;
     };
 
@@ -402,7 +386,7 @@ unsafe fn apply_size_requests(state: &LambdockState, dims: &DockDims, horizontal
 ///
 /// `state` must be a live dock.
 unsafe fn apply_scroll_alignment(state: &LambdockState, horizontal: bool) {
-    let Some(scrolled) = widget_of(state.scrolled_window) else {
+    let Some(scrolled) = state.scrolled_window.as_ref() else {
         return;
     };
     let fill = if state.taskbar != 0 {
@@ -438,7 +422,7 @@ unsafe fn apply_scroll_alignment(state: &LambdockState, horizontal: bool) {
 ///
 /// `state` must be a live dock with its capsule and box built.
 unsafe fn apply_capsule_alignment(state: &LambdockState, horizontal: bool) {
-    let (Some(capsule), Some(box_)) = (widget_of(state.bg_capsule), widget_of(state.box_)) else {
+    let (Some(capsule), Some(box_)) = (state.bg_capsule.as_ref(), state.box_.as_ref()) else {
         return;
     };
 
@@ -485,7 +469,7 @@ unsafe fn apply_capsule_alignment(state: &LambdockState, horizontal: bool) {
 ///
 /// `state` must be a live dock.
 unsafe fn mirror_shelf_alignment(state: &LambdockState) {
-    let (Some(shelf), Some(capsule)) = (widget_of(state.bg_shelf), widget_of(state.bg_capsule)) else {
+    let (Some(shelf), Some(capsule)) = (state.bg_shelf.as_ref(), state.bg_capsule.as_ref()) else {
         return;
     };
 
@@ -589,7 +573,7 @@ unsafe fn apply_input_region(
     // Asking for a frame is what commits it; GTK has no partial invalidation,
     // but it does coalesce the request into the frame it is already drawing, so
     // this costs nothing during a hover, which is the only time it repeats.
-    if let Some(window) = widget_of(state.window) {
+    if let Some(window) = state.window.as_ref() {
         window.queue_draw();
     }
 }
@@ -611,10 +595,10 @@ unsafe fn apply_dock_input_region(state: *mut LambdockState) -> bool {
     let Some(dock) = state.as_mut() else {
         return false;
     };
-    let (Some(window), Some(shelf)) = (widget_of(dock.window), widget_of(dock.bg_shelf)) else {
+    let (Some(window), Some(shelf)) = (dock.window.as_ref(), dock.bg_shelf.as_ref()) else {
         return false;
     };
-    let Some(surface) = surface_of(&window) else {
+    let Some(surface) = surface_of(window) else {
         return false;
     };
     if surface.width() <= 1 || surface.height() <= 1 {
@@ -647,7 +631,7 @@ unsafe fn apply_dock_input_region(state: *mut LambdockState) -> bool {
     // The dock is the slab plus the row of icons that overhangs it, so the region
     // has to be the union of the two: the slab alone would leave the icons -- the
     // part people actually click -- outside the clickable area.
-    let Some(bounds) = shelf.compute_bounds(&*window) else {
+    let Some(bounds) = shelf.compute_bounds(window) else {
         return false;
     };
     if bounds.width() < 1.0 || bounds.height() < 1.0 {
@@ -655,8 +639,8 @@ unsafe fn apply_dock_input_region(state: *mut LambdockState) -> bool {
     }
 
     let mut bounds = bounds;
-    if let Some(row) = widget_of(dock.scrolled_window) {
-        if let Some(row) = row.compute_bounds(&*window) {
+    if let Some(row) = dock.scrolled_window.as_ref() {
+        if let Some(row) = row.compute_bounds(window) {
             if row.width() >= 1.0 && row.height() >= 1.0 {
                 bounds = bounds.union(&row);
             }
@@ -719,7 +703,7 @@ pub unsafe fn dock_schedule_input_region(state: *mut LambdockState) {
         return;
     }
 
-    let Some(window) = widget_of(dock.window) else {
+    let Some(window) = dock.window.as_ref() else {
         return;
     };
 
@@ -746,7 +730,7 @@ pub unsafe fn update_dock_dimensions(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
-    if dock.bg_capsule.is_null() || dock.overlay.is_null() {
+    if dock.bg_capsule.is_none() || dock.overlay.is_none() {
         return;
     }
 
@@ -830,36 +814,24 @@ pub struct DockSurfacePolicy {
 }
 
 /// The icon size actually in use, with the default for partly built states.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_icon_size(state: *const LambdockState) -> c_int {
-    match state.as_ref() {
-        Some(state) if state.icon_size > 0 => state.icon_size,
+pub fn dock_icon_size(state: &LambdockState) -> c_int {
+    match state.icon_size {
+        size if size > 0 => size,
         _ => DEFAULT_ICON_SIZE,
     }
 }
 
 /// The capsule's thickness for the current shelf parameters.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_capsule_cross_dim(state: *const LambdockState) -> c_int {
+pub fn dock_capsule_cross_dim(state: &LambdockState) -> c_int {
     lambdock_shelf_geometry_for(state, dock_icon_size(state)).capsule_px
 }
 
 /// The cross-axis size the overlay asks for: fisheye headroom, the outer glass,
 /// and any icon overhang past the inner edge.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_cross_axis_dim(state: *const LambdockState) -> c_int {
+pub fn dock_cross_axis_dim(state: &LambdockState) -> c_int {
     let icon_px = dock_icon_size(state);
     let geometry = lambdock_shelf_geometry_for(state, icon_px);
-    let hover_magnify = state.as_ref().map_or(0, |state| state.hover_animate);
+    let hover_magnify = state.hover_animate;
 
     // One formula, in the pure dimension maths: this is what the auto-hide
     // margin is measured from, so it has to be the number
@@ -874,19 +846,13 @@ pub unsafe fn dock_cross_axis_dim(state: *const LambdockState) -> c_int {
 /// rather than the pointer moving, and auto-hide must not act on them: believing
 /// one hides the dock, which puts the revealing strip back under a pointer that
 /// never moved, which reveals it again -- the dock bounces at the screen edge.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_is_settling(state: *const LambdockState) -> c_int {
-    let Some(state) = state.as_ref() else {
-        return 0;
-    };
-
+pub fn dock_is_settling(state: &LambdockState) -> c_int {
+    // Safety: `g_get_monotonic_time` only reads the clock.
+    let now_us = unsafe { glib::ffi::g_get_monotonic_time() };
     lambdock_settling(
         c_int::from(state.tick_cb_id != 0),
         state.margin_anim_end_us,
-        glib::ffi::g_get_monotonic_time(),
+        now_us,
         AUTO_HIDE_SETTLE_MS,
     )
 }
@@ -929,15 +895,7 @@ fn cross_orientation(edge: c_int) -> gtk4::Orientation {
 ///   content-hugging size;
 /// - an auto-hiding dock reserves nothing, or the space would stay reserved
 ///   while the dock sits off screen.
-///
-/// # Safety
-///
-/// `state` must be null or a live dock.
-pub unsafe fn dock_surface_policy_for(state: *const LambdockState) -> DockSurfacePolicy {
-    let Some(state) = state.as_ref() else {
-        return DockSurfacePolicy::default();
-    };
-
+pub fn dock_surface_policy_for(state: &LambdockState) -> DockSurfacePolicy {
     let mut policy = DockSurfacePolicy {
         anchor_top: c_int::from(state.edge == EDGE_TOP),
         anchor_bottom: c_int::from(state.edge == EDGE_BOTTOM),
@@ -995,7 +953,7 @@ unsafe fn set_window_margin(dock: &LambdockState, margin: c_int) {
 /// `dock` must be a live dock.
 unsafe fn stop_margin_animation(dock: &mut LambdockState) {
     if dock.tick_cb_id != 0 {
-        if let Some(window) = widget_of(dock.window) {
+        if let Some(window) = dock.window.as_ref() {
             gtk4::ffi::gtk_widget_remove_tick_callback(window.as_ptr().cast(), dock.tick_cb_id);
         }
     }
@@ -1021,7 +979,7 @@ unsafe fn snap_margin_to(dock: &mut LambdockState, margin: c_int) {
 
     // Hidden and shown want different input regions: the whole surface while the
     // dock is a strip, the dock itself once it is out.
-    dock_schedule_input_region(dock as *mut LambdockState);
+    dock_schedule_input_region(dock);
 }
 
 /// Drops a queued fisheye frame, so a stale position cannot be applied.
@@ -1031,7 +989,7 @@ unsafe fn snap_margin_to(dock: &mut LambdockState, margin: c_int) {
 /// `dock` must be a live dock.
 unsafe fn stop_pointer_tick_inner(dock: &mut LambdockState) {
     if dock.pointer_tick_id != 0 {
-        if let Some(window) = widget_of(dock.window) {
+        if let Some(window) = dock.window.as_ref() {
             gtk4::ffi::gtk_widget_remove_tick_callback(window.as_ptr().cast(), dock.pointer_tick_id);
         }
     }
@@ -1183,7 +1141,7 @@ unsafe fn reset_dock_items_scale_inner(dock: &mut LambdockState) {
     }
 
     let horizontal = is_horizontal(dock);
-    let base_px = dock_icon_size(dock as *const LambdockState);
+    let base_px = dock_icon_size(dock);
     let items = dock.dock_items;
 
     for_each_item(items, |item| reset_item_scale(item, horizontal, base_px));
@@ -1272,7 +1230,7 @@ unsafe fn start_margin_animation(dock: &mut LambdockState, target_margin: c_int)
 
     // Reduced motion: the dock still has to get out of the way (or come back),
     // it just does it in one step instead of sliding.
-    if crate::accessibility::lambdock_animations_enabled(dock as *const LambdockState) == 0 {
+    if crate::accessibility::lambdock_animations_enabled(dock) == 0 {
         stop_margin_animation(dock);
         snap_margin_to(dock, target_margin);
         return;
@@ -1290,7 +1248,7 @@ unsafe fn start_margin_animation(dock: &mut LambdockState, target_margin: c_int)
     dock_schedule_input_region(dock as *mut LambdockState);
 
     if dock.tick_cb_id == 0 {
-        if let Some(window) = widget_of(dock.window) {
+        if let Some(window) = dock.window.as_ref() {
             dock.tick_cb_id = gtk4::ffi::gtk_widget_add_tick_callback(
                 window.as_ptr().cast(),
                 Some(animate_margin_tick),
@@ -1315,9 +1273,8 @@ pub unsafe fn dock_apply_motion_preference(state: *mut LambdockState) {
     let Some(dock) = state.as_mut() else {
         return;
     };
-    let pointer = dock as *const LambdockState;
 
-    if dock.window.is_null() || crate::accessibility::lambdock_animations_enabled(pointer) != 0 {
+    if dock.window.is_none() || crate::accessibility::lambdock_animations_enabled(dock) != 0 {
         return;
     }
 
@@ -1388,7 +1345,7 @@ pub unsafe fn schedule_hide_timer(state: *mut LambdockState, delay_ms: c_uint) {
 ///
 /// `dock` must be a live dock.
 unsafe fn measured_main_axis_px(dock: &LambdockState) -> c_int {
-    let Some(window) = widget_of(dock.window) else {
+    let Some(window) = dock.window.as_ref() else {
         return 0;
     };
 
@@ -1465,7 +1422,7 @@ pub unsafe fn hide_dock(state: *mut LambdockState) {
     }
 
     let measured_px = measured_main_axis_px(dock);
-    let cross_px = dock_cross_axis_dim(state as *const LambdockState);
+    let cross_px = dock_cross_axis_dim(dock);
     let hidden_margin = lambdock_hide_margin(
         measured_px,
         cross_px,
@@ -1494,13 +1451,9 @@ pub unsafe fn hide_dock(state: *mut LambdockState) {
 const AUTOHIDE_INITIAL_DELAY_MS: u32 = 1000;
 
 /// Sets or clears one CSS class on a widget the state holds.
-///
-/// # Safety
-///
-/// `widget` must be null or a live widget.
-unsafe fn set_class(widget: *mut c_void, class: &str, enabled: bool) {
-    if let Some(widget) = widget_of(widget) {
-        crate::ui::widget_utils::set_css_class(&widget, class, enabled);
+fn set_class(widget: Option<&gtk4::Widget>, class: &str, enabled: bool) {
+    if let Some(widget) = widget {
+        crate::ui::widget_utils::set_css_class(widget, class, enabled);
     }
 }
 
@@ -1510,7 +1463,7 @@ unsafe fn set_class(widget: *mut c_void, class: &str, enabled: bool) {
 ///
 /// `dock` must be a live dock.
 pub(crate) unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Window>> {
-    let widget = widget_of(dock.window)?;
+    let widget = dock.window.as_ref()?;
     let pointer = widget.as_ptr();
 
     let window: Borrowed<gtk4::Window> = from_glib_borrow(pointer.cast());
@@ -1530,14 +1483,16 @@ pub(crate) unsafe fn window_of(dock: &LambdockState) -> Option<Borrowed<gtk4::Wi
 unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirroring: bool) {
     const EDGE_CLASSES: [&str; 4] = ["shelf-bottom", "shelf-top", "shelf-left", "shelf-right"];
 
+    let tagged = [dock.bg_capsule.as_ref(), dock.window.as_ref()];
+
     // Edges are mutually exclusive: clear them all, then set the current one.
-    for widget in [dock.bg_capsule, dock.window] {
+    for widget in tagged {
         for class in EDGE_CLASSES {
             set_class(widget, class, false);
         }
     }
 
-    for widget in [dock.bg_capsule, dock.window] {
+    for widget in tagged {
         set_class(widget, "shelf-mode", shelf_active);
         // `shelf-mirror` means the glass actually shows icon reflections: the
         // reflection widget then draws the running indicator itself, so the CSS
@@ -1550,7 +1505,7 @@ unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirr
     }
 
     let edge_class = shelf_edge_class(dock.edge);
-    for widget in [dock.bg_capsule, dock.window] {
+    for widget in tagged {
         set_class(widget, edge_class, true);
     }
 }
@@ -1562,12 +1517,14 @@ unsafe fn apply_shelf_css_classes(dock: &LambdockState, shelf_active: bool, mirr
 ///
 /// `dock` must be a live dock.
 unsafe fn apply_shelf_shape(dock: &LambdockState) {
-    if dock.bg_shelf.is_null() {
+    if dock.bg_shelf.is_none() {
         return;
     }
 
     crate::ui::shelf::shelf_frame_set_shape(
-        dock.bg_shelf.cast(),
+        dock.bg_shelf
+            .as_ref()
+            .map_or(std::ptr::null_mut(), |frame| frame.as_ptr().cast()),
         dock.edge,
         shelf_tilt_for_edge(dock.edge, dock.shelf.tilt_deg),
         dock.shelf.perspective,
@@ -1586,14 +1543,14 @@ pub unsafe fn apply_dock_mode_classes(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
-    if dock.bg_capsule.is_null() {
+    if dock.bg_capsule.is_none() {
         return;
     }
 
-    let shelf_active = lambdock_shelf_active(state) != 0;
-    let mirroring = shelf_active && lambdock_shelf_geometry_for(state, dock.icon_size).band_px > 0;
+    let shelf_active = lambdock_shelf_active(dock) != 0;
+    let mirroring = shelf_active && lambdock_shelf_geometry_for(dock, dock.icon_size).band_px > 0;
 
-    set_class(dock.bg_capsule, "taskbar", dock.taskbar != 0);
+    set_class(dock.bg_capsule.as_ref(), "taskbar", dock.taskbar != 0);
     apply_shelf_css_classes(dock, shelf_active, mirroring);
     apply_shelf_shape(dock);
 }
@@ -1638,7 +1595,7 @@ pub unsafe fn dock_apply_exclusive_zone(state: *mut LambdockState) {
         return;
     }
 
-    let policy = dock_surface_policy_for(state);
+    let policy = dock_surface_policy_for(dock);
     layer_shell::set_exclusive_zone(&window, policy.exclusive_zone_px);
 }
 
@@ -1657,7 +1614,7 @@ pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
-    let Some(widget) = widget_of(dock.window) else {
+    let Some(widget) = dock.window.as_ref() else {
         return;
     };
     let Some(window) = window_of(dock) else {
@@ -1705,7 +1662,10 @@ pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
 
     // A monitor that has already been unplugged must not be handed to the
     // compositor; with none set the surface follows the default output.
-    let monitor = dock.monitor.cast::<gdk::ffi::GdkMonitor>();
+    let monitor = dock
+        .monitor
+        .as_ref()
+        .map_or(std::ptr::null_mut(), |monitor| monitor.as_ptr());
     if layer_shell::is_monitor_valid(monitor) != 0 {
         layer_shell::set_monitor(&window, monitor);
     }
@@ -1713,7 +1673,7 @@ pub unsafe fn setup_layer_shell_window(state: *mut LambdockState) {
     // The dock renders on the top layer, above normal application windows.
     layer_shell::set_layer(&window, LAYER_TOP);
 
-    let policy = dock_surface_policy_for(state);
+    let policy = dock_surface_policy_for(dock);
     apply_surface_anchors(&window, &policy);
 
     // The exclusive zone reserves desktop space so windows do not overlap the
@@ -1737,7 +1697,7 @@ pub unsafe fn refresh_dock_mode(state: *mut LambdockState) {
 
     // Anchors only exist on a layer surface (no layer shell on X11 or GNOME).
     if layer_shell::is_layer_window(&*window) {
-        let policy = dock_surface_policy_for(state);
+        let policy = dock_surface_policy_for(dock);
         apply_surface_anchors(&window, &policy);
     }
 
@@ -1790,7 +1750,7 @@ pub unsafe fn on_right_click(
     let Some(dock) = user_data.cast::<LambdockState>().as_ref() else {
         return;
     };
-    let Some(popover) = widget_of(dock.popover) else {
+    let Some(popover) = dock.popover.as_ref() else {
         return;
     };
     let Some(popover) = popover.downcast_ref::<gtk4::Popover>() else {
@@ -1988,17 +1948,16 @@ unsafe fn refresh_item_centres(dock: &mut LambdockState) {
     // in, and measuring against it is a shorter walk than measuring against the
     // surface. The pointer arrives in window coordinates, so the row's own
     // origin is what has to be subtracted from it.
-    let reference_pointer = if dock.box_.is_null() {
-        dock.window
+    let reference = if dock.box_.is_none() {
+        dock.window.as_ref()
     } else {
-        dock.box_
+        dock.box_.as_ref()
     };
-    let reference = widget_of(reference_pointer);
 
     dock.box_origin_px = 0.0;
-    if let (Some(window), Some(reference)) = (widget_of(dock.window), reference.as_ref()) {
+    if let (Some(window), Some(reference)) = (dock.window.as_ref(), reference) {
         if reference.as_ptr() != window.as_ptr() {
-            if let Some(origin) = reference.compute_bounds(&*window) {
+            if let Some(origin) = reference.compute_bounds(window) {
                 dock.box_origin_px = if horizontal {
                     f64::from(origin.x())
                 } else {
@@ -2059,7 +2018,7 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
 
     if dock.dock_items.is_null()
         || dock.hover_animate == 0
-        || crate::accessibility::lambdock_animations_enabled(state) == 0
+        || crate::accessibility::lambdock_animations_enabled(dock) == 0
         || dock.is_hidden != 0
         || dock.tick_cb_id != 0
         || dock.current_margin != 0
@@ -2094,9 +2053,9 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
         refresh_item_centres(dock);
     }
 
-    let shelf_active = lambdock_shelf_active(state) != 0;
+    let shelf_active = lambdock_shelf_active(dock) != 0;
     let band_ratio = if shelf_active {
-        lambdock_shelf_params_effective(state).reflection_ratio
+        lambdock_shelf_params_effective(dock).reflection_ratio
     } else {
         0.0
     };
@@ -2105,7 +2064,7 @@ pub unsafe fn dock_apply_hover_at(state: *mut LambdockState, x: f64, y: f64) {
     let mut frame = FisheyeFrame {
         // The centres are relative to the row, the pointer to the window.
         pointer_axis: axis - dock.box_origin_px,
-        base_size_px: dock_icon_size(state),
+        base_size_px: dock_icon_size(dock),
         radius_px: FISHEYE_RADIUS_PX,
         max_scale: FISHEYE_MAX_SCALE,
         centres,
@@ -2299,15 +2258,9 @@ unsafe fn destroy_css_providers(dock: &mut LambdockState) {
         &mut dock.shelf_css_provider,
         &mut dock.user_css_provider,
     ] {
-        if provider.is_null() {
-            continue;
+        if let Some(css) = provider.take() {
+            gtk4::style_context_remove_provider_for_display(&display, &css);
         }
-
-        let css: gtk4::CssProvider = from_glib_none(provider.cast::<gtk4::ffi::GtkCssProvider>());
-        gtk4::style_context_remove_provider_for_display(&display, &css);
-
-        let pointer = std::mem::replace(provider, std::ptr::null_mut());
-        glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
     }
 }
 
@@ -2320,7 +2273,7 @@ unsafe fn destroy_timers(dock: &mut LambdockState) {
     cancel_hide_timer_inner(dock);
 
     if dock.tick_cb_id != 0 {
-        if let Some(window) = widget_of(dock.window) {
+        if let Some(window) = dock.window.as_ref() {
             gtk4::ffi::gtk_widget_remove_tick_callback(window.as_ptr().cast(), dock.tick_cb_id);
         }
     }
@@ -2335,7 +2288,7 @@ unsafe fn destroy_timers(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn detach_window_handlers(dock: &mut LambdockState) {
-    if let Some(window) = widget_of(dock.window) {
+    if let Some(window) = dock.window.as_ref() {
         disconnect_handlers_by_data(
             window.as_ptr().cast(),
             (dock as *mut LambdockState).cast(),
@@ -2363,26 +2316,23 @@ unsafe fn detach_window_handlers(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn destroy_background_popover(dock: &mut LambdockState) {
-    if dock.popover.is_null() {
+    let Some(popover) = dock.popover.clone() else {
         return;
+    };
+
+    // The popover's "closed" handler carries `state` and would schedule a hide
+    // timer on this soon-to-be-freed state; disconnect it before unparenting so
+    // no callback runs against freed memory.
+    disconnect_handlers_by_data(
+        popover.as_ptr().cast(),
+        (dock as *mut LambdockState).cast(),
+    );
+
+    if crate::ui::parent_of(&popover).is_some() {
+        popover.unparent();
     }
 
-    let popover = widget_of(dock.popover);
-    if let Some(popover) = &popover {
-        // The popover's "closed" handler carries `state` and would schedule a
-        // hide timer on this soon-to-be-freed state; disconnect it before
-        // unparenting so no callback runs against freed memory.
-        disconnect_handlers_by_data(
-            popover.as_ptr().cast(),
-            (dock as *mut LambdockState).cast(),
-        );
-
-        if crate::ui::parent_of(popover).is_some() {
-            popover.unparent();
-        }
-    }
-
-    dock.popover = std::ptr::null_mut();
+    dock.popover = None;
 }
 
 /// Frees the dock items, and their individual polling timers and popovers.
@@ -2429,19 +2379,22 @@ unsafe fn destroy_window_trackers(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn destroy_window(dock: &mut LambdockState) {
-    let Some(window) = widget_of(dock.window) else {
-        return;
-    };
-    let Some(window) = window.downcast_ref::<gtk4::Window>() else {
+    // Cloned so the borrow of `dock` ends before the fields are cleared.
+    let Some(window) = dock
+        .window
+        .as_ref()
+        .and_then(|widget| widget.downcast_ref::<gtk4::Window>())
+        .cloned()
+    else {
         return;
     };
 
-    dock.window = std::ptr::null_mut();
-    dock.bg_shelf = std::ptr::null_mut();
-    dock.bg_capsule = std::ptr::null_mut();
+    dock.window = None;
+    dock.bg_shelf = None;
+    dock.bg_capsule = None;
 
-    if layer_shell::is_layer_window(window) {
-        layer_shell::set_monitor(window, std::ptr::null_mut());
+    if layer_shell::is_layer_window(&window) {
+        layer_shell::set_monitor(&window, std::ptr::null_mut());
     }
 
     window.destroy();
@@ -2453,17 +2406,14 @@ unsafe fn destroy_window(dock: &mut LambdockState) {
 ///
 /// `dock` must be a live dock.
 unsafe fn destroy_monitor(dock: &mut LambdockState) {
-    if dock.monitor.is_null() {
+    let Some(monitor) = dock.monitor.take() else {
         return;
-    }
+    };
 
     disconnect_handlers_by_data(
-        dock.monitor,
+        monitor.as_ptr().cast(),
         (dock as *mut LambdockState).cast(),
     );
-
-    let pointer = std::mem::replace(&mut dock.monitor, std::ptr::null_mut());
-    glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
 }
 
 /// Unparents popovers and widgets, cleans up window trackers and dock items, and
@@ -2508,10 +2458,7 @@ pub unsafe fn destroy_dock_instance(state: *mut LambdockState) {
     destroy_window_trackers(dock);
     destroy_window(dock);
 
-    if !dock.size_group.is_null() {
-        let pointer = std::mem::replace(&mut dock.size_group, std::ptr::null_mut());
-        glib::gobject_ffi::g_object_unref(pointer.cast::<glib::gobject_ffi::GObject>());
-    }
+    dock.size_group = None;
     if !dock.item_centres.is_null() {
         let pointer = std::mem::replace(&mut dock.item_centres, std::ptr::null_mut());
         glib::ffi::g_array_unref(pointer.cast());
@@ -2529,7 +2476,9 @@ pub unsafe fn destroy_dock_instance(state: *mut LambdockState) {
     // dock that is rebuilt gets a new window, and it has to be placed again.
     lambdock_x11_dock_forget(state);
 
-    crate::glib::g_free(state.cast());
+    // Back to the box the dock was built in: dropping it releases the widget and
+    // provider references, in field order.
+    drop(Box::from_raw(state));
 }
 
 // ===========================================================================
@@ -2557,7 +2506,7 @@ pub unsafe fn dock_window_set_tracker_connected(
 
     dock.tracker_connected = c_int::from(connected);
 
-    if let Some(label) = widget_of(dock.reconnect_label) {
+    if let Some(label) = dock.reconnect_label.as_ref() {
         label.set_visible(!connected);
     }
 
@@ -2697,7 +2646,7 @@ unsafe fn on_motion_leave(state: *mut LambdockState) {
     // been still for the whole reveal, and its leave was thrown away with it, so
     // the dock stayed out until the pointer came back and did the whole thing
     // again -- auto-hide that quietly stops hiding.
-    if dock_is_settling(state) != 0 {
+    if dock_is_settling(dock) != 0 {
         trace("leave ignored: the dock is sliding, or just stopped");
         return;
     }
@@ -2745,7 +2694,7 @@ unsafe fn on_motion_notify(state: *mut LambdockState, x: f64, y: f64) {
     dock.pointer_y = y;
 
     if dock.pointer_tick_id == 0 {
-        if let Some(window) = widget_of(dock.window) {
+        if let Some(window) = dock.window.as_ref() {
             dock.pointer_tick_id = gtk4::ffi::gtk_widget_add_tick_callback(
                 window.as_ptr().cast(),
                 Some(hover_tick),
@@ -2767,8 +2716,8 @@ unsafe fn on_window_map(state: *mut LambdockState) {
     let surface = state
         .as_ref()
         .filter(|dock| dock.x11_surface.is_null())
-        .and_then(|dock| widget_of(dock.window))
-        .and_then(|window| surface_of(&window));
+        .and_then(|dock| dock.window.as_ref())
+        .and_then(|window| surface_of(window));
 
     if let Some(surface) = surface {
         // `layout` is the surface telling us it was laid out; the size
@@ -2801,7 +2750,7 @@ pub unsafe fn setup_dock_motion_controller(state: *mut LambdockState) {
     let Some(dock) = state.as_ref() else {
         return;
     };
-    let Some(window) = widget_of(dock.window) else {
+    let Some(window) = dock.window.as_ref() else {
         return;
     };
 
@@ -2845,10 +2794,11 @@ mod tests {
     /// stretches across the other two.
     #[test]
     fn the_surface_policy_follows_the_edge_and_the_mode() {
-        let mut state: LambdockState = unsafe { std::mem::zeroed() };
-
-        state.edge = EDGE_BOTTOM;
-        let policy = unsafe { dock_surface_policy_for(&state) };
+        let mut state = LambdockState {
+            edge: EDGE_BOTTOM,
+            ..LambdockState::default()
+        };
+        let policy = dock_surface_policy_for(&state);
         assert_eq!(policy.anchor_bottom, 1);
         assert_eq!(
             (policy.anchor_top, policy.anchor_left, policy.anchor_right),
@@ -2858,14 +2808,14 @@ mod tests {
         // A taskbar fills the perpendicular axis, so it anchors both of those
         // edges too -- and a floating dock does not.
         state.taskbar = 1;
-        let policy = unsafe { dock_surface_policy_for(&state) };
+        let policy = dock_surface_policy_for(&state);
         assert_eq!((policy.anchor_left, policy.anchor_right), (1, 1));
         assert_eq!(policy.anchor_top, 0);
 
         // The same rule turned sideways: a left-hand dock wakes up its top and
         // bottom anchors instead.
         state.edge = EDGE_LEFT;
-        let policy = unsafe { dock_surface_policy_for(&state) };
+        let policy = dock_surface_policy_for(&state);
         assert_eq!((policy.anchor_top, policy.anchor_bottom), (1, 1));
         assert_eq!(policy.anchor_right, 0);
     }
@@ -2874,16 +2824,18 @@ mod tests {
     /// own capsule thickness.
     #[test]
     fn an_auto_hiding_dock_reserves_nothing() {
-        let mut state: LambdockState = unsafe { std::mem::zeroed() };
-        state.edge = EDGE_BOTTOM;
-        state.icon_size = 48;
+        let mut state = LambdockState {
+            edge: EDGE_BOTTOM,
+            icon_size: 48,
+            ..LambdockState::default()
+        };
 
         state.auto_hide = 0;
-        let resting = unsafe { dock_surface_policy_for(&state) };
+        let resting = dock_surface_policy_for(&state);
         assert!(resting.exclusive_zone_px > 0);
 
         state.auto_hide = 1;
-        let hiding = unsafe { dock_surface_policy_for(&state) };
+        let hiding = dock_surface_policy_for(&state);
         assert_eq!(hiding.exclusive_zone_px, 0);
     }
 
@@ -2911,7 +2863,7 @@ mod tests {
     /// is horizontal, which is how a partly built state already behaved.
     #[test]
     fn the_orientation_is_horizontal_unless_it_says_vertical() {
-        let mut state: LambdockState = unsafe { std::mem::zeroed() };
+        let mut state = LambdockState::default();
         assert!(is_horizontal(&state));
 
         state.orientation = gtk4::Orientation::Vertical.into_glib();

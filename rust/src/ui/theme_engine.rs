@@ -20,11 +20,10 @@ use crate::state::LambdockState;
 use gtk4::gdk;
 use gtk4::gio;
 use gtk4::glib;
-use gtk4::glib::translate::{from_glib_none, IntoGlibPtr, ToGlibPtr};
 use gtk4::prelude::*;
 use gtk4::CssProvider;
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int};
 use crate::ui::shelf::{lambdock_shelf_active, lambdock_shelf_geometry_for};
 
 // Where the theme engine reaches back into the modules that are still C.
@@ -182,14 +181,17 @@ fn scope_selector_list(out: &mut String, selectors: &str, scope_class: &str) {
 }
 
 /// "default" for the config-less fallback dock, matching every other log line.
-unsafe fn dock_name(state: *const LambdockState) -> String {
-    if state.is_null() || (*state).config_path.is_null() {
+fn dock_name(state: &LambdockState) -> String {
+    if state.config_path.is_null() {
         return "default".to_owned();
     }
 
-    CStr::from_ptr((*state).config_path)
-        .to_string_lossy()
-        .into_owned()
+    // Safety: `config_path` is a C string the dock owns for its lifetime.
+    unsafe {
+        CStr::from_ptr(state.config_path)
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 /// Scopes `raw_css` under `theme_class`, installs it on `display` and returns it;
@@ -224,13 +226,12 @@ fn provider_from_resource(
     provider_from_scoped_css(display, &raw_css, theme_class, priority)
 }
 
-/// Hands a provider's reference to `slot`, where the dock frees it with
-/// `g_clear_object`. `true` when there was one to store.
-unsafe fn store_provider(provider: Option<CssProvider>, slot: *mut *mut c_void) -> bool {
+/// Stores `provider` in `slot`, dropping whatever it held, which is what
+/// unregisters the previous one. `true` when there was one to store.
+fn store_provider(provider: Option<CssProvider>, slot: &mut Option<CssProvider>) -> bool {
     match provider {
         Some(provider) => {
-            let pointer: *mut gtk4::ffi::GtkCssProvider = provider.into_glib_ptr();
-            *slot = pointer.cast();
+            *slot = Some(provider);
             true
         }
         None => false,
@@ -239,42 +240,39 @@ unsafe fn store_provider(provider: Option<CssProvider>, slot: *mut *mut c_void) 
 
 /// Removes the previous theme class and tags the window with the new one.
 unsafe fn swap_window_class(state: *mut LambdockState, theme_class: &str) {
-    let window: gtk4::Widget = from_glib_none((*state).window.cast::<gtk4::ffi::GtkWidget>());
+    let window = (*state).window.as_ref();
 
     if !(*state).active_theme_class.is_null() {
         let previous = CStr::from_ptr((*state).active_theme_class)
             .to_string_lossy()
             .into_owned();
-        window.remove_css_class(&previous);
+        if let Some(window) = window {
+            window.remove_css_class(&previous);
+        }
         g_free((*state).active_theme_class.cast());
     }
 
     (*state).active_theme_class = strdup_string(theme_class);
-    window.add_css_class(theme_class);
+    if let Some(window) = window {
+        window.add_css_class(theme_class);
+    }
 }
 
 /// Unhooks every provider this engine installed for `state`, in one pass.
 ///
-/// A reload must swap providers, never stack them: the dock state holds the five
-/// pointers precisely so they can be released here.
+/// A reload must swap providers, never stack them: the state holds the five of
+/// them precisely so they can be released here.
 unsafe fn detach_providers(state: *mut LambdockState, display: &gdk::Display) {
-    let display = display.to_glib_none().0;
-    let slots: [*mut *mut c_void; 5] = [
+    for slot in [
         &mut (*state).base_css_provider,
         &mut (*state).taskbar_css_provider,
         &mut (*state).shelf_css_provider,
         &mut (*state).indicator_guard_css_provider,
         &mut (*state).user_css_provider,
-    ];
-
-    for slot in slots {
-        if (*slot).is_null() {
-            continue;
+    ] {
+        if let Some(provider) = slot.take() {
+            gtk4::style_context_remove_provider_for_display(display, &provider);
         }
-
-        gtk4::ffi::gtk_style_context_remove_provider_for_display(display, (*slot).cast());
-        glib::gobject_ffi::g_object_unref((*slot).cast());
-        *slot = std::ptr::null_mut();
     }
 }
 
@@ -299,7 +297,7 @@ unsafe fn attach_modifiers(
             log_info!(
                 "UI",
                 "Loaded taskbar/window-title modifier for [{}]",
-                dock_name(state)
+                dock_name(&*state)
             );
         }
     }
@@ -316,7 +314,7 @@ unsafe fn attach_modifiers(
             log_info!(
                 "UI",
                 "Loaded glass shelf modifier for [{}]",
-                dock_name(state)
+                dock_name(&*state)
             );
         }
     }
@@ -355,7 +353,7 @@ unsafe fn attach_base_theme(
             "UI",
             "Loaded & scoped CSS theme [{}] for [{}]",
             theme.theme_name,
-            dock_name(state)
+            dock_name(&*state)
         );
     }
 }
@@ -419,7 +417,7 @@ unsafe fn attach_user_css(
         log_info!(
             "UI",
             "Loaded & scoped user CSS override for [{}]",
-            dock_name(state)
+            dock_name(&*state)
         );
     }
 }
@@ -431,7 +429,7 @@ unsafe fn attach_user_css(
 ///
 /// `state` must be null or a live dock whose window is set.
 pub unsafe fn load_custom_css(state: *mut LambdockState) {
-    if state.is_null() || (*state).window.is_null() {
+    if state.is_null() || (*state).window.is_none() {
         return;
     }
 
@@ -441,10 +439,10 @@ pub unsafe fn load_custom_css(state: *mut LambdockState) {
         return;
     };
 
-    let shelf_active = lambdock_shelf_active(state) != 0;
+    let shelf_active = lambdock_shelf_active(&*state) != 0;
     // The glass draws the running indicator only when it shows reflections: that
     // is the band the bead is painted on.
-    let shelf_indicator = lambdock_shelf_geometry_for(state, (*state).icon_size).band_px > 0;
+    let shelf_indicator = lambdock_shelf_geometry_for(&*state, (*state).icon_size).band_px > 0;
 
     let requested_theme = if (*state).theme.is_null() {
         None
@@ -464,7 +462,7 @@ pub unsafe fn load_custom_css(state: *mut LambdockState) {
     detach_providers(state, &display);
 
     if theme.disabled {
-        log_info!("UI", "Theme set to 'none' for [{}].", dock_name(state));
+        log_info!("UI", "Theme set to 'none' for [{}].", dock_name(&*state));
         return;
     }
 
