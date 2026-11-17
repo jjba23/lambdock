@@ -9,6 +9,17 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Unreleased]*
 
+- *The dock docks again.* ~gtk4-layer-shell~ exports its own
+  ~wl_proxy_marshal_array_flags~ and ~wl_proxy_destroy~ so it can reach
+  libwayland's private half, and it reports a display as supported -- and turns
+  a window into a layer surface -- only once one of those two has run its
+  ~dlsym~.  A symbol resolves to the first library that defines it, so linking
+  ~libwayland-client~ first hid those wrappers for the whole process: the
+  library never initialised, ~gtk_layer_is_supported()~ answered "no" on
+  compositors that do implement the protocol (niri among them), and the dock
+  came up as an ordinary window that the desktop does not integrate.  The build
+  now asks for ~gtk4-layer-shell~ before ~wayland-client~, and the dock anchors
+  to its edge again.
 - *The port from C to Rust has started.* Layer 1 is Rust, so is the config half
   of the Scheme bridge and the dock registry, and the first widget:
   ~src/core/dock_click.c~, ~tracker_rules.c~, ~dock_motion.c~,

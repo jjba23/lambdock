@@ -42,10 +42,20 @@ fn main() {
     // for the strings it hands back, libguile for the Scheme values it reads,
     // libwayland-client for the window tracker's registry and proxies, and
     // gtk4-layer-shell for the overlays it puts on the screen.
+    //
+    // gtk4-layer-shell goes before wayland-client, and the order is the point:
+    // the library exports its own `wl_proxy_marshal_array_flags` and
+    // `wl_proxy_destroy` so it can reach libwayland's private half, and it only
+    // counts the display as supported -- and only turns a window into a layer
+    // surface -- after one of those two has run its `dlsym`. A symbol resolves
+    // to the first library that defines it, so linking wayland-client first
+    // hides those wrappers for the whole process: the library never
+    // initialises, `gtk_layer_is_supported()` answers no on a compositor that
+    // has the protocol, and the dock comes up as an ordinary window.
     link("glib-2.0");
     link("guile-3.0");
-    link("wayland-client");
     link("gtk4-layer-shell-0");
+    link("wayland-client");
 
     // The two sources the C half used to bring to the link: the GLib resource
     // bundle (CSS, icons, the About logo) and the Wayland protocol's interface

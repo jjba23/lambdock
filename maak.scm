@@ -1,7 +1,7 @@
-;; lambdock -- hyper-hackable desktop dock for Wayland
-;;
-;; SPDX-License-Identifier: MIT
-;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
+;;; lambdock -- hyper-hackable desktop dock for Wayland
+;;;
+;;; SPDX-License-Identifier: MIT
+;;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
 (define-module (maak)
   #:declarative? #t
@@ -20,7 +20,7 @@
   ;; builtin under the name of the module it comes from -- instead.
   #:use-module ((maak dsl) #:prefix dsl:))
 
-;; ===== Maak tasks =======
+;;; ===== Maak tasks =======
 
 (define project-name
   'lambdock)
@@ -36,13 +36,15 @@
 (define (test)
   "Build and run the whole test suite headlessly.
 
-The shell wrapper only applies to the first command, so the pipeline is run by
-one inner `sh -c' instead of a bare `&&': otherwise `cargo' would execute
-outside the Guix environment.
+The shell wrapper only applies to the first command, so the plan is run by one
+inner `sh -c' instead of a bare `&&': otherwise `cargo' would execute outside
+the Guix environment.
 
 The suite needs no display: every test is a decision, so it runs where the
-manifest shell does, with `make check' -- which is the suite, the lints and the
-Scheme tests in one target.
+manifest shell does. `cargo test' is the suite -- the Rust tests and, as one
+integration test, the Scheme modules' own -- and `cargo clippy --all-targets' is
+the lints. Both pass `--offline --locked', because the crate graph is vendored
+under rust/vendor and Cargo.lock is the only lock a sandbox may resolve against.
 
 The cargo target directory is thrown away first: the Byggsteg job clone survives
 between jobs, and a tree built by a different toolchain can leave artifacts that
@@ -54,8 +56,9 @@ passing tests are the ones that match this commit."
          (~ "'~a'"
             (string-join
              (list "set -eu"
-                   "cargo clean --manifest-path rust/Cargo.toml"
-                   "make check")
+                   "cargo clean"
+                   "cargo test --offline --locked"
+                   "cargo clippy --offline --locked --all-targets")
              "; ")))
    #:verbose? #t))
 
@@ -110,24 +113,24 @@ passing tests are the ones that match this commit."
            #:verbose? #t)
 
   (dynamic-wind
-   ;; Setup: create temporary symlink at project root
-   (lambda ()
-     (ln-s "packaging/debian" "debian"
-           #:force? #f
-           #:verbose? #t))
+    ;; Setup: create temporary symlink at project root
+    (lambda ()
+      (ln-s "packaging/debian" "debian"
+            #:force? #f
+            #:verbose? #t))
 
-   ;; Execution: run debian build commands against ./debian
-   (lambda ()
-     (dsl:run (list "mk-build-deps" "-i" "-r" "debian/control")
-              #:sudo? #t
-              #:verbose? #t)
-     (dsl:run (list "debuild" "-b" "-uc" "-us")
-              #:verbose? #t))
+    ;; Execution: run debian build commands against ./debian
+    (lambda ()
+      (dsl:run (list "mk-build-deps" "-i" "-r" "debian/control")
+               #:sudo? #t
+               #:verbose? #t)
+      (dsl:run (list "debuild" "-b" "-uc" "-us")
+               #:verbose? #t))
 
-   ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
-   (lambda ()
-     (rm-rf "debian"
-            #:verbose? #t))))
+    ;; Cleanup: remove symlink safely (leaves packaging/debian intact)
+    (lambda ()
+      (rm-rf "debian"
+             #:verbose? #t))))
 
 (define (arch-build)
   "Build Arch Linux package (.pkg.tar.zst)"
@@ -154,10 +157,10 @@ passing tests are the ones that match this commit."
          ;; `git describe' prints nothing in a dry run, and a version is not
          ;; derived from nothing: the tag is kept as it came when it carries no
          ;; leading `v'.
-         (latest-tag-num (cond ((string=? latest-tag "") "")
-                               ((string-prefix? "v" latest-tag)
-                                (string-drop latest-tag 1))
-                               (else latest-tag)))
+         (latest-tag-num (cond [(string=? latest-tag "") ""]
+                               [(string-prefix? "v" latest-tag)
+                                (string-drop latest-tag 1)]
+                               [else latest-tag]))
          (sources (~ "~a/rpmbuild/SOURCES" (home-dir)))
          (specs (~ "~a/rpmbuild/SPECS" (home-dir)))
          (rpms (~ "~a/rpmbuild/RPMS/x86_64" (home-dir)))
@@ -173,12 +176,12 @@ passing tests are the ones that match this commit."
              #:verbose? #t)
     (dsl:run (list "ls" (~ "~a/lambdock-[0-9]*.rpm" rpms))
              #:expand? #t)
-    (let* ((latest-rpm
-            (string-trim-both
-             (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" rpms))))
-           (latest-src-rpm
-            (string-trim-both
-             (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" srpms)))))
+    (let ((latest-rpm
+           (string-trim-both
+            (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" rpms))))
+          (latest-src-rpm
+           (string-trim-both
+            (capture (~ "ls -t ~a/lambdock-[0-9]*.rpm | head -n 1" srpms)))))
       (cp "packaging/opensuse/lambdock-rpmlintrc" rpms
           #:verbose? #t)
       (dsl:run (list "rpmlint" latest-rpm)
@@ -218,7 +221,7 @@ passing tests are the ones that match this commit."
   ;; `--device' -- are what the escape hatch is for.
   (let* ((user-id (number->string (getuid)))
          (runtime-dir (or (getenv "XDG_RUNTIME_DIR")
-                          (~ "/run/user/~a" user-id)))
+                        (~ "/run/user/~a" user-id)))
          (wayland-display (or (getenv "WAYLAND_DISPLAY") ""))
          (home (home-dir))
          (socket (~ "~a/~a" runtime-dir wayland-display)))
@@ -292,19 +295,19 @@ it resolves has to be committed with them."
                  "packaging/flatpak/org.jointhefreeworld.lambdock.yaml"
                  "--force-clean")))
 
-;; ====== Agent skills ======
+;;; ====== Agent skills ======
 
-;; `run' names a task in this file, so the shell helper is reached through the
-;; module it comes from.
+;;; `run' names a task in this file, so the shell helper is reached through the
+;;; module it comes from.
 
-;; AGENTS.md is generated, never edited by hand.  The section has two halves:
-;; the data below, which is this project's, and the task itself, which is not.
-;; Another repository copies the whole section and replaces the data - the
-;; header, the pinned skills (repository, commit, path, licence) and the
-;; practices - and `maak agents' writes its own AGENTS.md.  Regeneration is
-;; deterministic: the same pins and the same text produce the same file, byte
-;; for byte, and it needs nothing but curl.  The skill URLs assume GitHub, so a
-;; skill hosted elsewhere needs a URL of its own.
+;;; AGENTS.md is generated, never edited by hand.  The section has two halves:
+;;; the data below, which is this project's, and the task itself, which is not.
+;;; Another repository copies the whole section and replaces the data - the
+;;; header, the pinned skills (repository, commit, path, licence) and the
+;;; practices - and `maak agents' writes its own AGENTS.md.  Regeneration is
+;;; deterministic: the same pins and the same text produce the same file, byte
+;;; for byte, and it needs nothing but curl.  The skill URLs assume GitHub, so a
+;;; skill hosted elsewhere needs a URL of its own.
 
 (define ponytail-commit
   "96608e078b2d5ea607c5c3b8b5a54d1c1fba6846")
@@ -312,9 +315,9 @@ it resolves has to be committed with them."
 (define tdd-commit
   "22f0b463e7a5e579904dd6211a520321035526f7")
 
-;; Name, repository, commit, the path the repository keeps the skill at and the
-;; licence.  A skill arrives whole: trimming it means scanning for headings, and
-;; such a scan cannot tell a heading from a `##' line inside a code fence.
+;;; Name, repository, commit, the path the repository keeps the skill at and the
+;;; licence.  A skill arrives whole: trimming it means scanning for headings, and
+;;; such a scan cannot tell a heading from a `##' line inside a code fence.
 (define agent-skills
   (list (list "ponytail"
               "DietrichGebert/ponytail"
@@ -339,9 +342,9 @@ input, so regenerating gives the same document.  The repository's own rules win
 over general advice, and the narrowest rule here wins over the broadest.
 ")
 
-;; Practices this project keeps.  They are short on purpose: a rule a reader
-;; checks in a second is a rule that gets followed.  The pinned skills are the
-;; long form of the same habits.
+;;; Practices this project keeps.  They are short on purpose: a rule a reader
+;;; checks in a second is a rule that gets followed.  The pinned skills are the
+;;; long form of the same habits.
 (define agent-practices
   (list
    "## Documentation
@@ -471,13 +474,13 @@ over general advice, and the narrowest rule here wins over the broadest.
 (define (slurp path)
   "Return the whole of @var{path} as a string."
   (call-with-input-file path
-    (lambda (port)
-      (let loop ((lines '())
-                 (line (read-line port)))
-        (if (eof-object? line)
-            (string-concatenate-reverse lines)
-            (loop (cons (string-append line "\n") lines)
-                  (read-line port)))))))
+                        (lambda (port)
+                          (let loop ((lines '())
+                                     (line (read-line port)))
+                            (if (eof-object? line)
+                              (string-concatenate-reverse lines)
+                              (loop (cons (string-append line "\n") lines)
+                                    (read-line port)))))))
 
 (define (fetch-skill name repository commit path)
   "Download one skill pinned at @var{commit}, into the reports tree.
@@ -487,8 +490,8 @@ over general advice, and the narrowest rule here wins over the broadest.
         (url (~ "https://raw.githubusercontent.com/~a/~a/~a"
                 repository commit path)))
     ((@ (maak maak) run) (list "curl" "--fail" "--silent" "--show-error" "--location"
-               "--output" target url)
-         #:verbose? #t)
+                               "--output" target url)
+     #:verbose? #t)
     (slurp target)))
 
 (define (agents)
@@ -504,19 +507,19 @@ over general advice, and the narrowest rule here wins over the broadest.
                                                   (list-ref skill 3)))))
                      agent-skills)))
     (call-with-output-file "AGENTS.md"
-      (lambda (port)
-        (display agents-header port)
-        (for-each (lambda (skill)
-                    (format port
-                            "~%## ~a~%~%`~a` at `~a`, `~a`, ~a licensed.~%~%"
-                            (list-ref skill 0)
-                            (list-ref skill 1)
-                            (list-ref skill 2)
-                            (list-ref skill 3)
-                            (list-ref skill 4))
-                    (display (list-ref skill 5) port))
-                  skills)
-        (for-each (lambda (practice)
-                    (newline port)
-                    (display practice port))
-                  agent-practices)))))
+                           (lambda (port)
+                             (display agents-header port)
+                             (for-each (lambda (skill)
+                                         (format port
+                                                 "~%## ~a~%~%`~a` at `~a`, `~a`, ~a licensed.~%~%"
+                                                 (list-ref skill 0)
+                                                 (list-ref skill 1)
+                                                 (list-ref skill 2)
+                                                 (list-ref skill 3)
+                                                 (list-ref skill 4))
+                                         (display (list-ref skill 5) port))
+                                       skills)
+                             (for-each (lambda (practice)
+                                         (newline port)
+                                         (display practice port))
+                                       agent-practices)))))
