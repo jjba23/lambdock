@@ -32,6 +32,7 @@
 use gtk4::gio;
 use gtk4::glib;
 use gtk4::glib::translate::{IntoGlib, ToGlibPtr};
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
@@ -350,14 +351,15 @@ unsafe fn dock_apply_window_title(state: *mut LambdockState, data: *mut c_void) 
         link = entry.next;
 
         let window = entry.data.cast::<crate::app_window::AppWindow>();
-        if app_window_matches(window, top) == 0 {
+        if !app_window_matches(window, top) {
             continue;
         }
 
         // The session re-announces the title on every change, including changes
         // that do not touch the text shown. Nothing to do means nothing to
         // rebuild: no label, no accessible name, no title tooltip.
-        if crate::glib::g_strcmp0((*window).title, top_ref.title) == 0 {
+        let incoming = top_ref.title.as_ref().map(|title| CStr::from_ptr(title));
+        if (*window).title.as_deref() == incoming {
             return;
         }
 
@@ -392,7 +394,7 @@ unsafe fn dock_apply_window_state(state: *mut LambdockState, data: *mut c_void) 
         link = entry.next;
 
         let window = entry.data.cast::<crate::app_window::AppWindow>();
-        if app_window_matches(window, top) == 0 {
+        if !app_window_matches(window, top) {
             continue;
         }
 

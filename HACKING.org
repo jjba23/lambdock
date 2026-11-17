@@ -931,8 +931,11 @@ before anything else.  It groups a dock instance's whole world:
   on, or ~None~), ~is_destroying~ re-entrancy guard, ~active_popovers~ counter,
   and the five per-instance CSS providers, owned.
 
-=AppWindow= is the (window-handle, title) pair tracked per dock item. ~DockItem~
-is described in [[#dock-item-lifecycle][Dock item lifecycle]].
+=AppWindow= is the (window-handle, title) pair tracked per dock item.  It owns
+its title -- a `CString`, copied once from the compositor's pointer, which is only
+valid for the callback that carried it -- and it is a plain Rust record in a box,
+so nothing about its layout is a contract.  ~DockItem~ is described in
+[[#dock-item-lifecycle][Dock item lifecycle]].
 
 One ~LambdockState~ == one GTK window == one ~settings*.scm~ (or the fallback).
 
@@ -1380,7 +1383,7 @@ One row per module, in the order the layers stack. The layer numbers match
 | 2     | =dock_registry.rs=            | The only owner of the active-dock list: snapshot plus typed walk                |
 | 2     | =toplevel_tracker.rs=         | The Wayland half: manager and handle listeners, one visitor per event           |
 | 2     | =x11_tracker.rs=              | The X11/EWMH backend and the dock's own X11 surface                             |
-| 2     | =app_window.rs=               | ~AppWindow~ ownership: create, retitle, match by handle, free, all NULL-safe    |
+| 2     | =app_window.rs=               | ~AppWindow~: create, retitle, match by handle, free, all NULL-safe              |
 | 2     | =accessibility.rs=            | Reduce-motion preference, the GTK setting, accessible labels and announcements   |
 | 2     | =guile.rs=                    | The libguile surface, as FFI, and the macros that are not symbols               |
 | 2     | =glib.rs=                     | The one place the crate names GLib's allocator, and gettext                     |
@@ -1450,7 +1453,8 @@ without a display or an interpreter (the ~#[cfg(test)]~ modules in
 - The launchpad is one model value (=struct Launchpad= in =ui/launchpad.rs=, held
   in a thread-local) rather than ten file statics, and the functions that act on it
   take it as a parameter; only its public entry points reach for the instance.
-- ~AppWindow~ lists are freed through =app_window.rs=, which is NULL-safe.
+- ~AppWindow~ lists are freed through =app_window.rs=, which is NULL-safe, and a
+  record owns its title (a `CString`, never a pointer the compositor owns).
 - Timer ids are cleared with ~g_clear_handle_id()~, or reset by the callback that
   consumed them, so teardown never removes a dead (possibly recycled) source.
 - The counters in =core/render_stats.rs= are atomics: a bump is defined from any

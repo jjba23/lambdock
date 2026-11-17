@@ -555,7 +555,11 @@ unsafe fn append_launchpad_section(vbox: &gtk4::Box, item: *mut DockItem) {
 /// icon-only and therefore invisible to a screen reader, so it is named after the
 /// window it closes.
 unsafe fn append_window_row(vbox: &gtk4::Box, item: *mut DockItem, window: *mut AppWindow) {
-    let title = crate::cstr::text_or_empty((*window).title);
+    let title = (*window)
+        .title
+        .as_ref()
+        .map(|title| crate::cstr::text_or_empty(title.as_ptr()))
+        .unwrap_or_default();
     let title = if title.is_empty() {
         crate::cstr::translated(c"Window")
     } else {

@@ -3426,14 +3426,6 @@ mod tests {
         assert_eq!(offset_of!(DockItem, trash_full), 240);
     }
 
-    /// `AppWindow` is mirrored in `app_window.rs`; its layout is pinned to the
-    /// same measurement.
-    #[test]
-    fn the_window_record_matches_the_header() {
-        assert_eq!(size_of::<crate::app_window::AppWindow>(), 24);
-        assert_eq!(offset_of!(crate::app_window::AppWindow, activated), 20);
-    }
-
     #[test]
     fn the_item_kinds_are_the_headers_enum() {
         assert_eq!(

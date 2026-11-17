@@ -270,7 +270,7 @@ unsafe fn apply_window_title_label(item: *const DockItem) {
     let title = if window.is_null() {
         None
     } else {
-        borrowed((*window).title)
+        (*window).title.as_deref()
     };
 
     let text = crate::core::item_text::window_title_text(
@@ -352,7 +352,7 @@ pub unsafe fn dock_item_add_window(
     let mut node = (*item).windows.cast::<GList>();
     while !node.is_null() {
         let existing = (*node).data.cast::<AppWindow>();
-        if !existing.is_null() && crate::app_window::app_window_matches(existing, handle) != 0 {
+        if crate::app_window::app_window_matches(existing, handle) {
             return existing;
         }
 
@@ -390,7 +390,7 @@ pub unsafe fn dock_item_remove_window(
     let mut node = (*item).windows.cast::<GList>();
     while !node.is_null() {
         let window = (*node).data.cast::<AppWindow>();
-        if !window.is_null() && crate::app_window::app_window_matches(window, handle) != 0 {
+        if crate::app_window::app_window_matches(window, handle) {
             (*item).windows = g_list_remove((*item).windows.cast(), window.cast()).cast();
             crate::app_window::app_window_free(window);
             break;
@@ -423,7 +423,7 @@ pub unsafe fn dock_item_has_window(
 
     let mut node = (*item).windows.cast::<GList>();
     while !node.is_null() {
-        if crate::app_window::app_window_matches((*node).data.cast::<AppWindow>(), handle) != 0 {
+        if crate::app_window::app_window_matches((*node).data.cast::<AppWindow>(), handle) {
             return 1;
         }
 
