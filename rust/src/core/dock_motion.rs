@@ -88,6 +88,36 @@ pub fn lambdock_dock_needs_full_input(
     (is_hidden != 0 || current_margin != 0) as c_int
 }
 
+/// The clickable rectangle while the fisheye paints.
+///
+/// The row's bounds move on almost every frame of a hover, and a region that
+/// follows them is a `wl_surface.set_input_region` per layout step. The room the
+/// row can grow into was reserved on the surface when the pointer entered, so the
+/// region is the dock it was computed from plus that room -- widened once, at the
+/// start of the hover, and left alone for the rest of it.
+///
+/// The room is added along the dock's own axis: the magnification spreads the
+/// row along the dock and leaves the cross axis at its resting size, so the
+/// pointer still leaves the surface where it used to.
+pub fn lambdock_hover_input_rect(
+    x: c_int,
+    y: c_int,
+    width: c_int,
+    height: c_int,
+    headroom_px: c_int,
+    horizontal: bool,
+) -> (c_int, c_int, c_int, c_int) {
+    if headroom_px <= 0 {
+        return (x, y, width, height);
+    }
+
+    if horizontal {
+        (x - headroom_px, y, width + 2 * headroom_px, height)
+    } else {
+        (x, y - headroom_px, width, height + 2 * headroom_px)
+    }
+}
+
 /// A cosine bell from `max_scale` at the centre to `1.0` at `radius_px`.
 pub fn lambdock_fisheye_scale(distance_px: f64, radius_px: f64, max_scale: f64) -> f64 {
     if radius_px <= 0.0 {
@@ -279,6 +309,71 @@ mod tests {
     #[test]
     fn a_dock_at_rest_takes_only_its_own_shape() {
         assert!(lambdock_dock_needs_full_input(0, 0) == 0);
+    }
+
+    // ======================================================================
+    // The hover's input region
+    // ======================================================================
+
+    #[test]
+    fn a_hovering_dock_is_clickable_across_the_room_it_grows_into() {
+        // A bottom dock: the row spreads left and right, so the region does too.
+        assert_eq!(
+            lambdock_hover_input_rect(100, 900, 400, 60, 120, true),
+            (-20, 900, 640, 60)
+        );
+
+        // A left dock spreads up and down instead; the cross axis stays put.
+        assert_eq!(
+            lambdock_hover_input_rect(0, 100, 60, 400, 120, false),
+            (0, -20, 60, 640)
+        );
+    }
+
+    #[test]
+    fn a_dock_with_no_room_to_grow_keeps_its_own_rect() {
+        assert_eq!(
+            lambdock_hover_input_rect(10, 20, 30, 40, 0, true),
+            (10, 20, 30, 40)
+        );
+        assert_eq!(
+            lambdock_hover_input_rect(10, 20, 30, 40, -5, false),
+            (10, 20, 30, 40)
+        );
+    }
+
+    /// The measurement the widening is for: a sweep over eight icons changes the
+    /// row's own rectangle on almost every step, and a region that followed it
+    /// would be a `wl_surface.set_input_region` each time. Widening the region
+    /// when the hover starts makes it one update per hover.
+    #[test]
+    fn following_the_row_would_be_one_region_update_per_layout_step() {
+        const BASE: c_int = 48;
+        const RADIUS: f64 = 140.0;
+        const ITEMS: c_int = 8;
+
+        let row_width = |pointer: c_int| -> c_int {
+            let centre = (ITEMS - 1) * BASE / 2;
+            (0..ITEMS)
+                .map(|index| {
+                    let offset = f64::from(index * BASE - pointer + centre);
+                    lambdock_scaled_size(BASE, lambdock_fisheye_scale(offset, RADIUS, 1.45))
+                })
+                .sum()
+        };
+
+        let (mut updates, mut previous) = (0, -1);
+        let mut pointer = 0;
+        while pointer <= ITEMS * BASE {
+            let width = row_width(pointer);
+            if width != previous {
+                updates += 1;
+                previous = width;
+            }
+            pointer += 2;
+        }
+
+        assert!(updates >= 10, "{updates} updates to follow the row");
     }
 
     // ======================================================================

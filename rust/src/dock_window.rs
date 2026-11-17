@@ -28,8 +28,8 @@ use crate::core::dock_dims::{
 };
 use crate::core::dock_motion::{
     lambdock_dock_needs_full_input, lambdock_fisheye_scale, lambdock_hide_margin,
-    lambdock_points_differ, lambdock_scaled_size, lambdock_settling, lambdock_size_step,
-    lambdock_slide_position, lambdock_slide_progress,
+    lambdock_hover_input_rect, lambdock_points_differ, lambdock_scaled_size, lambdock_settling,
+    lambdock_size_step, lambdock_slide_position, lambdock_slide_progress,
 };
 use crate::core::render_stats::{
     lambdock_stats_add, lambdock_stats_bump, GEOMETRY_REFRESHES, HOVER_FRAMES, HOVER_SKIPS, HOVER_US,
@@ -640,7 +640,24 @@ unsafe fn apply_dock_input_region(dock: &mut LambdockState) -> bool {
         }
     }
 
-    let rect = slack_rect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+    let mut rect = slack_rect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+
+    // While the fisheye paints, the row's bounds move with every layout step, and
+    // a region that followed them was one `wl_surface.set_input_region` per step.
+    // The room the row grows into is already on the surface, so the region covers
+    // the dock plus that room -- widened once, and left alone for the rest of the
+    // hover, which is why the hover itself does not ask for it again.
+    if dock.fisheye_active != 0 {
+        rect = lambdock_hover_input_rect(
+            rect.0,
+            rect.1,
+            rect.2,
+            rect.3,
+            dock.hover_headroom_px,
+            is_horizontal(dock),
+        );
+    }
+
     apply_input_region(dock, &surface, false, rect);
 
     true
@@ -1353,8 +1370,10 @@ pub unsafe fn hide_dock(dock: &mut LambdockState) {
     }
 
     // The row has to be at rest before its size is measured, or the measurement
-    // is the magnified one.
-    if dock.hover_animate != 0 {
+    // is the magnified one. A pointer that left already put it back -- and
+    // resetting it again would re-measure the whole row on the frame the slide
+    // starts, which is the one frame that has to be cheap.
+    if dock.hover_animate != 0 && dock.fisheye_active != 0 {
         reset_dock_items_scale_inner(dock);
     }
 
@@ -1979,10 +1998,13 @@ pub unsafe fn dock_apply_hover_at(dock: &mut LambdockState, x: f64, y: f64) {
         dock.centres_dirty = 1;
     }
 
-    // The capsule grows under the pointer, so the clickable region has to follow
-    // it; the tick that sizes the surface is the same one that cuts it out.
-    dock.fisheye_active = 1;
-    dock_schedule_input_region(dock);
+    // The capsule grows under the pointer, so the clickable region has to widen
+    // with it. Once is enough: the region covers the room the row can grow into,
+    // so the rest of the sweep does not queue a frame to re-cut it.
+    if dock.fisheye_active == 0 {
+        dock.fisheye_active = 1;
+        dock_schedule_input_region(dock);
+    }
 
     lambdock_stats_add(
         HOVER_US,
@@ -2145,10 +2167,13 @@ unsafe fn destroy_css_providers(dock: &mut LambdockState) {
         return;
     };
 
+    // Every provider the engine installs, the indicator guard included: one left
+    // behind outlives the dock that added it and keeps matching its theme class.
     for provider in [
         &mut dock.base_css_provider,
         &mut dock.taskbar_css_provider,
         &mut dock.shelf_css_provider,
+        &mut dock.indicator_guard_css_provider,
         &mut dock.user_css_provider,
     ] {
         if let Some(css) = provider.take() {

@@ -36,7 +36,7 @@ use gtk4::prelude::*;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use crate::bridge::{dock_read_settings, lambdock_poll_fn_call, lambdock_poll_fn_is_callable, lambdock_poll_fn_protect, lambdock_poll_fn_release, populate_dock_items_for};
-use crate::dock_window::{apply_dock_mode_classes, dock_apply_exclusive_zone, dock_apply_motion_preference, hide_dock, on_popover_closed, refresh_dock_mode, reveal_dock, update_dock_dimensions};
+use crate::dock_window::{apply_dock_mode_classes, dock_apply_exclusive_zone, dock_apply_motion_preference, hide_dock, on_popover_closed, refresh_dock_mode, reset_dock_items_scale, reveal_dock, update_dock_dimensions};
 use crate::toplevel_tracker::{activate_toplevel_window, clear_window_tracker_dock_references, minimize_toplevel_window, sync_window_trackers};
 use crate::ui::dock_dnd::{dock_dnd_persist_order};
 use crate::ui::launchpad::{lambdock_launchpad_hide, lambdock_launchpad_is_open, lambdock_launchpad_show};
@@ -3383,6 +3383,13 @@ pub unsafe fn reload_dock_instance(state: *mut LambdockState) {
         crate::bridge::get_position_config_for(config_path.as_ptr()),
     );
     reload_items(state);
+
+    // The rebuilt row is at rest, and the hover bookkeeping has to say so. A dock
+    // left "magnified" across a reload keeps `dock_reserve_hover_room` from
+    // reserving the room the fisheye paints into, so the next hover resizes the
+    // layer surface on every frame instead of never -- the dock stutters exactly
+    // when a setting was just changed.
+    reset_dock_items_scale(state_ref);
 
     // Mode classes and dimensions depend on both the new flags and the new row.
     apply_dock_mode_classes(&*state);
