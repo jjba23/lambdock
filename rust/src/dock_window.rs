@@ -1752,6 +1752,38 @@ const FISHEYE_POINTER_STEP_PX: f64 = 0.5;
 /// exact.
 const FISHEYE_LAYOUT_STEP_PX: c_int = 2;
 
+/// The coarsest step a fast sweep is allowed, which bounds how far the row can be
+/// from the exact spread if the pointer stops dead mid-sweep.
+const FISHEYE_LAYOUT_MAX_STEP_PX: c_int = 6;
+
+/// How coarsely the row may step for a pointer that travelled `travel_px` since
+/// the last applied frame.
+///
+/// Every layout step re-measures and re-allocates the whole row, and with the
+/// mirrors that is most of the frame. A pointer creeping over an icon gets the
+/// two-pixel step, which nobody can see. One sweeping across the dock crosses
+/// several icons in a single frame, and at that speed nobody can see a wider step
+/// either -- so the step widens with the distance covered, and most of a fast
+/// sweep's frames stop laying the row out at all. The painted magnification is
+/// continuous either way; only the spacing between the icons steps, and never by
+/// more than [`FISHEYE_LAYOUT_MAX_STEP_PX`], so a sweep that stops dead leaves the
+/// row within a couple of pixels of where the pointer asks for it.
+fn fisheye_layout_step(travel_px: f64) -> c_int {
+    let travel = if travel_px.is_finite() {
+        travel_px.abs()
+    } else {
+        0.0
+    };
+
+    if travel <= 4.0 {
+        FISHEYE_LAYOUT_STEP_PX
+    } else if travel <= 12.0 {
+        4
+    } else {
+        FISHEYE_LAYOUT_MAX_STEP_PX
+    }
+}
+
 /// What one hover frame needs, computed once per pointer position.
 ///
 /// It holds the values it reads rather than the state, so the row walk can take
@@ -1762,6 +1794,9 @@ struct FisheyeFrame<'a> {
     base_size_px: c_int,
     radius_px: f64,
     max_scale: f64,
+    /// The step this frame's layout sizes are coarsened to, from the pointer's
+    /// speed: see [`fisheye_layout_step`].
+    layout_step: c_int,
     centres: &'a [c_int],
     horizontal: bool,
     shelf_active: bool,
@@ -1822,10 +1857,10 @@ impl FisheyeFrame<'_> {
         let target_px = lambdock_scaled_size(self.base_size_px, scale);
 
         // The paint follows the pointer continuously (below); only the layout
-        // steps. Coarsening the magnified sizes cuts the row's re-measures by
-        // about half, and the resting size stays exact.
+        // steps. Coarsening the magnified sizes cuts the row's re-measures, and
+        // the resting size stays exact.
         let layout_px = if target_px > self.base_size_px {
-            lambdock_size_step(target_px, FISHEYE_LAYOUT_STEP_PX)
+            lambdock_size_step(target_px, self.layout_step)
         } else {
             target_px
         };
@@ -1951,8 +1986,8 @@ pub unsafe fn dock_apply_hover_at(dock: &mut LambdockState, x: f64, y: f64) {
     // changes nothing anyone can see: the icons would be repainted at the same
     // layout step and a magnification nobody can perceive. The frame is dropped
     // before it touches a widget.
-    if dock.hover_axis_valid != 0 && (axis - dock.applied_hover_axis).abs() < FISHEYE_POINTER_STEP_PX
-    {
+    let travel_px = (axis - dock.applied_hover_axis).abs();
+    if dock.hover_axis_valid != 0 && travel_px < FISHEYE_POINTER_STEP_PX {
         lambdock_stats_bump(HOVER_SKIPS);
         return;
     }
@@ -1981,6 +2016,7 @@ pub unsafe fn dock_apply_hover_at(dock: &mut LambdockState, x: f64, y: f64) {
         base_size_px: dock_icon_size(dock),
         radius_px: FISHEYE_RADIUS_PX,
         max_scale: FISHEYE_MAX_SCALE,
+        layout_step: fisheye_layout_step(travel_px),
         centres: &dock.item_centres,
         horizontal,
         shelf_active,
@@ -1994,6 +2030,11 @@ pub unsafe fn dock_apply_hover_at(dock: &mut LambdockState, x: f64, y: f64) {
         }
     }
 
+    // A frame that stepped coarsely leaves the row at most one step away from
+    // the spread the pointer asks for, and the painted magnification is exact
+    // either way: the next motion -- or the slower one that ends a sweep -- steps
+    // finely again. Asking for an extra frame here would double the frames of a
+    // sweep, which is the work this coarsening exists to save.
     if frame.geometry_changed {
         dock.centres_dirty = 1;
     }
@@ -2516,6 +2557,28 @@ unsafe fn on_hover_tick(state: *mut LambdockState) {
     dock_apply_hover_at(dock, x, y);
 }
 
+/// Queues one hover frame, unless one is already queued.
+///
+/// # Safety
+///
+/// `dock` must be a live dock.
+unsafe fn schedule_hover_tick(dock: &mut LambdockState) {
+    if dock.pointer_tick_id != 0 {
+        return;
+    }
+
+    let Some(window) = dock.window.as_ref() else {
+        return;
+    };
+
+    dock.pointer_tick_id = gtk4::ffi::gtk_widget_add_tick_callback(
+        window.as_ptr().cast(),
+        Some(hover_tick),
+        (dock as *mut LambdockState).cast(),
+        None,
+    );
+}
+
 /// Adapter: GLib wants a frame-clock callback, this module wants a dock.
 unsafe extern "C" fn hover_tick(
     _widget: *mut gtk4::ffi::GtkWidget,
@@ -2594,16 +2657,7 @@ unsafe fn on_motion_notify(state: *mut LambdockState, x: f64, y: f64) {
     dock.pointer_x = x;
     dock.pointer_y = y;
 
-    if dock.pointer_tick_id == 0 {
-        if let Some(window) = dock.window.as_ref() {
-            dock.pointer_tick_id = gtk4::ffi::gtk_widget_add_tick_callback(
-                window.as_ptr().cast(),
-                Some(hover_tick),
-                (dock as *mut LambdockState).cast(),
-                None,
-            );
-        }
-    }
+    schedule_hover_tick(dock);
 }
 
 /// Applies the input region whenever the dock window (re)appears, and wires the
@@ -2765,5 +2819,24 @@ mod tests {
 
         state.orientation = gtk4::Orientation::Vertical.into_glib();
         assert!(!is_horizontal(&state));
+    }
+
+    /// The layout step widens with the pointer's speed, and never goes below the
+    /// two pixels the row is coarsened to: a pointer parked on an icon asks for
+    /// the exact spread, and a sweeping one asks for fewer re-measures.
+    #[test]
+    fn the_layout_step_widens_with_the_pointer() {
+        assert_eq!(fisheye_layout_step(0.0), FISHEYE_LAYOUT_STEP_PX);
+        assert_eq!(fisheye_layout_step(3.9), FISHEYE_LAYOUT_STEP_PX);
+        assert_eq!(fisheye_layout_step(-3.9), FISHEYE_LAYOUT_STEP_PX);
+
+        assert_eq!(fisheye_layout_step(4.1), 4);
+        assert_eq!(fisheye_layout_step(12.0), 4);
+
+        assert_eq!(fisheye_layout_step(12.1), FISHEYE_LAYOUT_MAX_STEP_PX);
+        assert_eq!(fisheye_layout_step(400.0), FISHEYE_LAYOUT_MAX_STEP_PX);
+
+        // A pointer at rest, not a panic and not a zero step.
+        assert_eq!(fisheye_layout_step(f64::NAN), FISHEYE_LAYOUT_STEP_PX);
     }
 }
