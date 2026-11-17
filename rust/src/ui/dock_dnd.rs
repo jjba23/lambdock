@@ -74,23 +74,6 @@ pub unsafe fn dock_drop_index_for_position(
     drop_index_for_position(centers, position) as c_int
 }
 
-/// The key of an item, or `None` when it has none.
-unsafe fn item_key(item: *const DockItem) -> Option<String> {
-    if item.is_null() {
-        return None;
-    }
-
-    let key = dock_item_key(item);
-    if key.is_null() {
-        return None;
-    }
-
-    let text = CStr::from_ptr(key).to_string_lossy().into_owned();
-    crate::glib::g_free(key.cast());
-
-    Some(text)
-}
-
 /// Stores the current item order in the layout overrides.
 ///
 /// # Safety
@@ -107,7 +90,7 @@ pub unsafe fn dock_dnd_persist_order(state: &LambdockState) {
         .dock_items
         .iter()
         .filter(|item| item.as_ref().is_some_and(|item| item.kind != ITEM_SEPARATOR))
-        .filter_map(|item| item_key(*item))
+        .filter_map(|item| dock_item_key(*item))
         .collect();
 
     dock_layout_set_order(state.config_path, &keys);
@@ -132,7 +115,7 @@ pub unsafe fn remove_dock_item(state: *mut LambdockState, item: *mut DockItem) {
 
     if !state.is_null() {
         if (*item).kind != ITEM_SEPARATOR {
-            if let Some(key) = item_key(item) {
+            if let Some(key) = dock_item_key(item) {
                 let key = CString::new(key).unwrap_or_default();
                 dock_layout_remove_item((*state).config_path, key.as_ptr());
             }
@@ -210,7 +193,7 @@ unsafe fn find_item_by_key(state: &LambdockState, key: &str) -> *mut DockItem {
     state
         .dock_items
         .iter()
-        .find(|item| item_key(**item).is_some_and(|item_key| item_key == key))
+        .find(|item| dock_item_key(**item).is_some_and(|item_key| item_key == key))
         .copied()
         .unwrap_or(std::ptr::null_mut())
 }
@@ -616,7 +599,7 @@ pub unsafe fn dock_dnd_setup_item(item: *mut DockItem) {
 
     let dragged = item;
     source.connect_prepare(move |_, _, _| {
-        let key = item_key(dragged)?;
+        let key = dock_item_key(dragged)?;
         let payload = format!("{ITEM_PREFIX}{key}");
 
         Some(gdk::ContentProvider::for_value(&payload.to_value()))

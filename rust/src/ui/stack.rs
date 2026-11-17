@@ -1717,11 +1717,10 @@ unsafe fn set_view(item: *mut DockItem, view: c_int) {
 
     let state = (*item).state;
     if !state.is_null() {
-        let key = dock_item_key(item);
-        if !key.is_null() {
+        if let Some(key) = dock_item_key(item) {
+            let key_c = crate::cstr::cstring(&key);
             let name_c = crate::cstr::cstring(name);
-            dock_layout_set_view((*state).config_path, key, name_c.as_ptr());
-            crate::glib::g_free(key.cast());
+            dock_layout_set_view((*state).config_path, key_c.as_ptr(), name_c.as_ptr());
         }
     }
 

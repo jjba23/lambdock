@@ -34,7 +34,7 @@ use gtk4::glib::object::ObjectExt;
 use gtk4::glib::translate::from_glib_none;
 use gtk4::prelude::*;
 use gtk4::{ffi, pango};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use crate::dock_item::{dock_item_from_widget, dock_item_key, dock_item_refresh_trash, lambdock_item_title};
 use crate::toplevel_tracker::{activate_toplevel_window, close_toplevel_window};
@@ -859,7 +859,7 @@ unsafe fn append_desktop_actions(vbox: &gtk4::Box, item: *mut DockItem) {
 unsafe fn append_inspector_section(vbox: &gtk4::Box, item: *mut DockItem) {
     vbox.append(&separator());
 
-    let key = dock_item_key(item);
+    let key = dock_item_key(item).and_then(|key| CString::new(key).ok());
     let config_path = if (*item).state.is_null() {
         std::ptr::null()
     } else {
@@ -870,10 +870,9 @@ unsafe fn append_inspector_section(vbox: &gtk4::Box, item: *mut DockItem) {
     };
     let launcher = crate::core::item_text::inspector_launcher_text(
         unsafe { config_path.as_ref().map(|path| CStr::from_ptr(path)) },
-        unsafe { key.as_ref().map(|key| CStr::from_ptr(key)) },
+        key.as_deref(),
     );
     append_detail_row(vbox, &crate::cstr::translated(c"Launcher"), &launcher);
-    crate::glib::g_free(key.cast());
 
     let entry = item_desktop_entry(item);
     let entry_text = if entry.is_null() {

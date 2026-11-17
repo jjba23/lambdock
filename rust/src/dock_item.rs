@@ -203,21 +203,16 @@ pub fn dock_item_kind_css_class(kind: c_int) -> *const c_char {
 ///
 /// # Safety
 ///
-/// `item` must be null or a live `DockItem`; the result is `(transfer full)`.
-pub unsafe fn dock_item_key(item: *const DockItem) -> *mut c_char {
-    let Some(item) = item.as_ref() else {
-        return std::ptr::null_mut();
-    };
+/// `item` must be null or a live `DockItem`.
+pub unsafe fn dock_item_key(item: *const DockItem) -> Option<String> {
+    let item = item.as_ref()?;
 
     // A nameless item is still keyed; the empty string keeps the two halves
     // apart without inventing a name.
-    let name = if item.name.is_null() {
-        c"".as_ptr()
-    } else {
-        item.name
-    };
+    let kind = kind_ops(item.kind).key_name.to_string_lossy();
+    let name = crate::cstr::text_or_empty(item.name);
 
-    crate::glib::g_strdup_printf(c"%s:%s".as_ptr(), kind_ops(item.kind).key_name.as_ptr(), name)
+    Some(format!("{kind}:{name}"))
 }
 
 /// What to call `item`: its name, else its app id, else the caller's fallback.
@@ -497,15 +492,7 @@ mod kind_tests {
     }
 
     fn key_of(item: &DockItem) -> String {
-        let key = unsafe { dock_item_key(item) };
-        assert!(!key.is_null());
-
-        let text = unsafe { CStr::from_ptr(key) }
-            .to_string_lossy()
-            .into_owned();
-        unsafe { crate::glib::g_free(key.cast()) };
-
-        text
+        unsafe { dock_item_key(item) }.expect("an item has a key")
     }
 
     /// The key is "kind:name": the identity a layout override remembers, and the
@@ -532,7 +519,7 @@ mod kind_tests {
         assert_eq!(key_of(&item(ITEM_APP, None, None)), "app:");
 
         // A null item has no identity at all.
-        assert!(unsafe { dock_item_key(std::ptr::null()) }.is_null());
+        assert!(unsafe { dock_item_key(std::ptr::null()) }.is_none());
     }
 
     /// A kind nobody knows behaves like an application: the first row is the

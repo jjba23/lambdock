@@ -17,13 +17,12 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 
-/// One window, in terms both backends can describe: `toplevel_tracker.h`.
+/// One window, in terms both backends can describe.
 ///
-/// Only the trackers write it; the dock reads the flags through `AppWindow`.
-/// `handle` is the Wayland foreign-toplevel proxy and null on X11, `x11_window`
-/// the X11 id and zero on Wayland -- which is also how a backend asks "is this
-/// record mine?".
-#[repr(C)]
+/// The trackers write it; the dock reads it through `AppWindow`.  `handle` is the
+/// Wayland foreign-toplevel proxy and null on X11, `x11_window` the X11 id and
+/// zero on Wayland -- which is also how a backend asks "is this record mine?".
+#[derive(Default)]
 pub struct LambdockToplevel {
     pub handle: *mut c_void,
     pub x11_window: std::os::raw::c_ulong,
@@ -165,21 +164,6 @@ pub unsafe fn app_windows_free(windows: *mut GList) {
 
     g_list_free(windows);
 }
-
-    /// The record the trackers fill in: `offsetof(LambdockToplevel, ...)` against
-    /// `toplevel_tracker.h`.
-    #[test]
-    fn the_toplevel_record_matches_the_header() {
-        use std::mem::{offset_of, size_of};
-
-        assert_eq!(size_of::<LambdockToplevel>(), 40);
-        assert_eq!(offset_of!(LambdockToplevel, handle), 0);
-        assert_eq!(offset_of!(LambdockToplevel, x11_window), 8);
-        assert_eq!(offset_of!(LambdockToplevel, title), 16);
-        assert_eq!(offset_of!(LambdockToplevel, app_id), 24);
-        assert_eq!(offset_of!(LambdockToplevel, minimized), 32);
-        assert_eq!(offset_of!(LambdockToplevel, activated), 36);
-    }
 
 #[cfg(test)]
 mod tests {

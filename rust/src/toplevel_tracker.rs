@@ -595,7 +595,7 @@ unsafe fn foreach(
 ///
 /// The result is `(transfer full)`: free it with [`lambdock_toplevel_free`].
 pub unsafe fn lambdock_toplevel_new() -> *mut LambdockToplevel {
-    crate::glib::g_malloc0(std::mem::size_of::<LambdockToplevel>()).cast()
+    Box::into_raw(Box::new(LambdockToplevel::default()))
 }
 
 /// Frees the title, the id and the record. The backend destroys its own handle
@@ -611,7 +611,8 @@ pub unsafe fn lambdock_toplevel_free(window: *mut LambdockToplevel) {
 
     crate::glib::g_free(window.title.cast());
     crate::glib::g_free(window.app_id.cast());
-    crate::glib::g_free((window as *mut LambdockToplevel).cast());
+
+    drop(Box::from_raw(window as *mut LambdockToplevel));
 }
 
 /// Records the id and moves the window between the docks' items for it.
