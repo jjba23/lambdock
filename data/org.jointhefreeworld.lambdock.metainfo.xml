@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.1.10" date="2026-11-17">
+      <description>
+        <p>The tracker's record owns its text. The record the dock keeps for one window of the session held its title and app id as GLib strings it freed and re-duplicated on every event; both are owned values now, copied once where the compositor's pointer is valid, and the setters take a borrowed string instead of a pointer, so the X11 backend no longer duplicates what it just read. The app-id change that a late-loading profile triggers is also ordered by the compiler now: the old id is taken out of the record before the new one is written, because the detach looks the old item up by it. Nothing a user sees changes.</p>
+      </description>
+    </release>
     <release version="2.1.9" date="2026-11-17">
       <description>
         <p>A tracked window owns its title. The record the dock keeps for each window of a running app was a C mirror holding a GLib string it freed and re-duplicated on every title event; it is a plain Rust record in a box now, with the text copied once where the compositor's pointer is valid and compared as a value, so a redundant title event still costs nothing. The tracker's own record stopped being a C mirror too, and an item's layout key is a <code>String</code> instead of a GLib string the caller had to free. Nothing a user sees changes.</p>

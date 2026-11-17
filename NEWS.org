@@ -11,6 +11,29 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.1.10 (2026-11-17)
+
+- *The tracker's record owns its text.* `LambdockToplevel` -- the record the
+  window tracker keeps for one window of the session -- held its title and app id
+  as `*mut c_char`: `g_strdup`ed on every event, `g_strcmp0`-compared to skip the
+  repeats, and `g_free`d on teardown. Both are `Option<CString>` now, so an
+  event's text is copied once, where the protocol's pointer is still valid, and
+  read as a `CStr` afterwards -- by the item lookup, by the title the dock shows,
+  and by the log lines. The setters take `Option<&CStr>` instead of a pointer, so
+  the X11 backend hands over the `String` it just read without a `g_strdup` round
+  trip, and the Wayland listeners borrow the protocol's text.
+- *The app-id change is now the compiler's business.* An application that loads
+  its profile late re-announces its app id, and the detach has to look the *old*
+  item up by the *old* id before the record is overwritten. That used to be a
+  comment and a `g_strcmp0`; the old id is taken out of the record and the detach
+  event borrows it, so the ordering is enforced rather than remembered.
+- `cstr::borrowed` is the counterpart of `cstr::text` for a caller that already
+  has the text and only needs to read it -- the pattern that was spelled
+  `std::ffi::CStr::from_ptr` at six call sites.
+
+
+*[Released]*
+
 ** v2.1.9 (2026-11-17)
 
 - *A tracked window owns its title.* `AppWindow` -- one window of a running app,
