@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.2.2" date="2026-11-17">
+      <description>
+        <p>The Nix package wraps the dock so the GPU is usable. A GTK cannot create an EGL display out of a closure that ships no EGL vendor, and a GTK without one stops at the software renderer: the shelf's keystone and tilt are drawn as a plain rectangle and every frame -- every step of a fish-eye hover included -- is composited on the CPU. The wrapper now appends the driver directories to <code>LD_LIBRARY_PATH</code> (<code>/run/opengl-driver/lib</code> on NixOS, <code>/usr/lib64</code> and <code>/usr/lib/x86_64-linux-gnu</code> elsewhere), appending them so the closure still wins for every library it ships.</p>
+      </description>
+    </release>
     <release version="2.2.1" date="2026-11-17">
       <description>
         <p>A dock whose GTK cannot create an EGL display is a rectangle instead of a hot-pink screen. GTK falls back to the cairo renderer there, and the shelf's keystone and tilt are a projective transform that cairo does not have: rather than skipping it, cairo paints the whole surface in its "unsupported node" colour, which is a flat hot pink slab with square corners -- and the CPU compositing behind it is also why the fish-eye was slow. The dock now asks the surface's renderer first, leaves the slab flat when it cannot project, keeps the pointer mapping in step, and says in the log which renderer it got and why it is slow.</p>

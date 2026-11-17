@@ -11,6 +11,25 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.2 (2026-11-17)
+
+- *The Nix package wraps the dock so the GPU is usable.*  A GTK cannot create an
+  EGL display out of a closure that ships no EGL vendor, and a GTK without one
+  stops at the software (cairo) renderer: the shelf's keystone and tilt are drawn
+  as a plain rectangle, and every frame -- every step of a fish-eye hover
+  included -- is composited on the CPU. The wrapper now appends the driver
+  directories to `LD_LIBRARY_PATH` (`/run/opengl-driver/lib` on NixOS,
+  `/usr/lib64` and `/usr/lib/x86_64-linux-gnu` elsewhere); they are appended, so
+  the closure still wins for every library it does ship. Measured on one AMD
+  machine with the Nix package: the same dock that logged "Failed to realize
+  renderer 'GskGLRenderer' ... EGL display creation failed" now draws its shelf
+  on the GPU. That measurement is also what the hot-pink screen of v2.2.1 was --
+  cairo paints a projective transform as a flat hot-pink slab -- so the two
+  fixes meet in the same place.
+- *The guide's Nix section says what the wrapper does and when it is not enough.*
+  A driver that lives somewhere else needs `nixGL`, or `__EGL_VENDOR_LIBRARY_FILENAMES`
+  pointed at the machine's own `/usr/share/glvnd/egl_vendor.d` entry.
+
 ** v2.2.1 (2026-11-17)
 
 - *A dock on the software renderer is a rectangle instead of a hot-pink screen.*
