@@ -43,7 +43,9 @@ use crate::dock_item::{create_dock_item, free_dock_item, DockItem};
 use crate::log_info;
 use crate::log_warn;
 use crate::state::LambdockState;
-use crate::dock_window::{dock_window_set_tracker_connected, hide_dock, reveal_dock};
+use crate::dock_window::{
+    dock_window_set_tracker_connected, hide_dock, reveal_dock, update_dock_dimensions,
+};
 use crate::x11_tracker::{x11_tracker_activate, x11_tracker_close, x11_tracker_minimize, x11_tracker_replay, x11_tracker_start};
 use crate::ui::dock_item_windows::{
     clear_tracked_windows, dock_item_add_window, dock_item_refresh_window_state,
@@ -485,6 +487,12 @@ unsafe fn dock_attach_current_app_id(state: *mut LambdockState, data: *mut c_voi
     let mut item = find_dock_item_by_app_id(state, event.app_id);
     if item.is_null() {
         item = create_item_for_app_id(state, event.app_id);
+
+        // A new item joins a row that is already laid out, and the shelf layout
+        // is what gives it the reflection band every other item reserves. Without
+        // this pass it keeps an invisible band and hangs that far below its
+        // neighbours -- the row looks misaligned, on the shelf themes only.
+        update_dock_dimensions(&mut *state);
     }
 
     let top_ref = &*top;
