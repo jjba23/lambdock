@@ -11,6 +11,22 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.3 (2026-11-20)
+
+- *A dock item for an app that is running but not pinned sits on the same
+  baseline as the pinned ones.*  The tracker creates that item itself, and it did
+  so without the layout pass the rest of the row had already been through.  Every
+  item reserves a glass-shelf reflection slot, and the band that slot takes is
+  part of the cell's height: an item whose band never got its extent stays an
+  invisible child, so the item hung a band (14 px at a 48 px icon) below its
+  neighbours and mirrored nothing under itself.  It is the shape of the report --
+  the icons of running, unpinned applications look misaligned on the shelf
+  themes, and only there, because a theme without reflections has no band to
+  lose.  Measured on a Platinum dock before the fix: the new item's bottom edge
+  lands 19 px below the trash's, with no reflection under it.  The tracker now
+  re-measures the dock after it adopts an app, which is what drag and drop, the
+  poof animation and a settings reload already do after they change the row.
+
 ** v2.2.2 (2026-11-17)
 
 - *The Nix package wraps the dock so the GPU is usable.*  A GTK cannot create an

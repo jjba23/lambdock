@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.2.3" date="2026-11-20">
+      <description>
+        <p>The dock item for an app that is running but not pinned now sits on the same baseline as the pinned ones. The tracker created that item without the layout pass the rest of the row had already been through, and every item's cell holds a glass-shelf reflection slot whose band is part of its height: with the band left invisible the item hung a band below its neighbours and mirrored nothing under itself. Only the shelf themes showed it. The tracker now re-measures the dock after it adopts an app, as drag and drop, the poof animation and a settings reload already did.</p>
+      </description>
+    </release>
     <release version="2.2.2" date="2026-11-17">
       <description>
         <p>The Nix package wraps the dock so the GPU is usable. A GTK cannot create an EGL display out of a closure that ships no EGL vendor, and a GTK without one stops at the software renderer: the shelf's keystone and tilt are drawn as a plain rectangle and every frame -- every step of a fish-eye hover included -- is composited on the CPU. The wrapper now appends the driver directories to <code>LD_LIBRARY_PATH</code> (<code>/run/opengl-driver/lib</code> on NixOS, <code>/usr/lib64</code> and <code>/usr/lib/x86_64-linux-gnu</code> elsewhere), appending them so the closure still wins for every library it ships.</p>
