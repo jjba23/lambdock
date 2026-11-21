@@ -71,7 +71,7 @@
                           gtk
                           gtk4-layer-shell
                           libx11
-                          texinfo
+                          (specification->package "texinfo")
                           watchexec
                           ;; The Scheme layer's API reference under `doc/api'
                           ;; is extracted by dokgen; maak's `docs' task renders

@@ -11,6 +11,17 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.6 (2026-11-21)
+
+- *The reference is rendered with Texinfo 7.3, so dokgen's stylesheet applies.*
+  =manifest.scm= names =texinfo= through =(specification->package "texinfo")=
+  rather than through the bare binding, which was 6.8; texi2any 6.8 wrote the
+  old definition structure, and the stylesheet that turns the page into cards
+  with an index and a filter had nothing to style.
+- *The generator is pinned.*  =channels.scm= takes the jointhefreeworld
+  collection at =24db897=, where =guile-dokgen= 0.9.2 is defined, so =maak
+  docs= renders the reference with the generator this release was cut with.
+
 ** v2.2.5 (2026-11-21)
 
 - *The API links point at =index.html=.*  The reference has been one page named
