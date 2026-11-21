@@ -11,6 +11,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.5 (2026-11-21)
+
+- *The API links point at =index.html=.*  The reference has been one page named
+  =index.html= since the dokgen migration; the links still named =API.html=,
+  which is a page that is no longer written.
+- *The generator is pinned.*  =channels.scm= takes the jointhefreeworld
+  collection at =dc9f38c=, where =guile-dokgen= 0.9.1 is defined, so =maak
+  docs= renders the reference with the generator this release was cut with.
+
 ** v2.2.4 (2026-11-21)
 
 - *The Scheme layer's API reference is generated rather than missing.*
