@@ -77,6 +77,27 @@ The guide is split by what you are trying to do:
 
 This page keeps the feature list, the licence and the project links.
 
+** The Scheme API reference
+:PROPERTIES:
+:CUSTOM_ID: the-scheme-api-reference
+:END:
+
+The pages above are written by hand.  ~maak docs~ adds the other half: dokgen
+reads ~scheme/lambdock~ and writes a chapter that documents every exported
+procedure with its docstring, and texi2any renders it to
+~doc/api-dist/index.html~.  It documents the Scheme layer only -- the Rust
+crates are ~cargo doc~'s business -- and it replaces none of the manual, because
+the chapter is generated into ~doc/api~ and the pages stay where they are.
+
+Each item kind fills the same ~<dock-item>~ record, and the item's poll
+procedure is what the Rust side calls on a timer:
+
+#+attr_html: :width 720 :alt From a settings file through the item constructors to the dock's icon, gauge or clock
+[[file:resources/diagrams/items.svg]]
+
+The diagram's source is ~resources/diagrams/items.mmd~; ~maak diagrams~
+re-renders the SVG beside it.
+
 ------------------
 
 * Features

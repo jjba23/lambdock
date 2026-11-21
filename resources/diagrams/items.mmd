@@ -1,0 +1,7 @@
+flowchart LR
+  settings["Settings file: (app-item ...), (stack-item ...), presets"] --> ctor["Constructors: app-item, separator-item, dynamic-item, stack-item, launchpad-item, trash-item"]
+  ctor --> record["dock-item record"]
+  record --> bridge["The Rust bridge reads the accessors"]
+  bridge --> timer["GTK timer at dock-item-poll-interval"]
+  timer --> poll["dock-item-poll-fn answers a reading or a string"]
+  poll --> ui["Icon, gauge, clock face or tooltip"]

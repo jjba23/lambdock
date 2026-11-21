@@ -5,6 +5,7 @@
 
 (use-modules (guix packages)
              (gnu)
+             (gnu packages)
              (guix utils)
              (guix git-download)
              (guix download)
@@ -72,7 +73,10 @@
                           libx11
                           texinfo
                           watchexec
-                          guile-documenta
+                          ;; The Scheme layer's API reference under `doc/api'
+                          ;; is extracted by dokgen; maak's `docs' task renders
+                          ;; it.  The Rust crates are documented by rustdoc.
+                          (specification->package "guile-dokgen")
                           wlr-protocols
                           guile-ares-rs
                           ;; `maak debug-run' launches the dock under gdb, so the

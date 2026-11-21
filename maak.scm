@@ -18,12 +18,18 @@
   ;; The task named `run' shadows the shell builtin of that name for the rest
   ;; of this file, so every command here is started through `dsl:run' -- the
   ;; builtin under the name of the module it comes from -- instead.
-  #:use-module ((maak dsl) #:prefix dsl:))
+  #:use-module ((maak dsl) #:prefix dsl:)
+  ;; `scandir' is what the `diagrams' task walks resources/diagrams with.
+  #:use-module (ice-9 ftw))
 
 ;;; ===== Maak tasks =======
 
 (define project-name
   'lambdock)
+
+;; The URL for the CSS stylesheet used to style API documentation.
+(define api-docs-css-url
+  "https://jointhefreeworld.org/static/css/jointhefreeworld.css")
 
 (define (run)
   "Run lambdock with Guix"
@@ -105,6 +111,66 @@ to be found."
   (time-machine-manifest-shell
    (list "guile" "-L" "./src"
          "-c" "'((@ (ares server) run-nrepl-server))'")))
+
+(define (docs)
+  "Generate the Scheme layer's API reference and render it as HTML.
+
+The dock is a Rust program with a Guile layer, and the two are documented
+separately: `cargo doc' is the Rust API and is not run here, while this task
+reads `scheme/lambdock' and writes what dokgen extracts from it.  Dokgen loads
+the modules rather than parsing their text, so every exported procedure that
+has a docstring is in the reference.
+
+`doc/' holds the hand-written manual (docs/*.org); the generated chapter goes
+to `doc/api' and its rendering to `doc/api-dist', so neither replaces a page.
+Beside the Texinfo dokgen writes the stylesheet and the script the page is read
+with, and a directory of diagrams for the docstrings that carry one; Texinfo
+copies neither, so both are put beside the page that points at them."
+  (delete-file-recursively "doc/api")
+  (time-machine-manifest-shell
+   (list "dokgen" "api"
+         "--destination" "doc/api"
+         "./scheme/lambdock")
+   #:verbose? #t)
+  (mkdir-p "doc/api-dist")
+  (time-machine-manifest-shell
+   (list "texi2any" "-v" "--html" "--no-split"
+         (~ "--css-ref=~a" api-docs-css-url)
+         "-I" "doc/api"
+         "-c" (shell-quote
+               (string-append
+                "EXTRA_HEAD="
+                "<link rel=\"stylesheet\" href=\"dokgen.css\">"
+                "<script src=\"dokgen.js\" defer></script>"))
+         "-o" "doc/api-dist/index.html"
+         "./doc/api/index.texi")
+   #:verbose? #t)
+  (for-each (lambda (asset)
+              (when (file-exists? (~ "doc/api/~a" asset))
+                (cp (~ "doc/api/~a" asset) "doc/api-dist"
+                    #:force? #t #:verbose? #t)))
+            '("dokgen.css" "dokgen.js"))
+  (when (file-exists? "doc/api/diagrams")
+    (cp "doc/api/diagrams" "doc/api-dist" #:force? #t #:verbose? #t)))
+
+(define (diagrams)
+  "Render every mermaid source under resources/diagrams to the SVG beside it.
+
+A diagram is committed twice -- the source and the rendering -- so reading the
+README needs no renderer.  `mmdc' is a JavaScript tool the pinned shell does not
+carry, so it is looked up on $PATH, where `npm install --global
+@mermaid-js/mermaid-cli' puts it."
+  (for-each
+   (lambda (name)
+     (let* ((source (in-vicinity "resources/diagrams" name))
+            (image (string-append (string-drop-right source 4) ".svg")))
+       (dsl:run (list "mmdc" "-i" source "-o" image
+                      "--backgroundColor" "transparent")
+                #:verbose? #t)))
+   (scandir "resources/diagrams"
+            (lambda (name)
+              (and (not (member name '("." "..")))
+                   (string-suffix? ".mmd" name))))))
 
 (define c-packages
   (make-parameter (string-join (map symbol->string

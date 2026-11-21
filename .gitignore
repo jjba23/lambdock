@@ -69,3 +69,7 @@ __pycache__/
 
 # `nix build` leaves this symlink in the tree.
 result
+
+# The API reference `dokgen' writes, and the page it is rendered to.
+doc/api/
+doc/api-dist/

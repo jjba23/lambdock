@@ -3,6 +3,28 @@
 ;;; SPDX-License-Identifier: MIT
 ;;; Copyright © Josep Bigorra <jjbigorra@gmail.com>
 
+;;; Commentary:
+;;;
+;;; The dock's items, as one record with a constructor per kind.  A settings
+;;; file names what it wants -- an application, a separator, a stack, the
+;;; launchpad, the trash -- and each constructor fills in the same
+;;; `<dock-item>' record, so the Rust side reads one shape whatever the item
+;;; is.  An item that changes while the dock runs carries a poll procedure and
+;;; the interval it is called at; what it answers is drawn as text, as the
+;;; gauge of a meter, or as the tooltip of the analogue clock face.
+;;;
+;;; ```mermaid
+;;; flowchart LR
+;;;   settings["Settings file: (app-item ...), (stack-item ...), presets"] --> ctor["Constructors: app-item, separator-item, dynamic-item, stack-item, launchpad-item, trash-item"]
+;;;   ctor --> record["dock-item record"]
+;;;   record --> bridge["The Rust bridge reads the accessors"]
+;;;   bridge --> timer["GTK timer at dock-item-poll-interval"]
+;;;   timer --> poll["dock-item-poll-fn answers a reading or a string"]
+;;;   poll --> ui["Icon, gauge, clock face or tooltip"]
+;;; ```
+;;;
+;;; Code:
+
 (define-module (lambdock items)
   #:declarative? #t
   #:use-module (srfi srfi-9)

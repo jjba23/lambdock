@@ -11,6 +11,27 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.4 (2026-11-21)
+
+- *The Scheme layer's API reference is generated rather than missing.*
+  guile-documenta is gone and [[https://github.com/jjba23/guile-dokgen][guile-dokgen]]
+  takes its place: it reads =scheme/lambdock= rather than its text, writes a
+  chapter documenting every exported procedure with its signature and its
+  docstring, and texi2any renders that to =doc/api-dist/index.html=.  It
+  documents the Scheme layer only -- the Rust crates are =cargo doc='s
+  business -- and it replaces none of the manual, because the chapter is
+  generated into =doc/api= while the pages stay where they are.
+- *The channels the dock builds against are pinned.*  =channels.scm= takes Guix
+  master =5cea8de= and adds the jointhefreeworld collection at =139880f=, which
+  is where =guile-dokgen= comes from; =maak diagrams= re-renders every
+  =resources/diagrams/*.mmd= to the SVG beside it.
+- *The item kinds are drawn.*  A diagram in the guide follows a settings file
+  through the constructors to the one =<dock-item>= record the Rust bridge
+  reads, and on to the icon, the gauge or the clock face it is drawn as.
+- *=(lambdock items)= says what an item is before it defines one.*  The module
+  carries a =;;; Commentary:= -- with the same diagram -- which is where the
+  generator starts reading.
+
 ** v2.2.3 (2026-11-20)
 
 - *A dock item for an app that is running but not pinned sits on the same
