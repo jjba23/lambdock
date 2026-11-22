@@ -12,6 +12,8 @@
 #+attr_html: :width 160 :alt lambdock logo
 [[file:logo.svg]]
 
+- 📖 *API reference:* [[https://jointhefreeworld.org/api-docs/lambdock/index.html][LambDock API reference]]
+
 #+begin_quote
 An ordinary dock is a compiled artefact with a settings dialog in front of it.
 lambdock is a small Rust renderer driven by a Guile image: the dock on screen is
