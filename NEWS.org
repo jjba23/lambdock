@@ -19,6 +19,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
   version several releases behind what it shipped, and the AppStream data named
   an older release than the archive it came in.  Every one of them says =2.2.9=,
   which is the release this tree is.
+- *Void Linux has a template.*  =packaging/void/template= is an
+  [[https://github.com/void-linux/void-packages][xbps-src]] recipe:
+  it builds with the distribution's =cargo= build style -- the crate graph is
+  vendored, so the build reaches no registry -- and installs through =cargo
+  xtask install=, which puts the binary, the desktop entry, the AppStream data,
+  the logo, the Scheme modules and the compiled catalogues where xbps expects
+  them.  Its =checksum= names the =v2.2.9= archive and is therefore added after
+  that tag exists; the install step was run into a staging directory before it
+  was committed, and the template was not built under =xbps-src= itself.
 
 ** v2.2.6 (2026-11-21)
 

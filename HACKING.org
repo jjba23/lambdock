@@ -380,7 +380,7 @@ lambdock/
 ├── tests/                   # The Scheme test suite
 │   └── scheme/lambdock_tests.scm
 ├── po/                      # gettext translations (.pot, *.po, LINGUAS)
-├── packaging/               # arch / debian / opensuse / flatpak
+├── packaging/               # arch / debian / opensuse / void / flatpak
 ├── tools/record-demo/       # The scripted nested-niri showcase recorder
 ├── docs/                    # The manual, one page per task
 ├── .github/                 # CI pipeline definition

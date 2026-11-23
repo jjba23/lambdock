@@ -488,6 +488,34 @@ sudo apt install build-essential debhelper devscripts rustc cargo \
 debuild -b -uc -us
 #+end_src
 
+-----------------
+
+*** Void Linux (XBPS)
+:PROPERTIES:
+:CUSTOM_ID: void-linux
+:END:
+
+On [[https://voidlinux.org/][Void Linux]] the recipe is an
+[[https://github.com/void-linux/void-packages][xbps-src]] template, kept at
+=packaging/void/template= and built inside a clone of the distribution's own
+package tree.  The checksum in it names the archive of the version above it, so
+it is the one of the release you copied the template from.
+
+#+begin_src sh
+git clone --depth 1 https://github.com/void-linux/void-packages
+cd void-packages
+./xbps-src binary-bootstrap          # once, to populate the masterdir
+mkdir -p srcpkgs/lambdock
+cp <lambdock>/packaging/void/template srcpkgs/lambdock/
+./xbps-src pkg lambdock
+sudo xbps-install --repository=hostdir/binpkgs lambdock
+#+end_src
+
+The template builds with the distribution's =cargo= build style and installs
+through =cargo xtask install=, which is the install every recipe in the tree
+runs: the binary, the desktop entry, the AppStream data, the logo, the Scheme
+modules and the compiled catalogues land where xbps expects them.
+
 --------------------
 
 *** Flatpak

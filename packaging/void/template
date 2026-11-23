@@ -1,0 +1,42 @@
+# Template file for 'lambdock'
+#
+# SPDX-License-Identifier: MIT
+# Copyright © Josep Bigorra <jjbigorra@gmail.com>
+#
+# Submitting this to Void means copying it to
+# void-packages/srcpkgs/lambdock/template.  The checksum names the archive of
+# the version above it, so it is refreshed once that release is tagged -- a
+# template cannot hold the checksum of the archive that would contain it.
+pkgname=lambdock
+version=2.2.9
+revision=1
+build_style=cargo
+hostmakedepends="gettext glib-devel pkg-config"
+makedepends="gtk4-devel gtk4-layer-shell-devel guile-devel wayland-devel"
+# The Scheme suite skips itself without an interpreter, and a skipped suite is
+# a passing build that checked nothing.
+checkdepends="guile"
+depends="gtk4 gtk4-layer-shell guile hicolor-icon-theme"
+short_desc="Wayland desktop dock customizable with GNU Guile Scheme"
+maintainer="Josep Bigorra <jjbigorra@gmail.com>"
+license="MIT"
+homepage="https://github.com/jjba23/lambdock"
+changelog="https://raw.githubusercontent.com/jjba23/lambdock/trunk/NEWS.org"
+distfiles="${homepage}/archive/v${version}.tar.gz"
+checksum=f91cca44a11f5467ff2d26f3ee6b24c5039fea43fee3f84703c46851a61525c4
+
+do_install() {
+	# `xtask install` writes the binary, the desktop entry, the AppStream data,
+	# the logo, the Scheme modules and the compiled catalogues, which is the
+	# install every other recipe in the tree runs too.  It copies the binary
+	# from $CARGO_TARGET_DIR/release, while the cargo build style compiles into
+	# target/$RUST_TARGET/release: naming that directory reuses the release
+	# build instead of compiling the crate a second time.
+	CARGO_TARGET_DIR="${wrksrc}/target/${RUST_TARGET}" \
+		"target/${RUST_TARGET}/release/xtask" install \
+		--prefix /usr --destdir "${DESTDIR}"
+
+	vlicense LICENSE
+	vdoc README.org
+	vdoc NEWS.org
+}
