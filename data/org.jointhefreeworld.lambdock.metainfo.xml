@@ -81,7 +81,7 @@
     <release version="2.2.9" date="2026-11-23">
       <description>
         <p>Every recipe names the release it builds. The crate, the lockfile, the Nix expression and the Arch and RPM recipes still carried 2.2.3 or 1.4.0 while the tags ran to 2.2.8, so a package built from any of them claimed a version several releases behind what it shipped. They all say 2.2.9 now, and this file names the release.</p>
-        <p>Void Linux has a recipe. <code>packaging/void/template</code> builds the dock with the distribution's cargo build style -- the crate graph is vendored, so the build reaches no registry -- and installs it through <code>cargo xtask install</code>, which is the install every other recipe runs too.</p>
+        <p>Void Linux has a recipe. <code>packaging/voidlinux/template</code> builds the dock with the distribution's cargo build style -- the crate graph is vendored, so the build reaches no registry -- and installs it through <code>cargo xtask install</code>, which is the install every other recipe runs too.</p>
       </description>
     </release>
     <release version="2.2.3" date="2026-11-20">

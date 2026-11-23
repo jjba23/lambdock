@@ -497,7 +497,7 @@ debuild -b -uc -us
 
 On [[https://voidlinux.org/][Void Linux]] the recipe is an
 [[https://github.com/void-linux/void-packages][xbps-src]] template, kept at
-=packaging/void/template= and built inside a clone of the distribution's own
+=packaging/voidlinux/template= and built inside a clone of the distribution's own
 package tree.  The checksum in it names the archive of the version above it, so
 it is the one of the release you copied the template from.
 
@@ -506,7 +506,7 @@ git clone --depth 1 https://github.com/void-linux/void-packages
 cd void-packages
 ./xbps-src binary-bootstrap          # once, to populate the masterdir
 mkdir -p srcpkgs/lambdock
-cp <lambdock>/packaging/void/template srcpkgs/lambdock/
+cp <lambdock>/packaging/voidlinux/template srcpkgs/lambdock/
 ./xbps-src pkg lambdock
 sudo xbps-install --repository=hostdir/binpkgs lambdock
 #+end_src

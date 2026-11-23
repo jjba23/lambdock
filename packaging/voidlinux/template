@@ -22,7 +22,9 @@ maintainer="Josep Bigorra <jjbigorra@gmail.com>"
 license="MIT"
 homepage="https://github.com/jjba23/lambdock"
 changelog="https://raw.githubusercontent.com/jjba23/lambdock/trunk/NEWS.org"
-distfiles="${homepage}/archive/v${version}.tar.gz"
+# GitHub drops the tag's leading `v' from the directory it packs, which is what
+# the default $wrksrc expects, so the sources land where the build looks.
+distfiles="${homepage}/archive/refs/tags/v${version}.tar.gz"
 checksum=f91cca44a11f5467ff2d26f3ee6b24c5039fea43fee3f84703c46851a61525c4
 
 do_install() {
