@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "lambdock"
-version = "2.2.3"
+version = "2.2.9"
 dependencies = [
  "gtk4",
 ]

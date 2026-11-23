@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.2.9" date="2026-11-23">
+      <description>
+        <p>Every recipe names the release it builds. The crate, the lockfile, the Nix expression and the Arch and RPM recipes still carried 2.2.3 or 1.4.0 while the tags ran to 2.2.8, so a package built from any of them claimed a version several releases behind what it shipped. They all say 2.2.9 now, and this file names the release.</p>
+      </description>
+    </release>
     <release version="2.2.3" date="2026-11-20">
       <description>
         <p>The dock item for an app that is running but not pinned now sits on the same baseline as the pinned ones. The tracker created that item without the layout pass the rest of the row had already been through, and every item's cell holds a glass-shelf reflection slot whose band is part of its height: with the band left invisible the item hung a band below its neighbours and mirrored nothing under itself. Only the shelf themes showed it. The tracker now re-measures the dock after it adopts an app, as drag and drop, the poof animation and a settings reload already did.</p>

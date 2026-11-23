@@ -11,6 +11,15 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.2.9 (2026-11-23)
+
+- *Every recipe names the release it builds.*  The crate, the lockfile, the Nix
+  expression, the Arch =PKGBUILD= and the RPM spec carried =2.2.3= -- or =1.4.0=
+  -- while the tags ran to =2.2.8=, so a package built from any of them claimed a
+  version several releases behind what it shipped, and the AppStream data named
+  an older release than the archive it came in.  Every one of them says =2.2.9=,
+  which is the release this tree is.
+
 ** v2.2.6 (2026-11-21)
 
 - *The reference is rendered with Texinfo 7.3, so dokgen's stylesheet applies.*
