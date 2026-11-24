@@ -11,6 +11,17 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.3.1 (2026-11-24)
+
+- *The Home Folder row no longer depends on the environment.*  An item's menu
+  resolved the user's home from ~$HOME~ and gave up when a session did not export
+  it -- the row simply was not there -- and the row is the one thing a file
+  manager's menu offers beyond its launcher.  It asks GLib
+  (~g_get_home_dir~, which falls back to the passwd entry) now.  The two tests
+  that shipped with 2.3.0 read ~$HOME~ as well, which is why the suite was green
+  on a desktop and red in CI: they are pinned to the folder value, and the suite
+  is checked with =env -u HOME=.
+
 ** v2.3.0 (2026-11-24)
 
 - *Auto-hide hides sooner, and you say how much sooner.*  The countdown after the

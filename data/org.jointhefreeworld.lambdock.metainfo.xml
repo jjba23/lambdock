@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.3.1" date="2026-11-24">
+      <description>
+        <p>The Home Folder row no longer depends on the environment. An item's menu resolved the user's home from <code>$HOME</code> and gave up when a session did not export it; it asks GLib (<code>g_get_home_dir</code>, which falls back to the passwd entry) now, so a file manager gets its row from a dock started by any session unit.</p>
+      </description>
+    </release>
     <release version="2.3.0" date="2026-11-24">
       <description>
         <p>Auto-hide hides sooner, and you say how much sooner. The countdown after the pointer leaves was a fixed 600 ms, which made the dock feel sticky; the default is 350 ms now and the countdown is the setting <code>dock-autohide-delay</code> (milliseconds, 0 to 3000), used for the popover-close countdown too and settable from the settings file, the REPL and the Preferences window.</p>
