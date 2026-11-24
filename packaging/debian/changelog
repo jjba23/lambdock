@@ -1,3 +1,23 @@
+lambdock (2.3.0-1) unstable; urgency=medium
+
+  * New upstream release: the dock hides when you want it to and knows more
+    about the applications it shows.
+  * Auto-hide is eager by default.  The countdown after the pointer leaves was a
+    fixed 600 ms and is 350 ms now, and it is the setting dock-autohide-delay
+    (milliseconds, 0 to 3000), used for the popover-close countdown too and
+    editable from the Preferences window.
+  * The About dialog no longer takes the dock with it.  Closing it destroyed the
+    window inside its own close handler, after the handler had dropped the
+    application's only reference to it, so opening About a second time crashed.
+  * An item's menu knows the application: one row per browser profile when the
+    dock can read the profile list, a home folder row for a file manager, more
+    browser families, and a popover built from values rather than action codes.
+  * Three more widgets -- swap, load average and uptime -- and two knobs on the
+    ones there were: clock-item takes #:format and battery-item takes #:device
+    and #:meter?.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Tue, 24 Nov 2026 12:00:00 +0000
+
 lambdock (1.4.0-1) unstable; urgency=medium
 
   * New upstream release: the dock explains itself and shares itself.

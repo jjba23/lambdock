@@ -11,6 +11,44 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.3.0 (2026-11-24)
+
+- *Auto-hide hides sooner, and you say how much sooner.*  The countdown after the
+  pointer leaves was a fixed 600 ms -- a dock that felt sticky, because a leave
+  took most of a second before anything moved.  The default is now 350 ms and the
+  countdown is the setting ~dock-autohide-delay~ (milliseconds, 0 … 3000), used
+  for the popover-close countdown too, settable from the settings file, the REPL
+  and the Preferences window.  The first hide after a dock appears keeps its own
+  1 s, which is not the same moment.
+- *The application popover knows more about the application.*  It used to offer a
+  browser a new window and a private one; it now also offers one row per browser
+  profile when it can read the profile list
+  (=~/.mozilla/firefox/profiles.ini= and the other Firefox-family directories),
+  gives a file manager a *Home Folder* row, and recognises more browser families
+  (Zen, Floorp, Mullvad, Thorium, Yandex, and the rest of the Firefox- and
+  Chromium-shaped command lines).  The action list is a value with a label and a
+  command per row rather than a list of enum numbers, which is what lets a profile
+  be one row, and the six unused ~extern "C"~ wrappers around it are gone.
+- *The About dialog no longer takes the dock with it.*  Closing it destroyed the
+  window inside its own close handler, after that handler had already dropped the
+  application's only reference to it: the widget was finalized and then touched,
+  and opening About a second time crashed the dock.  The dialog is now hidden
+  rather than destroyed -- which is what the launchpad and the preferences window
+  already did -- so the reference stays valid and the next *About* presents the
+  same window.
+- *Three more widgets, and two knobs on the ones there were.*  ~swap-item~ shows
+  how full the swap file is, ~load-item~ the one minute load average (against a
+  ~#:max~ you set to your core count), and ~uptime-item~ "up 3d 4h"; all three are
+  presets, so the Preferences window can add them and an exported settings file
+  writes them back by name.  ~clock-item~ takes ~#:format~ (the strftime template
+  of its reading), and ~battery-item~ takes ~#:device~ (which power supply to
+  read) and ~#:meter? #t~ (the charge as a gauge).  The RAM reading is one shared
+  ~/proc/meminfo~ reader now, which is what the swap reading needed too.
+- *The Debian recipe names the release it builds.*  =packaging/debian/changelog=
+  still opened at 1.4.0 while the tags ran to 2.2.9, so a .deb built from this
+  tree claimed a version thirteen releases behind what it shipped; it has an
+  entry for this release.
+
 ** v2.2.9 (2026-11-23)
 
 - *Every recipe names the release it builds.*  The crate, the lockfile, the Nix

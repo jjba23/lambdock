@@ -78,6 +78,14 @@
   </screenshots>
 
   <releases>
+    <release version="2.3.0" date="2026-11-24">
+      <description>
+        <p>Auto-hide hides sooner, and you say how much sooner. The countdown after the pointer leaves was a fixed 600 ms, which made the dock feel sticky; the default is 350 ms now and the countdown is the setting <code>dock-autohide-delay</code> (milliseconds, 0 to 3000), used for the popover-close countdown too and settable from the settings file, the REPL and the Preferences window.</p>
+        <p>The About dialog no longer takes the dock with it. Closing it destroyed the window inside its own close handler, after the handler had already dropped the application's only reference to it, so opening About a second time crashed the dock; it is hidden rather than destroyed now, as the launchpad and the Preferences window already were.</p>
+        <p>An application's menu knows the application. A browser gets one row per profile when the dock can read its profile list, a file manager gets a home folder row, more browser families are recognised, and the popover is built from values that carry their own label and command instead of from a list of action codes.</p>
+        <p>Three more widgets -- swap, the load average and uptime -- join the dynamic items, and two grew a knob: <code>clock-item</code> takes <code>#:format</code> and <code>battery-item</code> takes <code>#:device</code> and <code>#:meter?</code>.</p>
+      </description>
+    </release>
     <release version="2.2.9" date="2026-11-23">
       <description>
         <p>Every recipe names the release it builds. The crate, the lockfile, the Nix expression and the Arch and RPM recipes still carried 2.2.3 or 1.4.0 while the tags ran to 2.2.8, so a package built from any of them claimed a version several releases behind what it shipped. They all say 2.2.9 now, and this file names the release.</p>
