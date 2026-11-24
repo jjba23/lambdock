@@ -1,3 +1,13 @@
+lambdock (2.3.2-1) unstable; urgency=medium
+
+  * New upstream release: the Arch recipe builds again.
+  * The Arch recipe named a package that does not exist (wayland provides
+    wayland-scanner), changed into a source directory the tarball never creates,
+    and installed the licence from a file called COPYING while the project's MIT
+    text is LICENSE. The RPM spec and two documents said COPYING as well.
+
+ -- Josep Bigorra <jjbigorra@gmail.com>  Tue, 24 Nov 2026 14:00:00 +0000
+
 lambdock (2.3.1-1) unstable; urgency=medium
 
   * New upstream release: the Home Folder row no longer depends on HOME being in

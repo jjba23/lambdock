@@ -11,6 +11,19 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.3.2 (2026-11-24)
+
+- *The Arch recipe builds.*  =packaging/arch/PKGBUILD= failed three times before
+  it got as far as compiling: it listed =wayland-scanner= as a makedepend, and no
+  Arch package carries that name -- =wayland=, already a depend, provides the
+  binary; every phase changed into =$srcdir/lambdock= while GitHub packs the tag
+  as =lambdock-<pkgver>=, so the =cd= failed and the build ran somewhere else; and
+  the licence was installed from =COPYING=, a file this project does not have --
+  its MIT text is =LICENSE=.  The RPM spec's =%license= and two documents named
+  =COPYING= as well, and say =LICENSE= now.
+  The recipe's =sha256sums= no longer says =SKIP= either: like the Void template,
+  it names the archive of the release it is in, in the commit after the tag.
+
 ** v2.3.1 (2026-11-24)
 
 - *The Home Folder row no longer depends on the environment.*  An item's menu

@@ -8,7 +8,7 @@
 # the version above it, so it is refreshed once that release is tagged -- a
 # template cannot hold the checksum of the archive that would contain it.
 pkgname=lambdock
-version=2.3.1
+version=2.3.2
 revision=1
 build_style=cargo
 hostmakedepends="gettext glib-devel pkg-config"

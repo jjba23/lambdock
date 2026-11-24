@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.3.2" date="2026-11-24">
+      <description>
+        <p>The Arch recipe builds again. It listed <code>wayland-scanner</code> as a build dependency, and no Arch package has that name — <code>wayland</code>, already a dependency, provides the binary; it changed into <code>lambdock</code> while GitHub packs the tag as <code>lambdock-&lt;version&gt;</code>, so the build ran in the wrong directory; and it installed the licence from <code>COPYING</code> while the project's MIT text is <code>LICENSE</code>, which stopped the install phase.</p>
+      </description>
+    </release>
     <release version="2.3.1" date="2026-11-24">
       <description>
         <p>The Home Folder row no longer depends on the environment. An item's menu resolved the user's home from <code>$HOME</code> and gave up when a session did not export it; it asks GLib (<code>g_get_home_dir</code>, which falls back to the passwd entry) now, so a file manager gets its row from a dock started by any session unit.</p>
