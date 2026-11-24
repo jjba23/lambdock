@@ -2091,8 +2091,8 @@ fn about_dialog_open(app: &gtk4::Application) -> Option<gtk4::Window> {
     let dialog = unsafe { app.data::<gtk4::Window>(ABOUT_DIALOG_KEY) }?;
     let dialog = unsafe { dialog.as_ref() }.clone();
 
-    // A dialog that is being destroyed still answers its data key for a moment:
-    // the type check the C did is the `is` below.
+    // The key is only ever written with a window; the type check is what keeps a
+    // stale key from another user of the application object out of the cast.
     dialog.is::<gtk4::Window>().then_some(dialog)
 }
 
@@ -2151,15 +2151,12 @@ fn about_dialog_build(app: &gtk4::Application) -> gtk4::Window {
     about_dialog_set_logo(&about);
     about.set_modal(true);
 
-    // The dialog forgets itself before it goes away, so the next invocation of
-    // the action builds a fresh one.
-    let app_for_close = app.clone();
-    about.connect_close_request(move |about| {
-        unsafe { app_for_close.set_data(ABOUT_DIALOG_KEY, Option::<gtk4::Window>::None) };
-        about.destroy();
-
-        glib::Propagation::Stop
-    });
+    // Closing hides the dialog and leaves it alive, so the reference in the
+    // application data stays the window's only owner. Destroying it from a close
+    // handler instead meant the handler dropped that last reference first and then
+    // touched a widget that had already been finalized: opening About twice took
+    // the dock down with it.
+    about.set_hide_on_close(true);
 
     unsafe { app.set_data(ABOUT_DIALOG_KEY, about.clone().upcast::<gtk4::Window>()) };
 
