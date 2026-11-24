@@ -33,7 +33,7 @@ makedepends=(
 )
 
 source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
-sha256sums=('SKIP')
+sha256sums=('ba88b892b4792a9a014b1889079e7c712aeb72755600c07bc9854d029f9aae04')
 
 build() {
   cd "$srcdir/${pkgname}-${pkgver}"

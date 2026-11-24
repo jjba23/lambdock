@@ -25,7 +25,7 @@ changelog="https://raw.githubusercontent.com/jjba23/lambdock/trunk/NEWS.org"
 # GitHub drops the tag's leading `v' from the directory it packs, which is what
 # the default $wrksrc expects, so the sources land where the build looks.
 distfiles="${homepage}/archive/refs/tags/v${version}.tar.gz"
-checksum=7799e94bd08613d0655a202bdd814b0cc9a5bc4b5bf4e47ef408dd0140024705
+checksum=ba88b892b4792a9a014b1889079e7c712aeb72755600c07bc9854d029f9aae04
 
 do_install() {
 	# `xtask install` writes the binary, the desktop entry, the AppStream data,
