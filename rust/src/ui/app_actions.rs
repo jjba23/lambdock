@@ -385,11 +385,18 @@ fn profile_command(exec: Option<&str>, profile: &Profile) -> Option<String> {
 
 /// The command that opens `exec` on the user's home folder: the one row a file
 /// manager gets that its plain launcher cannot express.
+///
+/// The folder is GLib's answer (`g_get_home_dir`), not `$HOME`: a dock started by
+/// a session unit that does not export HOME still knows where the user lives.
 fn home_command(exec: Option<&str>) -> Option<String> {
-    let argv = split_exec(exec?)?;
-    let home = std::env::var("HOME").ok().filter(|home| !home.is_empty())?;
+    home_command_for(exec, &glib::home_dir().to_string_lossy())
+}
 
-    Some(command_line(&argv, &[home.as_str()]))
+/// `home_command` against a given folder, which is what the tests pin.
+fn home_command_for(exec: Option<&str>, home: &str) -> Option<String> {
+    let argv = split_exec(exec?)?;
+
+    Some(command_line(&argv, &[home]))
 }
 
 /// The directory a browser of this family keeps its profile list in, relative to
@@ -916,26 +923,33 @@ mod tests {
     /// A file manager gets one row its launcher cannot express: the home folder.
     #[test]
     fn a_file_manager_gets_the_home_folder() {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/u".to_owned());
-        let as_word = if word_needs_quotes(&home) {
+        // A folder with a space in it is still one word, so it comes back quoted.
+        assert_eq!(
+            home_command_for(Some("nautilus --new-window"), "/home/u/My Files"),
+            Some("nautilus --new-window '/home/u/My Files'".to_owned())
+        );
+        // The field codes go, the program keeps its own arguments.
+        assert_eq!(
+            home_command_for(Some("thunar %U"), "/home/u"),
+            Some("thunar /home/u".to_owned())
+        );
+
+        // Nothing to open, no row.
+        assert_eq!(home_command_for(None, "/home/u"), None);
+        assert_eq!(home_command_for(Some(""), "/home/u"), None);
+
+        // The folder is the user's, and it is there even when the environment does
+        // not name it -- which is the case a test that reads `$HOME` misses.
+        let home = glib::home_dir().to_string_lossy().into_owned();
+        let tail = if word_needs_quotes(&home) {
             shell_quote(&home)
         } else {
             home
         };
-
         assert_eq!(
-            home_command(Some("nautilus --new-window")),
-            Some(format!("nautilus --new-window {as_word}"))
+            home_command(Some("nautilus")),
+            Some(format!("nautilus {tail}"))
         );
-        // The field codes go, the program keeps its own arguments.
-        assert_eq!(
-            home_command(Some("thunar %U")),
-            Some(format!("thunar {as_word}"))
-        );
-
-        // Nothing to open, no row.
-        assert_eq!(home_command(None), None);
-        assert_eq!(home_command(Some("")), None);
     }
 
     /// A browser offers a new window and, when it has one, a private window; a
