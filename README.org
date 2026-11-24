@@ -190,7 +190,7 @@ https://opensource.org/license/mit
 The documentation and examples, including this document, which are provided with
 Lambdock, are licensed under the same MIT License.
 
-The full license text ships with the project in the file =COPYING=.
+The full license text ships with the project in the file =LICENSE=.
 
 ------------------
 

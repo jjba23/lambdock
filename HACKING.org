@@ -391,7 +391,7 @@ lambdock/
 #+end_example
 
 Documentation files: [[file:README.org][README.org]] (users), this file (developers),
-[[file:NEWS.org][NEWS.org]] (changelog), and =COPYING= (MIT).
+[[file:NEWS.org][NEWS.org]] (changelog), and =LICENSE= (MIT).
 
 ------------------
 

@@ -66,7 +66,7 @@ cargo run --offline --locked -p xtask -- install --prefix /usr --destdir %{build
 cargo test --offline --locked
 
 %files -f %{name}.lang
-%license COPYING
+%license LICENSE
 %doc README.org NEWS.org
 %{_bindir}/lambdock
 %{_datadir}/applications/org.jointhefreeworld.lambdock.desktop
