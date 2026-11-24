@@ -48,6 +48,10 @@ upgrading to newer ~lambdock~ versions. You can do this with
 ;; Enable/disable smooth edge sliding auto-hide
 (define dock-auto-hide? #t)
 
+;; How long the pointer has to be away before the dock slides out, in
+;; milliseconds (0 hides it at once, 3000 is the longest)
+(define dock-autohide-delay 350)
+
 ;; Show dock when last window was closed
 (define dock-show-when-clear? #t)
 
@@ -159,6 +163,7 @@ nothing at all.
 | ~dock-launchpad-close-side~   | ~'left~                      | Launchpad close button: ~'left~ or ~'right~ end of its header.                  |
 | ~dock-reduce-motion?~         | ~#f~                         | Turn off the slide and fish-eye animations (see [[file:using-the-dock.org#accessibility][accessibility]]).             |
 | ~dock-auto-hide?~             | ~#f~                         | Slide the dock off the edge when unused.                                       |
+| ~dock-autohide-delay~         | ~350~                        | Milliseconds the pointer must be away (or a menu closed) before it slides out; 0 hides at once, 3000 is the longest. |
 | ~dock-show-when-clear?~       | ~#t~                         | Keep the dock visible when no window is open.                                  |
 | ~dock-show-window-titles?~    | ~#f~                         | Show the focused window title next to running items (taskbar style).            |
 | ~dock-hover-animate?~         | ~#t~                         | Fish-eye magnification on hover.                                               |
@@ -179,6 +184,7 @@ your file and what you can call yourself from the REPL:
  #:mode 'taskbar
  #:items (preset-launchers-for 'alacritty 'emacs)
  #:auto-hide? #t
+ #:autohide-delay 350
  #:enable-repl? #t
  #:repl-socket-path "/tmp/lambdock-repl.sock"
  ;; Shelf parameters (defaults shown): flat capsule
@@ -244,43 +250,47 @@ shapes, and the built-in presets pick the interesting one for you:
 | ~'ram~             | ~get-used-ram-value~ (from /proc)        | 2 s              | gauge    |
 | ~'cpu~             | ~get-cpu-value~ (delta between polls)    | 2 s              | gauge    |
 | ~'cpu-temp~        | ~get-cpu-temp-value~ (thermal zone)      | 3 s              | gauge    |
-| ~'battery~         | ~get-battery-status~ (capacity, charging) | 5 s             | text     |
+| ~'battery~         | ~get-battery-status~ (capacity, charging) | 5 s              | text     |
+| ~'swap~            | ~get-swap-value~ (how full the swap is)   | 5 s              | gauge    |
+| ~'load~            | ~get-load-value~ (1 minute load average)  | 5 s              | gauge    |
+| ~'uptime~          | ~get-uptime-text~ ("up 3d 4h")            | 60 s             | text     |
 
 Each preset also has the text form of the same reading (~get-used-ram-percent~,
-~get-cpu-percent~, ~get-cpu-temp~) and takes ~#:meter? #f~ to use it:
+~get-cpu-percent~, ~get-cpu-temp~, ~get-swap-percent~, ~get-load-text~) and takes
+~#:meter? #f~ to use it:
 
 #+begin_src scheme
-(list (ram-item)              ; a ring that fills with the used RAM
-      (cpu-item)              ; a ring for the CPU load
-      (cpu-temp-item)         ; a ring filling from 0 to 100 °C
-      (cpu-item #:meter? #f)) ; ... and the old "CPU 42%" text item
+(list (ram-item)               ; a ring that fills with the used RAM
+      (cpu-item)               ; a ring for the CPU load
+      (cpu-temp-item)          ; a ring filling from 0 to 100 °C
+      (swap-item)              ; how much of the swap file is in use
+      (load-item #:max 16)     ; load average against this machine's 16 cores
+      (uptime-item)            ; "up 3d 4h", text only: uptime has no ceiling
+      (battery-item #:meter? #t) ; the charge as a gauge instead of "88% ⚡"
+      (cpu-item #:meter? #f))  ; ... and the old "CPU 42%" text item
 #+end_src
+
+Two more knobs on the presets that read something named:
+
+- ~(clock-item #:format "%H:%M")~ is the strftime template of the clock's
+  reading: the face's tooltip and what a screen reader announces.  The hands
+  follow the system clock whatever the template says.
+- ~(battery-item #:device "BAT1")~ picks the power supply to read, for a machine
+  whose battery is not called ~BAT0~ (or that has more than one).
 
 Writing a gauge by hand is the same thunk plus three keywords: ~#:meter?~ makes
 the item a gauge, ~#:max~ is the value that fills the ring and ~#:unit~ is
 appended to the number. The thunk must return a *number* (or ~#f~ for "no
-reading"):
+reading"). The swap item above is that, and nothing more:
 
 #+begin_src scheme
-(define (get-swap-used)
-  (catch #t
-         (lambda ()
-           (let* ((line (call-with-input-file "/proc/swaps" read-line))
-                  (rest (call-with-input-file "/proc/swaps"
-                          (lambda (port)
-                            (read-line port)
-                            (read-line port)))))
-             (if rest (string->number (cadr (string-split rest #\space))) #f)))
-         (lambda _ #f)))
-
-(define dock-items
-  (list (dynamic-item #:name "Swap"
-                      #:exec "alacritty -e 'btop'"
-                      #:poll-fn get-swap-used
-                      #:poll-interval 5000
-                      #:meter? #t
-                      #:unit "%"
-                      #:max 4096)))       ; 4 GiB of swap fills the ring
+(dynamic-item #:name "Swap"
+              #:exec "alacritty -e 'btop'"
+              #:poll-fn get-swap-value
+              #:poll-interval 5000
+              #:meter? #t
+              #:unit "%"
+              #:max 100)          ; the swap file is 100% full at the top
 #+end_src
 
 The ring takes its text colour from the theme, so it reads correctly on the
@@ -330,7 +340,8 @@ through ~flatpak run ...~.
   ~btop~, ~onepassword~, ~thunderbird~, ~bitwarden~
 - *Media & messaging*: ~spotify~, ~zapzap~, ~discord~, ~slack~, ~telegram~,
   ~gimp~, ~inkscape~, ~obs~, ~vlc~, ~steam~, ~blender~
-- *Widgets*: ~ram~, ~cpu~, ~cpu-temp~, ~battery~, ~clock~, ~trash~
+- *Widgets*: ~ram~, ~cpu~, ~cpu-temp~, ~swap~, ~load~, ~uptime~, ~battery~,
+  ~clock~, ~trash~
 
 Anything missing is still one ~app-item~ away -- or one more entry in
 [[file:../scheme/lambdock/presets.scm][presets.scm]], if you feel like giving it
@@ -520,10 +531,12 @@ Right-click the dock and choose *Preferences…* to open a GTK4 settings window.
 It covers the settings people reach for most often, grouped the way the settings
 file groups them:
 
-- *Behaviour*: auto-hide, show when no windows, hover magnification, window
-  tracking, window titles, and dock vs taskbar mode.
+- *Behaviour*: auto-hide, how eager it is (the auto-hide delay), show when no
+  windows, hover magnification, window tracking, window titles, and dock vs
+  taskbar mode.
 - *Dock items*: *Add an item* -- a trash can, a clock, or a RAM, CPU, CPU
-  temperature or battery meter -- appended to the dock in one click.
+  temperature, swap, load average, uptime or battery meter -- appended to the dock
+  in one click.
 - *Accessibility*: reduce motion (see [[file:using-the-dock.org#accessibility][Keyboard and accessibility]]).
 - *Layout & material*: icon size, item spacing, capsule padding, screen edge and
   theme.

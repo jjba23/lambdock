@@ -29,6 +29,7 @@
             get-dock-item-spacing
             get-dock-capsule-padding
             get-dock-auto-hide?
+            get-dock-autohide-delay
             get-dock-monitor
             get-dock-exclude-apps
             get-dock-enable-repl?
@@ -62,6 +63,7 @@
             set-dock-item-spacing!
             set-dock-capsule-padding!
             set-dock-auto-hide!
+            set-dock-autohide-delay!
             set-dock-show-when-clear!
             set-dock-monitor!
             set-dock-hover-animate!
@@ -97,6 +99,7 @@
                     capsule-padding
                     items
                     auto-hide?
+                    autohide-delay
                     show-when-clear?
                     theme
                     monitor
@@ -131,6 +134,7 @@
                    set-dock-config-capsule-padding!)
   (items dock-config-items set-dock-config-items!)
   (auto-hide? dock-config-auto-hide? set-dock-config-auto-hide?!)
+  (autohide-delay dock-config-autohide-delay set-dock-config-autohide-delay!)
   (show-when-clear? dock-config-show-when-clear?
                     set-dock-config-show-when-clear?!)
   (theme dock-config-theme set-dock-config-theme!)
@@ -183,6 +187,7 @@
                     12 ; capsule padding (px inside the capsule's ends)
                     '()
                     #f
+                    350 ; autohide-delay (ms before the dock slides away)
                     #t
                     'vanilla
                     'default
@@ -228,6 +233,7 @@ anything else (an old symbol, a typo, a string) is the documented default."
                           (capsule-padding 12)
                           (items '())
                           (auto-hide? #f)
+                          (autohide-delay 350)
                           (show-when-clear? #t)
                           (theme 'vanilla)
                           (monitor 'default)
@@ -254,13 +260,18 @@ anything else (an old symbol, a typo, a string) is the documented default."
                           (mirror-of #f)
                           (mirror-exclude '())
                           (mirror-kinds '()))
-  "Sets and registers configuration parameters for a specific dock instance key or file path."
+  "Sets and registers configuration parameters for a specific dock instance key or file path.
+
+`autohide-delay` is how long, in milliseconds, the pointer has to be away (or a
+menu closed) before the dock slides out: 0 is as soon as it can, and a bigger
+number keeps the dock around longer for a pointer that only brushed past."
   (let ((cfg (make-dock-config position
                                icon-size
                                item-spacing
                                capsule-padding
                                items
                                auto-hide?
+                               autohide-delay
                                show-when-clear?
                                theme
                                monitor
@@ -300,13 +311,14 @@ anything else (an old symbol, a typo, a string) is the documented default."
                  'default cfg))
 
     (log-info "State"
-              "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a, repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a/padding ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
+              "Registered config for [~a]: ~a items, pos: ~a, theme: ~a, auto-hide?: ~a (~a ms), repl?: ~a (~a), track-windows?: ~a, mode: ~a, icon ~a/spacing ~a/padding ~a (shelf: tilt ~a, margin ~a, front ~a, reflection ~a, flare ~a)"
               config-path
               (if (list? items)
                 (length items) 0)
               position
               theme
               auto-hide?
+              autohide-delay
               enable-repl?
               repl-socket-path
               track-windows?
@@ -434,6 +446,14 @@ directory."
                                 'default
                                 (car args)))))
     (dock-config-auto-hide? cfg)))
+
+(define (get-dock-autohide-delay . args)
+  "How long, in milliseconds, the pointer has to be away before the dock slides
+out. 0 hides it as soon as the pointer is gone."
+  (let ((cfg (get-dock-config (if (null? args)
+                                'default
+                                (car args)))))
+    (dock-config-autohide-delay cfg)))
 
 (define (get-dock-show-when-clear? . args)
   (let ((cfg (get-dock-config (if (null? args)
@@ -650,6 +670,10 @@ close button sits on."
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-auto-hide?! cfg val)) args))
 
+(define (set-dock-autohide-delay! val . args)
+  (apply-to-targets (lambda (cfg)
+                      (set-dock-config-autohide-delay! cfg val)) args))
+
 (define (set-dock-show-when-clear! val . args)
   (apply-to-targets (lambda (cfg)
                       (set-dock-config-show-when-clear?! cfg val)) args))
@@ -844,7 +868,8 @@ Only the running dock changes; write the look into settings.scm to keep it."
   "The preset constructor that rebuilds ITEM, or #f for a custom poller."
   (let ((hover (dock-item-hover-animate? item))
         (meter? (dock-item-meter? item))
-        (interval (dock-item-poll-interval item)))
+        (interval (dock-item-poll-interval item))
+        (max (dock-item-max item)))
     (cond
       [(settings-same-item? item (clock-item #:hover-animate? hover))
        (format #f "(clock-item~a)" (settings-hover item))]
@@ -864,8 +889,29 @@ Only the running dock changes; write the look into settings.scm to keep it."
        (format #f "(cpu-temp-item~a~a)"
                (settings-hover item)
                (if meter? "" " #:meter? #f"))]
-      [(settings-same-item? item (battery-item #:hover-animate? hover))
-       (format #f "(battery-item~a)" (settings-hover item))]
+      [(settings-same-item? item (swap-item #:poll-interval interval
+                                            #:hover-animate? hover
+                                            #:meter? meter?))
+       (format #f "(swap-item #:poll-interval ~a~a~a)"
+               interval (settings-hover item)
+               (if meter? "" " #:meter? #f"))]
+      [(settings-same-item? item (load-item #:poll-interval interval
+                                            #:hover-animate? hover
+                                            #:meter? meter?
+                                            #:max max))
+       (format #f "(load-item #:poll-interval ~a~a~a~a)"
+               interval (settings-hover item)
+               (if meter? "" " #:meter? #f")
+               (if (= max 8) "" (format #f " #:max ~a" max)))]
+      [(settings-same-item? item (uptime-item #:poll-interval interval
+                                              #:hover-animate? hover))
+       (format #f "(uptime-item #:poll-interval ~a~a)"
+               interval (settings-hover item))]
+      [(settings-same-item? item (battery-item #:hover-animate? hover
+                                               #:meter? meter?))
+       (format #f "(battery-item~a~a)"
+               (settings-hover item)
+               (if meter? " #:meter? #t" ""))]
       [else #f])))
 
 (define (settings-dynamic-text item)
@@ -949,6 +995,8 @@ rather than the resolved copies of another dock's items."
                (settings-value (dock-config-mode cfg)))
        (format #t "(define dock-auto-hide? ~a)~%"
                (if (dock-config-auto-hide? cfg) "#t" "#f"))
+       (format #t "(define dock-autohide-delay ~a)~%"
+               (dock-config-autohide-delay cfg))
        (format #t "(define dock-show-when-clear? ~a)~%"
                (if (dock-config-show-when-clear? cfg) "#t" "#f"))
        (format #t "(define dock-hover-animate? ~a)~%"

@@ -153,6 +153,7 @@ settings file, can have GUI edits for the session but nowhere to keep them."
 ;; way the settings file would have written it.
 (define %preference-setters
   '((dock-auto-hide? . set-dock-auto-hide!)
+    (dock-autohide-delay . set-dock-autohide-delay!)
     (dock-show-when-clear? . set-dock-show-when-clear!)
     (dock-hover-animate? . set-dock-hover-animate!)
     (dock-track-windows? . set-dock-track-windows!)

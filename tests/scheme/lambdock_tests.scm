@@ -111,6 +111,8 @@
              4 (get-dock-item-spacing))
 (check-equal "fallback config is not auto-hiding"
              #f (get-dock-auto-hide?))
+(check-equal "fallback config hides 350 ms after the pointer leaves"
+             350 (get-dock-autohide-delay))
 (check-equal "fallback config mode is 'dock"
              'dock (get-dock-mode))
 (check-equal "fallback config does not show window titles"
@@ -193,6 +195,7 @@
                  #:monitor 'HDMI-1
                  #:items (list (app-item #:name "A" #:icon "a" #:exec "a"))
                  #:auto-hide? #t
+                 #:autohide-delay 120
                  #:show-when-clear? #f
                  #:exclude-apps '("daemon" "tracker")
                  #:enable-repl? #t
@@ -221,6 +224,8 @@
              'HDMI-1 (get-dock-monitor %cfg-path))
 (check-equal "auto-hide? getter"
              #t (get-dock-auto-hide? %cfg-path))
+(check-equal "autohide-delay getter"
+             120 (get-dock-autohide-delay %cfg-path))
 (check-equal "show-when-clear? getter"
              #f (get-dock-show-when-clear? %cfg-path))
 (check-equal "enable-repl? getter"
@@ -278,6 +283,13 @@
 (set-dock-auto-hide! #f %cfg-path)
 (check-equal "set-dock-auto-hide! updates the targeted config"
              #f (get-dock-auto-hide? %cfg-path))
+
+(set-dock-autohide-delay! 0 %cfg-path)
+(check-equal "set-dock-autohide-delay! can make the dock hide at once"
+             0 (get-dock-autohide-delay %cfg-path))
+(set-dock-autohide-delay! 900 %cfg-path)
+(check-equal "set-dock-autohide-delay! updates the targeted config"
+             900 (get-dock-autohide-delay %cfg-path))
 
 (set-dock-show-when-clear! #t %cfg-path)
 (check-equal "set-dock-show-when-clear! updates the targeted config"
@@ -1468,6 +1480,7 @@
                  #:icon-size 64
                  #:item-spacing 6
                  #:auto-hide? #t
+                 #:autohide-delay 275
                  #:items (list (app-item #:name "Terminal"
                                          #:icon "Alacritty"
                                          #:exec "alacritty")
@@ -1508,6 +1521,8 @@
              'right (get-dock-position %export-file))
 (check-equal "the exported text loads back to the same auto-hide"
              #t (get-dock-auto-hide? %export-file))
+(check-equal "the exported text loads back to the same auto-hide delay"
+             275 (get-dock-autohide-delay %export-file))
 
 ;; Writing it out: an explicit target, then the state directory by default.
 (define %export-target (tmp-path "export/captured.scm"))
@@ -1525,6 +1540,98 @@
 (check-matches "a mirror exports dock-mirror-of"
                "\\(define dock-mirror-of \"settings-games.scm\"\\)"
                (dock-settings-scm %mirror-dock))
+
+;; =============================================================================
+;; The item presets: swap, uptime and load average
+;; =============================================================================
+
+(check-equal "uptime is written as the two units that matter"
+             '("0m" "1h 2m" "3d 11h" "1d 0h")
+             (map format-uptime (list 0 3725 (+ (* 3 86400) (* 11 3600)) 86400)))
+
+(check-equal "the swap preset is a gauge of the swap file"
+             '(dynamic "Swap" #t 100 "%")
+             (let ((item (swap-item)))
+               (list (dock-item-type item) (dock-item-name item)
+                     (dock-item-meter? item) (dock-item-max item)
+                     (dock-item-unit item))))
+(check-equal "the swap preset polls a named procedure"
+             "get-swap-value"
+             (dock-item-poll-name (swap-item)))
+(check-equal "the swap preset can be a text item"
+             "get-swap-percent"
+             (dock-item-poll-name (swap-item #:meter? #f)))
+
+(check-equal "the uptime preset is a text item"
+             #f
+             (dock-item-meter? (uptime-item)))
+(check-equal "the uptime preset polls a named procedure"
+             "get-uptime-text"
+             (dock-item-poll-name (uptime-item)))
+
+(check-equal "the load preset is a gauge"
+             '(dynamic "Load" #t 8 "")
+             (let ((item (load-item)))
+               (list (dock-item-type item) (dock-item-name item)
+                     (dock-item-meter? item) (dock-item-max item)
+                     (dock-item-unit item))))
+(check-equal "the load preset's ceiling can be the core count"
+             16 (dock-item-max (load-item #:max 16)))
+(check-equal "the load preset can be a text item"
+             "get-load-text"
+             (dock-item-poll-name (load-item #:meter? #f)))
+
+;; The clock's reading is a strftime template; the default keeps the named
+;; poller, so an exported settings file still writes (clock-item) back.
+(check-equal "the default clock keeps its named poller"
+             "get-clock-text"
+             (dock-item-poll-name (clock-item)))
+(check-string "a clock with its own template still has a reading"
+              (let ((fn (dock-item-poll-fn (clock-item #:format "%H:%M"))))
+                (fn)))
+(check-equal "the clock's template is the reading a screen reader gets"
+             (format #f "~a" (strftime "%H:%M" (localtime (current-time))))
+             (let ((fn (dock-item-poll-fn (clock-item #:format "%H:%M"))))
+               (fn)))
+
+;; The battery is read from a named power supply, and can be a gauge.
+(check-equal "the battery preset keeps the named default device"
+             "get-battery-status"
+             (dock-item-poll-name (battery-item)))
+(check-equal "a battery gauge polls the percentage"
+             "get-battery-value"
+             (dock-item-poll-name (battery-item #:meter? #t)))
+(check "a battery on another device polls an anonymous reader"
+       (eq? 'anonymous
+            (let ((name (dock-item-poll-name (battery-item #:device "BAT1"))))
+              (if (string=? name "anonymous procedure") 'anonymous 'named))))
+(check-equal "a battery gauge carries the percentage unit"
+             '(100 "%")
+             (let ((item (battery-item #:meter? #t)))
+               (list (dock-item-max item) (dock-item-unit item))))
+
+;; The new widgets are presets, so the Preferences window can add them by name.
+(check-equal "swap, uptime and load are presets"
+             '("dynamic:Swap" "dynamic:Uptime" "dynamic:Load")
+             (map dock-item-key
+                  (list (preset-launcher 'swap) (preset-launcher 'uptime)
+                        (preset-launcher 'load))))
+
+;; An exported settings file writes them back as the presets they are, so the
+;; round trip does not lose the item to a lambda nobody can read.
+(define %preset-export-cfg (tmp-path "presets/settings.scm"))
+(configure-dock! #:config-path %preset-export-cfg
+                 #:items (list (swap-item) (uptime-item) (load-item #:max 16)))
+(define %preset-export-text (dock-settings-scm %preset-export-cfg))
+(check-matches "the export writes a swap preset by name"
+               "\\(swap-item #:poll-interval 5000 #:hover-animate\\? #f\\)"
+               %preset-export-text)
+(check-matches "the export writes an uptime preset by name"
+               "\\(uptime-item #:poll-interval 60000 #:hover-animate\\? #f\\)"
+               %preset-export-text)
+(check-matches "the export writes a load preset with its ceiling"
+               "\\(load-item #:poll-interval 5000 #:hover-animate\\? #f #:max 16\\)"
+               %preset-export-text)
 
 ;; =============================================================================
 ;; Poller names (for the "why is this item here" inspector)

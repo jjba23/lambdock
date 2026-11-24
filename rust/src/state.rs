@@ -34,6 +34,9 @@ pub struct LambdockState {
     pub tracker_connected: c_int,
     pub size_group: Option<gtk4::SizeGroup>,
     pub auto_hide: c_int,
+    /// How long the pointer must be away (or a menu closed) before the dock
+    /// starts sliding out, in milliseconds.
+    pub autohide_delay: c_int,
     pub show_when_clear: c_int,
     pub track_windows: c_int,
     pub hover_animate: c_int,

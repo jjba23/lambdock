@@ -255,6 +255,8 @@ fn action_icon(action: i32) -> Option<&'static str> {
         crate::ui::app_actions::ACTION_PREVIOUS => Some("media-skip-backward-symbolic"),
         crate::ui::app_actions::ACTION_NEXT => Some("media-skip-forward-symbolic"),
         crate::ui::app_actions::ACTION_STOP => Some("media-playback-stop-symbolic"),
+        crate::ui::app_actions::ACTION_HOME_FOLDER => Some("user-home-symbolic"),
+        crate::ui::app_actions::ACTION_PROFILE => Some("avatar-default-symbolic"),
         _ => None,
     }
 }
@@ -717,7 +719,9 @@ unsafe fn append_window_section(vbox: &gtk4::Box, item: *mut DockItem, kind: i32
 
 /// What kind of application the item is, which actions it offers, and the player
 /// those actions would drive.
-unsafe fn item_app_actions(item: *mut DockItem) -> (i32, Vec<i32>, Option<String>) {
+unsafe fn item_app_actions(
+    item: *mut DockItem,
+) -> (i32, Vec<crate::ui::app_actions::AppAction>, Option<String>) {
     let lookup_id = if (*item).desktop_id.is_null() || *(*item).desktop_id == 0 {
         (*item).app_id
     } else {
@@ -773,7 +777,7 @@ unsafe fn item_app_actions(item: *mut DockItem) -> (i32, Vec<i32>, Option<String
 unsafe fn append_action_buttons(
     vbox: &gtk4::Box,
     item: *mut DockItem,
-    actions: &[i32],
+    actions: &[crate::ui::app_actions::AppAction],
     music_bus: &Option<String>,
 ) {
     if actions.is_empty() {
@@ -783,11 +787,9 @@ unsafe fn append_action_buttons(
     vbox.append(&separator());
 
     for chosen in actions {
-        let label =
-            crate::cstr::text_or_empty(crate::ui::app_actions::lambdock_app_action_label(*chosen));
-        let button = menu_row_new(action_icon(*chosen), &label);
+        let button = menu_row_new(action_icon(chosen.action), &chosen.label);
 
-        let chosen = *chosen;
+        let chosen = chosen.clone();
         let music_bus = music_bus.clone();
 
         button.connect_clicked(move |_| unsafe {
@@ -795,13 +797,16 @@ unsafe fn append_action_buttons(
                 return;
             }
 
-            if crate::ui::app_actions::action_is_music(chosen) {
-                let bus = std::ffi::CString::new(music_bus.clone().unwrap_or_default())
-                    .unwrap_or_default();
-                crate::ui::app_actions::lambdock_app_music_invoke(bus.as_ptr(), chosen);
-            } else if let Some(command) =
-                crate::ui::app_actions::action_command(Some(&crate::cstr::text_or_empty((*item).exec)), chosen)
-            {
+            if crate::ui::app_actions::action_is_music(chosen.action) {
+                if let Some(bus) = music_bus.as_deref() {
+                    crate::ui::app_actions::music_invoke(bus, chosen.action);
+                }
+            } else if let Some(command) = chosen.command.clone().or_else(|| {
+                crate::ui::app_actions::action_command(
+                    Some(&crate::cstr::text_or_empty((*item).exec)),
+                    chosen.action,
+                )
+            }) {
                 let command = std::ffi::CString::new(command).unwrap_or_default();
                 crate::ui::desktop_entry::lambdock_spawn_command(command.as_ptr());
             }

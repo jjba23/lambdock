@@ -51,10 +51,21 @@
                get-cpu-value
                cpu-item
                get-battery-status
+               get-battery-value
                battery-item
                get-cpu-temp
                get-cpu-temp-value
                cpu-temp-item
+               get-uptime-value
+               get-uptime-text
+               format-uptime
+               uptime-item
+               get-load-value
+               get-load-text
+               load-item
+               get-swap-value
+               get-swap-percent
+               swap-item
 
                ;; Primary Configurator
                configure-dock!
@@ -68,6 +79,7 @@
                get-dock-item-spacing
                get-dock-capsule-padding
                get-dock-auto-hide?
+               get-dock-autohide-delay
                get-dock-show-when-clear?
                get-dock-monitor
                get-dock-exclude-apps
@@ -101,6 +113,7 @@
                set-dock-item-spacing!
                set-dock-capsule-padding!
                set-dock-auto-hide!
+               set-dock-autohide-delay!
                set-dock-show-when-clear!
                set-dock-monitor!
                set-dock-hover-animate!
@@ -238,6 +251,8 @@ keeps its default (the plain flat dock)."
                                                  'default)
                                   #:auto-hide? (cfg 'dock-auto-hide?
                                                     'auto-hide? #f)
+                                  #:autohide-delay (cfg 'dock-autohide-delay
+                                                        'autohide-delay 350)
                                   #:show-when-clear? (cfg 'dock-show-when-clear?
                                                           'show-when-clear?
                                                           #t)

@@ -335,6 +335,12 @@ or a single list e.g. (preset-launchers-for '(alacritty firefox))."
              (battery-item))
     (cpu-temp unquote
               (cpu-temp-item))
+    (swap unquote
+          (swap-item))
+    (uptime unquote
+            (uptime-item))
+    (load unquote
+          (load-item))
     (trash unquote
            (trash-item))
     (nautilus unquote

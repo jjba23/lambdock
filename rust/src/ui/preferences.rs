@@ -39,18 +39,20 @@ use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::rc::Rc;
 
 use crate::bridge::{
-    dock_layout_add_preset_item, get_autohide_config_for, get_capsule_padding_config_for,
-    get_hover_animate_config_for, get_icon_size_config_for, get_item_spacing_config_for,
-    get_launchpad_blur_config_for, get_launchpad_close_on_right_config_for,
-    get_launchpad_columns_config_for, get_launchpad_icon_size_config_for, get_position_config_for,
-    get_reduce_motion_config_for, get_shelf_config_for, get_show_when_clear_config_for,
-    get_show_window_titles_config_for, get_taskbar_config_for, get_theme_config_for,
-    get_track_windows_config_for, load_dock_config_scm, reset_dock_preferences,
-    set_dock_setting_bool, set_dock_setting_double, set_dock_setting_int, set_dock_setting_symbol,
+    dock_layout_add_preset_item, get_autohide_config_for, get_autohide_delay_config_for,
+    get_capsule_padding_config_for, get_hover_animate_config_for, get_icon_size_config_for,
+    get_item_spacing_config_for, get_launchpad_blur_config_for,
+    get_launchpad_close_on_right_config_for, get_launchpad_columns_config_for,
+    get_launchpad_icon_size_config_for, get_position_config_for, get_reduce_motion_config_for,
+    get_shelf_config_for, get_show_when_clear_config_for, get_show_window_titles_config_for,
+    get_taskbar_config_for, get_theme_config_for, get_track_windows_config_for,
+    load_dock_config_scm, reset_dock_preferences, set_dock_setting_bool, set_dock_setting_double,
+    set_dock_setting_int, set_dock_setting_symbol,
 };
 use crate::core::config_values::{
-    lambdock_edge_name, ShelfParams, LAUNCHPAD_COLUMNS_MAX, LAUNCHPAD_ICON_SIZE_MAX,
-    LAUNCHPAD_ICON_SIZE_MIN, SHELF_PERSPECTIVE_MAX, SHELF_PERSPECTIVE_MIN, SHELF_TILT_MAX_DEG,
+    lambdock_edge_name, ShelfParams, AUTOHIDE_DELAY_MAX_MS, LAUNCHPAD_COLUMNS_MAX,
+    LAUNCHPAD_ICON_SIZE_MAX, LAUNCHPAD_ICON_SIZE_MIN, SHELF_PERSPECTIVE_MAX, SHELF_PERSPECTIVE_MIN,
+    SHELF_TILT_MAX_DEG,
 };
 use crate::{log_info, log_warn};
 use crate::dock_item::{reload_dock_instance};
@@ -290,6 +292,10 @@ unsafe fn read_capsule_padding(path: *const c_char) -> f64 {
     int_reader(path, get_capsule_padding_config_for)
 }
 
+unsafe fn read_autohide_delay(path: *const c_char) -> f64 {
+    int_reader(path, get_autohide_delay_config_for)
+}
+
 unsafe fn read_launchpad_icon_size(path: *const c_char) -> f64 {
     int_reader(path, get_launchpad_icon_size_config_for)
 }
@@ -481,6 +487,18 @@ const ADD_ITEM_CHOICES: &[Choice] = &[
         label: c"Battery",
         symbol: "battery",
     },
+    Choice {
+        label: c"Swap",
+        symbol: "swap",
+    },
+    Choice {
+        label: c"Uptime",
+        symbol: "uptime",
+    },
+    Choice {
+        label: c"Load average",
+        symbol: "load",
+    },
 ];
 
 // ============================================================================
@@ -526,6 +544,18 @@ const BEHAVIOUR_CHOICES: &[ChoiceSpec] = &[ChoiceSpec {
     subtitle: c"A floating dock or a full-width taskbar.",
     choices: MODE_CHOICES,
     read: read_mode_choice,
+}];
+
+/// The one number in the behaviour section: how eager auto-hide is.
+const BEHAVIOUR_SCALES: &[ScaleSpec] = &[ScaleSpec {
+    key: "dock-autohide-delay",
+    title: c"Auto-hide delay",
+    subtitle: c"How long the pointer has to be away before the dock slides out. Lower hides sooner; 0 slides it away the moment the pointer leaves.",
+    kind: Kind::Int,
+    minimum: 0.0,
+    maximum: AUTOHIDE_DELAY_MAX_MS as f64,
+    step: 25.0,
+    read: read_autohide_delay,
 }];
 
 const ACCESSIBILITY_SWITCHES: &[SwitchSpec] = &[SwitchSpec {
@@ -721,7 +751,7 @@ const SECTIONS: &[Section] = &[
         title: c"Behaviour",
         subtitle: c"How the dock responds to windows, the pointer and the session.",
         switches: BEHAVIOUR_SWITCHES,
-        scales: &[],
+        scales: BEHAVIOUR_SCALES,
         choices: BEHAVIOUR_CHOICES,
         actions: &[],
     },

@@ -15,12 +15,14 @@
 //! the collector never has to be told about a Rust-side owner.
 
 use crate::core::config_values::{
-    lambdock_capsule_padding_sanitize, lambdock_dock_mode_is_taskbar, lambdock_edge_from_name,
-    lambdock_icon_size_sanitize, lambdock_item_spacing_sanitize,
+    lambdock_autohide_delay_sanitize, lambdock_capsule_padding_sanitize,
+    lambdock_dock_mode_is_taskbar, lambdock_edge_from_name, lambdock_icon_size_sanitize,
+    lambdock_item_spacing_sanitize,
     lambdock_launchpad_close_on_right, lambdock_launchpad_columns_sanitize,
     lambdock_launchpad_icon_size_sanitize, lambdock_shelf_params_default,
-    lambdock_shelf_params_sanitize, ShelfParams, ShelfRawValues, CAPSULE_PADDING_PX,
-    DEFAULT_ICON_SIZE, ITEM_SPACING_PX, LAUNCHPAD_COLUMNS_AUTO, LAUNCHPAD_ICON_SIZE,
+    lambdock_shelf_params_sanitize, ShelfParams, ShelfRawValues, AUTOHIDE_DELAY_DEFAULT_MS,
+    CAPSULE_PADDING_PX, DEFAULT_ICON_SIZE, ITEM_SPACING_PX, LAUNCHPAD_COLUMNS_AUTO,
+    LAUNCHPAD_ICON_SIZE,
 };
 use crate::dock_item::{
     create_dock_item, create_dynamic_dock_item, create_launchpad_dock_item,
@@ -153,6 +155,22 @@ pub unsafe fn get_autohide_config_for(config_path: *const c_char) -> c_int {
 /// `config_path` must be null or a NUL-terminated string.
 pub unsafe fn get_show_when_clear_config_for(config_path: *const c_char) -> c_int {
     bool_for(c"get-dock-show-when-clear?", config_path)
+}
+
+/// How long the pointer must be away before the dock slides out, in
+/// milliseconds, sanitised into the usable range.
+///
+/// # Safety
+///
+/// `config_path` must be null or a NUL-terminated string.
+pub unsafe fn get_autohide_delay_config_for(config_path: *const c_char) -> c_int {
+    let raw = number_for(
+        c"get-dock-autohide-delay",
+        config_path,
+        f64::from(AUTOHIDE_DELAY_DEFAULT_MS),
+    );
+
+    lambdock_autohide_delay_sanitize(raw)
 }
 
 /// Whether hovering animates the icons.
@@ -1134,6 +1152,7 @@ pub unsafe fn dock_read_settings(state: &mut LambdockState) {
     get_shelf_config_for(path, &mut state_ref.shelf);
 
     state_ref.auto_hide = get_autohide_config_for(path);
+    state_ref.autohide_delay = get_autohide_delay_config_for(path);
     state_ref.track_windows = get_track_windows_config_for(path);
     state_ref.show_when_clear = get_show_when_clear_config_for(path);
     state_ref.hover_animate = get_hover_animate_config_for(path);

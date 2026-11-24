@@ -67,10 +67,21 @@
                         get-cpu-value
                         cpu-item
                         get-battery-status
+                        get-battery-value
                         battery-item
                         get-cpu-temp
                         get-cpu-temp-value
-                        cpu-temp-item))
+                        cpu-temp-item
+                        get-uptime-value
+                        get-uptime-text
+                        format-uptime
+                        uptime-item
+                        get-load-value
+                        get-load-text
+                        load-item
+                        get-swap-value
+                        get-swap-percent
+                        swap-item))
 
 ;; =============================================================================
 ;; Data Structures
@@ -350,42 +361,58 @@ unless it was defined with `define'."
 ;; Dynamic Helper Procedures & Presets
 ;; =============================================================================
 
-(define (get-used-ram-value)
-  "Parses /proc/meminfo and returns used system RAM as a percentage (0-100).
+(define (read-first-line path)
+  "The first line of PATH, trimmed, or #f when it cannot be read.
 
-This is the number a meter item wants; `get-used-ram-percent' is the same
-reading formatted for a text item."
+The readings below are files the kernel publishes; a missing one is \"no
+reading\" rather than an error, so every caller answers #f and the item says
+N/A."
+  (catch #t
+         (lambda ()
+           (string-trim-both (call-with-input-file path read-line)))
+         (lambda _
+           #f)))
+
+(define (meminfo-kb field)
+  "FIELD's value in /proc/meminfo, in kilobytes, or #f.
+
+FIELD is written the way the kernel writes it, colon included
+(\"MemTotal:\", \"SwapFree:\")."
   (catch #t
          (lambda ()
            (call-with-input-file "/proc/meminfo"
                                  (lambda (port)
-                                   (define (parse-kb line)
-                                     (let* ((parts (string-split line #\space))
-                                            (nums (filter (lambda (s)
-                                                            (not (string-null? s))) parts)))
-                                       (and (>= (length nums) 2)
-                                         (string->number (list-ref nums 1)))))
                                    (let loop
-                                     ((line (read-line port))
-                                      (mem-total #f)
-                                      (mem-available #f))
+                                     ((line (read-line port)))
                                      (cond
-                                       [(and mem-total mem-available)
-                                        (let* ((used (- mem-total mem-available))
-                                               (pct (inexact->exact (round (* (/ used mem-total)
-                                                                              100)))))
-                                          pct)]
                                        [(eof-object? line)
                                         #f]
-                                       [(string-prefix? "MemTotal:" line)
-                                        (loop (read-line port)
-                                              (parse-kb line) mem-available)]
-                                       [(string-prefix? "MemAvailable:" line)
-                                        (loop (read-line port) mem-total
-                                              (parse-kb line))]
-                                       [else (loop (read-line port) mem-total mem-available)])))))
+                                       [(string-prefix? field line)
+                                        ;; The kernel pads its columns with
+                                        ;; spaces, so the empty words between them
+                                        ;; are not fields.
+                                        (let ((parts (filter (lambda (part)
+                                                               (not (string-null? part)))
+                                                             (string-split line #\space))))
+                                          (and (>= (length parts) 2)
+                                            (string->number (list-ref parts 1))))]
+                                       [else (loop (read-line port))])))))
          (lambda _
            #f)))
+
+(define (used-percent total free)
+  "How much of TOTAL is taken, as a whole percentage, or #f."
+  (and total free
+    (> total 0)
+    (inexact->exact (round (* (/ (- total free) total) 100)))))
+
+(define (get-used-ram-value)
+  "Used system RAM as a percentage (0-100), or #f.
+
+This is the number a meter item wants; `get-used-ram-percent' is the same
+reading formatted for a text item."
+  (used-percent (meminfo-kb "MemTotal:")
+                (meminfo-kb "MemAvailable:")))
 
 (define (get-used-ram-percent)
   "Used system RAM as a RAM 42% reading, for text items."
@@ -410,20 +437,37 @@ and then red as memory runs out. `#:meter? #f' gives the old text item."
                 #:unit "%"
                 #:max 100))
 
-(define (get-clock-text)
-  (strftime "%a %b %d  %H:%M"
-            (localtime (current-time))))
+;; The reading a clock item shows: the face's tooltip and what a screen reader
+;; announces. A settings file can ask for its own wording with `#:format'.
+(define %clock-format "%a %b %d  %H:%M")
 
-(define* (clock-item #:key (hover-animate? #f))
+(define (get-clock-text)
+  (strftime %clock-format (localtime (current-time))))
+
+(define (clock-text-in time-format)
+  "The system time as TIME-FORMAT (a strftime template), in the user's locale."
+  (strftime time-format (localtime (current-time))))
+
+;; `#:format' is the natural name for a strftime template, and it shadows
+;; `(ice-9 format)'s procedure inside this body -- which nothing below needs.
+(define* (clock-item #:key (format %clock-format)
+                     (exec "gnome-calendar")
+                     (hover-animate? #f))
   "The clock: an analogue face the dock points at the system time once a second.
 
 The poll function is still what names the reading -- its string is the face's
 tooltip and what a screen reader announces -- while the hands themselves are set
-from the system clock."
+from the system clock.
+
+`#:format' is that reading's strftime template, so a clock can say
+\"%H:%M\" or \"%A %d\" instead of the default; `#:exec' is what a click opens."
   (dynamic-item #:name "Clock"
                 #:icon #f
-                #:exec "gnome-calendar"
-                #:poll-fn get-clock-text
+                #:exec exec
+                #:poll-fn (if (string=? format %clock-format)
+                            get-clock-text
+                            (lambda ()
+                              (clock-text-in format)))
                 #:poll-interval 1000
                 #:hover-animate? hover-animate?
                 #:clock? #t))
@@ -501,28 +545,73 @@ By default it is a gauge; `#:meter? #f' gives the old text item."
                 #:unit "%"
                 #:max 100))
 
-(define (get-battery-status)
-  (catch #t
-         (lambda ()
-           (let* ((cap-path "/sys/class/power_supply/BAT0/capacity")
-                  (stat-path "/sys/class/power_supply/BAT0/status")
-                  (cap (string-trim-both (call-with-input-file cap-path
-                                                               read-line)))
-                  (stat (string-trim-both (call-with-input-file stat-path
-                                                                read-line)))
-                  (charging? (string-ci=? stat "Charging")))
-             (format #f "~a%~a" cap
-                     (if charging? " ⚡" ""))))
-         (lambda _
-           "Bat N/A")))
+;; --- Battery -----------------------------------------------------------------
+;; `BAT0` is the usual name of the first battery. A machine whose battery is
+;; called something else (or which has two) asks for it with `#:device', and
+;; `#:meter? #t' draws the charge as a gauge instead of as text.
 
-(define* (battery-item #:key (hover-animate? #f))
+(define %battery-device "BAT0")
+
+(define (battery-file device name)
+  "The sysfs file NAME of power supply DEVICE."
+  (format #f "/sys/class/power_supply/~a/~a" device name))
+
+(define (battery-value-for device)
+  "DEVICE's charge in percent (0-100), or #f."
+  (let ((raw (read-first-line (battery-file device "capacity"))))
+    (and raw
+      (let ((number (string->number raw)))
+        (and number (inexact->exact (round number)))))))
+
+(define (get-battery-value)
+  "The first battery's charge in percent (0-100), or #f.
+
+This is the number a meter item wants: `(battery-item #:meter? #t)`."
+  (battery-value-for %battery-device))
+
+(define (battery-text-for device)
+  "DEVICE's charge as \"88% ⚡\" while it charges, or \"Bat N/A\"."
+  (let ((value (battery-value-for device))
+        (status (read-first-line (battery-file device "status"))))
+    (if value (format #f "~a%~a" value
+                      (if (and status (string-ci=? status "Charging")) " ⚡" ""))
+      "Bat N/A")))
+
+(define (get-battery-status)
+  "The first battery as \"88% ⚡\" while it charges, for text items."
+  (battery-text-for %battery-device))
+
+(define (battery-poller device meter?)
+  "The poll procedure that reads DEVICE, as a gauge or as text.
+
+The default device keeps the named readers, so an exported settings file writes
+the preset back as `(battery-item)` instead of a lambda nobody can read."
+  (cond [(and meter? (string=? device %battery-device)) get-battery-value]
+        [(string=? device %battery-device) get-battery-status]
+        [meter? (lambda ()
+                  (battery-value-for device))]
+        [else (lambda ()
+                (battery-text-for device))]))
+
+(define* (battery-item #:key (device %battery-device)
+                       (hover-animate? #f)
+                       (meter? #f)
+                       (poll-interval 5000))
+  "Preset builder for a battery item.
+
+`#:device' is the power supply to read (\"BAT0\" by default, \"BAT1\" or
+\"CMB0\" on a machine that names it differently), `#:meter? #t' draws the charge
+as a gauge that empties as the battery runs out, and `#:poll-interval' is how
+often it is read."
   (dynamic-item #:name "Battery"
                 #:icon "battery"
                 #:exec "gnome-control-center power"
-                #:poll-fn get-battery-status
-                #:poll-interval 5000
-                #:hover-animate? hover-animate?))
+                #:poll-fn (battery-poller device meter?)
+                #:poll-interval poll-interval
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit "%"
+                #:max 100))
 
 (define (get-cpu-temp-value)
   "CPU temperature in degrees Celsius from the first thermal zone, or #f."
@@ -555,3 +644,102 @@ the old text item."
                 #:meter? meter?
                 #:unit "°C"
                 #:max 100))
+
+;; --- Swap, uptime and load average -------------------------------------------
+;; Three more readings the kernel publishes as text: how much of the swap file is
+;; in use, how long the machine has been up, and how busy it is. None of them
+;; needs a helper program, and none of them blocks the main loop.
+
+(define (get-swap-value)
+  "Used swap as a percentage (0-100), or #f on a machine with no swap."
+  (used-percent (meminfo-kb "SwapTotal:") (meminfo-kb "SwapFree:")))
+
+(define (get-swap-percent)
+  "Used swap as \"Swap 12%\", for text items."
+  (let ((value (get-swap-value)))
+    (if value (format #f "Swap ~a%" value) "Swap N/A")))
+
+(define* (swap-item #:key (poll-interval 5000)
+                    (hover-animate? #f)
+                    (meter? #t))
+  "Preset builder for the swap item.
+
+By default it is a gauge of the swap file's fill, which is the reading that
+explains a machine that has started to crawl; `#:meter? #f' gives a text item.
+A machine with no swap has nothing to show, so the item says \"Swap N/A\"."
+  (dynamic-item #:name "Swap"
+                #:icon #f
+                #:exec "alacritty -e 'btop'"
+                #:poll-fn (if meter? get-swap-value get-swap-percent)
+                #:poll-interval poll-interval
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit "%"
+                #:max 100))
+
+(define (get-uptime-value)
+  "Seconds since boot, from /proc/uptime, or #f."
+  (let ((line (read-first-line "/proc/uptime")))
+    (and line
+      (let ((seconds (string->number (car (string-split line #\space)))))
+        (and seconds (inexact->exact (floor seconds)))))))
+
+(define (format-uptime seconds)
+  "SECONDS as \"3d 4h\", \"4h 12m\" or \"12m\": the two units that matter."
+  (let ((days (quotient seconds 86400))
+        (hours (quotient (remainder seconds 86400) 3600))
+        (minutes (quotient (remainder seconds 3600) 60)))
+    (cond [(> days 0) (format #f "~ad ~ah" days hours)]
+          [(> hours 0) (format #f "~ah ~am" hours minutes)]
+          [else (format #f "~am" minutes)])))
+
+(define (get-uptime-text)
+  "How long the machine has been up, as \"up 4h 12m\"."
+  (let ((value (get-uptime-value)))
+    (if value (format #f "up ~a" (format-uptime value)) "up N/A")))
+
+(define* (uptime-item #:key (poll-interval 60000)
+                      (hover-animate? #f))
+  "Preset builder for the uptime item: \"up 3d 4h\" as a text item.
+
+It needs no gauge -- uptime has no ceiling to fill -- so the item is always text,
+and once a minute is often enough."
+  (dynamic-item #:name "Uptime"
+                #:icon #f
+                #:exec ""
+                #:poll-fn get-uptime-text
+                #:poll-interval poll-interval
+                #:hover-animate? hover-animate?))
+
+(define (get-load-value)
+  "The one minute load average from /proc/loadavg, or #f.
+
+It is a count of runnable and uninterruptible processes, not a percentage, so
+compare it with the number of cores: a gauge item wants `#:max' set to that
+number."
+  (let ((line (read-first-line "/proc/loadavg")))
+    (and line (string->number (car (string-split line #\space))))))
+
+(define (get-load-text)
+  "The one minute load average as \"Load 0.42\"."
+  (let ((value (get-load-value)))
+    (if value (format #f "Load ~,2f" value) "Load N/A")))
+
+(define* (load-item #:key (poll-interval 5000)
+                    (hover-animate? #f)
+                    (meter? #t)
+                    (max 8))
+  "Preset builder for the load average item.
+
+By default it is a gauge that fills against `#:max' -- set that to the number of
+cores for a reading of \"how busy is this machine\" -- and `#:meter? #f' gives
+the text item."
+  (dynamic-item #:name "Load"
+                #:icon #f
+                #:exec "alacritty -e 'btop'"
+                #:poll-fn (if meter? get-load-value get-load-text)
+                #:poll-interval poll-interval
+                #:hover-animate? hover-animate?
+                #:meter? meter?
+                #:unit ""
+                #:max max))

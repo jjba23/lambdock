@@ -1633,7 +1633,7 @@ Item constructors: ~app-item~ (~#:name #:icon #:exec #:hover-animate?~),
 ~dynamic-item~ (~#:name #:icon #:exec #:poll-fn #:poll-interval
 #:hover-animate?~), ~separator-item~. Presets: ~preset-icon~, ~preset-launcher~,
 ~preset-launchers-for~. Dynamic presets: ~ram-item~, ~clock-item~, ~cpu-item~,
-~battery-item~, ~cpu-temp-item~.
+~cpu-temp-item~, ~battery-item~, ~swap-item~, ~load-item~, ~uptime-item~.
 
 Looks (whole-dock recipes) are a separate module, ~(lambdock looks)~, re-exported
 by ~(lambdock presets)~ and ~(lambdock core)~ so a settings file sees them without

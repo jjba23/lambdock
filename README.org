@@ -128,20 +128,25 @@ re-renders the SVG beside it.
   [[https://wayland.app/protocols/wlr-foreign-toplevel-management-unstable-v1][foreign toplevel protocol]];
   on X11 it reads the EWMH window list and the per-window properties.  Both give
   running indicators, window titles and a popover that focuses, closes or opens
-  individual instances; see [[file:docs/internals.org#toplevel-tracking][window tracking]].
+  individual instances, and that knows the application's own commands: a browser's
+  private window and its profiles, a file manager's home folder, a player's
+  transport controls; see [[file:docs/internals.org#toplevel-tracking][window tracking]].
 - *Multi-monitor.* Span the dock across all outputs (~#:monitor 'all~) or bind
   it to one connector (=~\"DP-1\"~); see
   [[file:docs/configuration.org#configuration-options][the options reference]].
 - *Auto-hide.* A two-pixel reveal strip at the screen edge, with a
-  frame-clock-driven slide that is cancelled if the pointer returns.
+  frame-clock-driven slide that is cancelled if the pointer returns, and a delay
+  you set (~dock-autohide-delay~, 350 ms by default) so the dock hides as eagerly
+  as you want it to.
 - *Fish-eye magnification.* Icons grow under the pointer as a function of
   distance, per item or globally; the mapping is [[file:docs/theming.org][documented with the recipes]].
 - *Dock scrolling.* A wheel over a crowded row scrolls it, so the item count is
   not bounded by the screen width.
-- *Dynamic widgets.* RAM, CPU, CPU temperature, battery and clock items driven by
-  Scheme thunks you can replace with your own pollers.  Meters are drawn as
-  icon-sized gauges that fill and change colour, the clock as an analogue face;
-  see [[file:docs/configuration.org#dynamic-widgets][Dynamic widgets]].
+- *Dynamic widgets.* RAM, CPU, CPU temperature, swap, load average, uptime,
+  battery and clock items driven by Scheme thunks you can replace with your own
+  pollers.  Meters are drawn as icon-sized gauges that fill and change colour, the
+  clock as an analogue face; see
+  [[file:docs/configuration.org#dynamic-widgets][Dynamic widgets]].
 - *Stacks.* A dock item that opens a folder (Downloads, Screenshots, projects) as
   an icon grid or a list; see [[file:docs/using-the-dock.org#stacks][Stacks]].
 - *Launchpad.* A searchable grid of every installed application, built from the

@@ -59,9 +59,15 @@ compositor told it:
   an exec command;
 - *Close All*, shown only when more than one window is open;
 - *Launch Application*, when an app is in the dock but nothing is running yet;
+- *the actions the application's kind earns it*: a browser gets *New Window* and,
+  where the dock knows the family's flag, *New Private Window* (Chrome and its
+  forks open an incognito window, Firefox and its forks a private one); a
+  Firefox-family browser whose ~profiles.ini~ the dock can read gets one *Profile*
+  row per profile, so the window opens with the right tabs and logins; a file
+  manager gets *Home Folder*; a player gets its transport controls while it is on
+  the session bus;
 - *the application's own extra launchers*, read from its ~.desktop~ file's
-  ~Actions=~ list -- *New Private Window* for a browser, *New Tab* for a
-  terminal -- and shown only when the item resolves to a desktop entry;
+  ~Actions=~ list, and shown only when the item resolves to a desktop entry;
 - *Why is this item here?*, which answers the question the dock is usually asked:
   the launcher line that created the item, the desktop entry it resolved, the
   icon name and whether the icon theme had it, and the poller that drives it.
@@ -133,11 +139,21 @@ movement along the dock's axis, horizontally or vertically.
 
 With ~dock-auto-hide?~ enabled, the dock slides off the screen edge with a
 250 ms cubic ease-out transition and comes back when the pointer reaches a
-two-pixel strip at that edge.  It waits a moment before hiding again (400 ms
-after a popover closes, 600 ms after the pointer leaves) so that a hasty
-mouse movement does not chase the dock away.  The hide/show is driven by
-=gtk_widget_add_tick_callback=, so it stays in step with your display's refresh
-rate, 60 Hz or 120 Hz or whatever your compositor gives it.
+two-pixel strip at that edge.  It waits a moment before hiding again so that a
+hasty mouse movement does not chase the dock away, and that moment is yours to
+set: ~dock-autohide-delay~ is how many milliseconds the pointer has to be away
+(or a menu has to be closed) before the dock starts sliding, 350 by default and
+bounded by 0 (hide the instant the pointer leaves) and 3000.  The hide/show is
+driven by =gtk_widget_add_tick_callback=, so it stays in step with your display's
+refresh rate, 60 Hz or 120 Hz or whatever your compositor gives it.
+
+#+begin_src scheme
+;; A dock that ducks out of the way the moment the pointer leaves it
+(define dock-autohide-delay 0)
+
+;; ... or one that gives you most of a second to come back
+(define dock-autohide-delay 800)
+#+end_src
 
 Parking the pointer on that edge keeps the dock out, and leaving does not need any
 particular gesture: the strip is the last two pixels of the screen, so a pointer

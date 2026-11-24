@@ -5,28 +5,32 @@
 
 //! What an application's menu can offer: `src/ui/app_actions.c` in Rust.
 //!
-//! Two questions, answered from strings the dock already has: what kind of
-//! application is this (a browser, a player, neither), and what command opens
-//! another window of it. The playback controls come from MPRIS on the session
-//! bus, which is the one part of this module that talks to the outside world.
+//! Three questions, answered from strings the dock already has: what kind of
+//! application is this (a browser, a player, a file manager, neither), what
+//! command opens another window of it, and -- for a browser the dock can read a
+//! profile list for -- which profiles it could open. The playback controls come
+//! from MPRIS on the session bus, which is the one part of this module that talks
+//! to the outside world.
 //!
-//! The kind and the command are pure -- names in, a decision out -- so they are
+//! The kind and the commands are pure -- names in, a decision out -- so they are
 //! tested without a bus: a browser is matched by its categories first and its
-//! names second, and a browser's private window is only offered when the dock
-//! knows the flag for that family.
+//! names second, a browser's private window is only offered when the dock knows
+//! the flag for that family, and a profile becomes one more row that opens a
+//! window of its own.
 
-use crate::glib::{g_free, strdup_string, tr};
+use crate::glib::g_free;
 use crate::log_warn;
 use crate::ui::desktop_entry::strip_field_codes;
 use gtk4::gio;
 use gtk4::glib::{self, VariantTy};
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_int, c_uint};
+use std::os::raw::{c_char, c_int};
 
 /// `LAMBDOCK_APP_KIND_*` from the header.
 pub const KIND_NONE: c_int = 0;
 pub const KIND_BROWSER: c_int = 1;
 pub const KIND_MUSIC: c_int = 2;
+pub const KIND_FILES: c_int = 3;
 
 /// `LAMBDOCK_APP_ACTION_*` from the header.
 pub const ACTION_NEW_WINDOW: c_int = 0;
@@ -35,6 +39,8 @@ pub const ACTION_PLAY_PAUSE: c_int = 2;
 pub const ACTION_PREVIOUS: c_int = 3;
 pub const ACTION_NEXT: c_int = 4;
 pub const ACTION_STOP: c_int = 5;
+pub const ACTION_HOME_FOLDER: c_int = 6;
+pub const ACTION_PROFILE: c_int = 7;
 
 /// The MPRIS spelling of a media player, from the freedesktop.org D-Bus
 /// interface specification.
@@ -49,16 +55,33 @@ const BROWSER_WORDS: &[&str] = &[
     "firefox",
     "librewolf",
     "waterfox",
+    "floorp",
+    "mullvad",
     "chromium",
     "chrome",
     "brave",
     "vivaldi",
-    "opera",
+    "thorium",
     "epiphany",
     "falkon",
     "qutebrowser",
     "midori",
     "zen-browser",
+    "zen_browser",
+];
+
+/// The same for file managers: the one extra thing the dock offers them is a
+/// window on the home folder, which every one of these opens from an argument.
+const FILES_WORDS: &[&str] = &[
+    "nautilus",
+    "dolphin",
+    "thunar",
+    "nemo",
+    "pcmanfm",
+    "caja",
+    "files",
+    "file-manager",
+    "org.gnome.files",
 ];
 
 /// The same for players, kept to applications that really speak MPRIS: the
@@ -85,6 +108,42 @@ const MUSIC_WORDS: &[&str] = &[
     "vlc",
     "celluloid",
 ];
+
+/// One row of an application's menu.
+///
+/// The label is a `String` because not every row is one of the fixed actions: a
+/// browser profile is one more way to open a window, and it is named after the
+/// profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppAction {
+    /// The action this row performs, which is what picks its icon.
+    pub action: c_int,
+    /// What the row says.
+    pub label: String,
+    /// The command this row runs, when it is not the one the action's flag builds
+    /// from the item's own `Exec`.
+    pub command: Option<String>,
+}
+
+impl AppAction {
+    /// A row for one of the fixed actions, labelled in the user's language.
+    fn simple(action: c_int) -> Self {
+        Self {
+            action,
+            label: crate::cstr::translated(action_label(action)),
+            command: None,
+        }
+    }
+}
+
+/// One profile of a Mozilla-family browser, from its `profiles.ini`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Profile {
+    /// What the browser calls the profile ("default", "work").
+    pub name: String,
+    /// Where the profile lives, absolute.
+    pub path: String,
+}
 
 /// Whether `categories` lists `category`, case-insensitively.
 fn categories_have(categories: Option<&str>, category: &str) -> bool {
@@ -117,7 +176,8 @@ fn app_mentions(
     text_mentions(app_id, words) || text_mentions(name, words) || text_mentions(exec, words)
 }
 
-/// What kind of application this is: a browser, a player, or neither.
+/// What kind of application this is: a browser, a player, a file manager, or
+/// neither.
 pub fn app_kind(
     app_id: Option<&str>,
     name: Option<&str>,
@@ -125,9 +185,13 @@ pub fn app_kind(
     categories: Option<&str>,
 ) -> c_int {
     // Categories first: they are the application's own claim about what it is,
-    // and they cover every browser and player that ships a desktop file.
+    // and they cover every browser, player and file manager that ships a desktop
+    // file.
     if categories_have(categories, "WebBrowser") {
         return KIND_BROWSER;
+    }
+    if categories_have(categories, "FileManager") {
+        return KIND_FILES;
     }
     if categories_have(categories, "Music")
         || (categories_have(categories, "Audio") && categories_have(categories, "Player"))
@@ -136,9 +200,13 @@ pub fn app_kind(
     }
 
     // Then the names. The browser check comes first so a browser whose command
-    // line happens to mention media is still a browser.
+    // line happens to mention media is still a browser, and the file manager
+    // check comes before the player one because "Files" is not a player.
     if app_mentions(app_id, name, exec, BROWSER_WORDS) {
         return KIND_BROWSER;
+    }
+    if app_mentions(app_id, name, exec, FILES_WORDS) {
+        return KIND_FILES;
     }
     if app_mentions(app_id, name, exec, MUSIC_WORDS) {
         return KIND_MUSIC;
@@ -157,19 +225,28 @@ enum Family {
     Opera,
 }
 
-fn browser_family(program: &str) -> Family {
-    let base = std::path::Path::new(program)
+/// The program's file name, lower case: what the family is decided on.
+fn program_name(program: &str) -> String {
+    std::path::Path::new(program)
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let base = base.to_lowercase();
+        .unwrap_or_default()
+        .to_lowercase()
+}
 
-    if base.contains("firefox") || base.contains("librewolf") || base.contains("waterfox") {
+fn browser_family(program: &str) -> Family {
+    let base = program_name(program);
+
+    // The Firefox family speaks the same command line: every fork of it keeps
+    // `--new-window` and `--private-window`.
+    if ["firefox", "librewolf", "waterfox", "zen", "floorp", "mullvad", "tor-browser", "icecat"]
+        .iter()
+        .any(|name| base.contains(name))
+    {
         Family::Firefox
-    } else if base.contains("chromium")
-        || base.contains("chrome")
-        || base.contains("brave")
-        || base.contains("vivaldi")
+    } else if ["chromium", "chrome", "brave", "vivaldi", "thorium", "yandex"]
+        .iter()
+        .any(|name| base.contains(name))
     {
         Family::Chromium
     } else if base.contains("edge") {
@@ -198,6 +275,7 @@ fn browser_flag(family: Family, private_mode: bool) -> Option<&'static str> {
         (Family::Unknown, _) => None,
     }
 }
+
 
 /// Splits an `Exec=` line into an argv, dropping the field codes first so both a
 /// desktop entry ("firefox %u") and a Scheme item ("firefox %U") describe the same
@@ -245,6 +323,31 @@ fn word_needs_quotes(word: &str) -> bool {
         .any(|character| !character.is_ascii_alphanumeric() && !"-._/:=+,@%".contains(character))
 }
 
+/// `argv` written as one line the GLib spawner parses back into the same words,
+/// with `extra` appended.
+///
+/// Quoting only the words the shell would split keeps a command line that reads
+/// like the desktop entry it came from, which matters when a launch fails and the
+/// log is the only thing to look at.
+fn command_line(argv: &[String], extra: &[&str]) -> String {
+    let mut command = String::new();
+
+    for word in argv.iter().map(String::as_str).chain(extra.iter().copied()) {
+        let word = if word_needs_quotes(word) {
+            shell_quote(word)
+        } else {
+            word.to_owned()
+        };
+
+        if !command.is_empty() {
+            command.push(' ');
+        }
+        command.push_str(&word);
+    }
+
+    command
+}
+
 /// The command that opens a window of the browser `exec` starts.
 ///
 /// `None` when the browser has no private mode the dock can promise, or when the
@@ -266,30 +369,143 @@ pub fn action_command(exec: Option<&str>, action: c_int) -> Option<String> {
         return None;
     }
 
-    let mut command = String::new();
+    Some(command_line(&argv, flag.as_slice()))
+}
 
-    for (index, word) in argv.iter().enumerate() {
-        // Quote a word only when the shell would split it: a command line that
-        // reads like the desktop entry it came from is easier to follow in the
-        // log when a launch fails.
-        let word = if word_needs_quotes(word) {
-            shell_quote(word)
-        } else {
-            word.clone()
+/// The command that opens a window of `profile` in the browser `exec` starts.
+///
+/// `--profile` takes a path, so the name a browser shows in its own profile
+/// manager never has to be guessed at, and `--new-window` makes the profile get a
+/// window even when it is already running.
+fn profile_command(exec: Option<&str>, profile: &Profile) -> Option<String> {
+    let argv = split_exec(exec?)?;
+
+    Some(command_line(&argv, &["--profile", profile.path.as_str(), "--new-window"]))
+}
+
+/// The command that opens `exec` on the user's home folder: the one row a file
+/// manager gets that its plain launcher cannot express.
+fn home_command(exec: Option<&str>) -> Option<String> {
+    let argv = split_exec(exec?)?;
+    let home = std::env::var("HOME").ok().filter(|home| !home.is_empty())?;
+
+    Some(command_line(&argv, &[home.as_str()]))
+}
+
+/// The directory a browser of this family keeps its profile list in, relative to
+/// the user's home, when the dock knows it.
+fn profile_home(program: &str) -> Option<&'static str> {
+    if browser_family(program) != Family::Firefox {
+        return None;
+    }
+
+    let base = program_name(program);
+
+    if base.contains("librewolf") {
+        Some(".librewolf")
+    } else if base.contains("waterfox") {
+        Some(".waterfox")
+    } else if base.contains("zen") {
+        Some(".zen")
+    } else if base.contains("firefox") {
+        Some(".mozilla/firefox")
+    } else {
+        // Floorp, Mullvad and the rest keep theirs where the dock does not look,
+        // and a wrong path would offer profiles that are not there.
+        None
+    }
+}
+
+/// The Mozilla profile list, parsed: one entry per `[ProfileN]` section that names
+/// both a name and a path.
+///
+/// `Install…` sections name a *default path* rather than a profile and are
+/// skipped, which is also why a section without a `Name=` is dropped.
+fn parse_profiles(text: &str, dir: &std::path::Path) -> Vec<Profile> {
+    let mut profiles = Vec::new();
+    let mut name: Option<String> = None;
+    let mut path: Option<String> = None;
+    let mut relative = true;
+    let mut in_profile = false;
+
+    // One section is finished: keep it when it describes a profile.
+    let mut finish = |name: &mut Option<String>,
+                      path: &mut Option<String>,
+                      relative: &mut bool,
+                      in_profile: bool| {
+        if let (true, Some(name), Some(path)) = (in_profile, name.take(), path.take()) {
+            let path = if *relative {
+                dir.join(&path).to_string_lossy().into_owned()
+            } else {
+                path
+            };
+
+            profiles.push(Profile { name, path });
+        }
+
+        *relative = true;
+    };
+
+    for line in text.lines() {
+        let line = line.trim();
+
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+
+        if let Some(section) = line.strip_prefix('[').and_then(|rest| rest.strip_suffix(']')) {
+            finish(&mut name, &mut path, &mut relative, in_profile);
+            in_profile = section.starts_with("Profile");
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
         };
 
-        if index > 0 {
-            command.push(' ');
+        match key.trim().to_ascii_lowercase().as_str() {
+            "name" => name = Some(value.trim().to_owned()),
+            "path" => path = Some(value.trim().to_owned()),
+            "isrelative" => relative = value.trim() != "0",
+            _ => {}
         }
-        command.push_str(&word);
     }
 
-    if let Some(flag) = flag {
-        command.push(' ');
-        command.push_str(flag);
-    }
+    finish(&mut name, &mut path, &mut relative, in_profile);
 
-    Some(command)
+    profiles
+}
+
+/// The profiles the browser `exec` starts could open, in the order its own
+/// `profiles.ini` declares them.
+///
+/// An unreadable list is no profiles rather than an error: the rest of the menu
+/// still works, and a browser that has never been started has nothing to offer.
+pub fn profiles(exec: Option<&str>) -> Vec<Profile> {
+    let Some(argv) = exec.and_then(split_exec) else {
+        return Vec::new();
+    };
+    let Some(program) = argv.first() else {
+        return Vec::new();
+    };
+    let Some(home) = profile_home(program) else {
+        return Vec::new();
+    };
+    let Some(home_dir) = std::env::var_os("HOME") else {
+        return Vec::new();
+    };
+
+    let dir = std::path::Path::new(&home_dir).join(home);
+
+    match std::fs::read_to_string(dir.join("profiles.ini")) {
+        // A profile whose directory is gone is not one a window can open: a
+        // browser asked for it fails with a dialog nobody asked for.
+        Ok(text) => parse_profiles(&text, &dir)
+            .into_iter()
+            .filter(|profile| std::path::Path::new(&profile.path).is_dir())
+            .collect(),
+        Err(_) => Vec::new(),
+    }
 }
 
 /// `g_shell_quote`, so a quoted word is written the way the shell writes it.
@@ -328,35 +544,67 @@ pub fn action_label(action: c_int) -> &'static std::ffi::CStr {
         ACTION_PREVIOUS => c"Previous Track",
         ACTION_NEXT => c"Next Track",
         ACTION_STOP => c"Stop Playback",
+        ACTION_HOME_FOLDER => c"Home Folder",
+        ACTION_PROFILE => c"Profile",
         _ => c"",
     }
 }
 
 /// The actions an application of this kind offers, in menu order.
+///
+/// What each kind gets is what the dock can actually deliver: a browser window it
+/// knows the flag for, a profile window when the browser publishes its profiles, a
+/// player's transport only while one is on the bus, and a file manager's home
+/// folder.
 pub fn actions(
     app_id: Option<&str>,
     name: Option<&str>,
     exec: Option<&str>,
     categories: Option<&str>,
     music_bus: Option<&str>,
-) -> Vec<c_int> {
+) -> Vec<AppAction> {
     let mut actions = Vec::new();
 
     match app_kind(app_id, name, exec, categories) {
         KIND_BROWSER => {
-            if exec.is_some_and(|exec| !exec.is_empty()) {
-                actions.push(ACTION_NEW_WINDOW);
+            let Some(exec) = exec.filter(|exec| !exec.is_empty()) else {
+                return actions;
+            };
 
-                // Only when the dock knows how to ask this browser for one.
-                if action_command(exec, ACTION_PRIVATE_WINDOW).is_some() {
-                    actions.push(ACTION_PRIVATE_WINDOW);
-                }
+            actions.push(AppAction::simple(ACTION_NEW_WINDOW));
+
+            // Only when the dock knows how to ask this browser for one.
+            if action_command(Some(exec), ACTION_PRIVATE_WINDOW).is_some() {
+                actions.push(AppAction::simple(ACTION_PRIVATE_WINDOW));
+            }
+
+            // One row per profile: another window, in another set of tabs, logins
+            // and settings -- the thing a "new window" cannot give a browser user.
+            let profile_label = crate::cstr::translated(action_label(ACTION_PROFILE));
+            for profile in profiles(Some(exec)) {
+                actions.push(AppAction {
+                    action: ACTION_PROFILE,
+                    label: format!("{profile_label}: {}", profile.name),
+                    command: profile_command(Some(exec), &profile),
+                });
+            }
+        }
+        KIND_FILES => {
+            if let Some(command) = home_command(exec) {
+                actions.push(AppAction {
+                    action: ACTION_HOME_FOLDER,
+                    command: Some(command),
+                    ..AppAction::simple(ACTION_HOME_FOLDER)
+                });
             }
         }
         // With no player on the bus these would be buttons that do nothing,
         // which is worse than an item whose menu is only its launcher.
         KIND_MUSIC if music_bus.is_some_and(|bus| !bus.is_empty()) => {
-            actions.extend([ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP]);
+            actions.extend(
+                [ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP]
+                    .map(AppAction::simple),
+            );
         }
         _ => {}
     }
@@ -473,7 +721,10 @@ pub fn music_player_find(app_id: Option<&str>, name: Option<&str>) -> Option<Str
 }
 
 /// Asks the player at `bus_name` to run the method behind `action`.
-fn music_invoke(bus_name: &str, action: c_int) {
+///
+/// Fire and forget: MPRIS answers on the session bus, and a player that does not
+/// is a log line rather than a dialog.
+pub fn music_invoke(bus_name: &str, action: c_int) {
     let Some(method) = mpris_method(action) else {
         return;
     };
@@ -501,120 +752,6 @@ fn music_invoke(bus_name: &str, action: c_int) {
     );
 }
 
-/// What kind of application this is.
-///
-/// # Safety
-///
-/// Every argument must be null or a NUL-terminated string.
-pub unsafe fn lambdock_app_kind(
-    app_id: *const c_char,
-    name: *const c_char,
-    exec: *const c_char,
-    categories: *const c_char,
-) -> c_int {
-    app_kind(
-        crate::cstr::text(app_id).as_deref(),
-        crate::cstr::text(name).as_deref(),
-        crate::cstr::text(exec).as_deref(),
-        crate::cstr::text(categories).as_deref(),
-    )
-}
-
-/// The actions this application offers, as a `GArray` of `LambdockAppAction`.
-///
-/// # Safety
-///
-/// Every argument must be null or a NUL-terminated string; the result is
-/// `(transfer full)` and freed with `g_array_unref`.
-pub unsafe fn lambdock_app_actions(
-    app_id: *const c_char,
-    name: *const c_char,
-    exec: *const c_char,
-    categories: *const c_char,
-    music_bus: *const c_char,
-) -> *mut glib::ffi::GArray {
-    let actions = actions(
-        crate::cstr::text(app_id).as_deref(),
-        crate::cstr::text(name).as_deref(),
-        crate::cstr::text(exec).as_deref(),
-        crate::cstr::text(categories).as_deref(),
-        crate::cstr::text(music_bus).as_deref(),
-    );
-
-    let array = glib::ffi::g_array_new(glib::ffi::GFALSE, glib::ffi::GFALSE, c_uint::BITS / 8);
-
-    for action in actions {
-        let value = action as c_uint;
-        glib::ffi::g_array_append_vals(array, std::ptr::from_ref(&value).cast(), 1);
-    }
-
-    array
-}
-
-/// The menu label of an action, translated. The pointer is gettext's, so it is
-/// borrowed, exactly as the header says.
-///
-/// # Safety
-///
-/// The result must not be freed.
-pub fn lambdock_app_action_label(action: c_int) -> *const c_char {
-    let label = action_label(action);
-
-    if label.is_empty() {
-        return c"".as_ptr();
-    }
-
-    tr(label) as *const c_char
-}
-
-/// The command that opens a window of the browser `exec` starts.
-///
-/// # Safety
-///
-/// `exec` must be null or a NUL-terminated string; the result is `(transfer
-/// full)` and freed with `g_free`.
-pub unsafe fn lambdock_app_action_command(
-    exec: *const c_char,
-    action: c_int,
-) -> *mut c_char {
-    match action_command(crate::cstr::text(exec).as_deref(), action) {
-        Some(command) => strdup_string(&command),
-        None => std::ptr::null_mut(),
-    }
-}
-
-/// Whether the action is one of the playback controls.
-pub fn lambdock_app_action_is_music(action: c_int) -> c_int {
-    c_int::from(action_is_music(action))
-}
-
-/// The MPRIS bus name of the player behind this application, when one is running.
-///
-/// # Safety
-///
-/// Every argument must be null or a NUL-terminated string; the result is
-/// `(transfer full)` and freed with `g_free`.
-pub unsafe fn lambdock_app_music_player_find(
-    app_id: *const c_char,
-    name: *const c_char,
-) -> *mut c_char {
-    match music_player_find(crate::cstr::text(app_id).as_deref(), crate::cstr::text(name).as_deref()) {
-        Some(bus_name) => strdup_string(&bus_name),
-        None => std::ptr::null_mut(),
-    }
-}
-
-/// Asks the player at `bus_name` to run the method behind `action`.
-///
-/// # Safety
-///
-/// `bus_name` must be null or a NUL-terminated string.
-pub unsafe fn lambdock_app_music_invoke(bus_name: *const c_char, action: c_int) {
-    if let Some(bus_name) = crate::cstr::text(bus_name).filter(|bus_name| !bus_name.is_empty()) {
-        music_invoke(&bus_name, action);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -632,12 +769,21 @@ mod tests {
             app_kind(None, None, None, Some("AudioVideo;Audio;Player;")),
             KIND_MUSIC
         );
+        assert_eq!(
+            app_kind(None, None, None, Some("System;FileManager;")),
+            KIND_FILES
+        );
         assert_eq!(app_kind(None, None, None, Some("Audio;Editor;")), KIND_NONE);
 
         // A name that says player does not override a WebBrowser category.
         assert_eq!(
             app_kind(Some("spotify"), Some("Spotify"), None, Some("WebBrowser;")),
             KIND_BROWSER
+        );
+        // A name that says browser does not override a FileManager category.
+        assert_eq!(
+            app_kind(Some("firefox"), None, None, Some("FileManager;")),
+            KIND_FILES
         );
     }
 
@@ -669,7 +815,11 @@ mod tests {
                 Some("nautilus"),
                 None
             ),
-            KIND_NONE
+            KIND_FILES
+        );
+        assert_eq!(
+            app_kind(None, None, Some("dolphin %U"), None),
+            KIND_FILES
         );
         assert_eq!(app_kind(None, None, None, None), KIND_NONE);
     }
@@ -689,7 +839,8 @@ mod tests {
     }
 
     /// Each family gets its own flag, and an unknown browser gets none: the dock
-    /// does not promise a private window it cannot open.
+    /// does not promise a private window it cannot open. The forks keep their
+    /// parent's command line, so they keep the parent's flags.
     #[test]
     fn a_browser_window_gets_its_family_flag() {
         let new_window = |exec: &str| action_command(Some(exec), ACTION_NEW_WINDOW);
@@ -707,10 +858,18 @@ mod tests {
             private("librewolf %U").as_deref(),
             Some("librewolf --private-window")
         );
+        assert_eq!(
+            private("zen-browser %U").as_deref(),
+            Some("zen-browser --private-window")
+        );
         assert_eq!(private("chromium").as_deref(), Some("chromium --incognito"));
         assert_eq!(
             private("brave-browser").as_deref(),
             Some("brave-browser --incognito")
+        );
+        assert_eq!(
+            private("thorium-browser").as_deref(),
+            Some("thorium-browser --incognito")
         );
         assert_eq!(
             private("microsoft-edge-stable").as_deref(),
@@ -754,34 +913,125 @@ mod tests {
         );
     }
 
+    /// A file manager gets one row its launcher cannot express: the home folder.
+    #[test]
+    fn a_file_manager_gets_the_home_folder() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/u".to_owned());
+        let as_word = if word_needs_quotes(&home) {
+            shell_quote(&home)
+        } else {
+            home
+        };
+
+        assert_eq!(
+            home_command(Some("nautilus --new-window")),
+            Some(format!("nautilus --new-window {as_word}"))
+        );
+        // The field codes go, the program keeps its own arguments.
+        assert_eq!(
+            home_command(Some("thunar %U")),
+            Some(format!("thunar {as_word}"))
+        );
+
+        // Nothing to open, no row.
+        assert_eq!(home_command(None), None);
+        assert_eq!(home_command(Some("")), None);
+    }
+
     /// A browser offers a new window and, when it has one, a private window; a
-    /// player offers its playback controls only while one is on the bus.
+    /// player offers its playback controls only while one is on the bus; a file
+    /// manager offers the home folder.
     #[test]
     fn the_actions_follow_the_kind() {
+        let actions_of = |app_id: &str, exec: &str, bus: Option<&str>| {
+            actions(Some(app_id), None, Some(exec), None, bus)
+                .iter()
+                .map(|action| action.action)
+                .collect::<Vec<_>>()
+        };
+
+        // Chromium rather than Firefox: the Mozilla profiles are read from the
+        // home directory, and a test may not depend on what is installed there.
         assert_eq!(
-            actions(Some("firefox"), None, Some("firefox %u"), None, None),
+            actions_of("chromium", "chromium %U", None),
             [ACTION_NEW_WINDOW, ACTION_PRIVATE_WINDOW]
         );
         assert_eq!(
-            actions(Some("epiphany"), None, Some("epiphany %U"), None, None),
+            actions_of("epiphany", "epiphany %U", None),
             [ACTION_NEW_WINDOW]
         );
 
         let playback = [ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP];
         assert_eq!(
-            actions(
-                Some("spotify"),
-                None,
-                None,
-                None,
-                Some("org.mpris.MediaPlayer2.spotify")
-            ),
+            actions_of("spotify", "spotify", Some("org.mpris.MediaPlayer2.spotify")),
             playback
         );
         // No player on the bus: buttons that do nothing are worse than no buttons.
-        assert!(actions(Some("spotify"), None, None, None, None).is_empty());
+        assert!(actions_of("spotify", "spotify", None).is_empty());
 
-        assert!(actions(Some("nautilus"), None, Some("nautilus"), None, None).is_empty());
+        assert_eq!(
+            actions_of("nautilus", "nautilus -w", None),
+            [ACTION_HOME_FOLDER]
+        );
+    }
+
+    /// The profile list is the browser's own, and the `Install…` sections are not
+    /// profiles: they name a default path, not a name.
+    #[test]
+    fn the_profiles_are_read_from_the_ini_that_declares_them() {
+        let dir = std::path::Path::new("/home/u/.mozilla/firefox");
+        let ini = "\
+[General]
+StartWithLastProfile=1
+
+[Profile0]
+Name=default
+IsRelative=1
+Path=abc123.default
+Default=1
+
+[Profile1]
+Name=work
+Path=/mnt/keys/firefox/work
+
+[Install4F96D1932A9F858E]
+Default=abc123.default
+Locked=1
+";
+
+        assert_eq!(
+            parse_profiles(ini, dir),
+            [
+                Profile {
+                    name: "default".to_owned(),
+                    path: "/home/u/.mozilla/firefox/abc123.default".to_owned(),
+                },
+                Profile {
+                    name: "work".to_owned(),
+                    path: "/mnt/keys/firefox/work".to_owned(),
+                },
+            ]
+        );
+
+        // A file that is not a profile list, and one with no sections at all.
+        assert!(parse_profiles("", dir).is_empty());
+        assert!(parse_profiles("[General]\nStartWithLastProfile=1\n", dir).is_empty());
+    }
+
+    /// A profile row opens a window of that profile, with the path quoted for the
+    /// shell's parser.
+    #[test]
+    fn a_profile_row_opens_a_window_of_that_profile() {
+        let profile = Profile {
+            name: "work".to_owned(),
+            path: "/mnt/My Keys/work".to_owned(),
+        };
+
+        assert_eq!(
+            profile_command(Some("firefox %u"), &profile).as_deref(),
+            Some("firefox --profile '/mnt/My Keys/work' --new-window")
+        );
+        assert_eq!(profile_command(None, &profile), None);
     }
 
     #[test]
@@ -789,7 +1039,12 @@ mod tests {
         for action in [ACTION_PLAY_PAUSE, ACTION_PREVIOUS, ACTION_NEXT, ACTION_STOP] {
             assert!(action_is_music(action), "{action}");
         }
-        for action in [ACTION_NEW_WINDOW, ACTION_PRIVATE_WINDOW] {
+        for action in [
+            ACTION_NEW_WINDOW,
+            ACTION_PRIVATE_WINDOW,
+            ACTION_HOME_FOLDER,
+            ACTION_PROFILE,
+        ] {
             assert!(!action_is_music(action), "{action}");
         }
     }
@@ -804,6 +1059,8 @@ mod tests {
             ACTION_PREVIOUS,
             ACTION_NEXT,
             ACTION_STOP,
+            ACTION_HOME_FOLDER,
+            ACTION_PROFILE,
         ] {
             assert!(!action_label(action).to_bytes().is_empty(), "{action}");
         }

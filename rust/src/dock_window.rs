@@ -1253,6 +1253,24 @@ pub unsafe fn dock_apply_motion_preference(dock: &mut LambdockState) {
 // AUTO-HIDE AND REVEAL
 // ===========================================================================
 
+/// `AUTOHIDE_INITIAL_DELAY_MS` in `lambdock.h`: how long a fresh dock stays out
+/// before it first slides away.
+///
+/// The countdown after the pointer leaves is the dock's own setting
+/// (`dock-autohide-delay`), because that is the one a user notices; a dock that
+/// has just appeared gets a little longer than that so the first frame is not
+/// also the last.
+const AUTOHIDE_INITIAL_DELAY_MS: u32 = 1000;
+
+/// How long the dock waits before it slides away: the dock's own countdown, in
+/// milliseconds.
+///
+/// The state is filled from the settings file before anything can hide, but a
+/// zero-length countdown is a legal setting, so the field is used as it is.
+fn autohide_delay_ms(dock: &LambdockState) -> u32 {
+    dock.autohide_delay.max(0) as u32
+}
+
 /// Adapter: a GLib timeout hands the state back as a plain pointer.
 unsafe extern "C" fn on_hide_timeout(user_data: *mut c_void) -> c_int {
     let Some(dock) = user_data.cast::<LambdockState>().as_mut() else {
@@ -1401,10 +1419,6 @@ pub unsafe fn hide_dock(dock: &mut LambdockState) {
 // ===========================================================================
 // DOCK MODE AND CSS CLASSES
 // ===========================================================================
-
-/// `AUTOHIDE_INITIAL_DELAY_MS` in `lambdock.h`: how long a fresh dock stays out
-/// before it first slides away.
-const AUTOHIDE_INITIAL_DELAY_MS: u32 = 1000;
 
 /// Sets or clears one CSS class on a widget the state holds.
 fn set_class(widget: Option<&gtk4::Widget>, class: &str, enabled: bool) {
@@ -1672,10 +1686,6 @@ pub unsafe fn schedule_initial_autohide(dock: &mut LambdockState) {
 // THE BACKGROUND MENU
 // ===========================================================================
 
-/// `AUTOHIDE_POPOVER_DELAY_MS` in `lambdock.h`: how long the dock waits after
-/// its last menu closes before the hide countdown restarts.
-const AUTOHIDE_POPOVER_DELAY_MS: u32 = 400;
-
 /// Opens the backdrop menu at the click, so it grows away from the pointer.
 ///
 /// # Safety
@@ -1732,7 +1742,7 @@ pub unsafe fn on_popover_closed(
     }
 
     if dock.auto_hide != 0 && dock.active_popovers == 0 {
-        schedule_hide_timer(dock, AUTOHIDE_POPOVER_DELAY_MS);
+        schedule_hide_timer(dock, autohide_delay_ms(dock));
     }
 }
 
@@ -2465,10 +2475,6 @@ pub unsafe fn dock_window_set_tracker_connected(
 // The callbacks here are adapters: read a pointer position, call one helper,
 // return. The decisions they encode are documented where they are made.
 
-/// `AUTOHIDE_LEAVE_DELAY_MS` in `lambdock.h`: how long the pointer has to be
-/// away before the hide countdown starts.
-const AUTOHIDE_LEAVE_DELAY_MS: u32 = 600;
-
 thread_local! {
     /// The `GdkSurface` handlers each dock connected, keyed by the dock's
     /// address.
@@ -2612,7 +2618,8 @@ unsafe fn on_motion_leave(state: *mut LambdockState) {
         return;
     }
 
-    trace(&format!("leave: hiding in {AUTOHIDE_LEAVE_DELAY_MS} ms"));
+    let delay_ms = autohide_delay_ms(dock);
+    trace(&format!("leave: hiding in {delay_ms} ms"));
 
     stop_pointer_tick_inner(dock);
     dock.pointer_applied = 0;
@@ -2622,7 +2629,7 @@ unsafe fn on_motion_leave(state: *mut LambdockState) {
     }
 
     if dock.auto_hide != 0 {
-        schedule_hide_timer(dock, AUTOHIDE_LEAVE_DELAY_MS);
+        schedule_hide_timer(dock, delay_ms);
     }
 }
 

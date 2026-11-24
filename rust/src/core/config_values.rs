@@ -36,6 +36,11 @@ pub const ITEM_SPACING_MAX_PX: c_int = 64;
 pub const CAPSULE_PADDING_PX: c_int = 12;
 /// `CAPSULE_MAIN_AXIS_PADDING_MAX_PX` in `lambdock.h`.
 pub const CAPSULE_PADDING_MAX_PX: c_int = 96;
+/// `AUTOHIDE_DELAY_DEFAULT_MS`: how long the pointer has to be away (or a menu
+/// closed) before the dock starts sliding out.
+pub const AUTOHIDE_DELAY_DEFAULT_MS: c_int = 350;
+/// `AUTOHIDE_DELAY_MAX_MS`: the longest countdown a settings file may ask for.
+pub const AUTOHIDE_DELAY_MAX_MS: c_int = 3_000;
 /// `LAUNCHPAD_ICON_SIZE` and its bounds, in `ui/launchpad.h`.
 pub const LAUNCHPAD_ICON_SIZE: c_int = 80;
 pub const LAUNCHPAD_ICON_SIZE_MIN: c_int = 32;
@@ -204,6 +209,13 @@ pub fn lambdock_item_spacing_sanitize(raw: f64) -> c_int {
 /// The capsule's end padding, or the default for a broken request.
 pub fn lambdock_capsule_padding_sanitize(raw: f64) -> c_int {
     lambdock_sanitize_int(raw, CAPSULE_PADDING_PX, 0, CAPSULE_PADDING_MAX_PX)
+}
+
+/// How long the dock waits before it slides away, or the default for a broken
+/// request. Zero is a real answer -- it hides as soon as the pointer is gone --
+/// so only a value that is not a number falls back.
+pub fn lambdock_autohide_delay_sanitize(raw: f64) -> c_int {
+    lambdock_sanitize_int(raw, AUTOHIDE_DELAY_DEFAULT_MS, 0, AUTOHIDE_DELAY_MAX_MS)
 }
 
 /// The launchpad tile size, or the default for a broken request.
@@ -520,6 +532,27 @@ mod tests {
         assert_eq!(
             lambdock_capsule_padding_sanitize(f64::INFINITY),
             CAPSULE_PADDING_PX
+        );
+    }
+
+    #[test]
+    fn the_auto_hide_delay_is_a_real_countdown_including_zero() {
+        assert_eq!(lambdock_autohide_delay_sanitize(350.0), 350);
+        // Zero means "hide as soon as the pointer is gone", not "use the default".
+        assert_eq!(lambdock_autohide_delay_sanitize(0.0), 0);
+        assert_eq!(lambdock_autohide_delay_sanitize(-250.0), 0);
+        assert_eq!(
+            lambdock_autohide_delay_sanitize(99_999.0),
+            AUTOHIDE_DELAY_MAX_MS
+        );
+        // Only a value that is not a number is a broken request.
+        assert_eq!(
+            lambdock_autohide_delay_sanitize(f64::NAN),
+            AUTOHIDE_DELAY_DEFAULT_MS
+        );
+        assert_eq!(
+            lambdock_autohide_delay_sanitize(f64::NEG_INFINITY),
+            AUTOHIDE_DELAY_DEFAULT_MS
         );
     }
 
