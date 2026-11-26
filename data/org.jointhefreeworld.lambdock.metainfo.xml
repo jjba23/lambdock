@@ -78,6 +78,11 @@
   </screenshots>
 
   <releases>
+    <release version="2.3.3" date="2026-11-26">
+      <description>
+        <p>The pinned Guix channel carries <code>guile-dokgen</code> 0.12.0, so the published API reference folds the source behind each definition into a panel a reader opens, and reads on a quieter page with translucent surfaces.</p>
+      </description>
+    </release>
     <release version="2.3.2" date="2026-11-24">
       <description>
         <p>The Arch recipe builds again. It listed <code>wayland-scanner</code> as a build dependency, and no Arch package has that name — <code>wayland</code>, already a dependency, provides the binary; it changed into <code>lambdock</code> while GitHub packs the tag as <code>lambdock-&lt;version&gt;</code>, so the build ran in the wrong directory; and it installed the licence from <code>COPYING</code> while the project's MIT text is <code>LICENSE</code>, which stopped the install phase.</p>

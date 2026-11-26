@@ -11,6 +11,13 @@ This project adheres loosely to [[https://semver.org/spec/v2.0.0.html][Semantic 
 
 *[Released]*
 
+** v2.3.3 (2026-11-26)
+
+- *The pinned Guix channel carries =guile-dokgen= 0.12.0.*  =channels.scm= names
+  the jointhefreeworld revision that carries it: the published API reference folds
+  the source behind each definition into a panel a reader opens, and reads on a
+  quieter page with translucent surfaces.
+
 ** v2.3.2 (2026-11-24)
 
 - *The Arch recipe builds.*  =packaging/arch/PKGBUILD= failed three times before
